@@ -52,6 +52,8 @@ func (f Factory) Resolve(name string) (Adapter, error) {
 		return Mock{name: name}, nil
 	case "process":
 		return Process{spec: s}, nil
+	case "pi":
+		return Pi{spec: s}, nil
 	default:
 		return nil, &UnknownAssistantError{Name: name}
 	}

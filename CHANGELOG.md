@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.8-alpha
+
+- добавлен специализированный `type: pi` через официальный `pi --mode rpc`;
+- реализованы provider/model/thinking mapping, version probe и project trust;
+- реализованы проверенные `fresh` и `resume` по фактическому Session ID;
+- нормализованы итоговый текст, usage, resolved model, stdout/stderr и structured metadata;
+- добавлены timeout/cancel, общий race-safe output limit и process-group termination;
+- добавлены `cmd/takt-fake-pi`, Pi contract suite, runtime retry/resume test и opt-in real smoke;
+- Pi-specific Config и JSON Schema синхронизированы;
+- закрыты P2 документации: нумерация adapter tests, актуальная runtime version и optional metadata policy;
+- добавлен ADR-020 и отчёт `docs/22-pi-adapter-v0.1.8.md`.
+
 ## v0.1.7-alpha
 
 - OS exit code и `result.exit_code` в `takt-assistant/v1alpha1` обязаны совпадать всегда, включая ноль;

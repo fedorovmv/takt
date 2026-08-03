@@ -49,9 +49,9 @@
 - resume rejection не превращается в fresh;
 - session ID сохраняется в NodeState.
 
-## 4. Этап C. Первый реальный adapter
+## 4. Этап C. Первый реальный adapter — Pi реализован в v0.1.8-alpha
 
-Рекомендуемый первый вариант: Pi, если он используется в основном сценарии. OpenCode выбирается первым, если его API стабильнее для нужной среды.
+Выбран Pi. Adapter использует официальный RPC mode, contract tests с fake Pi и отдельный opt-in smoke test. OpenCode остаётся альтернативным исполнителем после проверки Route DSL.
 
 ### Задачи
 
@@ -136,13 +136,13 @@ agent draft
 
 ## 9. Текущий порядок ближайших задач
 
-1. Specialized Pi/OpenCode adapter.
-2. Opt-in smoke test с реальным агентом.
-3. Route DSL end-to-end.
-5. Go workflow.
-6. Document workflow.
-7. Strict templates и structured outputs.
-8. v1beta1 design.
+1. Opt-in smoke test с установленным Pi и целевой моделью.
+2. Route DSL end-to-end.
+3. OpenCode adapter при необходимости сравнения исполнителей.
+4. Go workflow.
+5. Document workflow.
+6. Strict templates и structured outputs.
+7. v1beta1 design.
 
 ## 10. Пока не начинать
 

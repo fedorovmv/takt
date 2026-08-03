@@ -192,10 +192,11 @@ func mustJSON(v any) []byte {
 }
 
 type outputBudget struct {
-	mu        sync.Mutex
-	limit     int
-	used      int
-	truncated bool
+	mu         sync.Mutex
+	limit      int
+	used       int
+	truncated  bool
+	onTruncate func()
 }
 
 type limitedBuffer struct {
@@ -212,9 +213,9 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 		return original, nil
 	}
 	b.budget.mu.Lock()
-	defer b.budget.mu.Unlock()
 	if b.budget.limit <= 0 {
 		b.data = append(b.data, p...)
+		b.budget.mu.Unlock()
 		return original, nil
 	}
 	remaining := b.budget.limit - b.budget.used
@@ -226,13 +227,27 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 		b.data = append(b.data, p[:take]...)
 		b.budget.used += take
 	}
-	if original > remaining {
+	notify := false
+	if original > remaining && !b.budget.truncated {
 		b.budget.truncated = true
+		notify = true
+	}
+	callback := b.budget.onTruncate
+	b.budget.mu.Unlock()
+	if notify && callback != nil {
+		callback()
 	}
 	return original, nil
 }
 
-func (b *limitedBuffer) String() string { return string(b.data) }
+func (b *limitedBuffer) String() string {
+	if b.budget == nil {
+		return string(b.data)
+	}
+	b.budget.mu.Lock()
+	defer b.budget.mu.Unlock()
+	return string(b.data)
+}
 func (b *limitedBuffer) Truncated() bool {
 	if b.budget == nil {
 		return false

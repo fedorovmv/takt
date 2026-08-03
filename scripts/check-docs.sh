@@ -35,16 +35,24 @@ done
 
 for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-019" \
+  "ARCHITECTURE_DECISIONS.md|ADR-020" \
   "docs/03-specification.md|allow_failure" \
   "docs/03-specification.md|родительский \`loop_group\`" \
+  "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
+  "docs/09-runtime-semantics.md|v0.1.8-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
+  "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
+  "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \
   "docs/12-document-map.md|21-protocol-hardening-v0.1.7.md" \
+  "docs/12-document-map.md|22-pi-adapter-v0.1.8.md" \
   "docs/14-backlog-v0.2.md|TAKT-008. Fake assistant protocol suite — выполнено" \
+  "docs/14-backlog-v0.2.md|TAKT-009. Specialized Pi adapter — выполнено" \
   "docs/15-coding-agent-start.md|takt-assistant/v1alpha1" \
   "docs/20-fake-assistant-contract-v0.1.6.md|OS exit code" \
-  "docs/21-protocol-hardening-v0.1.7.md|обязаны совпадать всегда"
+  "docs/21-protocol-hardening-v0.1.7.md|обязаны совпадать всегда" \
+  "docs/22-pi-adapter-v0.1.8.md|pi --mode rpc"
 do
   file="${check%%|*}"
   text="${check#*|}"

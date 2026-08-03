@@ -25,10 +25,9 @@ go build -o bin/takt ./cmd/takt
 Текущая рекомендуемая ветка работ:
 
 ```text
-fake assistant protocol suite
-→ specialized Pi/OpenCode adapter
-→ session resume contract
-→ Route DSL end-to-end
+Pi adapter contract suite и opt-in smoke
+→ Route DSL end-to-end на Pi
+→ OpenCode adapter при необходимости сравнения
 → Go и document workflows
 ```
 
@@ -53,6 +52,8 @@ go test ./...
 go test -race ./...
 go vet ./...
 go build ./cmd/takt
+go build ./cmd/takt-fake-pi
+./scripts/test-pi-adapter.sh
 ./scripts/verify.sh
 ```
 

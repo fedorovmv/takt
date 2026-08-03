@@ -60,7 +60,8 @@
         "type": {
           "enum": [
             "mock",
-            "process"
+            "process",
+            "pi"
           ]
         },
         "argv": {
@@ -90,6 +91,27 @@
           "enum": [
             "takt-assistant/v1alpha1"
           ]
+        },
+        "binary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "session_dir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "project_trust": {
+          "enum": [
+            "default",
+            "approve",
+            "deny"
+          ]
         }
       },
       "allOf": [
@@ -111,7 +133,11 @@
             "properties": {
               "argv": {
                 "minItems": 1
-              }
+              },
+              "binary": false,
+              "args": false,
+              "session_dir": false,
+              "project_trust": false
             }
           }
         },
@@ -128,6 +154,28 @@
           },
           "then": {
             "properties": {
+              "protocol": false,
+              "binary": false,
+              "args": false,
+              "session_dir": false,
+              "project_trust": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "pi"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "argv": false,
               "protocol": false
             }
           }

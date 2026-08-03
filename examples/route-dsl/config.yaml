@@ -15,8 +15,9 @@ assistants:
   demo:
     type: mock
   pi:
-    type: process
-    argv: ["pi", "--mode", "print", "--model", "{{model.id}}", "{{prompt}}"]
+    type: pi
+    binary: pi
+    project_trust: deny
     capabilities: [session_resume, mcp, skills]
   opencode:
     type: process

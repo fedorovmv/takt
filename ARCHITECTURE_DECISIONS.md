@@ -77,3 +77,7 @@ State и event одного перехода получают одинакову
 ## ADR-019. OS exit code и protocol envelope обязаны совпадать
 
 В `takt-assistant/v1alpha1` OS exit code и `result.exit_code` описывают один результат и обязаны совпадать всегда, включая ноль. При расхождении Takt возвращает `protocol`, а не выбирает одну сторону как авторитетную. Это предотвращает скрытие transport failure envelope-ом и ложное объявление failure при успешном OS-завершении.
+
+## ADR-020. Pi интегрируется через официальный RPC mode
+
+Специализированный `type: pi` запускает отдельный `pi --mode rpc` на каждую попытку узла. Prompt передаётся JSONL-командой, Session ID и модель проверяются через `get_state`, итог читается через `get_last_assistant_text` и `get_session_stats`, а закрытие stdin завершает процесс. Takt не парсит TUI и не реализует внутренний tool loop Pi. Resume считается успешным только при совпадении фактического Session ID; интерактивный extension UI не подменяет сохраняемые approval nodes Takt.

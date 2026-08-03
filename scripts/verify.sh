@@ -7,7 +7,9 @@ go test ./...
 go test -race ./...
 go build -o bin/takt ./cmd/takt
 go build -o bin/takt-fake-assistant ./cmd/takt-fake-assistant
+go build -o bin/takt-fake-pi ./cmd/takt-fake-pi
 ./scripts/test-fake-assistant.sh
+./scripts/test-pi-adapter.sh
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \
@@ -18,6 +20,11 @@ go build -o bin/takt-fake-assistant ./cmd/takt-fake-assistant
 ./bin/takt validate examples/hook-retry/workflow.yaml \
   --config examples/hook-retry/config.yaml \
   --workspace examples/hook-retry \
+  --json >/dev/null
+
+./bin/takt validate examples/pi-smoke/workflow.yaml \
+  --config examples/pi-smoke/config.yaml \
+  --workspace . \
   --json >/dev/null
 
 echo 'verification: PASS'

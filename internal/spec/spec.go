@@ -98,6 +98,10 @@ type ModelSpec struct {
 type AssistantSpec struct {
 	Type           string            `json:"type"`
 	Argv           []string          `json:"argv,omitempty"`
+	Binary         string            `json:"binary,omitempty"`
+	Args           []string          `json:"args,omitempty"`
+	SessionDir     string            `json:"session_dir,omitempty"`
+	ProjectTrust   string            `json:"project_trust,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
 	Capabilities   []string          `json:"capabilities,omitempty"`
 	Protocol       string            `json:"protocol,omitempty"`

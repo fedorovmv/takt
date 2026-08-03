@@ -12,12 +12,13 @@ Takt — Go-runtime для оркестрации готовых кодовых 
 
 1. `docs/12-document-map.md`;
 2. `docs/05-implementation-status.md`;
-3. `docs/21-protocol-hardening-v0.1.7.md`;
-4. `docs/20-fake-assistant-contract-v0.1.6.md`;
-5. `docs/09-runtime-semantics.md`;
-6. `docs/10-assistant-adapter-spec.md`;
-7. `docs/14-backlog-v0.2.md`;
-8. `ARCHITECTURE_DECISIONS.md`.
+3. `docs/22-pi-adapter-v0.1.8.md`;
+4. `docs/21-protocol-hardening-v0.1.7.md`;
+5. `docs/20-fake-assistant-contract-v0.1.6.md`;
+6. `docs/09-runtime-semantics.md`;
+7. `docs/10-assistant-adapter-spec.md`;
+8. `docs/14-backlog-v0.2.md`;
+9. `ARCHITECTURE_DECISIONS.md`.
 
 Проверь исходное состояние:
 
@@ -31,14 +32,15 @@ go build ./cmd/takt
 
 ## Первая рекомендуемая задача
 
-Начни с `TAKT-009`: specialized Pi либо OpenCode adapter.
+Начни с `TAKT-011`: Route DSL end-to-end на уже реализованном Pi adapter.
 
 Требования:
 
-- используй `takt-assistant/v1alpha1` как нормализованный контракт;
-- прогони adapter через `scripts/test-fake-assistant.sh` или эквивалентный переиспользуемый suite;
-- добавь opt-in smoke test с реальным бинарником;
+- сначала выполни opt-in Pi smoke при доступных credentials;
+- замени mock в Route DSL workflow на `type: pi`;
+- подключи реальный validator и передавай его diagnostics в retry;
 - не меняй timeout, output limit, fresh/resume и error classification без обновления спецификации и ADR;
+- сохраняй контракт `takt-assistant/v1alpha1` для универсальных process adapters; Pi использует отдельный RPC adapter;
 - не допускай тихого fallback с resume на fresh;
 - сохрани границу: внутренний tool loop остаётся внутри Pi/OpenCode.
 

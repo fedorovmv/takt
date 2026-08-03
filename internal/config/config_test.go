@@ -86,3 +86,51 @@ assistants:
 		t.Fatal("expected protocol on mock assistant to be rejected")
 	}
 }
+
+func TestLoadPiAssistant(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `apiVersion: takt/v1alpha1
+kind: Config
+assistants:
+  pi:
+    type: pi
+    binary: /usr/local/bin/pi
+    args: [--offline]
+    session_dir: .takt/pi-sessions
+    project_trust: deny
+    max_output_bytes: 1048576
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.Assistants["pi"]
+	if got.Type != "pi" || got.Binary != "/usr/local/bin/pi" || got.ProjectTrust != "deny" || len(got.Args) != 1 {
+		t.Fatalf("unexpected Pi config: %+v", got)
+	}
+}
+
+func TestLoadRejectsInvalidPiOptions(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "invalid trust", body: "type: pi\n    project_trust: sometimes"},
+		{name: "argv", body: "type: pi\n    argv: [pi]"},
+		{name: "Pi fields on process", body: "type: process\n    argv: [echo]\n    binary: pi"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			content := "apiVersion: takt/v1alpha1\nkind: Config\nassistants:\n  bad:\n    " + tc.body + "\n"
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(path); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}

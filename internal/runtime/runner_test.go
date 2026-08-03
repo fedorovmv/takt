@@ -471,3 +471,56 @@ func TestProtocolAssistantResumesSessionAcrossRetry(t *testing.T) {
 		t.Fatalf("unexpected node state: %+v", node)
 	}
 }
+
+func TestPiAssistantResumesSessionAcrossRetry(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "takt-fake-pi")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", binary, "./cmd/takt-fake-pi")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fake Pi: %v: %s", err, output)
+	}
+
+	dir := t.TempDir()
+	wf := &spec.Workflow{
+		APIVersion: "takt/v1alpha1",
+		Kind:       "Workflow",
+		Metadata:   spec.Metadata{Name: "pi-session"},
+		Defaults:   spec.Defaults{Assistant: "pi", Model: "m", Session: "resume"},
+		Nodes: []spec.Node{{
+			ID:       "agent",
+			Prompt:   "hello",
+			Attempts: spec.AttemptsSpec{Max: 2},
+			Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
+				ID:        "retry-once",
+				Bash:      `test -f retried || { touch retried; echo retry; exit 1; }`,
+				OnFailure: spec.HookDecision{Action: "retry"},
+			}}},
+		}},
+	}
+	cfg := &spec.Config{
+		Models: map[string]spec.ModelSpec{"m": {Provider: "openai", ID: "fake-model", Params: map[string]any{"reasoning_effort": "high"}}},
+		Assistants: map[string]spec.AssistantSpec{"pi": {
+			Type:           "pi",
+			Binary:         binary,
+			Args:           []string{"--fake-case", "success"},
+			ProjectTrust:   "deny",
+			MaxOutputBytes: 64 * 1024,
+		}},
+	}
+	r := New(wf, cfg, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := state.Nodes["agent"]
+	if node.Status != store.NodeCompleted || node.Attempts != 2 || node.SessionID != "fake-pi-session-1" {
+		t.Fatalf("unexpected Pi node state: %+v", node)
+	}
+}

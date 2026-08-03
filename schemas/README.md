@@ -1,6 +1,6 @@
 # Машиночитаемые схемы
 
-- `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `max_output_bytes` и запрет `protocol` для `mock`;
+- `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `mock`, `process`, `pi`, Pi-specific `binary/args/session_dir/project_trust`, `max_output_bytes` и условные запреты несовместимых полей;
 - `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`;
 - `command-frontmatter.schema.json` — frontmatter Markdown-команд;
 - `run-state.schema.json` — состояние Run, fingerprints, revisions и типизированные Node statuses;

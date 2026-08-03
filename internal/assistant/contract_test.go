@@ -17,7 +17,10 @@ import (
 	"takt/internal/spec"
 )
 
-var fakeAssistantBinary string
+var (
+	fakeAssistantBinary string
+	fakePiBinary        string
+)
 
 func TestMain(m *testing.M) {
 	root, err := moduleRoot()
@@ -36,6 +39,15 @@ func TestMain(m *testing.M) {
 	cmd.Dir = root
 	if output, err := cmd.CombinedOutput(); err != nil {
 		panic("build fake assistant: " + err.Error() + ": " + string(output))
+	}
+	fakePiBinary = filepath.Join(dir, "takt-fake-pi")
+	if runtime.GOOS == "windows" {
+		fakePiBinary += ".exe"
+	}
+	cmd = exec.Command("go", "build", "-o", fakePiBinary, "./cmd/takt-fake-pi")
+	cmd.Dir = root
+	if output, err := cmd.CombinedOutput(); err != nil {
+		panic("build fake Pi: " + err.Error() + ": " + string(output))
 	}
 	code := m.Run()
 	_ = os.RemoveAll(dir)

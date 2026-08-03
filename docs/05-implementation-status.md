@@ -30,7 +30,7 @@
 
 ### Assistants и protocol
 
-- `mock` и универсальный `process` assistant;
+- `mock`, универсальный `process` и специализированный `pi` assistant;
 - текстовый process mode;
 - строгий JSON process mode `takt-assistant/v1alpha1`;
 - общий race-safe лимит stdout/stderr;
@@ -39,7 +39,9 @@
 - полное совпадение OS exit code и envelope `exit_code`;
 - проверка version/type/status, usage, session resume и неизвестных полей;
 - fake-assistant binary и отрицательный contract suite;
-- сквозной `fresh → retry → resume` через runtime.
+- сквозной `fresh → retry → resume` через process protocol и Pi adapter;
+- Pi RPC: version probe, provider/model/thinking mapping, verified Session ID, usage и resolved model;
+- fake-Pi contract suite и opt-in smoke test с реальным CLI.
 
 ### CLI
 
@@ -64,7 +66,6 @@
 
 ## Не реализовано
 
-- специализированный Pi adapter;
 - специализированный OpenCode adapter;
 - реальный Route DSL end-to-end;
 - capability negotiation по фактическим возможностям adapter;
@@ -76,4 +77,4 @@
 
 ## Ближайший целевой срез
 
-Следующий этап — специализированный Pi либо OpenCode adapter поверх `takt-assistant/v1alpha1`. Он должен пройти тот же contract suite, после чего выполняется Route DSL end-to-end: агент → валидатор → feedback → retry/resume → approval.
+Следующий этап — opt-in проверка установленного Pi и Route DSL end-to-end: Pi → валидатор → feedback → retry/resume → approval. OpenCode adapter остаётся следующим сменным исполнителем, но не блокирует проверку основного сценария.

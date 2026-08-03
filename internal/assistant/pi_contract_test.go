@@ -1,0 +1,244 @@
+package assistant
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"strings"
+	"testing"
+	"time"
+
+	"takt/internal/execution"
+	"takt/internal/spec"
+)
+
+func fakePi(caseName string) Pi {
+	return Pi{spec: spec.AssistantSpec{
+		Type:           "pi",
+		Binary:         fakePiBinary,
+		Args:           []string{"--fake-case", caseName},
+		SessionDir:     "/tmp/takt-fake-pi-sessions",
+		ProjectTrust:   "approve",
+		MaxOutputBytes: 64 * 1024,
+		Env:            map[string]string{"TAKT_PI_TEST_ENV": "{{run.id}}/{{node.id}}", "TAKT_RUN_ID": "spoofed"},
+	}}
+}
+
+func fakePiRequest(workspace string) Request {
+	return Request{
+		RunID:       "run-pi-contract",
+		NodeID:      "implement",
+		Attempt:     3,
+		Prompt:      "implement the route",
+		Workspace:   workspace,
+		ModelName:   "large",
+		Model:       spec.ModelSpec{Provider: "openai", ID: "gpt-test", Params: map[string]any{"reasoning_effort": "high"}},
+		SessionMode: "fresh",
+		NativeHooks: json.RawMessage(`{"post_tool_use":[{"matcher":"Write"}]}`),
+		Metadata:    map[string]string{"suite": "pi-contract"},
+	}
+}
+
+func TestPiAdapterContract(t *testing.T) {
+	t.Run("success and request mapping", func(t *testing.T) {
+		result, err := fakePi("success").Run(context.Background(), fakePiRequest(t.TempDir()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Output != "fake Pi completed" || result.ExitCode != 0 || result.SessionID != "fake-pi-session-1" || result.Resumed {
+			t.Fatalf("unexpected result: %+v", result)
+		}
+		if result.ResolvedModel == nil || result.ResolvedModel.Provider != "openai" || result.ResolvedModel.ID != "gpt-test" {
+			t.Fatalf("resolved model missing: %+v", result.ResolvedModel)
+		}
+		if result.Usage == nil || result.Usage.InputTokens != 111 || result.Usage.OutputTokens != 22 || result.Usage.Cost != 0.0125 {
+			t.Fatalf("usage missing: %+v", result.Usage)
+		}
+		var structured struct {
+			Adapter   string `json:"adapter"`
+			PiVersion string `json:"pi_version"`
+			Stats     struct {
+				Observed map[string]any `json:"observed"`
+			} `json:"stats"`
+		}
+		if err := json.Unmarshal(result.Structured, &structured); err != nil {
+			t.Fatal(err)
+		}
+		if structured.Adapter != "pi" || !strings.Contains(structured.PiVersion, "0.83.0") {
+			t.Fatalf("unexpected structured metadata: %+v", structured)
+		}
+		observed := structured.Stats.Observed
+		if observed["provider"] != "openai" || observed["model"] != "gpt-test" || observed["thinking"] != "high" {
+			t.Fatalf("model arguments not mapped: %#v", observed)
+		}
+		if observed["project_trust"] != "approve" || observed["session_dir"] != "/tmp/takt-fake-pi-sessions" {
+			t.Fatalf("Pi options not mapped: %#v", observed)
+		}
+		if observed["prompt"] != "implement the route" || observed["run_id"] != "run-pi-contract" || observed["node_id"] != "implement" {
+			t.Fatalf("request not transported: %#v", observed)
+		}
+		if !strings.Contains(observed["metadata"].(string), "pi-contract") || !strings.Contains(observed["native_hooks"].(string), "post_tool_use") {
+			t.Fatalf("metadata/native hooks not transported: %#v", observed)
+		}
+	})
+
+	t.Run("fresh ignores stale session", func(t *testing.T) {
+		req := fakePiRequest(t.TempDir())
+		req.SessionMode = "fresh"
+		req.SessionID = "stale-session"
+		result, err := fakePi("success").Run(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.SessionID != "fake-pi-session-1" || result.Resumed {
+			t.Fatalf("unexpected fresh result: %+v", result)
+		}
+	})
+
+	t.Run("resume", func(t *testing.T) {
+		req := fakePiRequest(t.TempDir())
+		req.SessionMode = "resume"
+		req.SessionID = "session-123"
+		result, err := fakePi("success").Run(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.SessionID != "session-123" || !result.Resumed {
+			t.Fatalf("unexpected resume result: %+v", result)
+		}
+	})
+
+	t.Run("resume mismatch", func(t *testing.T) {
+		req := fakePiRequest(t.TempDir())
+		req.SessionMode = "resume"
+		req.SessionID = "session-123"
+		_, err := fakePi("resume-mismatch").Run(context.Background(), req)
+		if execution.KindOf(err) != execution.KindProtocol {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+
+	t.Run("start", func(t *testing.T) {
+		adapter := Pi{spec: spec.AssistantSpec{Type: "pi", Binary: "definitely-missing-pi-binary"}}
+		_, err := adapter.Run(context.Background(), fakePiRequest(t.TempDir()))
+		if execution.KindOf(err) != execution.KindStart {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+
+	t.Run("process exit", func(t *testing.T) {
+		_, err := fakePi("exit").Run(context.Background(), fakePiRequest(t.TempDir()))
+		if execution.KindOf(err) != execution.KindExit {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+		defer cancel()
+		_, err := fakePi("timeout").Run(ctx, fakePiRequest(t.TempDir()))
+		if execution.KindOf(err) != execution.KindTimedOut {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+
+	t.Run("cancel", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		time.AfterFunc(80*time.Millisecond, cancel)
+		_, err := fakePi("cancel").Run(ctx, fakePiRequest(t.TempDir()))
+		if execution.KindOf(err) != execution.KindCancelled {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+
+	t.Run("concurrent output", func(t *testing.T) {
+		result, err := fakePi("concurrent-output").Run(context.Background(), fakePiRequest(t.TempDir()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Truncated || len(result.Stderr) != 4096 {
+			t.Fatalf("unexpected concurrent output result: truncated=%v stderr=%d", result.Truncated, len(result.Stderr))
+		}
+	})
+
+	t.Run("output limit", func(t *testing.T) {
+		adapter := fakePi("concurrent-output")
+		adapter.spec.MaxOutputBytes = 512
+		result, err := adapter.Run(context.Background(), fakePiRequest(t.TempDir()))
+		if execution.KindOf(err) != execution.KindProtocol || !result.Truncated {
+			t.Fatalf("unexpected output-limit result: kind=%s result=%+v err=%v", execution.KindOf(err), result, err)
+		}
+	})
+
+	t.Run("single JSONL record cannot bypass output limit", func(t *testing.T) {
+		adapter := fakePi("huge-line")
+		adapter.spec.MaxOutputBytes = 512
+		result, err := adapter.Run(context.Background(), fakePiRequest(t.TempDir()))
+		if execution.KindOf(err) != execution.KindProtocol || !result.Truncated {
+			t.Fatalf("unexpected huge-line result: kind=%s result=%+v err=%v", execution.KindOf(err), result, err)
+		}
+	})
+
+	for _, tc := range []struct {
+		name     string
+		caseName string
+		kind     execution.Kind
+	}{
+		{name: "malformed RPC", caseName: "malformed", kind: execution.KindProtocol},
+		{name: "multiple JSON records on one line", caseName: "two-json-on-line", kind: execution.KindProtocol},
+		{name: "prompt rejected", caseName: "prompt-rejected", kind: execution.KindExit},
+		{name: "agent failure", caseName: "agent-failure", kind: execution.KindExit},
+		{name: "interactive extension UI", caseName: "extension-ui", kind: execution.KindProtocol},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := fakePi(tc.caseName).Run(context.Background(), fakePiRequest(t.TempDir()))
+			if execution.KindOf(err) != tc.kind {
+				t.Fatalf("unexpected kind for %s: %s (%v)", tc.caseName, execution.KindOf(err), err)
+			}
+		})
+	}
+
+	t.Run("reserved arguments", func(t *testing.T) {
+		adapter := fakePi("success")
+		adapter.spec.Args = []string{"--mode", "json"}
+		_, err := adapter.Run(context.Background(), fakePiRequest(t.TempDir()))
+		if execution.KindOf(err) != execution.KindProtocol {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+}
+
+func TestPiAdapterOptInSmoke(t *testing.T) {
+	if os.Getenv("TAKT_PI_SMOKE") != "1" {
+		t.Skip("set TAKT_PI_SMOKE=1 and TAKT_PI_SMOKE_MODEL to run a real Pi prompt")
+	}
+	model := os.Getenv("TAKT_PI_SMOKE_MODEL")
+	provider := os.Getenv("TAKT_PI_SMOKE_PROVIDER")
+	if model == "" || provider == "" {
+		t.Fatal("TAKT_PI_SMOKE_MODEL and TAKT_PI_SMOKE_PROVIDER are required")
+	}
+	binary := os.Getenv("TAKT_PI_BINARY")
+	if binary == "" {
+		binary = "pi"
+	}
+	if _, err := exec.LookPath(binary); err != nil {
+		t.Fatal(err)
+	}
+	adapter := Pi{spec: spec.AssistantSpec{Type: "pi", Binary: binary, ProjectTrust: "deny", MaxOutputBytes: 2 * 1024 * 1024}}
+	req := Request{
+		RunID: "pi-smoke", NodeID: "smoke", Attempt: 1,
+		Prompt:    "Reply with exactly: TAKT_PI_SMOKE_OK",
+		Workspace: t.TempDir(), ModelName: "smoke",
+		Model: spec.ModelSpec{Provider: provider, ID: model}, SessionMode: "fresh",
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	result, err := adapter.Run(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Output, "TAKT_PI_SMOKE_OK") {
+		t.Fatalf("unexpected Pi smoke output: %q", result.Output)
+	}
+}

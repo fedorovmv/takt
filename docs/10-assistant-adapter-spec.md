@@ -1,6 +1,6 @@
 # Спецификация адаптеров исполнителей
 
-Статус: process-протокол `takt-assistant/v1alpha1` и fake contract suite реализованы и усилены в `v0.1.7-alpha`. Specialized Pi/OpenCode adapters и потоковый EventSink остаются целевыми возможностями v0.2.
+Статус: process-протокол и fake contract suite реализованы в `v0.1.7-alpha`; специализированный Pi RPC adapter реализован в `v0.1.8-alpha`. OpenCode adapter, capability discovery и потоковый EventSink остаются целевыми возможностями v0.2.
 
 ## 1. Назначение
 
@@ -232,16 +232,35 @@ assistant.usage
 
 ## 9. Pi adapter
 
-Первый специализированный адаптер должен:
+Pi adapter реализован как `type: pi` и использует официальный subprocess RPC-режим:
 
-- определить доступную версию Pi;
-- строить командную строку из структурированного Request;
-- поддерживать print/JSON/RPC режим, выбранный после прототипирования;
-- извлекать Session ID;
-- различать отказ resume и новый запуск;
-- передавать model provider/id без предположения о едином формате;
-- поддерживать cancellation;
-- иметь интеграционные тесты с fake binary и отдельные opt-in тесты с реальным Pi.
+```text
+pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...]
+```
+
+Последовательность одной попытки:
+
+1. `pi --version` проверяет доступность CLI и сохраняет версию в structured result;
+2. запускается RPC-процесс в workspace узла;
+3. `get_state` возвращает фактический Session ID и модель;
+4. `prompt` принимает полное задание через JSONL stdin;
+5. adapter ждёт `agent_end`;
+6. `get_last_assistant_text`, `get_session_stats` и повторный `get_state` нормализуют результат;
+7. закрытие stdin штатно завершает RPC-процесс.
+
+Поддержано:
+
+- выбор provider/model и thinking level;
+- `fresh` и проверенный `resume` через `--session`;
+- timeout/cancellation вместе с process group;
+- общий race-safe лимит stdout/stderr;
+- Session ID, resolved model и usage;
+- дополнительные env и нерезервированные Pi flags;
+- opt-in smoke test с реальным бинарником.
+
+Интерактивный extension UI не проксируется в рамках попытки: запросы, требующие ответа, считаются protocol error. Project-local Pi resources управляются явным `project_trust`.
+
+`Request.Metadata` является optional. Workflow runtime пока не строит mapping из workflow/node metadata; adapter обязан транспортировать поле, когда вызывающая сторона его заполнила. Pi adapter делает это через `TAKT_METADATA_JSON`.
 
 ## 10. OpenCode adapter
 
@@ -257,24 +276,23 @@ assistant.usage
 
 Обязательные тесты:
 
-1. prompt через stdin;
-2. prompt в argv;
-3. model params;
-4. рабочий каталог;
-5. env и секреты;
-6. равенство OS/envelope exit code для zero и nonzero;
-7. invalid version/type/status/unknown fields/multiple JSON;
-8. missing/null/incompatible exit_code;
-9. non-negative usage;
-10. metadata и native_hooks;
-6. успешный exit;
-7. ненулевой exit;
-8. timeout;
-9. cancellation;
-10. output limit;
-11. fresh session;
-12. successful resume;
-13. failed resume;
-14. malformed structured output.
+1. prompt и рабочий каталог;
+2. provider/model/thinking mapping;
+3. env, optional metadata и native hooks transport;
+4. успешное выполнение;
+5. ненулевой OS exit;
+6. ошибка запуска;
+7. timeout;
+8. cancellation;
+9. общий concurrent stdout/stderr output limit;
+10. malformed RPC/result;
+11. fresh session без передачи старого ID;
+12. successful resume того же Session ID;
+13. failed или mismatched resume;
+14. отказ prompt preflight;
+15. agent-level failure;
+16. неподдерживаемый интерактивный extension UI;
+17. runtime `fresh → retry → resume`;
+18. opt-in smoke test с реальным бинарником.
 
-Для CI используется `cmd/takt-fake-assistant` и `scripts/test-fake-assistant.sh`. Реальные Pi/OpenCode тесты запускаются отдельно и не блокируют обычный unit test suite.
+Для CI используются `cmd/takt-fake-assistant`, `cmd/takt-fake-pi`, `scripts/test-fake-assistant.sh` и `scripts/test-pi-adapter.sh`. Реальный Pi smoke test включается только через `TAKT_PI_SMOKE=1` и не блокирует обычный unit test suite.

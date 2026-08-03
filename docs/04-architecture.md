@@ -26,7 +26,7 @@ Runner / Shared DAG Scheduler
 - `internal/config` — модели и исполнители;
 - `internal/command` — Markdown-команды;
 - `internal/execution` — классы ошибок и управление process group;
-- `internal/assistant` — адаптеры `mock` и `process`;
+- `internal/assistant` — адаптеры `mock`, универсальный `process` и специализированный `pi`;
 - `internal/definition` — fingerprints workflow/config/commands;
 - `internal/workflow` — загрузка и статическая проверка DAG;
 - `internal/runtime` — общий scheduler, hooks, loops, approval и итог Run;
@@ -56,6 +56,11 @@ TAKT_NATIVE_HOOKS_JSON
 ```
 
 Ненулевой exit code классифицируется как `exit`; ошибка запуска — `start`; context timeout — `timed_out`; cancellation — `cancelled`.
+
+
+## Pi assistant
+
+Специализированный `pi` adapter запускает `pi --mode rpc`, передаёт prompt по JSONL и получает Session ID, итоговый текст, статистику и фактическую модель через RPC-команды. `fresh` создаёт новую сессию, `resume` передаёт сохранённый ID через `--session` и проверяет его по `get_state`. Инструменты, файлы, shell, skills и история остаются внутри Pi.
 
 ## Состояние
 

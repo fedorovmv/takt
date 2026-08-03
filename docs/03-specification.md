@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.7-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.8-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -37,12 +37,20 @@ models:
 
 assistants:
   pi:
-    type: process
-    argv: ["pi", "--mode", "print", "--model", "{{model.id}}"]
-    capabilities: [session_resume, mcp, skills]
-    protocol: takt-assistant/v1alpha1
-    max_output_bytes: 1048576
+    type: pi
+    binary: pi
+    args: [--offline]
+    session_dir: .takt/pi-sessions
+    project_trust: deny
+    capabilities: [session_resume, skills]
+    max_output_bytes: 10485760
 ```
+
+Типы assistant:
+
+- `mock` — детерминированная заглушка;
+- `process` — универсальный текстовый или JSON process adapter;
+- `pi` — специализированный adapter для `earendil-works/pi` через `pi --mode rpc`.
 
 `process`-адаптер поддерживает шаблоны:
 
@@ -67,6 +75,30 @@ assistants:
 `max_output_bytes: 0` означает отсутствие лимита. При превышении положительного лимита output обрезается, а NodeState получает `output_truncated: true`.
 
 На Unix процесс запускается в отдельной process group; timeout и cancellation завершают процесс и его потомков.
+
+
+### Pi assistant
+
+`type: pi` использует официальный RPC-режим Pi. Takt запускает отдельный процесс на попытку узла, запрашивает состояние сессии, отправляет prompt через JSONL RPC, ждёт `agent_end`, читает итоговый текст, статистику и Session ID, затем закрывает stdin для штатного завершения процесса.
+
+Поля конфигурации:
+
+- `binary` — путь к `pi`, по умолчанию `pi` из `PATH`;
+- `args` — дополнительные нерезервированные параметры Pi;
+- `session_dir` — каталог сессий, передаётся как `--session-dir`;
+- `project_trust` — `default`, `approve` или `deny`; последние два соответствуют `--approve` и `--no-approve`;
+- `env` — дополнительные переменные окружения;
+- `max_output_bytes` — общий лимит RPC stdout и stderr; при нуле используется безопасный лимит adapter по умолчанию.
+
+Takt сам задаёт `--mode rpc`, `--provider`, `--model`, `--thinking`, `--session` и параметры trust/session directory. Эти флаги запрещены в `args`, чтобы исключить расхождение структурированного Request и фактического запуска.
+
+`model.provider` и `model.id` должны соответствовать каталогу моделей Pi. Параметры `thinking` или `reasoning_effort` переводятся в `--thinking`; остальные model params доступны расширениям через `TAKT_MODEL_PARAMS_JSON`, но не интерпретируются adapter.
+
+При `session: resume` adapter передаёт `--session <id>` и проверяет через `get_state`, что Pi действительно открыл тот же Session ID. Тихий переход на fresh запрещён. В режиме `fresh` сохранённый ID не передаётся.
+
+`metadata` остаётся необязательным полем внутреннего Request. Текущий workflow runtime его не формирует, однако Pi adapter прозрачно передаёт заполненное значение через `TAKT_METADATA_JSON`. `native_hooks` передаются через `TAKT_NATIVE_HOOKS_JSON`; автоматического преобразования в Pi extensions в `v1alpha1` нет.
+
+Интерактивные запросы Pi extension UI (`confirm`, `select`, `input`, `editor`) отклоняются как `protocol`: Takt approval должен быть отдельным сохраняемым узлом workflow. Не требующие ответа уведомления допускаются.
 
 ## 4. Markdown-команды
 
@@ -325,5 +357,5 @@ takt command run <name> --config <config> --workspace <dir> --input <text>
 - нет `takt cancel`;
 - нет sandbox, server, MCP и Web UI;
 - stale lock требует ручного удаления после аварийного завершения процесса;
-- specialized Pi/OpenCode adapter пока не реализован;
-- `takt-assistant/v1alpha1` реализован только для универсального `process`, потоковые события пока не входят в контракт.
+- специализированный Pi adapter реализован; OpenCode adapter пока не реализован;
+- `takt-assistant/v1alpha1` реализован для универсального `process`; специализированный `pi` использует внутренний Go Request/Result и официальный Pi RPC JSONL; потоковые события пока не публикуются в EventSink.

@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.7-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.8-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -33,9 +33,10 @@
 - блокировка Run при `answer` и `resume`;
 - ревизии состояния и событий с проверкой согласованности;
 - JSONL-журнал событий и файловые артефакты;
-- адаптеры `mock` и универсальный `process`;
+- адаптеры `mock`, универсальный `process` и специализированный `pi`;
 - JSON-протокол `takt-assistant/v1alpha1` для внешних process assistants;
 - fake-assistant contract suite: success, exit, start, timeout, cancel, concurrent output, malformed/strict protocol cases, fresh и resume;
+- Pi RPC adapter и fake-Pi contract suite, включая model/thinking mapping, fresh/resume, timeout/cancel, output limit и отказ интерактивного extension UI;
 - полное совпадение OS exit code и envelope `exit_code`, включая ноль;
 - единый JSON envelope CLI для успеха и ошибок;
 - строгий YAML subset с сохранением пустых строк в block scalar;
@@ -71,11 +72,11 @@ make check
 
 ## С чего продолжать разработку
 
-Семантика runtime и process-протокол после аудита стабилизированы. Следующий вертикальный этап:
+Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Следующий вертикальный этап:
 
-1. специализированный адаптер Pi либо OpenCode поверх `takt-assistant/v1alpha1`;
-2. прохождение adapter contract suite и opt-in smoke test с реальным бинарником;
-3. Route DSL end-to-end: агент → валидатор → feedback → повтор → approval.
+1. opt-in smoke test с установленным и авторизованным Pi;
+2. Route DSL end-to-end: Pi → валидатор → feedback → retry/resume → approval;
+3. OpenCode adapter только после проверки основного сценария либо при явной необходимости сравнения исполнителей.
 
 Подробности:
 
@@ -86,6 +87,7 @@ make check
 - [Восстановление документации v0.1.5](docs/19-document-recovery-v0.1.5.md)
 - [Fake-assistant contract suite v0.1.6](docs/20-fake-assistant-contract-v0.1.6.md)
 - [Усиление protocol contract v0.1.7](docs/21-protocol-hardening-v0.1.7.md)
+- [Pi RPC adapter v0.1.8](docs/22-pi-adapter-v0.1.8.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -111,6 +113,7 @@ make check
 - [Восстановление документации v0.1.5](docs/19-document-recovery-v0.1.5.md)
 - [Fake-assistant contract suite v0.1.6](docs/20-fake-assistant-contract-v0.1.6.md)
 - [Усиление protocol contract v0.1.7](docs/21-protocol-hardening-v0.1.7.md)
+- [Pi RPC adapter v0.1.8](docs/22-pi-adapter-v0.1.8.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

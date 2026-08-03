@@ -1,6 +1,8 @@
-# Результаты проверки v0.1.7-alpha
+# Результаты проверки v0.1.8-alpha
 
-## Основные проверки
+Дата проверки: 4 августа 2026 года.
+
+## Автоматические проверки
 
 | Проверка | Результат |
 |---|---|
@@ -9,46 +11,62 @@
 | `go vet ./...` | PASS |
 | `go build ./cmd/takt` | PASS |
 | `go build ./cmd/takt-fake-assistant` | PASS |
-| `./scripts/test-fake-assistant.sh` | PASS |
-| `./scripts/check-docs.sh` | PASS |
-| `./scripts/verify.sh` | PASS |
+| `go build ./cmd/takt-fake-pi` | PASS |
+| `scripts/test-fake-assistant.sh` | PASS |
+| `scripts/test-pi-adapter.sh` | PASS |
+| `scripts/check-docs.sh` | PASS |
+| `scripts/verify.sh` | PASS |
 | `make check` | PASS |
-| VERSION/CLI = `0.1.7-alpha` | PASS |
+| JSON syntax всех schemas | PASS |
+| локальные Markdown-ссылки | PASS |
+| `VERSION` и CLI = `0.1.8-alpha` | PASS |
 
-## Protocol contract
+## Pi adapter contract suite
 
-Проверены положительные и отрицательные сценарии `takt-assistant/v1alpha1`:
+Проверены реальные дочерние процессы через `cmd/takt-fake-pi`:
 
-- success и согласованный ненулевой exit;
-- ошибка запуска;
+- доступность и version probe;
+- отображение provider, model и thinking level в CLI Pi;
+- рабочий каталог, prompt, env, metadata и native hooks;
+- успешное выполнение и нормализация итогового текста;
+- usage и resolved model;
+- fresh session без передачи устаревшего ID;
+- resume с подтверждением фактического Session ID;
+- resume mismatch;
+- ошибка запуска бинарника;
+- ненулевой код завершения Pi;
 - timeout и cancellation;
-- параллельный stdout/stderr под общим race-safe лимитом;
-- malformed и два JSON result envelope;
-- неверные `protocol_version`, `type`, `status` и неизвестные поля;
-- отсутствующий и `null` `exit_code`;
-- несовместимые `completed/nonzero` и `failed/zero`;
-- OS exit `0` при envelope nonzero;
-- разные ненулевые OS/envelope exit codes;
-- отрицательные `input_tokens`, `output_tokens` и `cost`;
-- fresh, resume и отказ resume;
-- передача metadata и native hooks;
-- отклонение второго JSON request fake assistant;
-- сквозной `fresh → retry → resume` через runtime.
+- одновременный stdout/stderr под `-race`;
+- общий output limit;
+- большая JSONL-запись без перевода строки не обходит output limit;
+- malformed JSONL и два JSON-объекта в одной записи;
+- отказ prompt preflight;
+- agent-level failure;
+- неподдерживаемый интерактивный extension UI;
+- запрет переопределения зарезервированных CLI-флагов;
+- runtime `fresh → retry → resume`.
 
-## Согласование схем
+## Совместимость конфигурации
 
-- `config.schema.json` запрещает `protocol` для `type: mock`, как runtime validator;
-- `assistant-protocol.schema.json` и Go decoder согласованы по обязательному `exit_code`, status/exit и неотрицательному usage;
-- все JSON Schemas синтаксически корректны;
-- защита документации от отката к `v0.1.1` проходит.
+Runtime validator и `schemas/config.schema.json` согласованы для:
 
-## Сквозные сценарии
+- `type: mock`;
+- `type: process`;
+- `type: pi`;
+- Pi-полей `binary`, `args`, `session_dir`, `project_trust`;
+- запрета `argv` и `protocol` для Pi.
 
-- workflow validation для Route DSL и hook-retry — PASS;
-- approval → `takt answer` → completed — PASS;
-- единый JSON error envelope CLI — PASS;
-- целостность `MANIFEST.sha256` в релизном архиве — PASS.
+## Реальный Pi smoke
+
+`TestPiAdapterOptInSmoke` реализован, но в среде сборки не запускался: бинарник `pi`, учётные данные и доступная модель отсутствуют. Запуск:
+
+```bash
+TAKT_PI_SMOKE=1 \
+TAKT_PI_SMOKE_PROVIDER=<provider> \
+TAKT_PI_SMOKE_MODEL=<model-id> \
+./scripts/test-pi-adapter.sh
+```
 
 ## Итог
 
-Блокирующие замечания аудита `v0.1.6-alpha` закрыты. Следующий этап — специализированный Pi либо OpenCode adapter, обязанный пройти тот же contract suite.
+Специализированный Pi RPC adapter реализован и защищён contract suite. Следующая проверка — opt-in smoke с настоящим Pi, затем Route DSL end-to-end с реальным валидатором, feedback и retry/resume.

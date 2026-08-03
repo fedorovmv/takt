@@ -2,14 +2,14 @@
 
 ## Supported trust model
 
-Takt `v0.1.5-alpha` is a local, single-user, trusted runtime.
+Takt `v0.1.8-alpha` is a local, single-user, trusted runtime.
 
 Trusted inputs:
 
 - workflow and config files;
 - Markdown commands;
 - shell scripts and hook commands;
-- assistant argv/env configuration;
+- assistant argv/env/binary configuration;
 - workspace contents;
 - Run ID received from the local CLI after validation.
 
