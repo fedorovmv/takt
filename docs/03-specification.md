@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.2-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.3-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -118,7 +118,7 @@ nodes:
       capture_response: true
 ```
 
-`timeout` использует формат Go duration: `500ms`, `30s`, `5m`, `1h`.
+`timeout` использует формат Go duration: `500ms`, `30s`, `5m`, `1h`. Лимит действует на всю попытку узла: `before_node`, действие, `on_failure`, `after_node` и `before_complete`.
 
 ## 6. Типы узлов
 
@@ -150,7 +150,9 @@ until:
   exit_code: 0
 ```
 
-Также поддерживается `output_contains`.
+Также поддерживается `output_contains`. Условие `until` проверяется только для дочернего узла со статусом `completed`; `skipped`, `failed`, `errored`, `timed_out` и `cancelled` не завершают цикл даже при совпадающем нулевом `exit_code`.
+
+Вложенные `loop_group` и approval внутри `loop_group` не поддерживаются в `v1alpha1`.
 
 ## 7. Зависимости, ошибки и итог Run
 
@@ -204,6 +206,8 @@ Hook:
     action: retry
     session: fresh
 ```
+
+Timeout и cancellation portable hook относятся ко всей попытке и сохраняют классификацию `timed_out`/`cancelled`; они не преобразуются в обычный `hook_failed`.
 
 Поддерживаемые действия:
 
@@ -306,7 +310,7 @@ takt command run <name> --config <config> --workspace <dir> --input <text>
 ## 13. Ограничения
 
 - DAG выполняется последовательно;
-- approval внутри `loop_group` запрещён;
+- approval и вложенный `loop_group` внутри `loop_group` запрещены;
 - `native_hooks` передаются адаптеру, но не исполняются runtime;
 - нет `takt cancel`;
 - нет sandbox, server, MCP и Web UI;

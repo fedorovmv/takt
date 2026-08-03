@@ -54,3 +54,27 @@ func TestProcessTimeoutAndOutputLimit(t *testing.T) {
 		}
 	})
 }
+
+func TestProcessOutputLimitIsRaceSafeAcrossStdoutAndStderr(t *testing.T) {
+	p := Process{spec: spec.AssistantSpec{
+		Type: "process",
+		Argv: []string{"bash", "-lc", `
+			(for i in $(seq 1 2000); do printf o; done) &
+			(for i in $(seq 1 2000); do printf e >&2; done) &
+			wait
+		`},
+		MaxOutputBytes: 128,
+	}}
+	result, err := p.Run(context.Background(), Request{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Truncated {
+		t.Fatalf("expected truncated output, got %+v", result)
+	}
+	// combineOutput may insert one separator newline between the independently
+	// captured streams. The process bytes themselves remain within the shared budget.
+	if len(result.Output) > 129 {
+		t.Fatalf("shared output budget exceeded: got %d bytes", len(result.Output))
+	}
+}

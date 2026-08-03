@@ -1,93 +1,60 @@
-# Результаты проверки v0.1.2-alpha
+# Результаты проверки v0.1.3-alpha
 
-Проверка выполнена в среде Go 1.23.2 после стабилизационного аудита.
+Дата проверки: 2026-08-03.
 
 ## Базовые проверки
 
-```bash
-go test ./...
-go test -race ./...
-go vet ./...
-go build ./cmd/takt
-./scripts/verify.sh
+```text
+go test ./... -count=1                         PASS
+go test -race ./... -count=1                   PASS
+go vet ./...                                    PASS
+go build ./cmd/takt                             PASS
+./scripts/verify.sh                             PASS
 ```
 
-Результат:
+## Регрессии повторного аудита
 
 ```text
-unit tests: PASS
-race detector: PASS
-go vet: PASS
-build: PASS
-verification: PASS
+concurrent stdout/stderr under shared limit     PASS
+hook timeout: before_node                       PASS
+hook timeout: on_failure                        PASS
+hook timeout: after_node                        PASS
+hook timeout: before_complete                   PASS
+hook cancellation → Node/Run cancelled          PASS
+nested loop_group validation                    PASS
+nested loop_group runtime guard                 PASS
+top-level state remains intact                  PASS
+skipped until-node does not finish loop         PASS
+failed until-node does not finish loop          PASS
 ```
+
+Race-регрессия process assistant одновременно пишет в stdout и stderr и входит в обычный запуск `go test -race ./...`.
 
 ## Сквозные CLI-сценарии
 
-Проверены в отдельной временной рабочей директории:
-
-1. Route DSL: `run` → `waiting` → отдельный `answer` → `completed`;
-2. hook retry: первая проверка вызывает retry, вторая попытка завершается успешно;
-3. отсутствующий assistant binary при `allow_failure: true` завершает Run ошибкой `start`, а не `completed`;
-4. неизвестный CLI flag в JSON-режиме возвращает единственный корректный JSON error envelope;
-5. изменённый workflow блокирует `answer`, при этом approval остаётся `waiting` и не потребляется.
-
-Все сценарии прошли.
-
-## Контрактные тесты отказов
-
-Добавлены и пройдены тесты:
-
-- ненулевой exit code с `allow_failure`;
-- start error с `allow_failure`;
-- `all_done` после failed dependency;
-- `all_success` skip после failed dependency;
-- `when` и `trigger_rule` внутри `loop_group`;
-- node timeout и downstream cleanup;
-- persistence error propagation;
-- state/event revision mismatch;
-- concurrent Run lock;
-- unsafe Run ID;
-- process start classification;
-- process timeout;
-- output truncation;
-- fingerprints Markdown-команд;
-- block scalar с пустыми строками и chomp modes;
-- JSON mode defaults.
-
-## Покрытие
-
-```bash
-go test -cover ./...
+```text
+Route DSL mock workflow → waiting approval      PASS
+takt answer → completed                         PASS
+hook retry workflow                             PASS
+JSON success/error envelopes                    PASS
 ```
 
-Наиболее содержательные пакеты:
+Сквозные сценарии выполнялись в отдельной временной рабочей директории, чтобы не использовать состояние предыдущих запусков.
 
-- `internal/assistant`: 67.8%;
-- `internal/runtime`: 66.5%;
-- `internal/definition`: 74.0%;
-- `internal/config`: 57.9%;
-- `internal/yamlmini`: 55.3%;
-- `internal/store`: 54.9%;
-- `internal/command`: 52.6%;
-- `internal/workflow`: 49.5%;
-- `cmd/takt`: 18.3%.
+## Проверка форматов и состава
 
-## Схемы и документация
+```text
+JSON Schemas parse as JSON                      PASS
+workflow schema forbids nested loop_group       PASS
+VERSION/CLI version = 0.1.3-alpha               PASS
+MANIFEST.sha256                                 PASS after packaging
+```
 
-- все `schemas/*.json` успешно разбираются JSON parser;
-- README links проверены;
-- workflow/config schemas включают `timeout` и `max_output_bytes`;
-- RunState/Event schemas включают revisions, fingerprints и новые statuses;
-- документация отражает trusted local scope и исправления аудита.
+## Зафиксированные ограничения
 
-## Что пока не проверялось
-
-- реальный Pi и OpenCode;
-- session resume конкретного кодового агента;
-- native hooks конкретных SDK;
-- platform-specific process-group termination вне Unix;
-- `takt cancel`;
-- server/untrusted scope;
-- parallel DAG;
-- MCP и Web UI.
+- локальный однопользовательский trusted runtime;
+- последовательный DAG;
+- approval и вложенные `loop_group` внутри `loop_group` запрещены;
+- собственный документированный YAML subset;
+- специализированные Pi/OpenCode adapters ещё не реализованы;
+- platform-specific cancellation требует проверки на целевых ОС.

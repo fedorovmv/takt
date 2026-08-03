@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints и persistence уже реализована в `v0.1.2-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints и persistence уже реализована в `v0.1.3-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -109,7 +109,7 @@ Terminal-состояния:
 - классификация ошибок;
 - `allow_failure`.
 
-Различается только область состояния: после итерации child states копируются в `LoopPrevious` родительского узла и удаляются из активной карты.
+Различается только область состояния: после итерации child states копируются в `LoopPrevious` родительского узла и удаляются из активной карты. В `v1alpha1` вложенные `loop_group` запрещены; namespace состояния для произвольной вложенности отложен до отдельной версии контракта.
 
 ## 6. Попытки узла
 
@@ -152,7 +152,7 @@ Output, exit code, session ID и признак truncation сохраняютс�
 
 ## 8. Timeout и cancellation
 
-`node.timeout` задаётся Go duration.
+`node.timeout` задаётся Go duration и ограничивает всю попытку: `before_node`, действие, `on_failure`, `after_node` и `before_complete`.
 
 При timeout:
 
@@ -175,6 +175,7 @@ Hooks выполняются последовательно:
 
 - exit code 0 — продолжение;
 - ненулевой exit code или transport error — применяется `on_failure`;
+- timeout или cancellation hook немедленно завершают попытку как `timed_out` или `cancelled` и не превращаются в `hook_failed`;
 - ошибка persistence при записи события/состояния немедленно возвращается вызывающему коду.
 
 Решения:
@@ -194,9 +195,11 @@ Hooks выполняются последовательно:
 5. сохраняет `loop.iteration.completed`;
 6. вычисляет `until`.
 
+`until` вычисляется только для child node со статусом `completed`. `skipped`, `failed`, `errored`, `timed_out`, `cancelled` и `blocked` не удовлетворяют условию независимо от значения `exit_code`.
+
 При выполнении `until` parent node становится `completed`. При исчерпании лимита parent node получает `failed/exit`.
 
-Approval внутри `loop_group` не поддерживается в v0.2.
+Approval и вложенный `loop_group` внутри `loop_group` не поддерживаются в `v1alpha1`.
 
 ## 11. Approval и безопасное продолжение
 

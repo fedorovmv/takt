@@ -18,10 +18,10 @@ func Validate(wf *spec.Workflow) error {
 	if strings.TrimSpace(wf.Metadata.Name) == "" {
 		return fmt.Errorf("metadata.name is required")
 	}
-	return validateNodes(wf.Nodes, "nodes")
+	return validateNodes(wf.Nodes, "nodes", false)
 }
 
-func validateNodes(nodes []spec.Node, scope string) error {
+func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 	if len(nodes) == 0 {
 		return fmt.Errorf("%s must not be empty", scope)
 	}
@@ -66,10 +66,13 @@ func validateNodes(nodes []spec.Node, scope string) error {
 			return fmt.Errorf("approval node %q requires message", n.ID)
 		}
 		if n.LoopGroup != nil {
+			if insideLoop {
+				return fmt.Errorf("nested loop_group is not supported in v1alpha1: %s.%s", scope, n.ID)
+			}
 			if n.LoopGroup.MaxIterations <= 0 {
 				return fmt.Errorf("loop_group node %q requires max_iterations > 0", n.ID)
 			}
-			if err := validateNodes(n.LoopGroup.Nodes, scope+"."+n.ID+".loop_group.nodes"); err != nil {
+			if err := validateNodes(n.LoopGroup.Nodes, scope+"."+n.ID+".loop_group.nodes", true); err != nil {
 				return err
 			}
 			found := false

@@ -7,9 +7,10 @@
 1. `README.md`;
 2. `docs/01-project.md`;
 3. `docs/05-implementation-status.md`;
-4. `docs/16-audit-remediation-v0.1.2.md`;
-5. `docs/08-target-v0.2.md`;
-6. `docs/11-implementation-plan.md`.
+4. `docs/17-audit-remediation-v0.1.3.md`;
+5. `docs/16-audit-remediation-v0.1.2.md`;
+6. `docs/08-target-v0.2.md`;
+7. `docs/11-implementation-plan.md`.
 
 Для изменения runtime:
 
@@ -35,7 +36,7 @@
 | Архитектурный подход | `02-approach.md`, ADR | действующий |
 | Текущий внешний контракт | `03-specification.md` | реализованный `v1alpha1` |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
-| Исправления последнего аудита | `16-audit-remediation-v0.1.2.md` | фактический |
+| Исправления последнего аудита | `17-audit-remediation-v0.1.3.md` | фактический |
 | Граница безопасности | `../SECURITY.md` | действующий |
 | Ближайшее целевое состояние | `08-target-v0.2.md` | целевой |
 | Семантика runtime | `09-runtime-semantics.md` | реализовано частично/цель v0.2 |

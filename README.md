@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.2-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.3-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -18,12 +18,14 @@
 - последовательный DAG с `depends_on`, `when` и `trigger_rule`;
 - единая семантика корневого DAG и дочернего DAG `loop_group`;
 - узлы `command`, `prompt`, `bash`, `approval`, `loop_group`;
+- вложенные `loop_group` явно запрещены в `v1alpha1`;
 - повтор узла после внешней проверки;
 - переносимые hooks `before_node`, `after_node`, `before_complete`, `on_failure`;
 - разделение ненулевого exit code, ошибки запуска, timeout и cancellation;
 - `allow_failure`, разрешающий только ненулевой exit code;
 - `all_done` после неуспешной зависимости;
-- timeout узла и ограничение вывода process assistant;
+- timeout всей попытки узла, включая portable hooks;
+- общий thread-safe лимит stdout/stderr process assistant;
 - approval с сохранением состояния и продолжением через `takt answer`;
 - явное продолжение через `takt resume`;
 - fingerprints workflow, config и Markdown-команд;
@@ -75,6 +77,7 @@ make check
 
 - [Состояние реализации](docs/05-implementation-status.md)
 - [Аудит и исправления v0.1.2](docs/16-audit-remediation-v0.1.2.md)
+- [Дополнительная стабилизация v0.1.3](docs/17-audit-remediation-v0.1.3.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -95,6 +98,7 @@ make check
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 - [Стартовая инструкция для кодового агента](docs/15-coding-agent-start.md)
 - [Аудит и исправления v0.1.2](docs/16-audit-remediation-v0.1.2.md)
+- [Дополнительная стабилизация v0.1.3](docs/17-audit-remediation-v0.1.3.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

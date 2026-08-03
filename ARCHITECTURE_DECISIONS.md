@@ -51,3 +51,15 @@ State и event одного перехода получают одинакову
 ## ADR-013. Поддерживается документированный YAML subset
 
 До появления требования полной YAML 1.2 Takt сохраняет stdlib-only parser, формально ограничивает subset и покрывает block scalar тестами.
+
+## ADR-014. Timeout ограничивает всю попытку узла
+
+`node.timeout` охватывает portable hooks и действие узла. Timeout/cancellation внутри hook сохраняют execution kind и не преобразуются в `hook_failed`.
+
+## ADR-015. Nested loop groups запрещены в v1alpha1
+
+До введения path-based namespace дочерних состояний вложенные `loop_group` отклоняются валидатором и runtime. Это исключает коллизии ID и повреждение состояния внешнего DAG.
+
+## ADR-016. `until` требует успешное завершение проверочного узла
+
+Условие цикла оценивается только для child node со статусом `completed`. Значения output/exit code из `skipped` или failure-like состояний не могут завершить цикл.

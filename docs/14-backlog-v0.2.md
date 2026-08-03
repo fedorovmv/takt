@@ -1,8 +1,8 @@
 # Backlog Takt v0.2
 
-Статус обновлён после аудита и стабилизационного релиза `v0.1.2-alpha`.
+Статус обновлён после повторного аудита и стабилизационного релиза `v0.1.3-alpha`.
 
-## Завершено в v0.1.2-alpha
+## Завершено в v0.1.2–v0.1.3-alpha
 
 ### TAKT-001. Классификация execution errors — выполнено
 
@@ -45,12 +45,21 @@
 
 ### TAKT-007. Timeout и output limit process adapter — выполнено частично
 
-- node timeout;
+- timeout всей попытки, включая portable hooks;
 - process output limit;
+- thread-safe общий budget stdout/stderr;
 - output truncation flag;
-- Unix process-group cancellation.
+- Unix process-group cancellation;
+- regression tests timeout/cancel по фазам hook.
 
 Остаётся проверить grace period и platform-specific поведение на целевых ОС.
+
+### TAKT-007A. Безопасная семантика loop state — выполнено для v1alpha1
+
+- вложенные `loop_group` запрещены валидатором, схемой и runtime;
+- runtime не перезаписывает существующий NodeState дочерним ID;
+- `until` требует статус `completed`;
+- namespace для вложенных циклов остаётся будущей задачей.
 
 ## Следующий этап
 

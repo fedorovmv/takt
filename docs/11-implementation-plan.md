@@ -4,7 +4,7 @@
 
 Каждый этап завершается работающим сквозным сценарием. Новые абстракции добавляются только при наличии минимум двух процессов, которые их используют.
 
-## 2. Этап A. Стабилизация runtime — завершён в v0.1.2-alpha
+## 2. Этап A. Стабилизация runtime — завершён в v0.1.3-alpha
 
 Реализовано:
 
@@ -12,14 +12,17 @@
 - `allow_failure` только для exit code;
 - продолжение DAG после failure и рабочий `all_done`;
 - единый scheduler для root DAG и `loop_group`;
-- timeout и output limit;
+- timeout всей попытки, включая hooks;
+- thread-safe общий output limit stdout/stderr;
 - fingerprints workflow/config/commands;
 - безопасный `answer`, lock и `resume`;
 - обязательная обработка persistence errors;
 - revisions state/event;
 - сохранение block scalar;
 - единый JSON envelope CLI;
-- контрактные тесты отказов.
+- контрактные тесты отказов;
+- запрет nested `loop_group` в `v1alpha1`;
+- строгая семантика `until` только для `completed` child node.
 
 Осталось в рамках стабилизации v0.2:
 

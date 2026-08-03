@@ -50,7 +50,7 @@ func run(args []string) error {
 	case "command":
 		return commandCmd(args[1:])
 	case "version":
-		fmt.Println("takt v0.1.2-alpha")
+		fmt.Println("takt v0.1.3-alpha")
 		return nil
 	default:
 		return usage()

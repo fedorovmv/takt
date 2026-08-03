@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"takt/internal/execution"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
@@ -204,5 +206,141 @@ func TestPersistenceErrorsAreReturned(t *testing.T) {
 	r.Store = &failingRepository{Repository: store.FS{Workspace: dir}, failOn: 2}
 	if _, err := r.Start(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "injected persistence failure") {
 		t.Fatalf("expected persistence error, got %v", err)
+	}
+}
+
+func TestNodeTimeoutCoversHookPhases(t *testing.T) {
+	tests := []struct {
+		name string
+		node spec.Node
+	}{
+		{
+			name: "before_node",
+			node: spec.Node{ID: "n", Bash: "true", Timeout: "40ms", Hooks: spec.HookSet{
+				BeforeNode: []spec.HookSpec{{ID: "slow", Bash: "sleep 1"}},
+			}},
+		},
+		{
+			name: "after_node",
+			node: spec.Node{ID: "n", Bash: "true", Timeout: "40ms", Hooks: spec.HookSet{
+				AfterNode: []spec.HookSpec{{ID: "slow", Bash: "sleep 1"}},
+			}},
+		},
+		{
+			name: "before_complete",
+			node: spec.Node{ID: "n", Bash: "true", Timeout: "40ms", Hooks: spec.HookSet{
+				BeforeComplete: []spec.HookSpec{{ID: "slow", Bash: "sleep 1"}},
+			}},
+		},
+		{
+			name: "on_failure",
+			node: spec.Node{ID: "n", Bash: "exit 7", Timeout: "40ms", Hooks: spec.HookSet{
+				OnFailure: []spec.HookSpec{{ID: "slow", Bash: "sleep 1"}},
+			}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "hook-timeout"}, Nodes: []spec.Node{tt.node}}
+			r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+			started := time.Now()
+			state, err := r.Start(context.Background(), "")
+			if err == nil {
+				t.Fatal("expected timeout failure")
+			}
+			if state.Nodes["n"].Status != store.NodeTimedOut || state.Nodes["n"].ErrorCode != string(execution.KindTimedOut) {
+				t.Fatalf("unexpected node state: %+v", state.Nodes["n"])
+			}
+			if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+				t.Fatalf("node timeout did not bound hook phase: %s", elapsed)
+			}
+		})
+	}
+}
+
+func TestCancellationDuringHookCancelsRun(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "hook-cancel"}, Nodes: []spec.Node{{
+		ID: "n", Bash: "true", Hooks: spec.HookSet{BeforeNode: []spec.HookSpec{{ID: "slow", Bash: "sleep 1"}}},
+	}}}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		cancel()
+	}()
+	state, err := r.Start(ctx, "")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
+	}
+	if state.Status != store.RunCancelled || state.Nodes["n"].Status != store.NodeCancelled {
+		t.Fatalf("unexpected cancellation state: run=%s node=%+v", state.Status, state.Nodes["n"])
+	}
+}
+
+func TestNestedLoopGroupIsRejectedAtRuntimeWithoutCorruptingOuterState(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "nested-loop"}, Nodes: []spec.Node{
+		{ID: "victim", Bash: `n=0; test -f count && n=$(cat count); n=$((n+1)); echo -n $n > count`},
+		{ID: "outer", DependsOn: []string{"victim"}, LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{
+			{ID: "inner", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{ID: "victim", Bash: "true"}}, Until: spec.UntilSpec{Node: "victim", ExitCode: &zero}}},
+		}, Until: spec.UntilSpec{Node: "inner", ExitCode: &zero}}},
+	}}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected nested loop failure")
+	}
+	data, readErr := os.ReadFile(filepath.Join(dir, "count"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != "1" {
+		t.Fatalf("top-level victim executed more than once: %q", data)
+	}
+	if state.Nodes["victim"] == nil || state.Nodes["victim"].Status != store.NodeCompleted {
+		t.Fatalf("top-level state was corrupted: %+v", state.Nodes["victim"])
+	}
+}
+
+func TestUntilRequiresCompletedNode(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "until-status"}, Nodes: []spec.Node{{
+		ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{
+			ID: "check", When: `inputs.input == "run"`, Bash: "true",
+		}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}},
+	}}}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "skip")
+	if err == nil {
+		t.Fatal("expected loop exhaustion because until node was skipped")
+	}
+	if state.Nodes["loop"].Status != store.NodeFailed {
+		t.Fatalf("unexpected loop state: %+v", state.Nodes["loop"])
+	}
+	if state.Nodes["loop"].LoopPrevious["check"].Status != store.NodeSkipped {
+		t.Fatalf("unexpected until node state: %+v", state.Nodes["loop"].LoopPrevious["check"])
+	}
+}
+
+func TestUntilDoesNotAcceptFailedNode(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "until-failed"}, Nodes: []spec.Node{{
+		ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{
+			ID: "check", Bash: "exit 7",
+		}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}},
+	}}}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected loop exhaustion because until node failed")
+	}
+	check := state.Nodes["loop"].LoopPrevious["check"]
+	if check.Status != store.NodeFailed || check.ExitCode != 7 {
+		t.Fatalf("unexpected until node state: %+v", check)
 	}
 }

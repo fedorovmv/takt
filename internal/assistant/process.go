@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"takt/internal/execution"
 	"takt/internal/spec"
@@ -124,6 +125,7 @@ func mustJSON(v any) []byte {
 }
 
 type outputBudget struct {
+	mu        sync.Mutex
 	limit     int
 	used      int
 	truncated bool
@@ -138,7 +140,13 @@ func newLimitedBuffer(budget *outputBudget) *limitedBuffer { return &limitedBuff
 
 func (b *limitedBuffer) Write(p []byte) (int, error) {
 	original := len(p)
-	if b.budget == nil || b.budget.limit <= 0 {
+	if b.budget == nil {
+		b.data = append(b.data, p...)
+		return original, nil
+	}
+	b.budget.mu.Lock()
+	defer b.budget.mu.Unlock()
+	if b.budget.limit <= 0 {
 		b.data = append(b.data, p...)
 		return original, nil
 	}
@@ -157,5 +165,12 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return original, nil
 }
 
-func (b *limitedBuffer) String() string  { return string(b.data) }
-func (b *limitedBuffer) Truncated() bool { return b.budget != nil && b.budget.truncated }
+func (b *limitedBuffer) String() string { return string(b.data) }
+func (b *limitedBuffer) Truncated() bool {
+	if b.budget == nil {
+		return false
+	}
+	b.budget.mu.Lock()
+	defer b.budget.mu.Unlock()
+	return b.budget.truncated
+}

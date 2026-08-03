@@ -1,6 +1,6 @@
 # Состояние реализации
 
-Статус: `v0.1.2-alpha`.
+Статус: `v0.1.3-alpha`.
 
 ## Реализовано
 
@@ -16,8 +16,8 @@
 - разделение `failed`, `errored`, `timed_out`, `cancelled`, `blocked`;
 - `allow_failure` только для штатного ненулевого exit code;
 - hooks и retry с feedback;
-- timeout узла;
-- output limit process assistant;
+- timeout всей попытки узла, включая portable hooks;
+- общий thread-safe output limit stdout/stderr process assistant;
 - завершение process group при cancellation на Unix;
 - pause/resume approval;
 - fingerprints workflow, config и разрешённых Markdown-команд;
@@ -35,7 +35,8 @@
 - локальное файловое состояние;
 - ограниченный язык выражений;
 - собственный документированный YAML subset вместо полной YAML 1.2;
-- approval внутри `loop_group` запрещён;
+- approval и вложенный `loop_group` внутри `loop_group` запрещены;
+- `until` требует статус дочернего узла `completed`;
 - отсутствуют server, Web UI, MCP и worktree orchestration.
 
 ## Граница безопасности

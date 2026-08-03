@@ -255,10 +255,11 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		if err != nil {
 			return r.finishNodeError(state, node.ID, "invalid_timeout", err, execResult{})
 		}
+
 		decision, feedback, hookErr := r.runHooks(attemptCtx, state, node, hooks.BeforeNode, loopPrevious)
 		if hookErr != nil {
 			cancel()
-			return hookErr
+			return r.finishAttemptExecutionError(state, node.ID, hookErr, execResult{})
 		}
 		if decision == "retry" {
 			cancel()
@@ -274,8 +275,8 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		}
 
 		result, execErr := r.execute(attemptCtx, state, node, loopPrevious)
-		cancel()
 		if errors.Is(execErr, ErrWaiting) {
+			cancel()
 			// Waiting is a suspension point, not a consumed attempt. Persist the
 			// rollback so a separate CLI process can resume the same attempt.
 			ns.Attempts--
@@ -288,15 +289,23 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		if execErr != nil && node.AllowFailure && execution.IsExit(execErr) {
 			execErr = nil
 			if err := r.commit(state, "node.failure_allowed", node.ID, map[string]any{"exit_code": result.ExitCode}); err != nil {
+				cancel()
 				return err
 			}
 		}
 		if execErr != nil {
-			decision, feedback, hookErr = r.runHooks(ctx, state, node, hooks.OnFailure, loopPrevious)
+			kind := execution.KindOf(execErr)
+			if kind == execution.KindCancelled || kind == execution.KindTimedOut {
+				cancel()
+				return r.finishAttemptExecutionError(state, node.ID, execErr, result)
+			}
+			decision, feedback, hookErr = r.runHooks(attemptCtx, state, node, hooks.OnFailure, loopPrevious)
 			if hookErr != nil {
-				return hookErr
+				cancel()
+				return r.finishAttemptExecutionError(state, node.ID, hookErr, result)
 			}
 			if decision == "retry" {
+				cancel()
 				ns.Feedback = joinFeedback(ns.Feedback, feedback, execErr.Error())
 				if err := r.commit(state, "node.retry", node.ID, map[string]any{"feedback": ns.Feedback, "phase": "on_failure"}); err != nil {
 					return err
@@ -306,21 +315,20 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 			if decision == "fail" && feedback != "" {
 				ns.Feedback = joinFeedback(ns.Feedback, feedback)
 			}
-			kind := execution.KindOf(execErr)
+			cancel()
 			if err := r.finishNodeExecutionError(state, node.ID, kind, execErr, result); err != nil {
 				return err
-			}
-			if kind == execution.KindCancelled {
-				return context.Canceled
 			}
 			return nil
 		}
 
-		decision, feedback, err = r.runHooks(ctx, state, node, hooks.AfterNode, loopPrevious)
-		if err != nil {
-			return err
+		decision, feedback, hookErr = r.runHooks(attemptCtx, state, node, hooks.AfterNode, loopPrevious)
+		if hookErr != nil {
+			cancel()
+			return r.finishAttemptExecutionError(state, node.ID, hookErr, result)
 		}
 		if decision == "retry" {
+			cancel()
 			ns.Feedback = joinFeedback(ns.Feedback, feedback)
 			if err := r.commit(state, "node.retry", node.ID, map[string]any{"feedback": feedback, "phase": "after_node"}); err != nil {
 				return err
@@ -328,13 +336,17 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 			continue
 		}
 		if decision == "fail" {
+			cancel()
 			return r.finishNodeFailure(state, node.ID, "hook_failed", fmt.Errorf("after_node hook failed: %s", feedback), result)
 		}
-		decision, feedback, err = r.runHooks(ctx, state, node, hooks.BeforeComplete, loopPrevious)
-		if err != nil {
-			return err
+
+		decision, feedback, hookErr = r.runHooks(attemptCtx, state, node, hooks.BeforeComplete, loopPrevious)
+		if hookErr != nil {
+			cancel()
+			return r.finishAttemptExecutionError(state, node.ID, hookErr, result)
 		}
 		if decision == "retry" {
+			cancel()
 			ns.Feedback = joinFeedback(ns.Feedback, feedback)
 			if err := r.commit(state, "node.retry", node.ID, map[string]any{"feedback": feedback, "phase": "before_complete"}); err != nil {
 				return err
@@ -342,8 +354,15 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 			continue
 		}
 		if decision == "fail" {
+			cancel()
 			return r.finishNodeFailure(state, node.ID, "hook_failed", fmt.Errorf("before_complete hook failed: %s", feedback), result)
 		}
+		if err := attemptContextError(attemptCtx, "node attempt"); err != nil {
+			cancel()
+			return r.finishAttemptExecutionError(state, node.ID, err, result)
+		}
+
+		cancel()
 		ns.Status = store.NodeCompleted
 		state.CurrentNode = ""
 		if err := r.commit(state, "node.completed", node.ID, map[string]any{"attempts": ns.Attempts, "exit_code": ns.ExitCode, "output_truncated": ns.OutputTruncated}); err != nil {
@@ -352,6 +371,32 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		return nil
 	}
 	return r.finishNodeFailure(state, node.ID, "attempts_exhausted", fmt.Errorf("node %q exhausted %d attempts; feedback: %s", node.ID, max, ns.Feedback), execResult{})
+}
+
+func (r *Runner) finishAttemptExecutionError(state *store.RunState, nodeID string, err error, result execResult) error {
+	var execErr *execution.Error
+	if !errors.As(err, &execErr) {
+		return err
+	}
+	kind := execErr.Kind
+	if commitErr := r.finishNodeExecutionError(state, nodeID, kind, err, result); commitErr != nil {
+		return commitErr
+	}
+	if kind == execution.KindCancelled {
+		return context.Canceled
+	}
+	return nil
+}
+
+func attemptContextError(ctx context.Context, op string) error {
+	if ctx == nil || ctx.Err() == nil {
+		return nil
+	}
+	kind := execution.KindCancelled
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		kind = execution.KindTimedOut
+	}
+	return &execution.Error{Kind: kind, ExitCode: -1, Op: op, Err: ctx.Err()}
 }
 
 type execResult struct {
@@ -442,8 +487,23 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 }
 
 func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent spec.Node) (execResult, error) {
+	seen := make(map[string]struct{}, len(parent.LoopGroup.Nodes))
+	for _, child := range parent.LoopGroup.Nodes {
+		if child.LoopGroup != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("nested loop_group is not supported in v1alpha1: %s.%s", parent.ID, child.ID)}
+		}
+		if _, duplicate := seen[child.ID]; duplicate {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("duplicate child node id %q", child.ID)}
+		}
+		seen[child.ID] = struct{}{}
+	}
 	var previous map[string]store.NodeState
 	for iteration := 1; iteration <= parent.LoopGroup.MaxIterations; iteration++ {
+		for _, child := range parent.LoopGroup.Nodes {
+			if _, exists := state.Nodes[child.ID]; exists {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("child node id %q collides with existing runtime state", child.ID)}
+			}
+		}
 		for _, child := range parent.LoopGroup.Nodes {
 			state.Nodes[child.ID] = &store.NodeState{Status: store.NodePending}
 		}
@@ -482,6 +542,12 @@ func (r *Runner) runHooks(ctx context.Context, state *store.RunState, node spec.
 		result, err := runBash(ctx, r.Workspace, renderTemplate(hook.Bash, state, local, state.Nodes[node.ID].Feedback, r.Store.ArtifactsDir(state.ID)))
 		if err == nil && result.ExitCode == 0 {
 			continue
+		}
+		if err != nil {
+			kind := execution.KindOf(err)
+			if kind == execution.KindCancelled || kind == execution.KindTimedOut {
+				return "", strings.TrimSpace(result.Output), err
+			}
 		}
 		feedback := strings.TrimSpace(result.Output)
 		if feedback == "" && err != nil {
@@ -628,6 +694,9 @@ func graphResult(nodes []spec.Node, states map[string]*store.NodeState) (status,
 }
 
 func untilSatisfied(until spec.UntilSpec, node store.NodeState) bool {
+	if node.Status != store.NodeCompleted {
+		return false
+	}
 	if until.ExitCode != nil && node.ExitCode != *until.ExitCode {
 		return false
 	}

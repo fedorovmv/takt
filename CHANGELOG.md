@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.3-alpha
+
+- общий лимит stdout/stderr process assistant стал thread-safe;
+- добавлен race-регрессионный тест одновременного stdout/stderr;
+- `node.timeout` теперь ограничивает всю попытку: `before_node`, действие, `on_failure`, `after_node`, `before_complete`;
+- timeout и cancellation внутри hooks сохраняют статусы `timed_out` и `cancelled`;
+- вложенные `loop_group` явно запрещены в `v1alpha1` валидатором, JSON Schema и runtime-защитой;
+- runtime предотвращает перезапись существующего состояния дочерним узлом цикла;
+- `until` считается выполненным только для child node со статусом `completed`;
+- добавлены регрессии для hook timeout/cancel, nested loops и skipped until-node;
+- документация и схемы синхронизированы с фактической семантикой.
+
 ## v0.1.2-alpha
 
 - исправлена семантика `allow_failure`: разрешается только ненулевой exit code;
