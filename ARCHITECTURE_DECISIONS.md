@@ -67,3 +67,8 @@ State и event одного перехода получают одинакову
 ## ADR-017. Классификация attempt context имеет приоритет над ошибкой контейнера
 
 После возврата действия runtime сначала проверяет завершение attempt context. Deadline сохраняется как `timed_out`, внешняя отмена — как `cancelled`, включая родительский `loop_group`. Производные ошибки контейнера, например `loop_group exhausted`, не переопределяют эту причину.
+
+
+## ADR-018. Process assistant может использовать строгий JSON-протокол
+
+`protocol: takt-assistant/v1alpha1` переводит универсальный process adapter из текстового режима в строгий request/result envelope. Prompt, модель, Run/Node/Attempt, session и limits передаются через stdin JSON; stdout содержит ровно один result JSON. Malformed/truncated result и неуспешный resume являются protocol error. Текстовый process mode сохраняется для совместимости.

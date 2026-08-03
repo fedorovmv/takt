@@ -492,7 +492,7 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			sessionID = ""
 		}
 		prompt = renderTemplate(prompt, state, local, feedback, artifacts)
-		result, err := adapter.Run(ctx, assistant.Request{Prompt: prompt, Workspace: r.Workspace, ModelName: modelName, Model: model, SessionMode: sessionMode, SessionID: sessionID, NativeHooks: node.NativeHooks})
+		result, err := adapter.Run(ctx, assistant.Request{RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts, Prompt: prompt, Workspace: r.Workspace, ModelName: modelName, Model: model, SessionMode: sessionMode, SessionID: sessionID, NativeHooks: node.NativeHooks})
 		return execResult{Output: result.Output, ExitCode: result.ExitCode, SessionID: result.SessionID, Truncated: result.Truncated}, err
 	default:
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "execute node", Err: fmt.Errorf("unsupported node %q", node.ID)}

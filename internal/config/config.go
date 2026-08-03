@@ -32,6 +32,12 @@ func Load(path string) (*spec.Config, error) {
 		if assistant.Type == "process" && len(assistant.Argv) == 0 {
 			return nil, fmt.Errorf("process assistant %q requires argv", name)
 		}
+		if assistant.Protocol != "" && assistant.Protocol != "takt-assistant/v1alpha1" {
+			return nil, fmt.Errorf("assistant %q has unsupported protocol %q", name, assistant.Protocol)
+		}
+		if assistant.Type != "process" && assistant.Protocol != "" {
+			return nil, fmt.Errorf("assistant %q protocol is supported only for type process", name)
+		}
 		if assistant.MaxOutputBytes < 0 {
 			return nil, fmt.Errorf("assistant %q max_output_bytes cannot be negative", name)
 		}

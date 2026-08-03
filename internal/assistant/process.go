@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"takt/internal/execution"
 	"takt/internal/spec"
@@ -31,17 +32,24 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 	execution.ConfigureCommand(cmd)
 	cmd.Dir = req.Workspace
 	cmd.Env = append([]string{}, os.Environ()...)
+	renderedEnv := make(map[string]string, len(p.spec.Env))
 	for k, v := range p.spec.Env {
-		cmd.Env = append(cmd.Env, k+"="+renderArg(v, req))
+		rendered := renderArg(v, req)
+		renderedEnv[k] = rendered
+		cmd.Env = append(cmd.Env, k+"="+rendered)
 	}
 	paramsJSON, _ := json.Marshal(req.Model.Params)
+	mode, sessionID := effectiveSession(req.SessionMode, req.SessionID)
 	cmd.Env = append(cmd.Env,
+		"TAKT_RUN_ID="+req.RunID,
+		"TAKT_NODE_ID="+req.NodeID,
+		fmt.Sprintf("TAKT_ATTEMPT=%d", req.Attempt),
 		"TAKT_MODEL_NAME="+req.ModelName,
 		"TAKT_MODEL_ID="+req.Model.ID,
 		"TAKT_MODEL_PROVIDER="+req.Model.Provider,
 		"TAKT_MODEL_PARAMS_JSON="+string(paramsJSON),
-		"TAKT_SESSION_MODE="+req.SessionMode,
-		"TAKT_SESSION_ID="+req.SessionID,
+		"TAKT_SESSION_MODE="+mode,
+		"TAKT_SESSION_ID="+sessionID,
 		"TAKT_WORKSPACE="+req.Workspace,
 	)
 	if len(req.NativeHooks) > 0 {
@@ -49,23 +57,37 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 			cmd.Env = append(cmd.Env, "TAKT_NATIVE_HOOKS_JSON="+compact)
 		}
 	}
-	if !hasPrompt {
+
+	protocolRequest := ProtocolRequest{}
+	if p.spec.Protocol != "" {
+		if p.spec.Protocol != ProtocolV1Alpha1 {
+			return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process", Err: fmt.Errorf("unsupported protocol %q", p.spec.Protocol)}
+		}
+		protocolRequest = buildProtocolRequest(ctx, req, p.spec, renderedEnv, time.Now())
+		encoded, err := encodeProtocolRequest(protocolRequest)
+		if err != nil {
+			return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process", Err: err}
+		}
+		cmd.Stdin = strings.NewReader(string(encoded))
+	} else if !hasPrompt {
 		cmd.Stdin = strings.NewReader(req.Prompt)
 	}
+
 	budget := &outputBudget{limit: p.spec.MaxOutputBytes}
 	stdout := newLimitedBuffer(budget)
 	stderr := newLimitedBuffer(budget)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err := cmd.Run()
+	rawStdout, rawStderr := stdout.String(), stderr.String()
 	result := Result{
-		Output:    combineOutput(stdout.String(), stderr.String()),
-		SessionID: req.SessionID,
+		Output:    combineOutput(rawStdout, rawStderr),
+		SessionID: sessionID,
 		ExitCode:  0,
+		Stdout:    rawStdout,
+		Stderr:    rawStderr,
 		Truncated: stdout.Truncated() || stderr.Truncated(),
 	}
-	if err == nil {
-		return result, nil
-	}
+
 	if ctx.Err() != nil {
 		kind := execution.KindCancelled
 		if ctx.Err() == context.DeadlineExceeded {
@@ -73,6 +95,47 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 		}
 		result.ExitCode = -1
 		return result, &execution.Error{Kind: kind, ExitCode: -1, Op: "assistant process", Err: ctx.Err()}
+	}
+	if err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			result.ExitCode = -1
+			return result, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "assistant process", Err: err}
+		}
+	}
+
+	if p.spec.Protocol == ProtocolV1Alpha1 {
+		if result.Truncated {
+			result.ExitCode = -1
+			return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "assistant process", Err: fmt.Errorf("assistant protocol output exceeded max_output_bytes")}
+		}
+		parsed, parseErr := decodeProtocolResult([]byte(rawStdout), protocolRequest.Session)
+		if parseErr != nil {
+			result.ExitCode = -1
+			return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "assistant process", Err: parseErr}
+		}
+		result.Output = parsed.Output
+		result.Structured = parsed.Structured
+		result.ExitCode = *parsed.ExitCode
+		result.ResolvedModel = parsed.ResolvedModel
+		result.Usage = parsed.Usage
+		if parsed.Session != nil {
+			result.SessionID = parsed.Session.ID
+			result.Resumed = parsed.Session.Resumed
+		}
+		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() != result.ExitCode {
+			return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "assistant process", Err: fmt.Errorf("process exit code %d differs from result exit_code %d", ee.ExitCode(), result.ExitCode)}
+		}
+		if result.ExitCode != 0 {
+			return result, &execution.Error{Kind: execution.KindExit, ExitCode: result.ExitCode, Op: "assistant process", Err: err}
+		}
+		if err != nil {
+			return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "assistant process", Err: fmt.Errorf("process failed despite successful protocol result: %w", err)}
+		}
+		return result, nil
+	}
+
+	if err == nil {
+		return result, nil
 	}
 	if ee, ok := err.(*exec.ExitError); ok {
 		result.ExitCode = ee.ExitCode()
@@ -103,15 +166,19 @@ func combineOutput(stdout, stderr string) string {
 }
 
 func renderArg(s string, req Request) string {
+	mode, sessionID := effectiveSession(req.SessionMode, req.SessionID)
 	repl := map[string]string{
 		"{{prompt}}":         req.Prompt,
+		"{{run.id}}":         req.RunID,
+		"{{node.id}}":        req.NodeID,
+		"{{attempt}}":        fmt.Sprintf("%d", req.Attempt),
 		"{{model.name}}":     req.ModelName,
 		"{{model.id}}":       req.Model.ID,
 		"{{model.provider}}": req.Model.Provider,
 		"{{model.params}}":   string(mustJSON(req.Model.Params)),
 		"{{workspace}}":      req.Workspace,
-		"{{session.mode}}":   req.SessionMode,
-		"{{session.id}}":     req.SessionID,
+		"{{session.mode}}":   mode,
+		"{{session.id}}":     sessionID,
 	}
 	for k, v := range repl {
 		s = strings.ReplaceAll(s, k, v)

@@ -1,6 +1,6 @@
 # Состояние реализации
 
-Статус: `v0.1.5-alpha`.
+Статус: `v0.1.6-alpha`.
 
 ## Реализовано
 
@@ -9,6 +9,8 @@
 - статическая проверка ID, ссылок, timeout и циклов DAG;
 - модельный каталог;
 - `mock` и `process` assistants;
+- реализованный JSON-протокол `takt-assistant/v1alpha1` для process assistant;
+- fake assistant binary и contract suite для success/exit/start/timeout/cancel/concurrent output/malformed/fresh/resume;
 - Markdown commands;
 - узлы `command`, `prompt`, `bash`, `approval`, `loop_group`;
 - `when` и `trigger_rule` в корневом и дочернем DAG;
@@ -54,8 +56,8 @@
 ## Основные незакрытые задачи v0.2
 
 - специализированный Pi или OpenCode adapter;
-- полноценный normalized assistant protocol;
-- подтверждённый session resume;
+- capability discovery специализированного adapter;
+- opt-in smoke tests с реальным агентом;
 - строгий template renderer;
 - команда `takt cancel`;
 - capability negotiation;
@@ -65,4 +67,4 @@
 
 ## Следующий практический этап
 
-Сначала добавить fake assistant binary, который реализует target protocol и сценарии `success`, `exit`, `timeout`, `invalid result`, `session`, `resume`. После contract suite подключить один реальный кодовый агент и перевести Route DSL workflow с `mock` на настоящий adapter.
+Fake assistant contract suite завершён. Следующий этап — специализированный Pi либо OpenCode adapter, который обязан пройти тот же набор контрактных тестов, затем Route DSL workflow переводится с `mock` на реальный adapter.

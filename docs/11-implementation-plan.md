@@ -31,7 +31,7 @@
 - stale-lock recovery;
 - schema version/attempt/iteration в event.
 
-## 3. Этап B. Adapter protocol contract suite
+## 3. Этап B. Adapter protocol contract suite — завершён в v0.1.6-alpha
 
 ### Задачи
 
@@ -136,10 +136,9 @@ agent draft
 
 ## 9. Текущий порядок ближайших задач
 
-1. Fake assistant protocol suite.
-2. Specialized Pi/OpenCode adapter.
-3. Session resume contract.
-4. Route DSL end-to-end.
+1. Specialized Pi/OpenCode adapter.
+2. Opt-in smoke test с реальным агентом.
+3. Route DSL end-to-end.
 5. Go workflow.
 6. Document workflow.
 7. Strict templates и structured outputs.

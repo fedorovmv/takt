@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"takt/internal/assistant"
 	"takt/internal/execution"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -414,5 +417,57 @@ func TestParentLoopGroupCancellationPreservesClassification(t *testing.T) {
 	}
 	if state.Status != store.RunCancelled || state.ErrorCode != string(execution.KindCancelled) {
 		t.Fatalf("unexpected run state: status=%s code=%s error=%s", state.Status, state.ErrorCode, state.Error)
+	}
+}
+
+func TestProtocolAssistantResumesSessionAcrossRetry(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "takt-fake-assistant")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", binary, "./cmd/takt-fake-assistant")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fake assistant: %v: %s", err, output)
+	}
+
+	dir := t.TempDir()
+	wf := &spec.Workflow{
+		APIVersion: "takt/v1alpha1",
+		Kind:       "Workflow",
+		Metadata:   spec.Metadata{Name: "assistant-session"},
+		Defaults:   spec.Defaults{Assistant: "fake", Model: "m", Session: "resume"},
+		Nodes: []spec.Node{{
+			ID:       "agent",
+			Prompt:   "hello",
+			Attempts: spec.AttemptsSpec{Max: 2},
+			Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
+				ID:        "retry-once",
+				Bash:      `test -f retried || { touch retried; echo retry; exit 1; }`,
+				OnFailure: spec.HookDecision{Action: "retry"},
+			}}},
+		}},
+	}
+	cfg := &spec.Config{
+		Models: map[string]spec.ModelSpec{"m": {Provider: "test", ID: "model"}},
+		Assistants: map[string]spec.AssistantSpec{"fake": {
+			Type:           "process",
+			Protocol:       assistant.ProtocolV1Alpha1,
+			Argv:           []string{binary, "--case", "session-cycle"},
+			MaxOutputBytes: 32 * 1024,
+		}},
+	}
+	r := New(wf, cfg, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := state.Nodes["agent"]
+	if node.Status != store.NodeCompleted || node.Attempts != 2 || node.SessionID != "cycle-session" {
+		t.Fatalf("unexpected node state: %+v", node)
 	}
 }

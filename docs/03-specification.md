@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.5-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.6-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -40,12 +40,16 @@ assistants:
     type: process
     argv: ["pi", "--mode", "print", "--model", "{{model.id}}"]
     capabilities: [session_resume, mcp, skills]
+    protocol: takt-assistant/v1alpha1
     max_output_bytes: 1048576
 ```
 
 `process`-адаптер поддерживает шаблоны:
 
 - `{{prompt}}`;
+- `{{run.id}}`;
+- `{{node.id}}`;
+- `{{attempt}}`;
 - `{{model.name}}`;
 - `{{model.id}}`;
 - `{{model.provider}}`;
@@ -54,7 +58,11 @@ assistants:
 - `{{session.mode}}`;
 - `{{session.id}}`.
 
-Если `{{prompt}}` отсутствует в `argv`, prompt передаётся через stdin.
+Если `protocol` не задан и `{{prompt}}` отсутствует в `argv`, prompt передаётся через stdin.
+
+При `protocol: takt-assistant/v1alpha1` stdin содержит строгий JSON request envelope, а stdout должен содержать один JSON result envelope. Runtime проверяет версию, тип, статус, `exit_code`, session resume и отсутствие неизвестных полей. Невалидный или обрезанный результат классифицируется как `protocol`, а отказ resume не превращается в fresh. Схема находится в `schemas/assistant-protocol.schema.json`.
+
+Переменные окружения process assistant включают `TAKT_RUN_ID`, `TAKT_NODE_ID`, `TAKT_ATTEMPT`, модель, workspace, session и native hooks.
 
 `max_output_bytes: 0` означает отсутствие лимита. При превышении положительного лимита output обрезается, а NodeState получает `output_truncated: true`.
 
@@ -317,4 +325,5 @@ takt command run <name> --config <config> --workspace <dir> --input <text>
 - нет `takt cancel`;
 - нет sandbox, server, MCP и Web UI;
 - stale lock требует ручного удаления после аварийного завершения процесса;
-- specialized Pi/OpenCode adapter пока не реализован.
+- specialized Pi/OpenCode adapter пока не реализован;
+- `takt-assistant/v1alpha1` реализован только для универсального `process`, потоковые события пока не входят в контракт.

@@ -1,4 +1,4 @@
-.PHONY: build test race vet fmt docs check demo
+.PHONY: build test race vet fmt docs contracts check demo
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -18,7 +18,10 @@ fmt:
 docs:
 	./scripts/check-docs.sh
 
-check: fmt vet test race build docs
+contracts:
+	./scripts/test-fake-assistant.sh
+
+check: fmt vet test race build contracts docs
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml

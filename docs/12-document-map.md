@@ -7,12 +7,13 @@
 1. `README.md`;
 2. `docs/01-project.md`;
 3. `docs/05-implementation-status.md`;
-4. `docs/19-document-recovery-v0.1.5.md`;
-5. `docs/18-audit-remediation-v0.1.4.md`;
-6. `docs/17-audit-remediation-v0.1.3.md`;
-7. `docs/16-audit-remediation-v0.1.2.md`;
-8. `docs/08-target-v0.2.md`;
-9. `docs/11-implementation-plan.md`.
+4. `docs/20-fake-assistant-contract-v0.1.6.md`;
+5. `docs/19-document-recovery-v0.1.5.md`;
+6. `docs/18-audit-remediation-v0.1.4.md`;
+7. `docs/17-audit-remediation-v0.1.3.md`;
+8. `docs/16-audit-remediation-v0.1.2.md`;
+9. `docs/08-target-v0.2.md`;
+10. `docs/11-implementation-plan.md`.
 
 Для изменения runtime:
 
@@ -25,10 +26,11 @@
 Для реализации исполнителя:
 
 1. `docs/10-assistant-adapter-spec.md`;
-2. `docs/14-backlog-v0.2.md`, задача TAKT-008;
-3. `internal/assistant` и `internal/execution`;
-4. `schemas/assistant-protocol.schema.json`;
-5. contract tests.
+2. `docs/20-fake-assistant-contract-v0.1.6.md`;
+3. `docs/14-backlog-v0.2.md`, задача TAKT-009;
+4. `internal/assistant` и `internal/execution`;
+5. `schemas/assistant-protocol.schema.json`;
+6. contract tests.
 
 ## 2. Источники истины
 
@@ -39,11 +41,12 @@
 | Текущий внешний контракт | `03-specification.md` | реализованный `v1alpha1` |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
 | Исправления последнего аудита | `16–18-audit-remediation-*.md` | фактический |
+| Fake-assistant protocol suite | `20-fake-assistant-contract-v0.1.6.md` | фактический |
 | Восстановление документации релиза | `19-document-recovery-v0.1.5.md` | фактический |
 | Граница безопасности | `../SECURITY.md` | действующий |
 | Ближайшее целевое состояние | `08-target-v0.2.md` | целевой |
 | Семантика runtime | `09-runtime-semantics.md` | реализовано частично/цель v0.2 |
-| Контракт исполнителя | `10-assistant-adapter-spec.md` | целевой v0.2 |
+| Контракт исполнителя | `10-assistant-adapter-spec.md` | process protocol реализован; specialized adapters — цель v0.2 |
 | Очередность работ | `11-implementation-plan.md` | рабочий план |
 | Задачи | `14-backlog-v0.2.md` | рабочий backlog |
 | Старт кодового агента | `15-coding-agent-start.md` | готовая инструкция |

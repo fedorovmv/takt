@@ -39,10 +39,11 @@ for check in \
   "docs/03-specification.md|родительский \`loop_group\`" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/10-assistant-adapter-spec.md|session" \
-  "docs/12-document-map.md|19-document-recovery-v0.1.5.md" \
-  "docs/14-backlog-v0.2.md|TAKT-008. Fake assistant protocol suite" \
-  "docs/15-coding-agent-start.md|fake assistant protocol suite"
+  "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
+  "docs/12-document-map.md|20-fake-assistant-contract-v0.1.6.md" \
+  "docs/14-backlog-v0.2.md|TAKT-008. Fake assistant protocol suite — выполнено" \
+  "docs/15-coding-agent-start.md|takt-assistant/v1alpha1" \
+  "docs/20-fake-assistant-contract-v0.1.6.md|resume-failed"
 do
   file="${check%%|*}"
   text="${check#*|}"

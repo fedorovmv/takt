@@ -100,5 +100,6 @@ type AssistantSpec struct {
 	Argv           []string          `json:"argv,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
 	Capabilities   []string          `json:"capabilities,omitempty"`
+	Protocol       string            `json:"protocol,omitempty"`
 	MaxOutputBytes int               `json:"max_output_bytes,omitempty"`
 }

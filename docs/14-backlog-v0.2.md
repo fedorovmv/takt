@@ -1,6 +1,6 @@
 # Backlog Takt v0.2
 
-Статус обновлён после стабилизации runtime `v0.1.2–v0.1.4-alpha` и восстановления документации в `v0.1.5-alpha`.
+Статус обновлён после реализации fake-assistant protocol suite в `v0.1.6-alpha`.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 
@@ -68,9 +68,9 @@
 - внешняя cancellation сохраняется как `cancelled` у parent Node и Run;
 - добавлены отдельные регрессии timeout и cancellation.
 
-## Следующий этап
+## Завершено в v0.1.6-alpha
 
-### TAKT-008. Fake assistant protocol suite
+### TAKT-008. Fake assistant protocol suite — выполнено
 
 **Цель:** проверить нормализованный контракт до реального Pi/OpenCode.
 
@@ -86,7 +86,9 @@
 - resume rejected;
 - malformed structured result.
 
-**Приёмка:** один набор contract tests применяется к process adapter и будущему specialized adapter.
+**Приёмка:** process adapter проходит contract cases success, exit, start, timeout, cancel, concurrent output, malformed result, fresh, resume и resume rejection. Suite включён в `scripts/verify.sh`; будущий specialized adapter обязан переиспользовать эти контракты.
+
+## Следующий этап
 
 ### TAKT-009. Specialized Pi или OpenCode adapter
 
@@ -96,13 +98,13 @@
 
 **Приёмка:** fake suite и opt-in smoke test с реальным бинарником.
 
-### TAKT-010. Session resume
+### TAKT-010. Session resume — базовый process-контракт выполнен
 
 **Цель:** сравнивать fresh и продолженную сессию.
 
 **Результат:** сохранение Session ID; явное поле `resumed`; ошибка при неуспешном resume без тихого fallback.
 
-**Приёмка:** fresh, resume success и resume failure.
+**Приёмка:** fresh, resume success и resume failure реализованы для process protocol; остаётся подтвердить их на выбранном Pi/OpenCode adapter.
 
 ### TAKT-011. Route DSL end-to-end
 

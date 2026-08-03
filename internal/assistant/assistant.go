@@ -8,6 +8,9 @@ import (
 )
 
 type Request struct {
+	RunID       string
+	NodeID      string
+	Attempt     int
 	Prompt      string
 	Workspace   string
 	ModelName   string
@@ -19,10 +22,16 @@ type Request struct {
 }
 
 type Result struct {
-	Output    string
-	SessionID string
-	ExitCode  int
-	Truncated bool
+	Output        string
+	Structured    json.RawMessage
+	SessionID     string
+	Resumed       bool
+	ExitCode      int
+	Stdout        string
+	Stderr        string
+	ResolvedModel *ProtocolModel
+	Usage         *ProtocolUsage
+	Truncated     bool
 }
 
 type Adapter interface {

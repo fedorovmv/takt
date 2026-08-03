@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.6-alpha
+
+- реализован JSON-протокол `takt-assistant/v1alpha1` для process assistant;
+- добавлен `cmd/takt-fake-assistant`;
+- добавлены contract cases success, exit, start, timeout, cancel, concurrent output, malformed result, fresh, resume, resume rejection и output limit;
+- runtime передаёт Run ID, Node ID и номер попытки в adapter;
+- session resume проверен сквозным retry-тестом runtime;
+- fake-assistant suite включён в `scripts/verify.sh`;
+- обновлены JSON Schema, спецификации, backlog и документация.
+
 ## v0.1.5-alpha
 
 - восстановлены полные редакции документов `v0.1.2–v0.1.3`, случайно перезаписанные при сборке `v0.1.4`;

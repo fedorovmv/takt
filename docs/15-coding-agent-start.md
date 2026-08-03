@@ -12,13 +12,11 @@ Takt — Go-runtime для оркестрации готовых кодовых 
 
 1. `docs/12-document-map.md`;
 2. `docs/05-implementation-status.md`;
-3. `docs/18-audit-remediation-v0.1.4.md`;
-4. `docs/17-audit-remediation-v0.1.3.md`;
-5. `docs/16-audit-remediation-v0.1.2.md`;
-6. `docs/09-runtime-semantics.md`;
-7. `docs/10-assistant-adapter-spec.md`;
-8. `docs/14-backlog-v0.2.md`;
-9. `ARCHITECTURE_DECISIONS.md`.
+3. `docs/20-fake-assistant-contract-v0.1.6.md`;
+4. `docs/09-runtime-semantics.md`;
+5. `docs/10-assistant-adapter-spec.md`;
+6. `docs/14-backlog-v0.2.md`;
+7. `ARCHITECTURE_DECISIONS.md`.
 
 Проверь исходное состояние:
 
@@ -32,17 +30,16 @@ go build ./cmd/takt
 
 ## Первая рекомендуемая задача
 
-Начни с `TAKT-008`: fake assistant protocol suite.
+Начни с `TAKT-009`: specialized Pi либо OpenCode adapter.
 
 Требования:
 
-- добавь небольшой тестовый бинарник в `internal/testassistant` или `cmd/takt-test-assistant`;
-- реализуй сценарии success, exit, timeout, huge output, malformed result, session и resume;
-- сформируй единый набор contract tests;
-- не подключай Pi/OpenCode до прохождения fake suite;
-- не меняй YAML-контракт без необходимости;
-- обнови adapter spec при выявленном расхождении;
-- сохрани разделение `exit/start/timed_out/cancelled/protocol/internal`.
+- используй `takt-assistant/v1alpha1` как нормализованный контракт;
+- прогони adapter через `scripts/test-fake-assistant.sh` или эквивалентный переиспользуемый suite;
+- добавь opt-in smoke test с реальным бинарником;
+- не меняй timeout, output limit, fresh/resume и error classification без обновления спецификации и ADR;
+- не допускай тихого fallback с resume на fresh;
+- сохрани границу: внутренний tool loop остаётся внутри Pi/OpenCode.
 
 ## Ограничения
 

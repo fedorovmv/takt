@@ -1,4 +1,6 @@
-# Спецификация адаптеров исполнителей v0.2
+# Спецификация адаптеров исполнителей
+
+Статус: process-протокол `takt-assistant/v1alpha1` и fake contract suite реализованы в `v0.1.6-alpha`. Specialized Pi/OpenCode adapters и потоковый EventSink остаются целевыми возможностями v0.2.
 
 ## 1. Назначение
 
@@ -120,7 +122,7 @@ assistants:
     max_output_bytes: 10485760
 ```
 
-Текущий `v1alpha1` поддерживает `type`, `argv`, `env`, `capabilities` и `max_output_bytes`. Timeout задаётся на уровне Node. Остальные поля — целевое расширение v0.2.
+Текущий `v1alpha1` поддерживает `type`, `argv`, `env`, `capabilities`, `protocol` и `max_output_bytes`. При `protocol: takt-assistant/v1alpha1` request передаётся JSON через stdin, result читается как строгий JSON из stdout. Timeout задаётся на уровне Node.
 
 ## 5. Переменные process adapter
 
@@ -156,7 +158,7 @@ TAKT_SESSION_ID
 TAKT_NATIVE_HOOKS_JSON
 ```
 
-Текущая реализация выставляет только `TAKT_*`. Устаревшие `HARNESS_*` удалены в `v0.1.2-alpha`.
+Текущая реализация выставляет все перечисленные `TAKT_*`. Устаревшие `HARNESS_*` удалены в `v0.1.2-alpha`.
 
 ## 6. Session policy
 
@@ -268,4 +270,4 @@ assistant.usage
 13. failed resume;
 14. malformed structured output.
 
-Для CI используется fake assistant binary. Реальные Pi/OpenCode тесты запускаются отдельно и не блокируют обычный unit test suite.
+Для CI используется `cmd/takt-fake-assistant` и `scripts/test-fake-assistant.sh`. Реальные Pi/OpenCode тесты запускаются отдельно и не блокируют обычный unit test suite.

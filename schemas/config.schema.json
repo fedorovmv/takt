@@ -85,6 +85,11 @@
         "max_output_bytes": {
           "type": "integer",
           "minimum": 0
+        },
+        "protocol": {
+          "enum": [
+            "takt-assistant/v1alpha1"
+          ]
         }
       },
       "allOf": [
