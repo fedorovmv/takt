@@ -1,0 +1,24 @@
+apiVersion: takt/v1alpha1
+kind: Config
+
+models:
+  large:
+    provider: demo
+    id: qwen-large
+    params:
+      reasoning_effort: high
+  fast:
+    provider: demo
+    id: qwen-fast
+
+assistants:
+  demo:
+    type: mock
+  pi:
+    type: process
+    argv: ["pi", "--mode", "print", "--model", "{{model.id}}", "{{prompt}}"]
+    capabilities: [session_resume, mcp, skills]
+  opencode:
+    type: process
+    argv: ["opencode", "run", "{{prompt}}"]
+    capabilities: [session_resume, mcp, skills]
