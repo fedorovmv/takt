@@ -120,7 +120,7 @@ assistants:
     max_output_bytes: 10485760
 ```
 
-Текущий `v1alpha1` поддерживает `type`, `argv`, `env`, `capabilities` и `max_output_bytes`. Timeout задаётся на уровне Node. Остальные поля — целевое расширение v0.2.
+Текущий `v1alpha1` поддерживает только `type`, `argv`, `env`, `capabilities`. Остальные поля — целевое расширение v0.2.
 
 ## 5. Переменные process adapter
 
@@ -156,7 +156,7 @@ TAKT_SESSION_ID
 TAKT_NATIVE_HOOKS_JSON
 ```
 
-Текущая реализация выставляет только `TAKT_*`. Устаревшие `HARNESS_*` удалены в `v0.1.2-alpha`.
+Текущий прототип выставляет `TAKT_*` и временно дублирует значения в устаревшие `HARNESS_*`. Новые адаптеры используют только `TAKT_*`; совместимость `HARNESS_*` удаляется при переходе к стабильной схеме.
 
 ## 6. Session policy
 

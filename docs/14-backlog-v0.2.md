@@ -1,95 +1,73 @@
 # Backlog Takt v0.2
 
-Статус обновлён после повторного аудита и стабилизационного релиза `v0.1.3-alpha`.
+Задачи расположены в рекомендуемом порядке. Каждая задача должна завершаться тестами и обновлением соответствующей спецификации.
 
-## Завершено в v0.1.2–v0.1.3-alpha
+## Текущее состояние после v0.1.4-alpha
 
-### TAKT-001. Классификация execution errors — выполнено
+Стабилизационные части TAKT-001, TAKT-002 и TAKT-004 реализованы в объёме текущего локального runtime: классификация execution errors, fingerprints, timeout, output limit и регрессии parent `loop_group`. Следующая обязательная задача перед реальным adapter — выделить fake-assistant contract suite как отдельный исполнимый набор тестов. `takt cancel`, capability negotiation и строгий template renderer остаются открытыми.
 
-- `exit`, `start`, `timed_out`, `cancelled`, `protocol`, `internal`;
-- отдельные Node statuses;
-- JSON error envelope;
-- `allow_failure` только для exit code.
+## TAKT-001. Типизированные ошибки
 
-### TAKT-002. Failure propagation и `all_done` — выполнено
+**Цель:** заменить произвольные `fmt.Errorf` на нормализованные ошибки runtime.
 
-- Run не останавливается на первом failed node;
-- `all_done` выполняется;
-- недоступные ветви становятся `skipped` или `blocked`;
-- итог Run вычисляется после DAG.
+**Результат:**
 
-### TAKT-003. Единый scheduler root/loop — выполнено
+- `Error.Code`, `Message`, `RunID`, `NodeID`, `Attempt`, `Cause`;
+- коды из `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`;
+- JSON CLI возвращает структурированную ошибку;
+- stderr остаётся удобным для человека.
 
-- `when`, `trigger_rule`, hooks и attempts работают одинаково;
-- добавлены contract tests.
+**Приёмка:** unit tests для adapter-not-found, process-start-failed, node-attempts-exhausted и loop-exhausted.
 
-### TAKT-004. Fingerprints и безопасный approval resume — выполнено
+## TAKT-002. Fingerprints запуска
 
-- SHA-256 workflow/config/commands;
-- lock Run;
-- проверка определений до потребления answer;
-- команда `takt resume`.
+**Цель:** сделать resume воспроизводимым.
 
-### TAKT-005. Persistence revisions — выполнено
+**Результат:** SHA-256 workflow, config и разрешённых Markdown-команд сохраняется в RunState.
 
-- обязательный `Store.Commit`;
-- одинаковая revision state/event;
-- обнаружение рассогласования;
-- ошибки persistence не игнорируются.
+**Приёмка:** изменённый workflow блокирует resume с понятной ошибкой; предусмотрен явный override для разработки.
 
-### TAKT-006. YAML block scalar — выполнено
+## TAKT-003. Строгий template renderer
 
-- сохранение пустых строк;
-- `|`, `|-`, `|+`, `>`, `>-`, `>+`;
-- строгий documented subset.
+**Цель:** исключить незаметные ошибки переменных.
 
-### TAKT-007. Timeout и output limit process adapter — выполнено частично
+**Результат:** неизвестная переменная вызывает ошибку; предусмотрен синтаксис необязательного значения либо функция default.
 
-- timeout всей попытки, включая portable hooks;
-- process output limit;
-- thread-safe общий budget stdout/stderr;
-- output truncation flag;
-- Unix process-group cancellation;
-- regression tests timeout/cancel по фазам hook.
+**Приёмка:** тесты известных, неизвестных и отсутствующих optional values.
 
-Остаётся проверить grace period и platform-specific поведение на целевых ОС.
+## TAKT-004. Timeout и output limit process adapter
 
-### TAKT-007A. Безопасная семантика loop state — выполнено для v1alpha1
+**Цель:** ограничить зависшие и чрезмерно шумные процессы.
 
-- вложенные `loop_group` запрещены валидатором, схемой и runtime;
-- runtime не перезаписывает существующий NodeState дочерним ID;
-- `until` требует статус `completed`;
-- namespace для вложенных циклов остаётся будущей задачей.
+**Результат:** конфигурация timeout и max output bytes, корректная отмена context, отдельные коды ошибок.
 
-## Следующий этап
+**Приёмка:** fake process проверяет timeout, cancellation и превышение лимита.
 
-### TAKT-008. Fake assistant protocol suite
+## TAKT-005. Команда cancel
 
-**Цель:** проверить нормализованный контракт до реального Pi/OpenCode.
+**Цель:** управляемо завершать Run.
 
-**Результат:** тестовый бинарник поддерживает:
+**Результат:** `takt cancel <run-id>`; идемпотентность; событие `run.cancelled`.
 
-- success;
-- exit N;
-- start/invalid protocol;
-- timeout;
-- большой stdout/stderr;
-- session ID;
-- resume success;
-- resume rejected;
-- malformed structured result.
+**Приёмка:** отмена running/waiting Run и повторная отмена.
 
-**Приёмка:** один набор contract tests применяется к process adapter и будущему specialized adapter.
+## TAKT-006. Capability contract
 
-### TAKT-009. Specialized Pi или OpenCode adapter
+**Цель:** проверять совместимость workflow и assistant до запуска.
+
+**Результат:** типизированные capabilities; `requires` на уровне узла; проверка config и adapter discovery.
+
+**Приёмка:** workflow с `session_resume` отклоняется для неподдерживающего adapter.
+
+## TAKT-007. Специализированный Pi/OpenCode adapter
 
 **Цель:** проверить реальное выполнение агентного узла.
 
 **Результат:** один adapter по `10-assistant-adapter-spec.md`.
 
-**Приёмка:** fake suite и opt-in smoke test с реальным бинарником.
+**Приёмка:** fake integration suite и opt-in smoke test с реальным бинарником.
 
-### TAKT-010. Session resume
+## TAKT-008. Session resume
 
 **Цель:** сравнивать fresh и продолженную сессию.
 
@@ -97,7 +75,7 @@
 
 **Приёмка:** fresh, resume success и resume failure.
 
-### TAKT-011. Route DSL end-to-end
+## TAKT-009. Route DSL end-to-end
 
 **Цель:** заменить mock в основном примере.
 
@@ -105,50 +83,46 @@
 
 **Приёмка:** минимум один тест требует двух попыток; success определяется только валидатором.
 
-## Далее
+## TAKT-010. Нормализованные diagnostics
 
-### TAKT-012. Строгий template renderer
+**Цель:** давать агенту компактную и стабильную обратную связь.
 
-Неизвестная переменная вызывает ошибку; предусмотрены optional/default values.
+**Результат:** JSON diagnostics преобразуются в общий формат code/path/line/message.
 
-### TAKT-013. Команда `takt cancel`
+**Приёмка:** одинаковые ошибки не раздувают feedback; хранится fingerprint ошибки.
 
-Идемпотентная отмена running/waiting Run и событие `run.cancelled`.
+## TAKT-011. Изоляция loop group
 
-### TAKT-014. Capability contract
+**Цель:** устранить конфликт дочерних NodeState.
 
-Типизированные capabilities, `requires` и проверка до запуска.
+**Результат:** отдельная структура iteration state; child ID локальны loop group.
 
-### TAKT-015. Нормализованные diagnostics
+**Приёмка:** два loop group используют одинаковые child ID без конфликта.
 
-Общий формат `code/path/line/message`, deduplication и fingerprint ошибки.
+## TAKT-012. Structured outputs
 
-### TAKT-016. Изоляция iteration state
+**Цель:** передавать данные между узлами без разбора свободного текста.
 
-Отдельная структура для истории всех итераций, а не только `LoopPrevious`.
+**Результат:** JSON output и JSON Schema validation.
 
-### TAKT-017. Structured outputs
+**Приёмка:** valid output, malformed JSON и schema mismatch.
 
-JSON output и JSON Schema validation.
+## TAKT-013. Go workflow
 
-### TAKT-018. Go workflow
+**Цель:** подтвердить универсальность на кодовой задаче.
 
-Issue/fix → coding agent → `go test` → feedback → approval без изменения runtime.
+**Приёмка:** workflow добавляется без изменения runtime; `go test` управляет повтором.
 
-### TAKT-019. Document workflow
+## TAKT-014. Document workflow
 
-Draft → approval comment → revise → artifact без изменения runtime.
+**Цель:** подтвердить универсальность на не-кодовой задаче.
 
-### TAKT-020. Eval metrics
+**Приёмка:** draft → approval comment → revise → artifact без изменения runtime.
 
-Сравнение fresh/resume, моделей и workflow-стратегий на фиксированном наборе задач.
+## TAKT-015. Метрики eval
 
-## Вне v0.2
+**Цель:** сравнивать стратегии.
 
-- parallel DAG;
-- SQLite/Postgres;
-- MCP server;
-- Web UI;
-- remote workers;
-- untrusted/server mode;
-- sandbox и многопользовательская авторизация.
+**Результат:** export Run metrics по `13-evaluation-plan.md`.
+
+**Приёмка:** отчёт сравнивает минимум fresh и resume на одном наборе задач.

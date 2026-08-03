@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.4-alpha
+
+- timeout и cancellation родительского `loop_group` сохраняют классификацию `timed_out`/`cancelled`;
+- ошибка истёкшего attempt context имеет приоритет над производной ошибкой контейнера, включая `loop_group exhausted`;
+- код ошибки Run для внешней отмены и deadline больше не записывается как `internal`;
+- добавлены регрессии timeout и cancellation родительского `loop_group`;
+- документация и результаты проверок обновлены перед fake-assistant contract suite.
+
 ## v0.1.3-alpha
 
 - общий лимит stdout/stderr process assistant стал thread-safe;

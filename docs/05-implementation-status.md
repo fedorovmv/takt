@@ -1,67 +1,71 @@
 # Состояние реализации
 
-Статус: `v0.1.3-alpha`.
-
 ## Реализовано
 
 - YAML/JSON loader со строгой проверкой неизвестных полей;
-- документированный YAML subset с корректными `|`, `|-`, `|+`, `>`, `>-`, `>+` и пустыми строками;
-- статическая проверка ID, ссылок, timeout и циклов DAG;
+- статическая проверка ID, ссылок, DAG и запрет вложенных `loop_group` в `v1alpha1`;
 - модельный каталог;
-- `mock` и `process` assistants;
+- `mock` и универсальный `process` assistants;
 - Markdown commands;
 - узлы `command`, `prompt`, `bash`, `approval`, `loop_group`;
-- `when` и `trigger_rule` в корневом и дочернем DAG;
-- продолжение DAG после failed/errored node для выполнения `all_done`;
-- разделение `failed`, `errored`, `timed_out`, `cancelled`, `blocked`;
-- `allow_failure` только для штатного ненулевого exit code;
+- `when` и `trigger_rule` в корневом DAG и внутри `loop_group`;
 - hooks и retry с feedback;
-- timeout всей попытки узла, включая portable hooks;
-- общий thread-safe output limit stdout/stderr process assistant;
-- завершение process group при cancellation на Unix;
 - pause/resume approval;
-- fingerprints workflow, config и разрешённых Markdown-команд;
-- блокировка Run для `answer` и `resume`;
-- ревизии `state.json` и `events.jsonl` с обнаружением рассогласования;
-- обязательная обработка ошибок persistence;
-- единый JSON envelope CLI;
-- CLI `validate`, `run`, `answer`, `resume`, `status`, `command run`;
+- fingerprints workflow/config/commands;
+- блокировка Run, ревизии state/events и проверка согласованности;
+- классификация execution errors: `exit`, `start`, `timed_out`, `cancelled`, `protocol`, `internal`;
+- статусы Node `completed`, `failed`, `errored`, `timed_out`, `cancelled`, `skipped`, `blocked`;
+- `allow_failure` только для ненулевого exit code;
+- timeout попытки узла, включая portable hooks и дочерний DAG `loop_group`;
+- общий thread-safe лимит stdout/stderr process assistant;
+- JSON success/error envelope CLI;
+- JSONL events и файловые artifacts;
+- CLI `validate`, `run`, `resume`, `answer`, `status`, `command run`;
 - JSON Schemas текущего `v1alpha1`;
-- unit-, race-, vet-, build- и сквозные проверки.
+- unit-, race-, CLI- и сквозные тесты стабилизационного контура.
 
 ## Осознанно упрощено
 
 - последовательное выполнение готовых узлов DAG;
-- локальное файловое состояние;
+- файловое локальное состояние;
 - ограниченный язык выражений;
-- собственный документированный YAML subset вместо полной YAML 1.2;
-- approval и вложенный `loop_group` внутри `loop_group` запрещены;
-- `until` требует статус дочернего узла `completed`;
-- отсутствуют server, Web UI, MCP и worktree orchestration.
+- документированный YAML subset;
+- вложенные `loop_group` запрещены вместо namespace дочернего состояния;
+- отсутствие server/Web UI/MCP/worktree.
 
-## Граница безопасности
+## Не считается production-ready
 
-Текущая версия рассчитана на локального доверенного пользователя. До server/untrusted scope нужны:
+Перед промышленным применением нужны:
 
-- sandbox процессов;
-- политика допустимых путей;
+- песочница процессов;
 - ограничения файловой системы и сети;
-- управление секретами и redaction;
-- более сильная межпроцессная блокировка и recovery stale lock;
-- аутентификация и авторизация.
+- политика секретов и redaction;
+- проверка блокировок и cancellation на целевых ОС;
+- миграции схемы;
+- полноценное восстановление по журналу;
+- наблюдаемость, бюджеты и лимиты стоимости;
+- серверная модель конкуренции и авторизации, если появится remote scope.
 
-## Основные незакрытые задачи v0.2
+## Ближайший целевой срез
 
-- специализированный Pi или OpenCode adapter;
-- полноценный normalized assistant protocol;
-- подтверждённый session resume;
-- строгий template renderer;
-- команда `takt cancel`;
-- capability negotiation;
-- structured outputs;
-- Route DSL end-to-end на реальной модели;
-- eval-набор для Route DSL, Go и документов.
+Главный следующий этап — fake-assistant contract suite по `10-assistant-adapter-spec.md`. Он должен закрепить:
 
-## Следующий практический этап
+- prompt через argv/stdin;
+- параметры модели и рабочий каталог;
+- concurrent stdout/stderr under output limit;
+- timeout/cancel обычного узла, hooks и родительского `loop_group`;
+- fresh/resume;
+- malformed assistant result;
+- корректную классификацию start/exit/protocol errors.
 
-Сначала добавить fake assistant binary, который реализует target protocol и сценарии `success`, `exit`, `timeout`, `invalid result`, `session`, `resume`. После contract suite подключить один реальный кодовый агент и перевести Route DSL workflow с `mock` на настоящий adapter.
+После прохождения suite можно начинать специализированный Pi или OpenCode adapter и Route DSL end-to-end.
+
+## Известные расхождения с целевой семантикой v0.2
+
+- нет `takt cancel`;
+- capability negotiation декларативна и не проверяется;
+- session resume не проверен на реальном агенте;
+- дочернее состояние `loop_group` не имеет полноценного namespace, поэтому nested loops запрещены;
+- шаблоны сохраняют неизвестные переменные вместо строгой ошибки;
+- события не содержат schema version, attempt и iteration как отдельные обязательные поля;
+- structured output и schema validation пока отсутствуют.

@@ -1,12 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.3-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
-
-## 1. Область применения
-
-Текущая реализация рассчитана на локальный однопользовательский trusted runtime. Workflow, config, Markdown-команды, shell-команды и рабочая директория считаются доверенными.
-
-## 2. Файловая структура
+## 1. Файловая структура
 
 ```text
 .takt/
@@ -22,7 +16,7 @@
 2. каталог рядом с workflow: `commands/`;
 3. `~/.takt/commands/`.
 
-## 3. Конфигурация моделей и исполнителей
+## 2. Конфигурация моделей и исполнителей
 
 ```yaml
 apiVersion: takt/v1alpha1
@@ -38,9 +32,8 @@ models:
 assistants:
   pi:
     type: process
-    argv: ["pi", "--mode", "print", "--model", "{{model.id}}"]
+    argv: ["pi", "--mode", "print", "--model", "{{model.id}}", "{{prompt}}"]
     capabilities: [session_resume, mcp, skills]
-    max_output_bytes: 1048576
 ```
 
 `process`-адаптер поддерживает шаблоны:
@@ -56,11 +49,7 @@ assistants:
 
 Если `{{prompt}}` отсутствует в `argv`, prompt передаётся через stdin.
 
-`max_output_bytes: 0` означает отсутствие лимита. При превышении положительного лимита output обрезается, а NodeState получает `output_truncated: true`.
-
-На Unix процесс запускается в отдельной process group; timeout и cancellation завершают процесс и его потомков.
-
-## 4. Markdown-команды
+## 3. Markdown-команды
 
 ```markdown
 ---
@@ -80,7 +69,7 @@ ${feedback}
 
 Frontmatter поддерживает `description`, `assistant`, `model`. Остальные поля сохраняются как метаданные.
 
-## 5. Workflow
+## 4. Workflow
 
 ```yaml
 apiVersion: takt/v1alpha1
@@ -95,7 +84,6 @@ defaults:
 nodes:
   - id: implement
     command: implement
-    timeout: 10m
     attempts:
       max: 3
     hooks:
@@ -106,11 +94,6 @@ nodes:
             action: retry
             session: fresh
 
-  - id: cleanup
-    depends_on: [implement]
-    trigger_rule: all_done
-    bash: rm -f temporary.file
-
   - id: approve
     depends_on: [implement]
     approval:
@@ -118,9 +101,7 @@ nodes:
       capture_response: true
 ```
 
-`timeout` использует формат Go duration: `500ms`, `30s`, `5m`, `1h`. Лимит действует на всю попытку узла: `before_node`, действие, `on_failure`, `after_node` и `before_complete`.
-
-## 6. Типы узлов
+## 5. Типы узлов
 
 ### `command`
 
@@ -132,17 +113,17 @@ nodes:
 
 ### `bash`
 
-Выполняет команду через `bash -lc`. Stdout и stderr объединяются в output узла.
-
-`allow_failure: true` разрешает только штатный ненулевой exit code. Ошибка запуска, timeout, cancellation или ошибка runtime остаются ошибкой узла.
+Выполняет команду через `bash -lc`. Stdout становится output узла, stderr сохраняется в журнале. `allow_failure: true` превращает ненулевой код завершения в обычный результат узла; это полезно для проверок внутри циклов.
 
 ### `approval`
 
-Переводит Run и Node в `waiting`. Ответ сохраняется как output узла при `capture_response: true`. Остановка на approval не расходует попытку.
+Переводит Run в `waiting`. Ответ сохраняется как output узла при `capture_response: true`.
 
 ### `loop_group`
 
-Повторяет вложенный DAG до выполнения условия или достижения `max_iterations`. Дочерний DAG использует те же `depends_on`, `when`, `trigger_rule`, hooks и классификацию ошибок, что и корневой workflow.
+Повторяет вложенный DAG до выполнения условия или достижения `max_iterations`. `timeout` родительского узла ограничивает весь контейнер и его дочерний DAG. При истечении timeout или внешней отмене родительский `loop_group` сохраняет статус `timed_out` или `cancelled`; производные ошибки вроде исчерпания цикла не заменяют эту классификацию.
+
+Базовая реализация поддерживает условие:
 
 ```yaml
 until:
@@ -150,44 +131,27 @@ until:
   exit_code: 0
 ```
 
-Также поддерживается `output_contains`. Условие `until` проверяется только для дочернего узла со статусом `completed`; `skipped`, `failed`, `errored`, `timed_out` и `cancelled` не завершают цикл даже при совпадающем нулевом `exit_code`.
+Также поддерживается `output_contains`.
 
-Вложенные `loop_group` и approval внутри `loop_group` не поддерживаются в `v1alpha1`.
+## 6. Зависимости и условия
 
-## 7. Зависимости, ошибки и итог Run
-
-Узел начинает выполнение после terminal-состояния зависимостей.
+`depends_on` задаёт зависимости DAG.
 
 Поддерживаемые `trigger_rule`:
 
-- `all_success` — все зависимости `completed`;
-- `all_done` — любые terminal-состояния зависимостей;
-- `none_failed_min_one_success` — нет failure-like зависимостей и есть хотя бы одна `completed`.
-
-После failed/errored/timed_out node scheduler продолжает DAG, чтобы выполнить `all_done`. Итоговый статус Run вычисляется после завершения доступного графа.
-
-Статусы Node:
-
-- `pending`;
-- `running`;
-- `waiting`;
-- `completed`;
-- `failed` — действие штатно завершилось отрицательным результатом, например exit code;
-- `errored` — действие не удалось запустить или произошла ошибка runtime;
-- `timed_out`;
-- `cancelled`;
-- `skipped`;
-- `blocked`.
+- `all_success` — значение по умолчанию;
+- `all_done`;
+- `none_failed_min_one_success`.
 
 Базовый синтаксис `when`:
 
 ```yaml
 when: nodes.analyze.exit_code == 0
 when: nodes.classify.output == "feature"
-when: inputs.input != "dry-run"
+when: inputs.mode != "dry-run"
 ```
 
-## 8. Hooks
+## 7. Hooks
 
 ```yaml
 hooks:
@@ -207,8 +171,6 @@ Hook:
     session: fresh
 ```
 
-Timeout и cancellation portable hook относятся ко всей попытке и сохраняют классификацию `timed_out`/`cancelled`; они не преобразуются в обычный `hook_failed`.
-
 Поддерживаемые действия:
 
 - `continue`;
@@ -217,16 +179,7 @@ Timeout и cancellation portable hook относятся ко всей попы�
 
 Stdout и stderr неуспешного hook добавляются в `${feedback}` следующей попытки.
 
-## 9. YAML subset
-
-Takt не заявляет полную совместимость с YAML 1.2. Поддерживаются карты, списки, простые scalar, inline JSON object, inline list и block scalar:
-
-- `|`, `|-`, `|+`;
-- `>`, `>-`, `>+`.
-
-Пустые строки, `#`, `:`, `${...}` и отступы внутри block scalar сохраняются. Tabs запрещены.
-
-## 10. Переменные
+## 8. Переменные
 
 Поддерживаются:
 
@@ -236,13 +189,10 @@ Takt не заявляет полную совместимость с YAML 1.2. 
 - `${feedback}`;
 - `${nodes.<id>.output}`;
 - `${nodes.<id>.exit_code}`;
-- `${nodes.<id>.status}`;
 - `${loop.previous.<id>.output}`;
 - `${approvals.<id>}`.
 
-Неизвестные переменные пока сохраняются как исходный token. Строгий renderer остаётся задачей v0.2.
-
-## 11. Состояние и воспроизводимость
+## 9. Состояние
 
 Каждый Run хранится в:
 
@@ -253,66 +203,30 @@ Takt не заявляет полную совместимость с YAML 1.2. 
   artifacts/
 ```
 
-RunState содержит:
+Статусы Run:
 
-- fingerprints workflow, config и Markdown-команд;
-- revision;
-- статусы и ошибки узлов;
-- approval answers;
-- session IDs;
-- результаты последней loop iteration.
+- `running`;
+- `waiting`;
+- `completed`;
+- `failed`;
+- `cancelled`.
 
-Каждый commit состояния и события получает одну revision. При несовпадении ревизий `Load` возвращает `store_inconsistent`.
-
-`answer` и `resume` используют lock Run и блокируются при изменении определений после старта.
-
-## 12. JSON CLI
-
-Успех:
-
-```json
-{
-  "ok": true,
-  "result": {}
-}
-```
-
-Ошибка:
-
-```json
-{
-  "ok": false,
-  "error": {
-    "code": "start",
-    "message": "...",
-    "retryable": false,
-    "details": {
-      "run_id": "...",
-      "node_id": "..."
-    }
-  }
-}
-```
-
-Команды:
+## 10. CLI
 
 ```text
 takt validate <workflow> --config <config> --workspace <dir>
 takt run <workflow> --config <config> --workspace <dir> --input <file-or-text>
 takt answer <run-id> <node-id> --workspace <dir> --value <text>
-takt resume <run-id> --workspace <dir>
 takt status <run-id> --workspace <dir>
 takt command run <name> --config <config> --workspace <dir> --input <text>
 ```
 
-Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status` и `command run` используют JSON по умолчанию.
+Все команды поддерживают `--json`.
 
-## 13. Ограничения
+## 11. Ограничения базовой реализации
 
-- DAG выполняется последовательно;
-- approval и вложенный `loop_group` внутри `loop_group` запрещены;
-- `native_hooks` передаются адаптеру, но не исполняются runtime;
-- нет `takt cancel`;
-- нет sandbox, server, MCP и Web UI;
-- stale lock требует ручного удаления после аварийного завершения процесса;
-- specialized Pi/OpenCode adapter пока не реализован.
+- готовые DAG-узлы выполняются в детерминированном порядке, без параллельного запуска;
+- approval внутри `loop_group` пока запрещён;
+- `native_hooks` сохраняются в запросе адаптера, но runtime их не исполняет;
+- восстановление выполняется из `state.json`, журнал событий служит для аудита;
+- MCP-сервер пока не реализован, кодовый агент запускает CLI через shell/skill.

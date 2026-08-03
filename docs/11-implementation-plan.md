@@ -2,56 +2,31 @@
 
 ## 1. Принцип выполнения
 
-Каждый этап завершается работающим сквозным сценарием. Новые абстракции добавляются только при наличии минимум двух процессов, которые их используют.
+Каждый этап должен заканчиваться работающим сквозным сценарием. Новые абстракции добавляются только при наличии минимум двух процессов, которые их используют.
 
-## 2. Этап A. Стабилизация runtime — завершён в v0.1.3-alpha
-
-Реализовано:
-
-- классификация execution errors;
-- `allow_failure` только для exit code;
-- продолжение DAG после failure и рабочий `all_done`;
-- единый scheduler для root DAG и `loop_group`;
-- timeout всей попытки, включая hooks;
-- thread-safe общий output limit stdout/stderr;
-- fingerprints workflow/config/commands;
-- безопасный `answer`, lock и `resume`;
-- обязательная обработка persistence errors;
-- revisions state/event;
-- сохранение block scalar;
-- единый JSON envelope CLI;
-- контрактные тесты отказов;
-- запрет nested `loop_group` в `v1alpha1`;
-- строгая семантика `until` только для `completed` child node.
-
-Осталось в рамках стабилизации v0.2:
-
-- строгие template variables;
-- `takt cancel`;
-- stale-lock recovery;
-- schema version/attempt/iteration в event.
-
-## 3. Этап B. Adapter protocol contract suite
+## 2. Этап A. Стабилизация текущего контракта
 
 ### Задачи
 
-- добавить fake assistant binary;
-- формализовать request/result envelope;
-- проверить fresh/resume;
-- проверить invalid/malformed result;
-- проверить timeout, cancellation, stdout/stderr и output limit;
-- добавить единый набор contract tests.
+- добавить schema version в события;
+- ввести типизированные ошибки runtime;
+- добавить fingerprint workflow и config в RunState;
+- удалить временную совместимость `HARNESS_*` после миграционного окна;
+- сделать неизвестные шаблонные переменные ошибкой;
+- добавить `takt cancel`;
+- добавить timeout и output limit для process adapter;
+- обновить тесты состояния и resume.
 
 ### Критерии
 
-- process adapter проходит весь fake suite;
-- failure классифицируется одинаково независимо от конкретного adapter;
-- resume rejection не превращается в fresh;
-- session ID сохраняется в NodeState.
+- unit tests покрывают переходы Run и Node;
+- отменённый process завершается;
+- resume обнаруживает изменение workflow/config;
+- старые примеры проходят без ручных изменений либо имеют миграционную заметку.
 
-## 4. Этап C. Первый реальный adapter
+## 3. Этап B. Первый реальный adapter
 
-Рекомендуемый первый вариант: Pi, если он используется в основном сценарии. OpenCode выбирается первым, если его API стабильнее для нужной среды.
+Рекомендуемый первый вариант: Pi, если он используется в основном сценарии. OpenCode выбирается первым, когда его API стабильнее для нужной среды.
 
 ### Задачи
 
@@ -59,17 +34,20 @@
 - добавить capability discovery;
 - поддержать fresh/resume;
 - нормализовать stdout/stderr/session/error;
+- добавить fake-binary integration suite;
 - добавить opt-in smoke test с реальным агентом.
 
 ### Критерии
 
-- command node выполняется реальным агентом;
-- модель узла действительно меняет модель;
+- один command node выполняется реальным агентом;
+- модель узла действительно меняет используемую модель;
 - retry `fresh` создаёт новую сессию;
-- retry `resume` продолжает предыдущую либо возвращает явную ошибку;
-- timeout работает.
+- retry `resume` продолжает предыдущую либо явно сообщает о невозможности;
+- timeout и cancel работают.
 
-## 5. Этап D. Route DSL end-to-end
+## 4. Этап C. Route DSL как основной сквозной тест
+
+### Workflow
 
 ```text
 prepare input
@@ -83,20 +61,20 @@ prepare input
 ### Задачи
 
 - заменить mock на реальный adapter;
-- подключить route-tool;
-- нормализовать diagnostics;
+- подключить существующий route-tool;
+- нормализовать diagnostics в feedback;
 - сохранить route.yaml и validation report как artifacts;
 - добавить eval-набор минимум из 10 заданий;
 - собирать iterations, tokens, duration, validation errors и manual corrections.
 
 ### Критерии
 
-- хотя бы одно задание требует реального исправления;
-- agent изменяет существующий файл;
+- хотя бы одно задание требует реального исправления после ошибки;
+- agent изменяет существующий файл, а не только печатает YAML;
 - итоговый успех определяется валидатором;
-- Run воспроизводится с теми же fingerprints.
+- Run воспроизводится с теми же workflow/config fingerprints.
 
-## 6. Этап E. Проверка универсальности
+## 5. Этап D. Проверка универсальности
 
 ### Go workflow
 
@@ -116,43 +94,58 @@ agent draft
 → final approval
 ```
 
-Оба процесса добавляются без изменения runtime ядра.
+### Критерии
 
-## 7. Этап F. Outputs и iteration history
+- оба процесса добавляются без изменения runtime ядра;
+- общие новые требования оформляются отдельным ADR;
+- предметные инструменты остаются командами, hooks или внешними исполнителями.
 
-- строгий template renderer;
-- structured output с JSON Schema;
-- полная история loop iterations;
-- публичный агрегированный output loop node;
-- capability requirements.
+## 6. Этап E. Уточнение loops и outputs
 
-## 8. Этап G. Подготовка v1beta1
+### Задачи
+
+- изолировать состояния дочерних узлов loop group;
+- добавить агрегированный output loop node;
+- формализовать current/previous iteration;
+- добавить structured output с JSON Schema;
+- ввести `loop_exhausted` как типизированную ошибку.
+
+### Критерии
+
+- повторяющиеся child ID в разных loop groups не конфликтуют;
+- внешние узлы читают только публичный output loop node;
+- malformed structured output приводит к контролируемой ошибке.
+
+## 7. Этап F. Подготовка v1beta1
 
 - собрать изменения семантики по реальным запускам;
+- разделить спецификацию на стабильные документы;
 - добавить мигратор `v1alpha1 → v1beta1`;
 - зафиксировать JSON Schemas;
-- сформировать compatibility matrix adapters;
-- отделить production backlog от core runtime.
+- сформировать compatibility matrix для adapters;
+- определить production backlog отдельно от core runtime.
 
-## 9. Текущий порядок ближайших задач
+## 8. Рекомендуемый порядок следующих задач
 
-1. Fake assistant protocol suite.
-2. Specialized Pi/OpenCode adapter.
-3. Session resume contract.
-4. Route DSL end-to-end.
-5. Go workflow.
-6. Document workflow.
-7. Strict templates и structured outputs.
-8. v1beta1 design.
+Стабилизационный контур typed errors, fingerprints, timeout, output limit и failure semantics закрыт в v0.1.2–v0.1.4-alpha. Следующий порядок:
 
-## 10. Пока не начинать
+1. fake-assistant contract suite;
+2. capability contract и строгая проверка adapter requirements;
+3. реальный Pi или OpenCode adapter;
+4. проверенный fresh/resume;
+5. Route DSL end-to-end;
+6. Go workflow;
+7. Document workflow;
+8. loop isolation и structured outputs;
+9. v1beta1 design.
 
-- parallel DAG;
+## 9. Задачи, которые пока не следует начинать
+
 - Web UI;
-- серверную очередь;
+- серверная очередь;
 - распределённые workers;
 - marketplace;
 - GitHub App;
 - собственные файловые tools;
 - собственный LLM agent loop;
-- untrusted/server scope до threat model и sandbox.
+- универсальный plugin ABI до появления реальных расширений.

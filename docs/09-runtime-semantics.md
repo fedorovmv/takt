@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints и persistence уже реализована в `v0.1.3-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Текущие отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -10,19 +10,19 @@
 
 ### Run
 
-Один запуск workflow с неизменяемыми входами, fingerprints определений и собственной историей событий.
+Один запуск workflow с неизменяемыми исходными входами и собственной историей событий.
 
 ### Node
 
-Единица выполнения с одним типом действия, зависимостями, условием, попытками и hooks.
+Единица выполнения. Узел имеет один тип действия, зависимости, условие, попытки и hooks.
 
 ### Attempt
 
-Один фактический запуск действия узла. Approval, переводящий Run в `waiting`, попытку не расходует.
+Одна попытка выполнения узла. Approval, который переводит Run в `waiting`, не считается завершённой попыткой.
 
 ### Iteration
 
-Один проход `loop_group` с отдельными состояниями дочерних узлов.
+Один проход `loop_group`. Итерация содержит отдельные состояния дочерних узлов.
 
 ## 2. Состояния Run
 
@@ -30,13 +30,22 @@
 running ──approval──> waiting ──answer──> running
    │                     │
    ├──success──────────> completed
-   ├──failure──────────> failed
+   ├──error────────────> failed
    └──cancel───────────> cancelled
 ```
 
-`completed`, `failed` и `cancelled` — terminal-состояния.
+Допустимые переходы:
 
-Run не переходит в `failed` сразу после первого неуспешного узла. Scheduler сначала выполняет доступные ветви, включая `all_done`, затем вычисляет итоговый статус графа.
+| Из | В | Причина |
+|---|---|---|
+| отсутствует | running | `run` |
+| running | waiting | approval требует ввода |
+| waiting | running | корректный `answer` |
+| running | completed | все верхнеуровневые узлы terminal и нет failure |
+| running/waiting | cancelled | `cancel` |
+| running | failed | необработанная ошибка или исчерпан лимит |
+
+`completed`, `failed` и `cancelled` — конечные состояния.
 
 ## 3. Состояния Node
 
@@ -44,41 +53,32 @@ Run не переходит в `failed` сразу после первого н�
 pending → running → completed
     │        │
     │        ├→ waiting → pending
-    │        ├→ pending       retry
-    │        ├→ failed        штатный отрицательный результат
-    │        ├→ errored       ошибка запуска/runtime
-    │        ├→ timed_out
-    │        └→ cancelled
-    ├────────→ skipped
-    └────────→ blocked
+    │        ├→ pending     retry
+    │        └→ failed
+    └────────→ skipped
 ```
 
-Terminal-состояния:
+Допустимые статусы:
 
+- `pending`;
+- `running`;
+- `waiting`;
 - `completed`;
 - `failed`;
-- `errored`;
-- `timed_out`;
-- `cancelled`;
 - `skipped`;
-- `blocked`.
+- `cancelled`.
 
-### Различие failure и error
-
-- `failed` — действие выполнилось и вернуло отрицательный результат: ненулевой exit code, исчерпание цикла или явный `fail` hook;
-- `errored` — действие не удалось корректно выполнить: отсутствующий бинарник, ошибка разрешения адаптера, внутренняя ошибка runtime;
-- `timed_out` — истёк timeout узла;
-- `cancelled` — внешний context был отменён.
+Текущий прототип хранит `waiting` на уровне Run и может не записывать его в NodeState. v0.2 должен хранить оба состояния согласованно.
 
 ## 4. Планирование DAG
 
 Узел готов к запуску, когда:
 
-1. все зависимости terminal;
+1. все зависимости находятся в terminal-состоянии;
 2. `trigger_rule` разрешает запуск;
 3. `when` вычисляется в `true`.
 
-При `when == false` узел становится `skipped`.
+При `when == false` узел переходит в `skipped`.
 
 ### Trigger rules
 
@@ -88,32 +88,44 @@ Terminal-состояния:
 
 #### `all_done`
 
-Запуск после любых terminal-результатов зависимостей.
+Запуск после любого terminal-результата зависимостей.
 
 #### `none_failed_min_one_success`
 
-Запуск, когда среди зависимостей нет failure-like состояний и хотя бы одна зависимость `completed`.
+Запуск, когда среди зависимостей нет `failed` или `cancelled` и хотя бы одна завершилась `completed`.
 
-Если после завершения доступных ветвей узел не может стать runnable, он получает `blocked` с кодом `unresolved_dependencies`.
+## 5. Приоритет настроек агентного узла
 
-## 5. Корневой и дочерний DAG
+Для assistant и model:
 
-Корневой workflow и тело `loop_group` используют один scheduler и одинаковую семантику:
+```text
+node
+→ Markdown command frontmatter
+→ workflow defaults
+→ ошибка разрешения
+```
 
-- `depends_on`;
-- `when`;
-- `trigger_rule`;
-- hooks;
-- attempts;
-- timeout;
-- классификация ошибок;
-- `allow_failure`.
+Для session policy:
 
-Различается только область состояния: после итерации child states копируются в `LoopPrevious` родительского узла и удаляются из активной карты. В `v1alpha1` вложенные `loop_group` запрещены; namespace состояния для произвольной вложенности отложен до отдельной версии контракта.
+```text
+node.session
+→ workflow.defaults.session
+→ fresh
+```
+
+Разрешённые значения v0.2:
+
+- `fresh` — новая агентная сессия;
+- `resume` — продолжение сохранённой сессии;
+- `inherit` — использовать session policy родительского loop/subworkflow.
+
+В текущем прототипе строка session передаётся без полной проверки.
 
 ## 6. Попытки узла
 
-Порядок попытки:
+`attempts.max` включает только фактические запуски действия узла.
+
+Порядок одной попытки:
 
 ```text
 node.started
@@ -128,45 +140,27 @@ node.started
 Решение `retry`:
 
 - сохраняет feedback;
-- сохраняет событие `node.retry`;
+- возвращает узел в `pending`;
 - при `session: fresh` очищает session ID;
-- следующая попытка увеличивает счётчик;
-- остановка на approval уменьшает счётчик обратно и сохраняется отдельным transition.
+- увеличивает счётчик только после следующего фактического запуска.
 
-При исчерпании `attempts.max` узел становится `failed` с кодом `attempts_exhausted`.
+При исчерпании `attempts.max` узел становится `failed`, а Run — `failed`, если ошибка не обработана родительской конструкцией.
 
-## 7. Ошибки и `allow_failure`
+## 7. Ошибки и allow_failure
 
-Классы execution error:
+Результат действия должен разделять:
 
-- `exit`;
-- `start`;
-- `timed_out`;
-- `cancelled`;
-- `protocol`;
-- `internal`.
+- transport/runtime error;
+- process exit code;
+- stdout;
+- stderr;
+- structured output, если доступен.
 
-`allow_failure: true` разрешает только `exit`. Он не скрывает `start`, timeout, cancellation, protocol или internal error.
+`allow_failure: true` разрешает ненулевой exit code как данные. Он не скрывает transport error, например невозможность запустить бинарник или отмену контекста.
 
-Output, exit code, session ID и признак truncation сохраняются даже при неуспешном результате, если они доступны.
+## 8. Hooks
 
-## 8. Timeout и cancellation
-
-`node.timeout` задаётся Go duration и ограничивает всю попытку: `before_node`, действие, `on_failure`, `after_node` и `before_complete`.
-
-При timeout:
-
-- активный process получает cancellation;
-- на Unix завершается process group;
-- Node становится `timed_out`;
-- downstream `all_done` может выполниться;
-- итоговый Run становится `failed`.
-
-При отмене родительского context Node и Run становятся `cancelled`. Команда `takt cancel` остаётся задачей v0.2.
-
-## 9. Hooks
-
-Hooks выполняются последовательно:
+Hooks исполняются последовательно в порядке объявления:
 
 1. глобальные workflow hooks;
 2. локальные node hooks.
@@ -174,95 +168,129 @@ Hooks выполняются последовательно:
 Результат hook:
 
 - exit code 0 — продолжение;
-- ненулевой exit code или transport error — применяется `on_failure`;
-- timeout или cancellation hook немедленно завершают попытку как `timed_out` или `cancelled` и не превращаются в `hook_failed`;
-- ошибка persistence при записи события/состояния немедленно возвращается вызывающему коду.
+- ненулевой exit code — применяется `on_failure`;
+- transport error — считается ошибкой hook.
 
-Решения:
+### Решения
 
-- `continue`;
-- `retry`;
-- `fail`.
+#### `continue`
 
-## 10. Loop group
+Ошибка hook записывается в события, выполнение продолжается.
+
+#### `retry`
+
+Текущая попытка не завершается успешно. Stdout и stderr hook нормализуются и добавляются в feedback.
+
+#### `fail`
+
+Узел завершается ошибкой.
+
+## 9. Loop group
+
+`loop_group` является контейнером дочернего DAG.
 
 Каждая итерация:
 
-1. создаёт свежие child states;
-2. сохраняет `loop.iteration.started`;
-3. выполняет дочерний DAG общим scheduler;
-4. копирует child states в `LoopPrevious`;
-5. сохраняет `loop.iteration.completed`;
-6. вычисляет `until`.
+1. создаёт новые состояния дочерних узлов;
+2. предоставляет результаты предыдущей итерации через `loop.previous`;
+3. выполняет дочерний DAG;
+4. вычисляет `until`;
+5. сохраняет итог итерации в журнале.
 
-`until` вычисляется только для child node со статусом `completed`. `skipped`, `failed`, `errored`, `timed_out`, `cancelled` и `blocked` не удовлетворяют условию независимо от значения `exit_code`.
+При `until == true` loop node завершается `completed`.
 
-При выполнении `until` parent node становится `completed`. При исчерпании лимита parent node получает `failed/exit`.
+При исчерпании `max_iterations` loop node становится `failed` с кодом `loop_exhausted`. Однако timeout или cancellation родительской попытки имеют приоритет над `loop_exhausted`: родительский loop node получает `timed_out` или `cancelled`, а исходная классификация сохраняется на уровне Run.
 
-Approval и вложенный `loop_group` внутри `loop_group` не поддерживаются в `v1alpha1`.
+Область имён дочерних узлов локальна loop group. Во внешнем DAG доступен агрегированный output loop node. Текущий прототип частично хранит дочерние состояния в общей карте; это должно быть исправлено до стабилизации схемы.
 
-## 11. Approval и безопасное продолжение
+Approval внутри `loop_group` не входит в v0.2 и должен отклоняться валидатором.
+
+## 10. Approval
 
 При первом выполнении approval:
 
-1. Node и Run становятся `waiting`;
-2. записывается `approval.requested`;
-3. rollback счётчика попытки сохраняется как `node.suspended`;
-4. CLI возвращает успешный JSON с состоянием waiting.
+1. узел формирует message;
+2. Run и Node переходят в `waiting`;
+3. `state.json` сохраняется;
+4. записывается `approval.requested`;
+5. CLI возвращает JSON и код успеха.
 
-`takt answer`:
+При `answer`:
 
-1. получает lock Run;
-2. загружает state;
-3. загружает и валидирует workflow/config/commands;
-4. сравнивает fingerprints;
-5. проверяет ожидаемый approval node;
-6. атомарно сохраняет ответ и `approval.answered`;
-7. продолжает Run.
+1. проверяются Run ID и Node ID;
+2. ответ сохраняется;
+3. записывается `approval.answered`;
+4. узел возвращается в `pending`;
+5. Run продолжается с текущего workflow.
 
-При изменении определений ответ не потребляется. `takt resume` позволяет повторить продолжение после временной ошибки.
+Approval не должен повторно спрашивать ввод после сохранённого ответа.
 
-## 12. Persistence
+## 11. Отмена и тайм-ауты
 
-Каждое изменение runtime проходит через `Store.Commit`:
+Целевое поведение v0.2:
 
-- новому state и event присваивается одна revision;
-- оба файла сначала записываются во временные файлы и синхронизируются;
-- event log заменяется до state;
-- `Load` сравнивает последние revision;
-- рассогласование возвращает `store_inconsistent`.
+- Run принимает cancellation через CLI/API;
+- активный дочерний процесс получает отмену context;
+- после grace period процесс принудительно завершается;
+- Run и активный Node переходят в `cancelled`;
+- отмена записывается в event log;
+- повторный cancel конечного Run идемпотентен.
 
-Это не полная транзакционная БД, но повреждение не скрывается.
+## 12. Шаблоны и данные
 
-## 13. Fingerprints
+Шаблон не должен молча заменять неизвестную переменную пустой строкой. Целевое поведение — ошибка рендеринга, кроме явно необязательных значений.
 
-Run хранит SHA-256:
+Обязательные пространства имён:
 
-- workflow;
-- config;
-- содержимого разрешённых Markdown-команд.
+- `input`;
+- `feedback`;
+- `nodes.<id>`;
+- `loop.previous.<id>`;
+- `approvals.<id>`;
+- `artifacts`.
 
-`answer` и `resume` блокируются при изменении любого определения.
+## 13. События
 
-## 14. YAML
+Минимальный набор v0.2:
 
-Текущий loader поддерживает документированный subset, а не полную YAML 1.2. Block scalar сохраняет пустые строки и поддерживает chomp modes. Полная замена на внешнюю YAML-библиотеку не является обязательной для v0.2, пока subset явно ограничен и покрыт тестами.
+```text
+run.started
+run.waiting
+run.completed
+run.failed
+run.cancelled
+node.ready
+node.started
+node.retry
+node.completed
+node.failed
+node.skipped
+hook.started
+hook.completed
+hook.failed
+loop.iteration.started
+loop.iteration.completed
+approval.requested
+approval.answered
+assistant.started
+assistant.completed
+assistant.failed
+artifact.created
+```
 
-## 15. JSON CLI
+Каждое событие содержит:
 
-Машинный режим возвращает один документ:
+- timestamp;
+- schema version;
+- Run ID;
+- Node ID при наличии;
+- attempt и iteration при наличии;
+- типизированные data;
+- correlation ID для внешнего вызова.
 
-- успех: `{"ok":true,"result":...}`;
-- ошибка: `{"ok":false,"error":...}`.
+## 14. Совместимость
 
-Flag parser не печатает дополнительный текст в stderr.
-
-## 16. Оставшаяся семантика v0.2
-
-- строгие неизвестные template variables;
-- `takt cancel`;
-- normalized assistant protocol;
-- session resume без тихого fallback;
-- capabilities;
-- structured outputs;
-- schema version, attempt, iteration и correlation ID как отдельные поля event.
+- workflow и config сохраняют `apiVersion: takt/v1alpha1` до готовности мигратора;
+- новые необязательные поля разрешены в рамках alpha;
+- изменение существующей семантики требует записи в `ARCHITECTURE_DECISIONS.md`;
+- Run хранит fingerprint workflow и config, чтобы resume не использовал незаметно изменённые файлы.

@@ -126,8 +126,12 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			kind := execution.KindCancelled
+			if errors.Is(err, context.DeadlineExceeded) {
+				kind = execution.KindTimedOut
+			}
 			state.Status = store.RunCancelled
-			state.ErrorCode = string(execution.KindOf(err))
+			state.ErrorCode = string(kind)
 			state.Error = err.Error()
 			state.CurrentNode = ""
 			if commitErr := r.commit(state, "run.cancelled", "", map[string]any{"error": err.Error()}); commitErr != nil {
@@ -284,6 +288,15 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 				return err
 			}
 			return ErrWaiting
+		}
+		// The node timeout/cancellation covers the whole attempt, including
+		// container nodes such as loop_group. A child graph may finish by
+		// returning a derived error (for example loop exhaustion) after the
+		// parent attempt context has already expired. Preserve the context
+		// classification before allow_failure or generic error handling can
+		// turn it into an ordinary exit failure.
+		if contextErr := attemptContextError(attemptCtx, "node attempt"); contextErr != nil {
+			execErr = contextErr
 		}
 		ns.Output, ns.ExitCode, ns.SessionID, ns.OutputTruncated = result.Output, result.ExitCode, result.SessionID, result.Truncated
 		if execErr != nil && node.AllowFailure && execution.IsExit(execErr) {

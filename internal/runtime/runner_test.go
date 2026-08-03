@@ -344,3 +344,75 @@ func TestUntilDoesNotAcceptFailedNode(t *testing.T) {
 		t.Fatalf("unexpected until node state: %+v", check)
 	}
 }
+
+func TestParentLoopGroupTimeoutPreservesClassification(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{
+		APIVersion: "takt/v1alpha1",
+		Kind:       "Workflow",
+		Metadata:   spec.Metadata{Name: "parent-loop-timeout"},
+		Nodes: []spec.Node{{
+			ID:      "loop",
+			Timeout: "40ms",
+			LoopGroup: &spec.LoopGroupSpec{
+				MaxIterations: 2,
+				Nodes: []spec.Node{{
+					ID:   "check",
+					Bash: "sleep 1",
+				}},
+				Until: spec.UntilSpec{Node: "check", ExitCode: &zero},
+			},
+		}},
+	}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected parent loop timeout")
+	}
+	parent := state.Nodes["loop"]
+	if parent.Status != store.NodeTimedOut || parent.ErrorCode != string(execution.KindTimedOut) {
+		t.Fatalf("parent loop lost timeout classification: %+v", parent)
+	}
+	if state.Status != store.RunFailed || state.ErrorCode != string(execution.KindTimedOut) {
+		t.Fatalf("unexpected run state: status=%s code=%s error=%s", state.Status, state.ErrorCode, state.Error)
+	}
+}
+
+func TestParentLoopGroupCancellationPreservesClassification(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{
+		APIVersion: "takt/v1alpha1",
+		Kind:       "Workflow",
+		Metadata:   spec.Metadata{Name: "parent-loop-cancel"},
+		Nodes: []spec.Node{{
+			ID: "loop",
+			LoopGroup: &spec.LoopGroupSpec{
+				MaxIterations: 2,
+				Nodes: []spec.Node{{
+					ID:   "check",
+					Bash: "sleep 1",
+				}},
+				Until: spec.UntilSpec{Node: "check", ExitCode: &zero},
+			},
+		}},
+	}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(40 * time.Millisecond)
+		cancel()
+	}()
+	state, err := r.Start(ctx, "")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
+	}
+	parent := state.Nodes["loop"]
+	if parent.Status != store.NodeCancelled || parent.ErrorCode != string(execution.KindCancelled) {
+		t.Fatalf("parent loop lost cancellation classification: %+v", parent)
+	}
+	if state.Status != store.RunCancelled || state.ErrorCode != string(execution.KindCancelled) {
+		t.Fatalf("unexpected run state: status=%s code=%s error=%s", state.Status, state.ErrorCode, state.Error)
+	}
+}

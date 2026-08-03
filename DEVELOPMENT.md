@@ -4,67 +4,67 @@
 
 ```bash
 go test ./...
-go test -race ./...
 go vet ./...
 go build -o bin/takt ./cmd/takt
+./bin/takt version
+```
+
+Проверка примеров:
+
+```bash
 ./scripts/verify.sh
 ```
 
 ## Что прочитать перед изменением ядра
 
 1. `docs/12-document-map.md`;
-2. `docs/05-implementation-status.md`;
-3. `docs/16-audit-remediation-v0.1.2.md`;
+2. `docs/08-target-v0.2.md`;
+3. `docs/05-implementation-status.md`;
 4. `docs/09-runtime-semantics.md`;
 5. `ARCHITECTURE_DECISIONS.md`.
 
-## С чего продолжать реализацию
+## С чего начать реализацию
 
-Текущая рекомендуемая ветка работ:
+Первая рекомендуемая ветка работ:
 
 ```text
-fake assistant protocol suite
-→ specialized Pi/OpenCode adapter
-→ session resume contract
+typed runtime errors
+→ timeout/cancel process adapter
+→ capability contract
+→ Pi или OpenCode adapter
 → Route DSL end-to-end
-→ Go и document workflows
 ```
 
-Подробная декомпозиция находится в `docs/11-implementation-plan.md` и `docs/14-backlog-v0.2.md`.
+Подробная декомпозиция находится в `docs/11-implementation-plan.md`.
 
 ## Правила изменения
 
 - сохранять границу: Takt оркестрирует внешних агентов, но не реализует собственного coding-agent loop;
-- считать текущий scope локальным и доверенным;
-- добавлять общую абстракцию после появления минимум двух сценариев;
-- сопровождать изменение семантики contract test и обновлением `docs/09-runtime-semantics.md`;
+- добавлять общую абстракцию после появления минимум двух сценариев использования;
+- сопровождать изменение семантики тестом и обновлением `docs/09-runtime-semantics.md`;
 - сопровождать изменение YAML-контракта обновлением `docs/03-specification.md` и `schemas/*.json`;
 - оформлять изменение архитектурной границы новым ADR;
-- не записывать секреты в `state.json`, `events.jsonl` и JSON CLI;
-- не игнорировать ошибки persistence;
-- не использовать `allow_failure` для transport/runtime errors.
+- не записывать секреты в `state.json` и `events.jsonl`.
 
 ## Тесты
 
 ```bash
 go test ./...
+go test ./internal/runtime -run TestName -v
 go test -race ./...
 go vet ./...
-go build ./cmd/takt
-./scripts/verify.sh
 ```
 
 Реальные интеграционные тесты Pi/OpenCode должны быть opt-in и пропускаться в обычном CI при отсутствии бинарника или credentials.
 
-## Структура задачи
+## Структура задач
 
-Хорошая задача содержит:
+Хорошая задача на доработку должна содержать:
 
 - изменяемый контракт;
-- ожидаемые переходы Run и Node;
+- ожидаемые переходы состояния;
 - события;
-- классы ошибок;
+- ошибки;
 - критерии приёмки;
-- unit/contract tests;
-- сквозной пример;
-- обновление спецификации и status.
+- unit tests;
+- сквозной пример.
