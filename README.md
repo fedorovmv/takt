@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.6-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.7-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -35,7 +35,8 @@
 - JSONL-журнал событий и файловые артефакты;
 - адаптеры `mock` и универсальный `process`;
 - JSON-протокол `takt-assistant/v1alpha1` для внешних process assistants;
-- fake-assistant contract suite: success, exit, start, timeout, cancel, concurrent output, malformed result, fresh и resume;
+- fake-assistant contract suite: success, exit, start, timeout, cancel, concurrent output, malformed/strict protocol cases, fresh и resume;
+- полное совпадение OS exit code и envelope `exit_code`, включая ноль;
 - единый JSON envelope CLI для успеха и ошибок;
 - строгий YAML subset с сохранением пустых строк в block scalar;
 - только стандартная библиотека Go.
@@ -73,7 +74,7 @@ make check
 Семантика runtime и process-протокол после аудита стабилизированы. Следующий вертикальный этап:
 
 1. специализированный адаптер Pi либо OpenCode поверх `takt-assistant/v1alpha1`;
-2. opt-in smoke test с реальным бинарником;
+2. прохождение adapter contract suite и opt-in smoke test с реальным бинарником;
 3. Route DSL end-to-end: агент → валидатор → feedback → повтор → approval.
 
 Подробности:
@@ -84,6 +85,7 @@ make check
 - [Классификация parent loop v0.1.4](docs/18-audit-remediation-v0.1.4.md)
 - [Восстановление документации v0.1.5](docs/19-document-recovery-v0.1.5.md)
 - [Fake-assistant contract suite v0.1.6](docs/20-fake-assistant-contract-v0.1.6.md)
+- [Усиление protocol contract v0.1.7](docs/21-protocol-hardening-v0.1.7.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -108,6 +110,7 @@ make check
 - [Классификация parent loop v0.1.4](docs/18-audit-remediation-v0.1.4.md)
 - [Восстановление документации v0.1.5](docs/19-document-recovery-v0.1.5.md)
 - [Fake-assistant contract suite v0.1.6](docs/20-fake-assistant-contract-v0.1.6.md)
+- [Усиление protocol contract v0.1.7](docs/21-protocol-hardening-v0.1.7.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

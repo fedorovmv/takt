@@ -154,6 +154,17 @@ func decodeProtocolResult(src []byte, requestedSession ProtocolSessionRequest) (
 	if result.Status == "failed" && *result.ExitCode == 0 {
 		return ProtocolResult{}, fmt.Errorf("failed assistant result cannot have exit_code 0")
 	}
+	if result.Usage != nil {
+		if result.Usage.InputTokens < 0 {
+			return ProtocolResult{}, fmt.Errorf("assistant result usage.input_tokens cannot be negative")
+		}
+		if result.Usage.OutputTokens < 0 {
+			return ProtocolResult{}, fmt.Errorf("assistant result usage.output_tokens cannot be negative")
+		}
+		if result.Usage.Cost < 0 {
+			return ProtocolResult{}, fmt.Errorf("assistant result usage.cost cannot be negative")
+		}
+	}
 	if requestedSession.Mode == "resume" {
 		if result.Session == nil || !result.Session.Resumed {
 			return ProtocolResult{}, fmt.Errorf("assistant did not resume requested session %q", requestedSession.ID)

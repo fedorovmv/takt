@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +71,7 @@ func protocolRequest(workspace string) Request {
 		ModelName:   "large",
 		Model:       spec.ModelSpec{Provider: "openai-compatible", ID: "qwen-test", Params: map[string]any{"reasoning": "high"}},
 		SessionMode: "fresh",
+		NativeHooks: json.RawMessage(`{"post_tool_use":[{"matcher":"Write"}]}`),
 		Metadata:    map[string]string{"suite": "contract"},
 	}
 }
@@ -93,6 +95,18 @@ func TestFakeAssistantContract(t *testing.T) {
 		}
 		if structured["run_id"] != "run-contract" || structured["node_id"] != "implement" || structured["attempt"] != float64(2) || structured["model_id"] != "qwen-test" {
 			t.Fatalf("request fields were not transported: %#v", structured)
+		}
+		metadata, ok := structured["metadata"].(map[string]any)
+		if !ok || metadata["suite"] != "contract" {
+			t.Fatalf("metadata was not transported: %#v", structured["metadata"])
+		}
+		hooks, ok := structured["native_hooks"].(map[string]any)
+		if !ok {
+			t.Fatalf("native_hooks were not transported: %#v", structured["native_hooks"])
+		}
+		entries, ok := hooks["post_tool_use"].([]any)
+		if !ok || len(entries) != 1 {
+			t.Fatalf("unexpected native_hooks: %#v", hooks)
 		}
 	})
 
@@ -154,6 +168,34 @@ func TestFakeAssistantContract(t *testing.T) {
 		}
 	})
 
+	for _, tc := range []struct {
+		name     string
+		caseName string
+	}{
+		{name: "bad protocol version", caseName: "bad-version"},
+		{name: "bad envelope type", caseName: "bad-type"},
+		{name: "unknown result field", caseName: "unknown-field"},
+		{name: "unknown status", caseName: "unknown-status"},
+		{name: "missing exit code", caseName: "missing-exit-code"},
+		{name: "null exit code", caseName: "null-exit-code"},
+		{name: "completed with nonzero exit", caseName: "completed-nonzero"},
+		{name: "failed with zero exit", caseName: "failed-zero"},
+		{name: "two JSON results", caseName: "two-results"},
+		{name: "OS zero envelope nonzero mismatch", caseName: "os-envelope-mismatch-zero"},
+		{name: "OS nonzero envelope mismatch", caseName: "os-envelope-mismatch-nonzero"},
+		{name: "negative input tokens", caseName: "negative-input-tokens"},
+		{name: "negative output tokens", caseName: "negative-output-tokens"},
+		{name: "negative cost", caseName: "negative-cost"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := protocolProcess(tc.caseName)
+			_, err := p.Run(context.Background(), protocolRequest(t.TempDir()))
+			if execution.KindOf(err) != execution.KindProtocol {
+				t.Fatalf("unexpected kind for %s: %s (%v)", tc.caseName, execution.KindOf(err), err)
+			}
+		})
+	}
+
 	t.Run("fresh", func(t *testing.T) {
 		p := protocolProcess("fresh")
 		req := protocolRequest(t.TempDir())
@@ -201,6 +243,27 @@ func TestFakeAssistantContract(t *testing.T) {
 			t.Fatalf("unexpected limit result: kind=%s result=%+v err=%v", execution.KindOf(err), result, err)
 		}
 	})
+}
+
+func TestFakeAssistantRejectsMultipleRequestValues(t *testing.T) {
+	req := buildProtocolRequest(context.Background(), protocolRequest(t.TempDir()), spec.AssistantSpec{}, nil, time.Now())
+	encoded, err := encodeProtocolRequest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(fakeAssistantBinary, "--case", "success")
+	cmd.Stdin = strings.NewReader(string(encoded) + string(encoded))
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("expected fake assistant to reject multiple request values")
+	}
+	ee, ok := err.(*exec.ExitError)
+	if !ok || ee.ExitCode() != 64 {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(output), "multiple JSON values") {
+		t.Fatalf("unexpected output: %q", output)
+	}
 }
 
 func TestProtocolRequestEnvironmentAndLimits(t *testing.T) {

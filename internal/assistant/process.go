@@ -96,11 +96,14 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 		result.ExitCode = -1
 		return result, &execution.Error{Kind: kind, ExitCode: -1, Op: "assistant process", Err: ctx.Err()}
 	}
+	osExitCode := 0
 	if err != nil {
-		if _, ok := err.(*exec.ExitError); !ok {
+		ee, ok := err.(*exec.ExitError)
+		if !ok {
 			result.ExitCode = -1
 			return result, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "assistant process", Err: err}
 		}
+		osExitCode = ee.ExitCode()
 	}
 
 	if p.spec.Protocol == ProtocolV1Alpha1 {
@@ -122,14 +125,11 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 			result.SessionID = parsed.Session.ID
 			result.Resumed = parsed.Session.Resumed
 		}
-		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() != result.ExitCode {
-			return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "assistant process", Err: fmt.Errorf("process exit code %d differs from result exit_code %d", ee.ExitCode(), result.ExitCode)}
+		if osExitCode != result.ExitCode {
+			return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "assistant process", Err: fmt.Errorf("process exit code %d differs from result exit_code %d", osExitCode, result.ExitCode)}
 		}
 		if result.ExitCode != 0 {
 			return result, &execution.Error{Kind: execution.KindExit, ExitCode: result.ExitCode, Op: "assistant process", Err: err}
-		}
-		if err != nil {
-			return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "assistant process", Err: fmt.Errorf("process failed despite successful protocol result: %w", err)}
 		}
 		return result, nil
 	}

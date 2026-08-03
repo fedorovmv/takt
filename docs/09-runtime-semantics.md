@@ -150,6 +150,8 @@ node.started
 
 Output, exit code, session ID и признак truncation сохраняются даже при неуспешном результате, если они доступны.
 
+Для process assistant с `takt-assistant/v1alpha1` OS exit code и envelope `exit_code` обязаны совпадать всегда. Расхождение классифицируется как `protocol` до применения `allow_failure`. Runtime также отклоняет дополнительный JSON, неизвестные поля, несовместимые status/exit, отрицательный usage и неподтверждённый resume.
+
 ## 8. Timeout и cancellation
 
 `node.timeout` задаётся Go duration и ограничивает всю попытку: `before_node`, действие, `on_failure`, `after_node` и `before_complete`.

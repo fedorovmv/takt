@@ -69,3 +69,20 @@ assistants:
 		t.Fatal("expected unknown protocol error")
 	}
 }
+
+func TestLoadRejectsProtocolOnMockAssistant(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `apiVersion: takt/v1alpha1
+kind: Config
+assistants:
+  fake:
+    type: mock
+    protocol: takt-assistant/v1alpha1
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected protocol on mock assistant to be rejected")
+	}
+}

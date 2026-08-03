@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.7-alpha
+
+- OS exit code и `result.exit_code` в `takt-assistant/v1alpha1` обязаны совпадать всегда, включая ноль;
+- добавлены отрицательные contract cases для версии, type, неизвестных полей/status, отсутствующего/null `exit_code`, несовместимых status/exit, двух JSON-значений и OS/envelope mismatch;
+- decoder проверяет неотрицательные `usage.input_tokens`, `usage.output_tokens` и `usage.cost`;
+- fake assistant отклоняет второй JSON request envelope;
+- contract suite проверяет передачу `metadata` и `native_hooks`;
+- `config.schema.json` запрещает `protocol` для `type: mock`, как runtime validator;
+- добавлен отчёт `docs/21-protocol-hardening-v0.1.7.md`.
+
 ## v0.1.6-alpha
 
 - реализован JSON-протокол `takt-assistant/v1alpha1` для process assistant;

@@ -57,6 +57,62 @@ func main() {
 		wg.Wait()
 	case "malformed-result":
 		_, _ = io.WriteString(os.Stdout, `{"protocol_version":`)
+	case "bad-version":
+		writeMutatedResult(successResult(request, sessionID(request), false, 0), func(v map[string]any) {
+			v["protocol_version"] = "takt-assistant/v999"
+		})
+	case "bad-type":
+		writeMutatedResult(successResult(request, sessionID(request), false, 0), func(v map[string]any) {
+			v["type"] = "request"
+		})
+	case "unknown-field":
+		writeMutatedResult(successResult(request, sessionID(request), false, 0), func(v map[string]any) {
+			v["unexpected"] = true
+		})
+	case "unknown-status":
+		writeMutatedResult(successResult(request, sessionID(request), false, 0), func(v map[string]any) {
+			v["status"] = "partial"
+		})
+	case "missing-exit-code":
+		writeMutatedResult(successResult(request, sessionID(request), false, 0), func(v map[string]any) {
+			delete(v, "exit_code")
+		})
+	case "null-exit-code":
+		writeMutatedResult(successResult(request, sessionID(request), false, 0), func(v map[string]any) {
+			v["exit_code"] = nil
+		})
+	case "completed-nonzero":
+		writeMutatedResult(successResult(request, sessionID(request), false, 0), func(v map[string]any) {
+			v["exit_code"] = 7
+		})
+	case "failed-zero":
+		writeMutatedResult(successResult(request, sessionID(request), false, 0), func(v map[string]any) {
+			v["status"] = "failed"
+		})
+	case "two-results":
+		writeResult(successResult(request, sessionID(request), false, 0))
+		writeResult(successResult(request, sessionID(request), false, 0))
+	case "os-envelope-mismatch-zero":
+		result := successResult(request, sessionID(request), false, 7)
+		result.Status = "failed"
+		writeResult(result)
+	case "os-envelope-mismatch-nonzero":
+		result := successResult(request, sessionID(request), false, 7)
+		result.Status = "failed"
+		writeResult(result)
+		os.Exit(8)
+	case "negative-input-tokens":
+		result := successResult(request, sessionID(request), false, 0)
+		result.Usage.InputTokens = -1
+		writeResult(result)
+	case "negative-output-tokens":
+		result := successResult(request, sessionID(request), false, 0)
+		result.Usage.OutputTokens = -1
+		writeResult(result)
+	case "negative-cost":
+		result := successResult(request, sessionID(request), false, 0)
+		result.Usage.Cost = -0.01
+		writeResult(result)
 	case "fresh":
 		if request.Session.Mode != "fresh" || request.Session.ID != "" {
 			writeProtocolFailure(65, "expected fresh session without id")
@@ -95,6 +151,13 @@ func readRequest(r io.Reader) (assistant.ProtocolRequest, error) {
 	if err := dec.Decode(&request); err != nil {
 		return assistant.ProtocolRequest{}, fmt.Errorf("decode request: %w", err)
 	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return assistant.ProtocolRequest{}, fmt.Errorf("decode request: multiple JSON values")
+		}
+		return assistant.ProtocolRequest{}, fmt.Errorf("decode request trailing data: %w", err)
+	}
 	if request.ProtocolVersion != assistant.ProtocolV1Alpha1 || request.Type != "request" {
 		return assistant.ProtocolRequest{}, fmt.Errorf("unsupported request envelope")
 	}
@@ -106,6 +169,10 @@ func successResult(request assistant.ProtocolRequest, id string, resumed bool, c
 	if code != 0 {
 		status = "failed"
 	}
+	var nativeHooks any
+	if len(request.NativeHooks) > 0 {
+		_ = json.Unmarshal(request.NativeHooks, &nativeHooks)
+	}
 	structured, _ := json.Marshal(map[string]any{
 		"run_id":           request.RunID,
 		"node_id":          request.NodeID,
@@ -116,6 +183,8 @@ func successResult(request assistant.ProtocolRequest, id string, resumed bool, c
 		"session_mode":     request.Session.Mode,
 		"session_id":       request.Session.ID,
 		"environment":      request.Environment,
+		"metadata":         request.Metadata,
+		"native_hooks":     nativeHooks,
 		"timeout_ms":       request.Limits.TimeoutMS,
 		"max_output_bytes": request.Limits.MaxOutputBytes,
 	})
@@ -141,6 +210,21 @@ func sessionID(request assistant.ProtocolRequest) string {
 
 func writeResult(result assistant.ProtocolResult) {
 	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+		panic(err)
+	}
+}
+
+func writeMutatedResult(result assistant.ProtocolResult, mutate func(map[string]any)) {
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		panic(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(encoded, &value); err != nil {
+		panic(err)
+	}
+	mutate(value)
+	if err := json.NewEncoder(os.Stdout).Encode(value); err != nil {
 		panic(err)
 	}
 }

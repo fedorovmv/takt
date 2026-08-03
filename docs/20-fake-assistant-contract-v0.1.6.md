@@ -33,6 +33,11 @@ protocol: takt-assistant/v1alpha1
 - `cancel`;
 - `concurrent-output`;
 - `malformed-result`;
+- invalid version/type/status/unknown fields;
+- missing/null/incompatible `exit_code`;
+- multiple request/result JSON values;
+- OS/envelope exit mismatch;
+- negative usage;
 - `fresh`;
 - `resume`;
 - `resume-failed`;
@@ -54,7 +59,8 @@ Suite также входит в `scripts/verify.sh`.
 
 ## Зафиксированная семантика
 
-- ненулевой `exit_code` остаётся `exit`;
+- OS exit code и envelope `exit_code` обязаны совпадать;
+- согласованный ненулевой `exit_code` остаётся `exit`;
 - start, timeout и cancel не преобразуются в exit;
 - malformed, truncated или несовместимый JSON — `protocol`;
 - запрос resume требует `resumed: true` и совпадающий Session ID;
@@ -64,4 +70,4 @@ Suite также входит в `scripts/verify.sh`.
 
 ## Следующий этап
 
-Specialized Pi или OpenCode adapter должен преобразовать собственный API/CLI в тот же контракт и пройти эквивалентный набор тестов. Реальные smoke tests остаются opt-in.
+В `v0.1.7-alpha` suite дополнен строгими отрицательными cases. Specialized Pi или OpenCode adapter должен преобразовать собственный API/CLI в тот же контракт и пройти эквивалентный набор тестов. Реальные smoke tests остаются opt-in.

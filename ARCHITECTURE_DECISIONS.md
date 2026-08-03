@@ -72,3 +72,8 @@ State и event одного перехода получают одинакову
 ## ADR-018. Process assistant может использовать строгий JSON-протокол
 
 `protocol: takt-assistant/v1alpha1` переводит универсальный process adapter из текстового режима в строгий request/result envelope. Prompt, модель, Run/Node/Attempt, session и limits передаются через stdin JSON; stdout содержит ровно один result JSON. Malformed/truncated result и неуспешный resume являются protocol error. Текстовый process mode сохраняется для совместимости.
+
+
+## ADR-019. OS exit code и protocol envelope обязаны совпадать
+
+В `takt-assistant/v1alpha1` OS exit code и `result.exit_code` описывают один результат и обязаны совпадать всегда, включая ноль. При расхождении Takt возвращает `protocol`, а не выбирает одну сторону как авторитетную. Это предотвращает скрытие transport failure envelope-ом и ложное объявление failure при успешном OS-завершении.

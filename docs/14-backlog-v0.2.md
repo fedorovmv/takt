@@ -1,6 +1,6 @@
 # Backlog Takt v0.2
 
-Статус обновлён после реализации fake-assistant protocol suite в `v0.1.6-alpha`.
+Статус обновлён после усиления fake-assistant protocol suite в `v0.1.7-alpha`.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 

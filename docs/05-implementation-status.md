@@ -1,70 +1,79 @@
 # Состояние реализации
 
-Статус: `v0.1.6-alpha`.
-
 ## Реализовано
 
-- YAML/JSON loader со строгой проверкой неизвестных полей;
-- документированный YAML subset с корректными `|`, `|-`, `|+`, `>`, `>-`, `>+` и пустыми строками;
-- статическая проверка ID, ссылок, timeout и циклов DAG;
-- модельный каталог;
-- `mock` и `process` assistants;
-- реализованный JSON-протокол `takt-assistant/v1alpha1` для process assistant;
-- fake assistant binary и contract suite для success/exit/start/timeout/cancel/concurrent output/malformed/fresh/resume;
-- Markdown commands;
-- узлы `command`, `prompt`, `bash`, `approval`, `loop_group`;
-- `when` и `trigger_rule` в корневом и дочернем DAG;
-- продолжение DAG после failed/errored node для выполнения `all_done`;
-- разделение `failed`, `errored`, `timed_out`, `cancelled`, `blocked`;
-- `allow_failure` только для штатного ненулевого exit code;
-- hooks и retry с feedback;
-- timeout всей попытки узла, включая portable hooks;
-- сохранение `timed_out`/`cancelled` на родительском `loop_group`;
-- общий thread-safe output limit stdout/stderr process assistant;
-- завершение process group при cancellation на Unix;
+### Форматы и загрузка
+
+- workflow/config в YAML и JSON;
+- строгий decode неизвестных полей;
+- документированный YAML subset с block scalar `|`, `|-`, `|+`, `>`, `>-`, `>+`;
+- JSON Schemas для config, workflow, state, events, Markdown-команд и assistant protocol;
+- проверка ссылок, ID и циклов DAG;
+- явный запрет вложенных `loop_group` в `v1alpha1`.
+
+### Runtime
+
+- последовательный DAG с `depends_on`, `when` и `trigger_rule`;
+- общая scheduler-семантика root DAG и дочернего DAG `loop_group`;
+- `command`, `prompt`, `bash`, `approval`, `loop_group`;
+- portable hooks и retry с feedback;
+- `all_done` после failure-like состояния зависимости;
+- разделение `exit`, `start`, `timed_out`, `cancelled`, `protocol`, `internal`;
+- `allow_failure`, разрешающий только ненулевой exit code;
+- timeout всей попытки, включая portable hooks;
+- сохранение timeout/cancel на уровне родительского `loop_group`;
+- `until` только по child node со статусом `completed`;
 - pause/resume approval;
-- fingerprints workflow, config и разрешённых Markdown-команд;
-- блокировка Run для `answer` и `resume`;
-- ревизии `state.json` и `events.jsonl` с обнаружением рассогласования;
-- обязательная обработка ошибок persistence;
-- единый JSON envelope CLI;
-- CLI `validate`, `run`, `answer`, `resume`, `status`, `command run`;
-- JSON Schemas текущего `v1alpha1`;
-- unit-, race-, vet-, build- и сквозные проверки.
+- fingerprints workflow/config/commands;
+- блокировка Run и revision consistency state/events;
+- JSONL-журнал событий и файловые артефакты.
+
+### Assistants и protocol
+
+- `mock` и универсальный `process` assistant;
+- текстовый process mode;
+- строгий JSON process mode `takt-assistant/v1alpha1`;
+- общий race-safe лимит stdout/stderr;
+- timeout, cancellation и завершение process group на Unix;
+- строгая проверка одного request/result envelope;
+- полное совпадение OS exit code и envelope `exit_code`;
+- проверка version/type/status, usage, session resume и неизвестных полей;
+- fake-assistant binary и отрицательный contract suite;
+- сквозной `fresh → retry → resume` через runtime.
+
+### CLI
+
+- `validate`, `run`, `answer`, `resume`, `status`, `command run`;
+- единый JSON success/error envelope;
+- единая область поиска проектных и пользовательских Markdown-команд.
 
 ## Осознанно упрощено
 
-- последовательное выполнение готовых узлов DAG;
-- локальное файловое состояние;
-- ограниченный язык выражений;
-- собственный документированный YAML subset вместо полной YAML 1.2;
-- approval и вложенный `loop_group` внутри `loop_group` запрещены;
-- `until` требует статус дочернего узла `completed`;
-- отсутствуют server, Web UI, MCP и worktree orchestration.
+- готовые DAG-узлы выполняются последовательно;
+- состояние хранится локально в файлах;
+- язык выражений ограничен;
+- nested loops запрещены вместо path-based namespace;
+- process protocol не передаёт потоковые tool events;
+- native hooks передаются adapter, но не исполняются ядром.
 
-## Граница безопасности
+## Текущая граница безопасности
 
-Текущая версия рассчитана на локального доверенного пользователя. До server/untrusted scope нужны:
+Текущая версия — локальный однопользовательский trusted runtime. Workflow, config, Markdown-команды, бинарники assistants и workspace считаются доверенными.
 
-- sandbox процессов;
-- политика допустимых путей;
-- ограничения файловой системы и сети;
-- управление секретами и redaction;
-- более сильная межпроцессная блокировка и recovery stale lock;
-- аутентификация и авторизация.
+Для server/untrusted scope нужны sandbox, контроль путей и сети, политика секретов, усиленные блокировки и отдельная threat model.
 
-## Основные незакрытые задачи v0.2
+## Не реализовано
 
-- специализированный Pi или OpenCode adapter;
-- capability discovery специализированного adapter;
-- opt-in smoke tests с реальным агентом;
-- строгий template renderer;
-- команда `takt cancel`;
-- capability negotiation;
-- structured outputs;
-- Route DSL end-to-end на реальной модели;
-- eval-набор для Route DSL, Go и документов.
+- специализированный Pi adapter;
+- специализированный OpenCode adapter;
+- реальный Route DSL end-to-end;
+- capability negotiation по фактическим возможностям adapter;
+- MCP-интерфейс Takt;
+- параллельный scheduler;
+- server/Web UI;
+- path-based state namespace для вложенных циклов;
+- миграции стабильной схемы.
 
-## Следующий практический этап
+## Ближайший целевой срез
 
-Fake assistant contract suite завершён. Следующий этап — специализированный Pi либо OpenCode adapter, который обязан пройти тот же набор контрактных тестов, затем Route DSL workflow переводится с `mock` на реальный adapter.
+Следующий этап — специализированный Pi либо OpenCode adapter поверх `takt-assistant/v1alpha1`. Он должен пройти тот же contract suite, после чего выполняется Route DSL end-to-end: агент → валидатор → feedback → retry/resume → approval.

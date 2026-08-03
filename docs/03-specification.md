@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.6-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.7-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -60,7 +60,7 @@ assistants:
 
 Если `protocol` не задан и `{{prompt}}` отсутствует в `argv`, prompt передаётся через stdin.
 
-При `protocol: takt-assistant/v1alpha1` stdin содержит строгий JSON request envelope, а stdout должен содержать один JSON result envelope. Runtime проверяет версию, тип, статус, `exit_code`, session resume и отсутствие неизвестных полей. Невалидный или обрезанный результат классифицируется как `protocol`, а отказ resume не превращается в fresh. Схема находится в `schemas/assistant-protocol.schema.json`.
+При `protocol: takt-assistant/v1alpha1` stdin содержит строгий JSON request envelope, а stdout должен содержать ровно один JSON result envelope. Runtime проверяет версию, type, status, обязательный `exit_code`, отсутствие неизвестных полей, неотрицательные usage-метрики и session resume. OS exit code и `result.exit_code` обязаны совпадать всегда, включая ноль; любое расхождение классифицируется как `protocol`. Невалидный, обрезанный или дополнительный JSON также является `protocol`, а отказ resume не превращается в fresh. Схема находится в `schemas/assistant-protocol.schema.json`.
 
 Переменные окружения process assistant включают `TAKT_RUN_ID`, `TAKT_NODE_ID`, `TAKT_ATTEMPT`, модель, workspace, session и native hooks.
 

@@ -1,56 +1,54 @@
-# Результаты проверки v0.1.6-alpha
+# Результаты проверки v0.1.7-alpha
 
-Дата проверки: 2026-08-04.
+## Основные проверки
 
-## Основной набор
+| Проверка | Результат |
+|---|---|
+| `go test ./... -count=1` | PASS |
+| `go test -race ./... -count=1` | PASS |
+| `go vet ./...` | PASS |
+| `go build ./cmd/takt` | PASS |
+| `go build ./cmd/takt-fake-assistant` | PASS |
+| `./scripts/test-fake-assistant.sh` | PASS |
+| `./scripts/check-docs.sh` | PASS |
+| `./scripts/verify.sh` | PASS |
+| `make check` | PASS |
+| VERSION/CLI = `0.1.7-alpha` | PASS |
 
-```text
-go test ./... -count=1                         PASS
-go test -race ./... -count=1                   PASS
-go vet ./...                                   PASS
-go build ./cmd/takt                            PASS
-go build ./cmd/takt-fake-assistant             PASS
-./scripts/check-docs.sh                        PASS
-./scripts/verify.sh                            PASS
-JSON Schemas                                   PASS
-README local links                             PASS
-VERSION/CLI = 0.1.6-alpha                      PASS
-```
+## Protocol contract
 
-## Fake-assistant contract suite
+Проверены положительные и отрицательные сценарии `takt-assistant/v1alpha1`:
 
-```text
-success                                         PASS
-exit code                                       PASS
-start error                                     PASS
-timeout                                         PASS
-cancellation                                    PASS
-concurrent stdout/stderr                        PASS
-malformed result                                PASS
-fresh session                                   PASS
-resume session                                  PASS
-resume rejection                               PASS
-protocol output limit                           PASS
-runtime fresh → retry → resume                  PASS
-```
+- success и согласованный ненулевой exit;
+- ошибка запуска;
+- timeout и cancellation;
+- параллельный stdout/stderr под общим race-safe лимитом;
+- malformed и два JSON result envelope;
+- неверные `protocol_version`, `type`, `status` и неизвестные поля;
+- отсутствующий и `null` `exit_code`;
+- несовместимые `completed/nonzero` и `failed/zero`;
+- OS exit `0` при envelope nonzero;
+- разные ненулевые OS/envelope exit codes;
+- отрицательные `input_tokens`, `output_tokens` и `cost`;
+- fresh, resume и отказ resume;
+- передача metadata и native hooks;
+- отклонение второго JSON request fake assistant;
+- сквозной `fresh → retry → resume` через runtime.
 
-Проверяется настоящий дочерний бинарник `cmd/takt-fake-assistant`, а не подмена `os/exec`.
+## Согласование схем
 
-## Зафиксированный контракт
+- `config.schema.json` запрещает `protocol` для `type: mock`, как runtime validator;
+- `assistant-protocol.schema.json` и Go decoder согласованы по обязательному `exit_code`, status/exit и неотрицательному usage;
+- все JSON Schemas синтаксически корректны;
+- защита документации от отката к `v0.1.1` проходит.
 
-- `protocol: takt-assistant/v1alpha1` передаёт request JSON через stdin;
-- stdout должен содержать ровно один строгий result JSON;
-- неизвестные поля, malformed или truncated result дают `protocol`;
-- start, timeout и cancel сохраняют собственную классификацию;
-- ненулевой код остаётся `exit`;
-- resume требует `resumed: true` и совпадающий Session ID;
-- первый вызов `session: resume` без сохранённого ID нормализуется в `fresh`;
-- общий budget stdout/stderr защищён от data race;
-- текстовый режим process assistant сохранён для совместимости.
+## Сквозные сценарии
 
-## Ограничения
+- workflow validation для Route DSL и hook-retry — PASS;
+- approval → `takt answer` → completed — PASS;
+- единый JSON error envelope CLI — PASS;
+- целостность `MANIFEST.sha256` в релизном архиве — PASS.
 
-- специализированные Pi/OpenCode adapters ещё не реализованы;
-- потоковые события adapter пока не входят в protocol v1alpha1;
-- structured result декодируется process adapter, но отдельный типизированный Node output остаётся задачей v0.2;
-- реальные smoke tests с Pi/OpenCode должны быть opt-in.
+## Итог
+
+Блокирующие замечания аудита `v0.1.6-alpha` закрыты. Следующий этап — специализированный Pi либо OpenCode adapter, обязанный пройти тот же contract suite.

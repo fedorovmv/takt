@@ -12,11 +12,12 @@ Takt — Go-runtime для оркестрации готовых кодовых 
 
 1. `docs/12-document-map.md`;
 2. `docs/05-implementation-status.md`;
-3. `docs/20-fake-assistant-contract-v0.1.6.md`;
-4. `docs/09-runtime-semantics.md`;
-5. `docs/10-assistant-adapter-spec.md`;
-6. `docs/14-backlog-v0.2.md`;
-7. `ARCHITECTURE_DECISIONS.md`.
+3. `docs/21-protocol-hardening-v0.1.7.md`;
+4. `docs/20-fake-assistant-contract-v0.1.6.md`;
+5. `docs/09-runtime-semantics.md`;
+6. `docs/10-assistant-adapter-spec.md`;
+7. `docs/14-backlog-v0.2.md`;
+8. `ARCHITECTURE_DECISIONS.md`.
 
 Проверь исходное состояние:
 

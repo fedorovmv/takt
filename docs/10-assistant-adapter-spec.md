@@ -1,6 +1,6 @@
 # Спецификация адаптеров исполнителей
 
-Статус: process-протокол `takt-assistant/v1alpha1` и fake contract suite реализованы в `v0.1.6-alpha`. Specialized Pi/OpenCode adapters и потоковый EventSink остаются целевыми возможностями v0.2.
+Статус: process-протокол `takt-assistant/v1alpha1` и fake contract suite реализованы и усилены в `v0.1.7-alpha`. Specialized Pi/OpenCode adapters и потоковый EventSink остаются целевыми возможностями v0.2.
 
 ## 1. Назначение
 
@@ -80,6 +80,8 @@ type Result struct {
 ```
 
 Transport error возвращается через `error`. Ненулевой exit code сохраняется в `Result` и классифицируется runtime с учётом `allow_failure`.
+
+В `takt-assistant/v1alpha1` OS exit code и `Result.ExitCode` описывают один результат и обязаны совпадать полностью, включая ноль. При расхождении adapter возвращает protocol error: envelope не переопределяет OS-завершение, а OS-код не отменяет строгую проверку envelope. Decoder также требует ровно один JSON result, допустимые version/type/status, обязательный и совместимый `exit_code`, неотрицательный usage и подтверждённый resume.
 
 ## 3. Capabilities
 
@@ -260,6 +262,11 @@ assistant.usage
 3. model params;
 4. рабочий каталог;
 5. env и секреты;
+6. равенство OS/envelope exit code для zero и nonzero;
+7. invalid version/type/status/unknown fields/multiple JSON;
+8. missing/null/incompatible exit_code;
+9. non-negative usage;
+10. metadata и native_hooks;
 6. успешный exit;
 7. ненулевой exit;
 8. timeout;
