@@ -1,4 +1,4 @@
-# Результаты проверки v0.1.4-alpha
+# Результаты проверки v0.1.5-alpha
 
 Дата проверки: 2026-08-03.
 
@@ -47,8 +47,18 @@ JSON success/error envelopes                    PASS
 ```text
 JSON Schemas parse as JSON                      PASS
 workflow schema forbids nested loop_group       PASS
-VERSION/CLI version = 0.1.4-alpha               PASS
+VERSION/CLI version = 0.1.5-alpha               PASS
 MANIFEST.sha256                                 PASS after packaging
+```
+
+## Проверка восстановления документации
+
+```text
+ADR-008–ADR-017 present                         PASS
+runtime specification retains v0.1.2–v0.1.4    PASS
+adapter specification restored                  PASS
+document map points to latest remediation       PASS
+no key document equals v0.1.1 baseline           PASS
 ```
 
 ## Зафиксированные ограничения

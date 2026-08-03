@@ -1,60 +1,65 @@
 # Стартовая инструкция для кодового агента
 
-Эту инструкцию можно передать Pi, OpenCode, Codex или другому агенту при начале разработки Takt.
-
 ## Контекст
 
-Takt — Go-runtime для оркестрации готовых кодовых агентов, моделей, deterministic checks, hooks, loops и approval. Takt не должен превращаться в собственный coding agent.
+Takt — Go-runtime для оркестрации готовых кодовых агентов, моделей, детерминированных проверок, hooks, loops и approval. Takt не реализует собственный coding-agent tool loop.
+
+Текущая версия предназначена для локального trusted runtime.
 
 ## Перед работой
 
 Прочитай:
 
 1. `docs/12-document-map.md`;
-2. `docs/08-target-v0.2.md`;
-3. `docs/05-implementation-status.md`;
-4. `docs/09-runtime-semantics.md`;
-5. `docs/10-assistant-adapter-spec.md`;
-6. `docs/11-implementation-plan.md`;
-7. `ARCHITECTURE_DECISIONS.md`.
+2. `docs/05-implementation-status.md`;
+3. `docs/18-audit-remediation-v0.1.4.md`;
+4. `docs/17-audit-remediation-v0.1.3.md`;
+5. `docs/16-audit-remediation-v0.1.2.md`;
+6. `docs/09-runtime-semantics.md`;
+7. `docs/10-assistant-adapter-spec.md`;
+8. `docs/14-backlog-v0.2.md`;
+9. `ARCHITECTURE_DECISIONS.md`.
 
 Проверь исходное состояние:
 
 ```bash
 go test ./...
+go test -race ./...
 go vet ./...
 go build ./cmd/takt
+./scripts/verify.sh
 ```
 
 ## Первая рекомендуемая задача
 
-Начни с `TAKT-001` из `docs/14-backlog-v0.2.md`: типизированные ошибки runtime.
+Начни с `TAKT-008`: fake assistant protocol suite.
 
 Требования:
 
-- сохрани текущий внешний YAML-контракт;
-- добавь минимальный тип ошибки с code, run ID, node ID и cause;
-- переведи на него ошибки process adapter и исчерпания попыток;
-- не переписывай scheduler целиком;
-- добавь unit tests;
-- обнови `docs/05-implementation-status.md`, если задача завершена;
-- зафиксируй любое изменение семантики в `docs/09-runtime-semantics.md`.
+- добавь небольшой тестовый бинарник в `internal/testassistant` или `cmd/takt-test-assistant`;
+- реализуй сценарии success, exit, timeout, huge output, malformed result, session и resume;
+- сформируй единый набор contract tests;
+- не подключай Pi/OpenCode до прохождения fake suite;
+- не меняй YAML-контракт без необходимости;
+- обнови adapter spec при выявленном расхождении;
+- сохрани разделение `exit/start/timed_out/cancelled/protocol/internal`.
 
 ## Ограничения
 
 - не добавляй собственные read/write/bash tools для модели;
-- не добавляй новый общий plugin framework;
-- не меняй `apiVersion`, пока нет мигратора;
+- не добавляй общий plugin framework;
+- не меняй `apiVersion` без мигратора;
 - не добавляй Web UI, сервер или БД;
 - не скрывай невозможность resume переходом на fresh;
-- не считай текст агента доказательством успеха — используй внешнюю проверку.
+- не считай текст агента доказательством успеха;
+- не расширяй scope до недоверенных пользователей без threat model и sandbox.
 
 ## Definition of Done
 
 - код отформатирован;
-- `go test ./...` проходит;
+- unit и contract tests проходят;
+- `go test -race ./...` проходит;
 - `go vet ./...` проходит;
-- новые ветви поведения покрыты тестами;
+- сквозные примеры работают;
 - документация отражает фактическое состояние;
-- пример workflow продолжает работать;
-- изменение не нарушает границу с внешним coding agent.
+- изменение сохраняет границу с внешним coding agent.

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.5-alpha
+
+- восстановлены полные редакции документов `v0.1.2–v0.1.3`, случайно перезаписанные при сборке `v0.1.4`;
+- поверх восстановленной документации перенесена семантика parent-loop timeout/cancel из `v0.1.4`;
+- восстановлены ADR-008–ADR-016, актуальные runtime specification, adapter contract, document map и coding-agent guide;
+- добавлен отчёт `docs/19-document-recovery-v0.1.5.md`;
+- кодовая семантика относительно `v0.1.4-alpha` не изменена.
+
 ## v0.1.4-alpha
 
 - timeout и cancellation родительского `loop_group` сохраняют классификацию `timed_out`/`cancelled`;

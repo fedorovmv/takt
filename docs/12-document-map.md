@@ -6,24 +6,29 @@
 
 1. `README.md`;
 2. `docs/01-project.md`;
-3. `docs/08-target-v0.2.md`;
-4. `docs/05-implementation-status.md`;
-5. `docs/11-implementation-plan.md`.
+3. `docs/05-implementation-status.md`;
+4. `docs/19-document-recovery-v0.1.5.md`;
+5. `docs/18-audit-remediation-v0.1.4.md`;
+6. `docs/17-audit-remediation-v0.1.3.md`;
+7. `docs/16-audit-remediation-v0.1.2.md`;
+8. `docs/08-target-v0.2.md`;
+9. `docs/11-implementation-plan.md`.
 
 Для изменения runtime:
 
 1. `ARCHITECTURE_DECISIONS.md`;
-2. `docs/09-runtime-semantics.md`;
-3. `docs/03-specification.md`;
-4. `docs/04-architecture.md`;
+2. `docs/03-specification.md`;
+3. `docs/09-runtime-semantics.md`;
+4. `docs/05-implementation-status.md`;
 5. код и тесты.
 
 Для реализации исполнителя:
 
 1. `docs/10-assistant-adapter-spec.md`;
-2. `internal/assistant`;
-3. `schemas/assistant-protocol.schema.json`;
-4. integration tests.
+2. `docs/14-backlog-v0.2.md`, задача TAKT-008;
+3. `internal/assistant` и `internal/execution`;
+4. `schemas/assistant-protocol.schema.json`;
+5. contract tests.
 
 ## 2. Источники истины
 
@@ -31,35 +36,34 @@
 |---|---|---|
 | Зачем нужен Takt | `01-project.md` | действующий |
 | Архитектурный подход | `02-approach.md`, ADR | действующий |
-| Ближайшее целевое состояние | `08-target-v0.2.md` | целевой |
-| Текущий пользовательский формат | `03-specification.md` | реализованный `v1alpha1` |
-| Семантика будущего runtime | `09-runtime-semantics.md` | целевой v0.2 |
-| Контракт исполнителя | `10-assistant-adapter-spec.md` | целевой v0.2 |
+| Текущий внешний контракт | `03-specification.md` | реализованный `v1alpha1` |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
+| Исправления последнего аудита | `16–18-audit-remediation-*.md` | фактический |
+| Восстановление документации релиза | `19-document-recovery-v0.1.5.md` | фактический |
+| Граница безопасности | `../SECURITY.md` | действующий |
+| Ближайшее целевое состояние | `08-target-v0.2.md` | целевой |
+| Семантика runtime | `09-runtime-semantics.md` | реализовано частично/цель v0.2 |
+| Контракт исполнителя | `10-assistant-adapter-spec.md` | целевой v0.2 |
 | Очередность работ | `11-implementation-plan.md` | рабочий план |
-| Задачи для реализации | `14-backlog-v0.2.md` | рабочий backlog |
+| Задачи | `14-backlog-v0.2.md` | рабочий backlog |
 | Старт кодового агента | `15-coding-agent-start.md` | готовая инструкция |
-| Дальнейшие направления | `06-roadmap.md` | обзорный |
 | Отличия от Archon | `07-archon-compatibility.md` | справочный |
 | Машиночитаемые форматы | `schemas/*.json` | текущая alpha-схема |
 
-## 3. Правило разрешения противоречий
+## 3. Приоритет при расхождении
 
-При расхождении документов использовать следующий приоритет:
-
-1. код и тесты описывают фактическое поведение текущей версии;
-2. `03-specification.md` описывает обещанный текущий внешний контракт;
-3. `05-implementation-status.md` фиксирует известные ограничения;
-4. `08–10` описывают целевое, ещё не полностью реализованное поведение;
+1. код и тесты описывают фактическое поведение;
+2. `03-specification.md` описывает обещанный текущий контракт;
+3. `05-implementation-status.md` фиксирует ограничения;
+4. `08–10` описывают целевое состояние;
 5. roadmap не является спецификацией.
 
-Расхождение между кодом и `03-specification.md` считается дефектом. Расхождение кода с `08–10` считается незавершённой задачей, пока явно отмечено в `05-implementation-status.md`.
+Расхождение кода с `03-specification.md` — дефект. Расхождение с `08–10` — незавершённая задача, если оно отмечено в status/backlog.
 
 ## 4. Как менять контракт
 
-- изменение архитектурной границы оформляется ADR;
-- изменение текущего YAML-контракта обновляет `03-specification.md` и JSON Schema;
-- изменение целевой семантики обновляет `08–10`;
-- реализованная задача переносится из раздела «не реализовано» в `05-implementation-status.md`;
-- изменение порядка работ обновляет `11-implementation-plan.md`;
-- несовместимое изменение требует новой `apiVersion` или мигратора.
+- архитектурная граница — новый ADR;
+- изменение YAML/JSON-контракта — `03-specification.md` и JSON Schema;
+- изменение семантики — `09-runtime-semantics.md` и contract tests;
+- реализованная задача — обновить `05`, `11`, `14` и changelog;
+- несовместимое изменение — новая `apiVersion` или мигратор.
