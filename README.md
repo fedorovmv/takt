@@ -42,15 +42,32 @@ make check
   --value "Подтверждаю"
 ```
 
-## Где лежит основная документация
+## С чего начать разработку
+
+1. [Карта документов](docs/12-document-map.md)
+2. [Целевое состояние v0.2](docs/08-target-v0.2.md)
+3. [Текущее состояние реализации](docs/05-implementation-status.md)
+4. [План реализации v0.2](docs/11-implementation-plan.md)
+5. [Руководство разработчика](DEVELOPMENT.md)
+
+## Документация
 
 - [Описание проекта](docs/01-project.md)
 - [Подход к решению](docs/02-approach.md)
-- [Спецификация](docs/03-specification.md)
-- [Архитектура](docs/04-architecture.md)
+- [Текущая спецификация `takt/v1alpha1`](docs/03-specification.md)
+- [Архитектура текущей реализации](docs/04-architecture.md)
 - [Состояние реализации](docs/05-implementation-status.md)
-- [План развития](docs/06-roadmap.md)
+- [Общий план развития](docs/06-roadmap.md)
 - [Профиль совместимости с Archon](docs/07-archon-compatibility.md)
+- [Целевое состояние v0.2](docs/08-target-v0.2.md)
+- [Семантика runtime v0.2](docs/09-runtime-semantics.md)
+- [Контракт адаптеров](docs/10-assistant-adapter-spec.md)
+- [План реализации v0.2](docs/11-implementation-plan.md)
+- [Карта источников истины](docs/12-document-map.md)
+- [План оценки стратегий](docs/13-evaluation-plan.md)
+- [Backlog v0.2](docs/14-backlog-v0.2.md)
+- [Стартовая инструкция для кодового агента](docs/15-coding-agent-start.md)
+- [JSON Schemas](schemas/README.md)
 
 ## Важная граница
 

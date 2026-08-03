@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/v1alpha1/run-state.schema.json",
+  "title": "Takt Run State v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "status", "workflow_path", "config_path", "workspace", "input", "nodes", "approvals", "created_at", "updated_at"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["running", "waiting", "completed", "failed", "cancelled"]},
+    "workflow_path": {"type": "string"},
+    "config_path": {"type": "string"},
+    "workspace": {"type": "string"},
+    "input": {"type": "string"},
+    "current_node": {"type": "string"},
+    "waiting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "message"],
+      "properties": {
+        "node_id": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    },
+    "nodes": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/nodeState"}
+    },
+    "approvals": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "error": {"type": "string"}
+  },
+  "$defs": {
+    "nodeState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {"type": "string"},
+        "output": {"type": "string"},
+        "exit_code": {"type": "integer"},
+        "attempts": {"type": "integer", "minimum": 0},
+        "feedback": {"type": "string"},
+        "session_id": {"type": "string"},
+        "loop_previous": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/nodeState"}
+        }
+      }
+    }
+  }
+}

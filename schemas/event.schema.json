@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/v1alpha1/event.schema.json",
+  "title": "Takt Event v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["time", "type", "run_id"],
+  "properties": {
+    "time": {"type": "string", "format": "date-time"},
+    "type": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "node_id": {"type": "string"},
+    "data": {"type": "object"}
+  }
+}

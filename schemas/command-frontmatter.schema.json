@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/v1alpha1/command-frontmatter.schema.json",
+  "title": "Takt Markdown Command Frontmatter v1alpha1",
+  "type": "object",
+  "properties": {
+    "description": {"type": "string"},
+    "assistant": {"type": "string"},
+    "model": {"type": "string"}
+  },
+  "additionalProperties": true
+}

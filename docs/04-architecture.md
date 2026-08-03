@@ -39,12 +39,17 @@ Takt не получает отдельные вызовы `read_file`, `write_f
 Базовый адаптер запускает настроенный процесс и передаёт параметры через argv, stdin и переменные окружения:
 
 ```text
-HARNESS_MODEL_ID
-HARNESS_MODEL_PROVIDER
-HARNESS_SESSION_MODE
-HARNESS_SESSION_ID
-HARNESS_WORKSPACE
-HARNESS_NATIVE_HOOKS_JSON
+TAKT_MODEL_NAME
+TAKT_MODEL_ID
+TAKT_MODEL_PROVIDER
+TAKT_MODEL_PARAMS_JSON
+TAKT_SESSION_MODE
+TAKT_SESSION_ID
+TAKT_WORKSPACE
+TAKT_NATIVE_HOOKS_JSON
 ```
 
 Stdout становится output узла. Ненулевой код завершения считается ошибкой запуска агента.
+
+
+На переходный период process adapter также выставляет устаревшие переменные `HARNESS_*`. Новые интеграции должны использовать только `TAKT_*`.

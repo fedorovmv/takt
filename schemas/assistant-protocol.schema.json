@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/v0.2/assistant-protocol.schema.json",
+  "title": "Takt Assistant Protocol v0.2 Target",
+  "description": "Target normalized request/result envelope for specialized assistant adapters. Not fully implemented by v0.1.1-alpha.",
+  "$defs": {
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "provider", "id"],
+      "properties": {
+        "name": {"type": "string"},
+        "provider": {"type": "string"},
+        "id": {"type": "string"},
+        "params": {"type": "object"}
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "node_id", "attempt", "prompt", "workspace", "model", "session"],
+      "properties": {
+        "run_id": {"type": "string"},
+        "node_id": {"type": "string"},
+        "attempt": {"type": "integer", "minimum": 1},
+        "prompt": {"type": "string"},
+        "workspace": {"type": "string"},
+        "model": {"$ref": "#/$defs/model"},
+        "session": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": {"enum": ["fresh", "resume"]},
+            "id": {"type": "string"}
+          }
+        },
+        "native_hooks": {},
+        "environment": {"type": "object", "additionalProperties": {"type": "string"}},
+        "metadata": {"type": "object", "additionalProperties": {"type": "string"}},
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "timeout_ms": {"type": "integer", "minimum": 1},
+            "max_output_bytes": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exit_code"],
+      "properties": {
+        "output": {"type": "string"},
+        "structured": {},
+        "session_id": {"type": "string"},
+        "resumed": {"type": "boolean"},
+        "exit_code": {"type": "integer"},
+        "stdout": {"type": "string"},
+        "stderr": {"type": "string"},
+        "resolved_model": {"$ref": "#/$defs/model"},
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "input_tokens": {"type": "integer", "minimum": 0},
+            "output_tokens": {"type": "integer", "minimum": 0},
+            "cost": {"type": "number", "minimum": 0}
+          }
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/result"}
+  ]
+}

@@ -33,19 +33,31 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 		cmd.Env = append(cmd.Env, k+"="+renderArg(v, req))
 	}
 	paramsJSON, _ := json.Marshal(req.Model.Params)
-	cmd.Env = append(cmd.Env,
-		"HARNESS_MODEL_NAME="+req.ModelName,
-		"HARNESS_MODEL_ID="+req.Model.ID,
-		"HARNESS_MODEL_PROVIDER="+req.Model.Provider,
-		"HARNESS_MODEL_PARAMS_JSON="+string(paramsJSON),
-		"HARNESS_SESSION_MODE="+req.SessionMode,
-		"HARNESS_SESSION_ID="+req.SessionID,
-		"HARNESS_WORKSPACE="+req.Workspace,
-	)
+	modelEnv := []string{
+		"TAKT_MODEL_NAME=" + req.ModelName,
+		"TAKT_MODEL_ID=" + req.Model.ID,
+		"TAKT_MODEL_PROVIDER=" + req.Model.Provider,
+		"TAKT_MODEL_PARAMS_JSON=" + string(paramsJSON),
+		"TAKT_SESSION_MODE=" + req.SessionMode,
+		"TAKT_SESSION_ID=" + req.SessionID,
+		"TAKT_WORKSPACE=" + req.Workspace,
+		// Deprecated compatibility variables. Remove after the alpha migration window.
+		"HARNESS_MODEL_NAME=" + req.ModelName,
+		"HARNESS_MODEL_ID=" + req.Model.ID,
+		"HARNESS_MODEL_PROVIDER=" + req.Model.Provider,
+		"HARNESS_MODEL_PARAMS_JSON=" + string(paramsJSON),
+		"HARNESS_SESSION_MODE=" + req.SessionMode,
+		"HARNESS_SESSION_ID=" + req.SessionID,
+		"HARNESS_WORKSPACE=" + req.Workspace,
+	}
+	cmd.Env = append(cmd.Env, modelEnv...)
 	if len(req.NativeHooks) > 0 {
 		var compact bytes.Buffer
 		if err := json.Compact(&compact, req.NativeHooks); err == nil {
-			cmd.Env = append(cmd.Env, "HARNESS_NATIVE_HOOKS_JSON="+compact.String())
+			cmd.Env = append(cmd.Env,
+				"TAKT_NATIVE_HOOKS_JSON="+compact.String(),
+				"HARNESS_NATIVE_HOOKS_JSON="+compact.String(),
+			)
 		}
 	}
 	if !hasPrompt {
