@@ -22,6 +22,7 @@ type Result struct {
 	Output    string
 	SessionID string
 	ExitCode  int
+	Truncated bool
 }
 
 type Adapter interface {

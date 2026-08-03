@@ -38,6 +38,7 @@ type Node struct {
 	LoopGroup    *LoopGroupSpec  `json:"loop_group,omitempty"`
 	Attempts     AttemptsSpec    `json:"attempts,omitempty"`
 	AllowFailure bool            `json:"allow_failure,omitempty"`
+	Timeout      string          `json:"timeout,omitempty"`
 	Hooks        HookSet         `json:"hooks,omitempty"`
 	NativeHooks  json.RawMessage `json:"native_hooks,omitempty"`
 }
@@ -95,8 +96,9 @@ type ModelSpec struct {
 }
 
 type AssistantSpec struct {
-	Type         string            `json:"type"`
-	Argv         []string          `json:"argv,omitempty"`
-	Env          map[string]string `json:"env,omitempty"`
-	Capabilities []string          `json:"capabilities,omitempty"`
+	Type           string            `json:"type"`
+	Argv           []string          `json:"argv,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	Capabilities   []string          `json:"capabilities,omitempty"`
+	MaxOutputBytes int               `json:"max_output_bytes,omitempty"`
 }

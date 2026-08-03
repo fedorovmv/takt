@@ -4,30 +4,56 @@
   "title": "Takt Workflow v1alpha1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "nodes"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "nodes"
+  ],
   "properties": {
-    "apiVersion": {"const": "takt/v1alpha1"},
-    "kind": {"const": "Workflow"},
-    "metadata": {"$ref": "#/$defs/metadata"},
-    "defaults": {"$ref": "#/$defs/defaults"},
+    "apiVersion": {
+      "const": "takt/v1alpha1"
+    },
+    "kind": {
+      "const": "Workflow"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "defaults": {
+      "$ref": "#/$defs/defaults"
+    },
     "nodes": {
       "type": "array",
       "minItems": 1,
-      "items": {"$ref": "#/$defs/node"}
+      "items": {
+        "$ref": "#/$defs/node"
+      }
     },
-    "hooks": {"$ref": "#/$defs/hooks"}
+    "hooks": {
+      "$ref": "#/$defs/hooks"
+    }
   },
   "$defs": {
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
-        "name": {"type": "string", "minLength": 1},
-        "description": {"type": "string"},
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
         "labels": {
           "type": "object",
-          "additionalProperties": {"type": "string"}
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       }
     },
@@ -35,111 +61,258 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "assistant": {"type": "string"},
-        "model": {"type": "string"},
-        "session": {"type": "string"}
+        "assistant": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        }
       }
     },
     "attempts": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "max": {"type": "integer", "minimum": 0}
+        "max": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "approval": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["message"],
+      "required": [
+        "message"
+      ],
       "properties": {
-        "message": {"type": "string", "minLength": 1},
-        "capture_response": {"type": "boolean"}
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capture_response": {
+          "type": "boolean"
+        }
       }
     },
     "until": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["node"],
+      "required": [
+        "node"
+      ],
       "properties": {
-        "node": {"type": "string", "minLength": 1},
-        "exit_code": {"type": "integer"},
-        "output_contains": {"type": "string"}
+        "node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "output_contains": {
+          "type": "string"
+        }
       },
       "anyOf": [
-        {"required": ["exit_code"]},
-        {"required": ["output_contains"]}
+        {
+          "required": [
+            "exit_code"
+          ]
+        },
+        {
+          "required": [
+            "output_contains"
+          ]
+        }
       ]
     },
     "loopGroup": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["max_iterations", "nodes", "until"],
+      "required": [
+        "max_iterations",
+        "nodes",
+        "until"
+      ],
       "properties": {
-        "max_iterations": {"type": "integer", "minimum": 1},
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1
+        },
         "nodes": {
           "type": "array",
           "minItems": 1,
-          "items": {"$ref": "#/$defs/node"}
+          "items": {
+            "$ref": "#/$defs/node"
+          }
         },
-        "until": {"$ref": "#/$defs/until"}
+        "until": {
+          "$ref": "#/$defs/until"
+        }
       }
     },
     "hookDecision": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "action": {"enum": ["continue", "retry", "fail"]},
-        "session": {"type": "string"}
+        "action": {
+          "enum": [
+            "continue",
+            "retry",
+            "fail"
+          ]
+        },
+        "session": {
+          "type": "string"
+        }
       }
     },
     "hook": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["bash"],
+      "required": [
+        "bash"
+      ],
       "properties": {
-        "id": {"type": "string"},
-        "bash": {"type": "string", "minLength": 1},
-        "on_failure": {"$ref": "#/$defs/hookDecision"}
+        "id": {
+          "type": "string"
+        },
+        "bash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "on_failure": {
+          "$ref": "#/$defs/hookDecision"
+        }
       }
     },
     "hooks": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "before_node": {"type": "array", "items": {"$ref": "#/$defs/hook"}},
-        "after_node": {"type": "array", "items": {"$ref": "#/$defs/hook"}},
-        "before_complete": {"type": "array", "items": {"$ref": "#/$defs/hook"}},
-        "on_failure": {"type": "array", "items": {"$ref": "#/$defs/hook"}}
+        "before_node": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hook"
+          }
+        },
+        "after_node": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hook"
+          }
+        },
+        "before_complete": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hook"
+          }
+        },
+        "on_failure": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hook"
+          }
+        }
       }
     },
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id"],
+      "required": [
+        "id"
+      ],
       "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "depends_on": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "when": {"type": "string"},
-        "trigger_rule": {"enum": ["all_success", "all_done", "none_failed_min_one_success"]},
-        "assistant": {"type": "string"},
-        "model": {"type": "string"},
-        "session": {"type": "string"},
-        "command": {"type": "string"},
-        "prompt": {"type": "string"},
-        "bash": {"type": "string"},
-        "approval": {"$ref": "#/$defs/approval"},
-        "loop_group": {"$ref": "#/$defs/loopGroup"},
-        "attempts": {"$ref": "#/$defs/attempts"},
-        "allow_failure": {"type": "boolean"},
-        "hooks": {"$ref": "#/$defs/hooks"},
-        "native_hooks": {}
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "when": {
+          "type": "string"
+        },
+        "trigger_rule": {
+          "enum": [
+            "all_success",
+            "all_done",
+            "none_failed_min_one_success"
+          ]
+        },
+        "assistant": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "bash": {
+          "type": "string"
+        },
+        "approval": {
+          "$ref": "#/$defs/approval"
+        },
+        "loop_group": {
+          "$ref": "#/$defs/loopGroup"
+        },
+        "attempts": {
+          "$ref": "#/$defs/attempts"
+        },
+        "allow_failure": {
+          "type": "boolean"
+        },
+        "hooks": {
+          "$ref": "#/$defs/hooks"
+        },
+        "native_hooks": {},
+        "timeout": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Go duration, for example 30s or 5m"
+        }
       },
       "oneOf": [
-        {"required": ["command"]},
-        {"required": ["prompt"]},
-        {"required": ["bash"]},
-        {"required": ["approval"]},
-        {"required": ["loop_group"]}
+        {
+          "required": [
+            "command"
+          ]
+        },
+        {
+          "required": [
+            "prompt"
+          ]
+        },
+        {
+          "required": [
+            "bash"
+          ]
+        },
+        {
+          "required": [
+            "approval"
+          ]
+        },
+        {
+          "required": [
+            "loop_group"
+          ]
+        }
       ]
     }
   }

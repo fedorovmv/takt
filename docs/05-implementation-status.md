@@ -1,56 +1,66 @@
 # Состояние реализации
 
+Статус: `v0.1.2-alpha`.
+
 ## Реализовано
 
-- YAML/JSON loader;
-- строгий decode с ошибкой на неизвестные поля;
-- статическая проверка ID, ссылок и циклов DAG;
+- YAML/JSON loader со строгой проверкой неизвестных полей;
+- документированный YAML subset с корректными `|`, `|-`, `|+`, `>`, `>-`, `>+` и пустыми строками;
+- статическая проверка ID, ссылок, timeout и циклов DAG;
 - модельный каталог;
 - `mock` и `process` assistants;
 - Markdown commands;
-- узлы command/prompt/bash/approval/loop_group;
-- базовые `when` и `trigger_rule`;
+- узлы `command`, `prompt`, `bash`, `approval`, `loop_group`;
+- `when` и `trigger_rule` в корневом и дочернем DAG;
+- продолжение DAG после failed/errored node для выполнения `all_done`;
+- разделение `failed`, `errored`, `timed_out`, `cancelled`, `blocked`;
+- `allow_failure` только для штатного ненулевого exit code;
 - hooks и retry с feedback;
+- timeout узла;
+- output limit process assistant;
+- завершение process group при cancellation на Unix;
 - pause/resume approval;
-- JSONL events;
-- CLI validate/run/answer/status/command run;
-- тесты основных механизмов;
+- fingerprints workflow, config и разрешённых Markdown-команд;
+- блокировка Run для `answer` и `resume`;
+- ревизии `state.json` и `events.jsonl` с обнаружением рассогласования;
+- обязательная обработка ошибок persistence;
+- единый JSON envelope CLI;
+- CLI `validate`, `run`, `answer`, `resume`, `status`, `command run`;
 - JSON Schemas текущего `v1alpha1`;
-- целевые спецификации v0.2 и приоритетный план реализации;
-- переменные окружения `TAKT_*` с временной совместимостью `HARNESS_*`.
+- unit-, race-, vet-, build- и сквозные проверки.
 
 ## Осознанно упрощено
 
 - последовательное выполнение готовых узлов DAG;
-- файловое локальное состояние;
+- локальное файловое состояние;
 - ограниченный язык выражений;
-- ограниченный YAML subset;
-- отсутствие server/Web UI/MCP/worktree.
+- собственный документированный YAML subset вместо полной YAML 1.2;
+- approval внутри `loop_group` запрещён;
+- отсутствуют server, Web UI, MCP и worktree orchestration.
 
-## Не считается production-ready
+## Граница безопасности
 
-Перед промышленным применением нужны:
+Текущая версия рассчитана на локального доверенного пользователя. До server/untrusted scope нужны:
 
-- песочница процессов;
+- sandbox процессов;
+- политика допустимых путей;
 - ограничения файловой системы и сети;
-- работа с секретами;
-- конкурентная блокировка Run;
-- тайм-ауты и отмена дочерних процессов;
-- миграции схемы;
-- полноценное восстановление по журналу;
-- наблюдаемость и лимиты стоимости.
+- управление секретами и redaction;
+- более сильная межпроцессная блокировка и recovery stale lock;
+- аутентификация и авторизация.
 
-## Ближайший целевой срез
+## Основные незакрытые задачи v0.2
 
-Целевое состояние v0.2 описано в `08-target-v0.2.md`. Главный незакрытый риск — отсутствие проверенного специализированного адаптера Pi/OpenCode и реального Route DSL end-to-end.
+- специализированный Pi или OpenCode adapter;
+- полноценный normalized assistant protocol;
+- подтверждённый session resume;
+- строгий template renderer;
+- команда `takt cancel`;
+- capability negotiation;
+- structured outputs;
+- Route DSL end-to-end на реальной модели;
+- eval-набор для Route DSL, Go и документов.
 
-## Известные расхождения с целевой семантикой v0.2
+## Следующий практический этап
 
-- нет `takt cancel`, timeout и output limit;
-- ошибки ещё не типизированы;
-- Run не хранит fingerprints workflow/config;
-- capability negotiation декларативна и не проверяется;
-- session resume не проверен на реальном агенте;
-- состояния дочерних узлов `loop_group` изолированы не полностью;
-- шаблоны сохраняют неизвестные переменные вместо строгой ошибки;
-- события не содержат schema version, attempt и iteration как отдельные поля.
+Сначала добавить fake assistant binary, который реализует target protocol и сценарии `success`, `exit`, `timeout`, `invalid result`, `session`, `resume`. После contract suite подключить один реальный кодовый агент и перевести Route DSL workflow с `mock` на настоящий adapter.

@@ -4,12 +4,34 @@
   "title": "Takt Event v1alpha1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["time", "type", "run_id"],
+  "required": [
+    "time",
+    "type",
+    "run_id",
+    "revision"
+  ],
   "properties": {
-    "time": {"type": "string", "format": "date-time"},
-    "type": {"type": "string", "minLength": 1},
-    "run_id": {"type": "string", "minLength": 1},
-    "node_id": {"type": "string"},
-    "data": {"type": "object"}
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "node_id": {
+      "type": "string"
+    },
+    "data": {
+      "type": "object"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    }
   }
 }

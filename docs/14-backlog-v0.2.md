@@ -1,69 +1,86 @@
 # Backlog Takt v0.2
 
-Задачи расположены в рекомендуемом порядке. Каждая задача должна завершаться тестами и обновлением соответствующей спецификации.
+Статус обновлён после аудита и стабилизационного релиза `v0.1.2-alpha`.
 
-## TAKT-001. Типизированные ошибки
+## Завершено в v0.1.2-alpha
 
-**Цель:** заменить произвольные `fmt.Errorf` на нормализованные ошибки runtime.
+### TAKT-001. Классификация execution errors — выполнено
 
-**Результат:**
+- `exit`, `start`, `timed_out`, `cancelled`, `protocol`, `internal`;
+- отдельные Node statuses;
+- JSON error envelope;
+- `allow_failure` только для exit code.
 
-- `Error.Code`, `Message`, `RunID`, `NodeID`, `Attempt`, `Cause`;
-- коды из `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`;
-- JSON CLI возвращает структурированную ошибку;
-- stderr остаётся удобным для человека.
+### TAKT-002. Failure propagation и `all_done` — выполнено
 
-**Приёмка:** unit tests для adapter-not-found, process-start-failed, node-attempts-exhausted и loop-exhausted.
+- Run не останавливается на первом failed node;
+- `all_done` выполняется;
+- недоступные ветви становятся `skipped` или `blocked`;
+- итог Run вычисляется после DAG.
 
-## TAKT-002. Fingerprints запуска
+### TAKT-003. Единый scheduler root/loop — выполнено
 
-**Цель:** сделать resume воспроизводимым.
+- `when`, `trigger_rule`, hooks и attempts работают одинаково;
+- добавлены contract tests.
 
-**Результат:** SHA-256 workflow, config и разрешённых Markdown-команд сохраняется в RunState.
+### TAKT-004. Fingerprints и безопасный approval resume — выполнено
 
-**Приёмка:** изменённый workflow блокирует resume с понятной ошибкой; предусмотрен явный override для разработки.
+- SHA-256 workflow/config/commands;
+- lock Run;
+- проверка определений до потребления answer;
+- команда `takt resume`.
 
-## TAKT-003. Строгий template renderer
+### TAKT-005. Persistence revisions — выполнено
 
-**Цель:** исключить незаметные ошибки переменных.
+- обязательный `Store.Commit`;
+- одинаковая revision state/event;
+- обнаружение рассогласования;
+- ошибки persistence не игнорируются.
 
-**Результат:** неизвестная переменная вызывает ошибку; предусмотрен синтаксис необязательного значения либо функция default.
+### TAKT-006. YAML block scalar — выполнено
 
-**Приёмка:** тесты известных, неизвестных и отсутствующих optional values.
+- сохранение пустых строк;
+- `|`, `|-`, `|+`, `>`, `>-`, `>+`;
+- строгий documented subset.
 
-## TAKT-004. Timeout и output limit process adapter
+### TAKT-007. Timeout и output limit process adapter — выполнено частично
 
-**Цель:** ограничить зависшие и чрезмерно шумные процессы.
+- node timeout;
+- process output limit;
+- output truncation flag;
+- Unix process-group cancellation.
 
-**Результат:** конфигурация timeout и max output bytes, корректная отмена context, отдельные коды ошибок.
+Остаётся проверить grace period и platform-specific поведение на целевых ОС.
 
-**Приёмка:** fake process проверяет timeout, cancellation и превышение лимита.
+## Следующий этап
 
-## TAKT-005. Команда cancel
+### TAKT-008. Fake assistant protocol suite
 
-**Цель:** управляемо завершать Run.
+**Цель:** проверить нормализованный контракт до реального Pi/OpenCode.
 
-**Результат:** `takt cancel <run-id>`; идемпотентность; событие `run.cancelled`.
+**Результат:** тестовый бинарник поддерживает:
 
-**Приёмка:** отмена running/waiting Run и повторная отмена.
+- success;
+- exit N;
+- start/invalid protocol;
+- timeout;
+- большой stdout/stderr;
+- session ID;
+- resume success;
+- resume rejected;
+- malformed structured result.
 
-## TAKT-006. Capability contract
+**Приёмка:** один набор contract tests применяется к process adapter и будущему specialized adapter.
 
-**Цель:** проверять совместимость workflow и assistant до запуска.
-
-**Результат:** типизированные capabilities; `requires` на уровне узла; проверка config и adapter discovery.
-
-**Приёмка:** workflow с `session_resume` отклоняется для неподдерживающего adapter.
-
-## TAKT-007. Специализированный Pi/OpenCode adapter
+### TAKT-009. Specialized Pi или OpenCode adapter
 
 **Цель:** проверить реальное выполнение агентного узла.
 
 **Результат:** один adapter по `10-assistant-adapter-spec.md`.
 
-**Приёмка:** fake integration suite и opt-in smoke test с реальным бинарником.
+**Приёмка:** fake suite и opt-in smoke test с реальным бинарником.
 
-## TAKT-008. Session resume
+### TAKT-010. Session resume
 
 **Цель:** сравнивать fresh и продолженную сессию.
 
@@ -71,7 +88,7 @@
 
 **Приёмка:** fresh, resume success и resume failure.
 
-## TAKT-009. Route DSL end-to-end
+### TAKT-011. Route DSL end-to-end
 
 **Цель:** заменить mock в основном примере.
 
@@ -79,46 +96,50 @@
 
 **Приёмка:** минимум один тест требует двух попыток; success определяется только валидатором.
 
-## TAKT-010. Нормализованные diagnostics
+## Далее
 
-**Цель:** давать агенту компактную и стабильную обратную связь.
+### TAKT-012. Строгий template renderer
 
-**Результат:** JSON diagnostics преобразуются в общий формат code/path/line/message.
+Неизвестная переменная вызывает ошибку; предусмотрены optional/default values.
 
-**Приёмка:** одинаковые ошибки не раздувают feedback; хранится fingerprint ошибки.
+### TAKT-013. Команда `takt cancel`
 
-## TAKT-011. Изоляция loop group
+Идемпотентная отмена running/waiting Run и событие `run.cancelled`.
 
-**Цель:** устранить конфликт дочерних NodeState.
+### TAKT-014. Capability contract
 
-**Результат:** отдельная структура iteration state; child ID локальны loop group.
+Типизированные capabilities, `requires` и проверка до запуска.
 
-**Приёмка:** два loop group используют одинаковые child ID без конфликта.
+### TAKT-015. Нормализованные diagnostics
 
-## TAKT-012. Structured outputs
+Общий формат `code/path/line/message`, deduplication и fingerprint ошибки.
 
-**Цель:** передавать данные между узлами без разбора свободного текста.
+### TAKT-016. Изоляция iteration state
 
-**Результат:** JSON output и JSON Schema validation.
+Отдельная структура для истории всех итераций, а не только `LoopPrevious`.
 
-**Приёмка:** valid output, malformed JSON и schema mismatch.
+### TAKT-017. Structured outputs
 
-## TAKT-013. Go workflow
+JSON output и JSON Schema validation.
 
-**Цель:** подтвердить универсальность на кодовой задаче.
+### TAKT-018. Go workflow
 
-**Приёмка:** workflow добавляется без изменения runtime; `go test` управляет повтором.
+Issue/fix → coding agent → `go test` → feedback → approval без изменения runtime.
 
-## TAKT-014. Document workflow
+### TAKT-019. Document workflow
 
-**Цель:** подтвердить универсальность на не-кодовой задаче.
+Draft → approval comment → revise → artifact без изменения runtime.
 
-**Приёмка:** draft → approval comment → revise → artifact без изменения runtime.
+### TAKT-020. Eval metrics
 
-## TAKT-015. Метрики eval
+Сравнение fresh/resume, моделей и workflow-стратегий на фиксированном наборе задач.
 
-**Цель:** сравнивать стратегии.
+## Вне v0.2
 
-**Результат:** export Run metrics по `13-evaluation-plan.md`.
-
-**Приёмка:** отчёт сравнивает минимум fresh и resume на одном наборе задач.
+- parallel DAG;
+- SQLite/Postgres;
+- MCP server;
+- Web UI;
+- remote workers;
+- untrusted/server mode;
+- sandbox и многопользовательская авторизация.

@@ -6,12 +6,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"takt/internal/command"
 	cfgpkg "takt/internal/config"
+	"takt/internal/definition"
 	"takt/internal/runtime"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -19,8 +21,13 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+	args := os.Args[1:]
+	if err := run(args); err != nil {
+		if wantsJSON(args) {
+			_ = printErrorJSON(err)
+		} else {
+			fmt.Fprintln(os.Stderr, "error:", err)
+		}
 		os.Exit(1)
 	}
 }
@@ -36,12 +43,14 @@ func run(args []string) error {
 		return runCmd(args[1:])
 	case "answer":
 		return answerCmd(args[1:])
+	case "resume":
+		return resumeCmd(args[1:])
 	case "status":
 		return statusCmd(args[1:])
 	case "command":
 		return commandCmd(args[1:])
 	case "version":
-		fmt.Println("takt v0.1.1-alpha")
+		fmt.Println("takt v0.1.2-alpha")
 		return nil
 	default:
 		return usage()
@@ -49,7 +58,7 @@ func run(args []string) error {
 }
 
 func validateCmd(args []string) error {
-	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
+	fs := newFlagSet("validate")
 	configPath := fs.String("config", ".takt/config.yaml", "config path")
 	workspace := fs.String("workspace", ".", "workspace")
 	jsonOut := fs.Bool("json", false, "JSON output")
@@ -87,7 +96,7 @@ func validateCmd(args []string) error {
 }
 
 func runCmd(args []string) error {
-	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	fs := newFlagSet("run")
 	configPath := fs.String("config", ".takt/config.yaml", "config path")
 	workspace := fs.String("workspace", ".", "workspace")
 	input := fs.String("input", "", "input text or file")
@@ -128,15 +137,17 @@ func runCmd(args []string) error {
 	}
 	runner := runtime.New(wf, cfg, wfPath, cfgPath, absWorkspace)
 	state, runErr := runner.Start(context.Background(), inputValue)
-	_ = printResult(*jsonOut, state)
 	if errors.Is(runErr, runtime.ErrWaiting) {
-		return nil
+		return printResult(*jsonOut, state)
 	}
-	return runErr
+	if runErr != nil {
+		return runErr
+	}
+	return printResult(*jsonOut, state)
 }
 
 func answerCmd(args []string) error {
-	fs := flag.NewFlagSet("answer", flag.ContinueOnError)
+	fs := newFlagSet("answer")
 	workspace := fs.String("workspace", ".", "workspace")
 	value := fs.String("value", "", "answer value")
 	jsonOut := fs.Bool("json", true, "JSON output")
@@ -146,44 +157,109 @@ func answerCmd(args []string) error {
 	if fs.NArg() != 2 {
 		return fmt.Errorf("usage: takt answer <run-id> <node-id> --value text")
 	}
-	absWorkspace, _ := filepath.Abs(*workspace)
+	absWorkspace, err := filepath.Abs(*workspace)
+	if err != nil {
+		return err
+	}
 	st := store.FS{Workspace: absWorkspace}
+	release, err := st.AcquireLock(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	defer release()
 	state, err := st.Load(fs.Arg(0))
 	if err != nil {
+		return err
+	}
+	runner, err := runnerForState(state)
+	if err != nil {
+		return err
+	}
+	if err := runner.VerifyDefinitions(state); err != nil {
 		return err
 	}
 	nodeID := fs.Arg(1)
 	if state.Waiting == nil || state.Waiting.NodeID != nodeID {
 		return fmt.Errorf("run is not waiting for approval node %q", nodeID)
 	}
+	if state.Approvals == nil {
+		state.Approvals = map[string]string{}
+	}
 	state.Approvals[nodeID] = *value
 	if ns := state.Nodes[nodeID]; ns != nil {
-		ns.Status = "pending"
+		ns.Status = store.NodePending
 	}
-	state.Status = "running"
+	state.Status = store.RunRunning
 	state.Waiting = nil
-	if err := st.Save(state); err != nil {
+	if err := st.Commit(state, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true}}); err != nil {
 		return err
 	}
-	wf, err := workflow.Load(state.WorkflowPath)
+	state, runErr := runner.Resume(context.Background(), state)
+	if errors.Is(runErr, runtime.ErrWaiting) {
+		return printResult(*jsonOut, state)
+	}
+	if runErr != nil {
+		return runErr
+	}
+	return printResult(*jsonOut, state)
+}
+
+func resumeCmd(args []string) error {
+	fs := newFlagSet("resume")
+	workspace := fs.String("workspace", ".", "workspace")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt resume <run-id>")
+	}
+	absWorkspace, err := filepath.Abs(*workspace)
 	if err != nil {
 		return err
+	}
+	st := store.FS{Workspace: absWorkspace}
+	release, err := st.AcquireLock(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	defer release()
+	state, err := st.Load(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	runner, err := runnerForState(state)
+	if err != nil {
+		return err
+	}
+	state, runErr := runner.Resume(context.Background(), state)
+	if errors.Is(runErr, runtime.ErrWaiting) {
+		return printResult(*jsonOut, state)
+	}
+	if runErr != nil {
+		return runErr
+	}
+	return printResult(*jsonOut, state)
+}
+
+func runnerForState(state *store.RunState) (*runtime.Runner, error) {
+	wf, err := workflow.Load(state.WorkflowPath)
+	if err != nil {
+		return nil, err
 	}
 	cfg, err := cfgpkg.Load(state.ConfigPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	runner := runtime.New(wf, cfg, state.WorkflowPath, state.ConfigPath, state.Workspace)
-	state, runErr := runner.Resume(context.Background(), state)
-	_ = printResult(*jsonOut, state)
-	if errors.Is(runErr, runtime.ErrWaiting) {
-		return nil
+	if err := validateReferences(wf.Nodes, wf.Defaults, cfg, runner.Commands); err != nil {
+		return nil, err
 	}
-	return runErr
+	return runner, nil
 }
 
 func statusCmd(args []string) error {
-	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs := newFlagSet("status")
 	workspace := fs.String("workspace", ".", "workspace")
 	jsonOut := fs.Bool("json", true, "JSON output")
 	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--json": false})); err != nil {
@@ -204,7 +280,7 @@ func commandCmd(args []string) error {
 	if len(args) == 0 || args[0] != "run" {
 		return fmt.Errorf("usage: takt command run <name> [flags]")
 	}
-	fs := flag.NewFlagSet("command run", flag.ContinueOnError)
+	fs := newFlagSet("command run")
 	configPath := fs.String("config", ".takt/config.yaml", "config path")
 	workspace := fs.String("workspace", ".", "workspace")
 	input := fs.String("input", "", "input text or file")
@@ -223,7 +299,11 @@ func commandCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	resolver := command.Resolver{Dirs: []string{filepath.Join(abs, ".takt", "commands"), filepath.Join(abs, "commands")}}
+	dirs := []string{filepath.Join(abs, ".takt", "commands"), filepath.Join(abs, "commands")}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dirs = append(dirs, filepath.Join(home, ".takt", "commands"))
+	}
+	resolver := command.Resolver{Dirs: dirs}
 	cmd, err := resolver.Resolve(fs.Arg(0))
 	if err != nil {
 		return err
@@ -247,8 +327,16 @@ func commandCmd(args []string) error {
 	runner := runtime.New(wf, cfg, "<command>", cfgPath, abs)
 	runner.Commands = resolver
 	state, runErr := runner.Start(context.Background(), inputValue)
-	_ = printResult(*jsonOut, state)
-	return runErr
+	if runErr != nil {
+		return runErr
+	}
+	return printResult(*jsonOut, state)
+}
+
+func newFlagSet(name string) *flag.FlagSet {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	return fs
 }
 
 func interspersed(args []string, takesValue map[string]bool) []string {
@@ -320,16 +408,74 @@ func readInput(v string) (string, error) {
 	}
 	return v, nil
 }
-func printResult(jsonOut bool, v any) error {
+func printResult(jsonOut bool, value any) error {
 	if jsonOut {
-		b, err := json.MarshalIndent(v, "", "  ")
+		b, err := json.MarshalIndent(map[string]any{"ok": true, "result": value}, "", "  ")
 		if err != nil {
 			return err
 		}
 		fmt.Println(string(b))
 		return nil
 	}
-	fmt.Printf("%+v\n", v)
+	fmt.Printf("%+v\n", value)
 	return nil
 }
-func usage() error { return fmt.Errorf("usage: takt <validate|run|answer|status|command|version>") }
+
+func wantsJSON(args []string) bool {
+	value := false
+	if len(args) > 0 {
+		switch args[0] {
+		case "run", "answer", "resume", "status":
+			value = true
+		case "command":
+			value = len(args) > 1 && args[1] == "run"
+		}
+	}
+	for _, arg := range args {
+		if arg == "--json" || arg == "--json=true" {
+			value = true
+		}
+		if arg == "--json=false" {
+			value = false
+		}
+	}
+	return value
+}
+
+func printErrorJSON(err error) error {
+	code := "internal_error"
+	details := map[string]any{}
+	retryable := false
+	var runErr *runtime.RunFailedError
+	if errors.As(err, &runErr) {
+		code = runErr.Code
+		if code == "" {
+			code = "run_failed"
+		}
+		details["run_id"] = runErr.RunID
+		details["node_id"] = runErr.NodeID
+	}
+	var changed *definition.ChangedError
+	if errors.As(err, &changed) {
+		code = "definition_changed"
+		details["definition"] = changed.Kind
+	}
+	var inconsistent *store.InconsistentError
+	if errors.As(err, &inconsistent) {
+		code = "store_inconsistent"
+		details["run_id"] = inconsistent.RunID
+	}
+	payload := map[string]any{"ok": false, "error": map[string]any{
+		"code": code, "message": err.Error(), "retryable": retryable, "details": details,
+	}}
+	b, marshalErr := json.MarshalIndent(payload, "", "  ")
+	if marshalErr != nil {
+		return marshalErr
+	}
+	fmt.Fprintln(os.Stderr, string(b))
+	return nil
+}
+
+func usage() error {
+	return fmt.Errorf("usage: takt <validate|run|answer|resume|status|command|version>")
+}

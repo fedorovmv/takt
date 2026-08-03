@@ -8,13 +8,18 @@ import (
 )
 
 type line struct {
-	indent int
-	text   string
-	num    int
+	indent  int
+	text    string
+	raw     string
+	num     int
+	blank   bool
+	comment bool
+	content bool
 }
 
-// Unmarshal parses a deliberately small YAML 1.2 subset sufficient for the
-// workflow files shipped with this prototype. JSON is accepted as well.
+// Unmarshal parses the documented Takt YAML subset and JSON. The parser keeps
+// block-scalar whitespace exactly enough for prompts and shell scripts,
+// including blank lines and the |, |-, |+, >, >-, and >+ chomp modes.
 func Unmarshal(data []byte, out any) error {
 	trimmed := strings.TrimSpace(string(data))
 	if trimmed == "" {
@@ -25,23 +30,28 @@ func Unmarshal(data []byte, out any) error {
 		dec.DisallowUnknownFields()
 		return dec.Decode(out)
 	}
-	ls, err := tokenize(string(data))
+	lines, err := tokenize(string(data))
 	if err != nil {
 		return err
 	}
-	p := parser{lines: ls}
-	v, err := p.parseBlock(ls[0].indent)
+	p := parser{lines: lines}
+	p.skipIgnorable()
+	if p.pos >= len(p.lines) {
+		return fmt.Errorf("empty YAML document")
+	}
+	value, err := p.parseBlock(p.lines[p.pos].indent)
 	if err != nil {
 		return err
 	}
+	p.skipIgnorable()
 	if p.pos != len(p.lines) {
 		return fmt.Errorf("unexpected content at line %d", p.lines[p.pos].num)
 	}
-	b, err := json.Marshal(v)
+	encoded, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	dec := json.NewDecoder(strings.NewReader(string(b)))
+	dec := json.NewDecoder(strings.NewReader(string(encoded)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(out); err != nil {
 		return fmt.Errorf("decode YAML document: %w", err)
@@ -50,24 +60,33 @@ func Unmarshal(data []byte, out any) error {
 }
 
 func tokenize(src string) ([]line, error) {
-	var out []line
-	raw := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
-	for i, s := range raw {
-		if strings.Contains(s, "\t") {
-			return nil, fmt.Errorf("tabs are not allowed in YAML indentation, line %d", i+1)
+	rawLines := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
+	out := make([]line, 0, len(rawLines))
+	hasContent := false
+	for i, raw := range rawLines {
+		if strings.Contains(raw, "\t") {
+			return nil, fmt.Errorf("tabs are not allowed in YAML, line %d", i+1)
 		}
-		trim := strings.TrimSpace(s)
-		if trim == "" || strings.HasPrefix(trim, "#") {
-			continue
+		indent := len(raw) - len(strings.TrimLeft(raw, " "))
+		trimmed := strings.TrimSpace(raw)
+		ln := line{indent: indent, raw: raw, num: i + 1}
+		switch {
+		case trimmed == "":
+			ln.blank = true
+		case strings.HasPrefix(trimmed, "#"):
+			ln.comment = true
+		default:
+			ln.text = stripComment(trimmed)
+			if ln.text == "" {
+				ln.comment = true
+			} else {
+				ln.content = true
+				hasContent = true
+			}
 		}
-		indent := len(s) - len(strings.TrimLeft(s, " "))
-		text := stripComment(strings.TrimSpace(s))
-		if text == "" {
-			continue
-		}
-		out = append(out, line{indent: indent, text: text, num: i + 1})
+		out = append(out, ln)
 	}
-	if len(out) == 0 {
+	if !hasContent {
 		return nil, fmt.Errorf("empty YAML document")
 	}
 	return out, nil
@@ -107,7 +126,14 @@ type parser struct {
 	pos   int
 }
 
+func (p *parser) skipIgnorable() {
+	for p.pos < len(p.lines) && !p.lines[p.pos].content {
+		p.pos++
+	}
+}
+
 func (p *parser) parseBlock(indent int) (any, error) {
+	p.skipIgnorable()
 	if p.pos >= len(p.lines) {
 		return nil, fmt.Errorf("unexpected end of YAML")
 	}
@@ -122,7 +148,11 @@ func (p *parser) parseBlock(indent int) (any, error) {
 
 func (p *parser) parseMap(indent int) (map[string]any, error) {
 	out := map[string]any{}
-	for p.pos < len(p.lines) {
+	for {
+		p.skipIgnorable()
+		if p.pos >= len(p.lines) {
+			break
+		}
 		ln := p.lines[p.pos]
 		if ln.indent < indent {
 			break
@@ -143,16 +173,17 @@ func (p *parser) parseMap(indent int) (map[string]any, error) {
 		p.pos++
 		var value any
 		var err error
-		switch rest {
-		case "|", ">":
-			value = p.parseBlockScalar(indent, rest == ">")
-		case "":
-			if p.pos < len(p.lines) && p.lines[p.pos].indent > indent {
+		if style, chomp, ok := blockHeader(rest); ok {
+			value = p.parseBlockScalar(indent, style, chomp)
+		} else if rest == "" {
+			next := p.nextContent()
+			if next >= 0 && p.lines[next].indent > indent {
+				p.pos = next
 				value, err = p.parseBlock(p.lines[p.pos].indent)
 			} else {
 				value = nil
 			}
-		default:
+		} else {
 			value, err = parseScalar(rest)
 		}
 		if err != nil {
@@ -165,34 +196,41 @@ func (p *parser) parseMap(indent int) (map[string]any, error) {
 
 func (p *parser) parseSeq(indent int) ([]any, error) {
 	var out []any
-	for p.pos < len(p.lines) {
-		ln := p.lines[p.pos]
-		if ln.indent < indent {
+	for {
+		p.skipIgnorable()
+		if p.pos >= len(p.lines) {
 			break
 		}
-		if ln.indent != indent || !strings.HasPrefix(ln.text, "-") {
+		ln := p.lines[p.pos]
+		if ln.indent < indent || ln.indent != indent || !strings.HasPrefix(ln.text, "-") {
 			break
 		}
 		rest := strings.TrimSpace(strings.TrimPrefix(ln.text, "-"))
 		p.pos++
 		if rest == "" {
-			if p.pos >= len(p.lines) || p.lines[p.pos].indent <= indent {
+			next := p.nextContent()
+			if next < 0 || p.lines[next].indent <= indent {
 				out = append(out, nil)
 				continue
 			}
-			v, err := p.parseBlock(p.lines[p.pos].indent)
+			p.pos = next
+			value, err := p.parseBlock(p.lines[p.pos].indent)
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, v)
+			out = append(out, value)
 			continue
 		}
 		if key, val, ok := splitKeyValue(rest); ok {
 			item := map[string]any{}
 			var parsed any
 			var err error
-			if val == "" {
-				if p.pos < len(p.lines) && p.lines[p.pos].indent > indent {
+			if style, chomp, scalar := blockHeader(val); scalar {
+				parsed = p.parseBlockScalar(indent, style, chomp)
+			} else if val == "" {
+				next := p.nextContent()
+				if next >= 0 && p.lines[next].indent > indent {
+					p.pos = next
 					parsed, err = p.parseBlock(p.lines[p.pos].indent)
 				}
 			} else {
@@ -202,7 +240,9 @@ func (p *parser) parseSeq(indent int) ([]any, error) {
 				return nil, fmt.Errorf("line %d: %w", ln.num, err)
 			}
 			item[key] = parsed
-			if p.pos < len(p.lines) && p.lines[p.pos].indent > indent {
+			next := p.nextContent()
+			if next >= 0 && p.lines[next].indent > indent {
+				p.pos = next
 				more, err := p.parseMap(p.lines[p.pos].indent)
 				if err != nil {
 					return nil, err
@@ -217,34 +257,108 @@ func (p *parser) parseSeq(indent int) ([]any, error) {
 			out = append(out, item)
 			continue
 		}
-		v, err := parseScalar(rest)
+		value, err := parseScalar(rest)
 		if err != nil {
 			return nil, fmt.Errorf("line %d: %w", ln.num, err)
 		}
-		out = append(out, v)
+		out = append(out, value)
 	}
 	return out, nil
 }
 
-func (p *parser) parseBlockScalar(parentIndent int, folded bool) string {
-	if p.pos >= len(p.lines) || p.lines[p.pos].indent <= parentIndent {
+func (p *parser) nextContent() int {
+	for i := p.pos; i < len(p.lines); i++ {
+		if p.lines[i].content {
+			return i
+		}
+	}
+	return -1
+}
+
+func blockHeader(value string) (style byte, chomp byte, ok bool) {
+	switch value {
+	case "|", "|-", "|+", ">", ">-", ">+":
+		style = value[0]
+		if len(value) == 2 {
+			chomp = value[1]
+		}
+		return style, chomp, true
+	default:
+		return 0, 0, false
+	}
+}
+
+func (p *parser) parseBlockScalar(parentIndent int, style, chomp byte) string {
+	start := p.pos
+	end := start
+	base := -1
+	for end < len(p.lines) {
+		ln := p.lines[end]
+		if ln.content && ln.indent <= parentIndent {
+			break
+		}
+		if ln.comment && ln.indent <= parentIndent {
+			break
+		}
+		if ln.content || ln.comment {
+			if ln.indent <= parentIndent {
+				break
+			}
+			if base < 0 || ln.indent < base {
+				base = ln.indent
+			}
+		}
+		end++
+	}
+	if base < 0 {
+		p.pos = end
 		return ""
 	}
-	base := p.lines[p.pos].indent
-	var parts []string
-	for p.pos < len(p.lines) && p.lines[p.pos].indent > parentIndent {
-		ln := p.lines[p.pos]
-		text := ln.text
-		if ln.indent > base {
-			text = strings.Repeat(" ", ln.indent-base) + text
+	parts := make([]string, 0, end-start)
+	for i := start; i < end; i++ {
+		ln := p.lines[i]
+		if ln.blank {
+			parts = append(parts, "")
+			continue
 		}
-		parts = append(parts, text)
-		p.pos++
+		raw := ln.raw
+		if len(raw) >= base {
+			raw = raw[base:]
+		} else {
+			raw = ""
+		}
+		parts = append(parts, raw)
 	}
-	if folded {
-		return strings.Join(parts, " ")
+	p.pos = end
+	var value string
+	if style == '>' {
+		value = foldLines(parts)
+	} else {
+		value = strings.Join(parts, "\n")
 	}
-	return strings.Join(parts, "\n") + "\n"
+	switch chomp {
+	case '-':
+		return strings.TrimRight(value, "\n")
+	case '+':
+		return value + "\n"
+	default:
+		return strings.TrimRight(value, "\n") + "\n"
+	}
+}
+
+func foldLines(parts []string) string {
+	var out strings.Builder
+	for i, part := range parts {
+		if i > 0 {
+			if parts[i-1] == "" || part == "" {
+				out.WriteByte('\n')
+			} else {
+				out.WriteByte(' ')
+			}
+		}
+		out.WriteString(part)
+	}
+	return out.String()
 }
 
 func splitKeyValue(s string) (string, string, bool) {
@@ -299,30 +413,30 @@ func parseScalar(s string) (any, error) {
 		}
 		out := make([]any, 0, len(parts))
 		for _, part := range parts {
-			v, err := parseScalar(part)
+			value, err := parseScalar(part)
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, v)
+			out = append(out, value)
 		}
 		return out, nil
 	}
 	if strings.HasPrefix(s, "{") {
-		var v any
-		if err := json.Unmarshal([]byte(s), &v); err != nil {
+		var value any
+		if err := json.Unmarshal([]byte(s), &value); err != nil {
 			return nil, fmt.Errorf("inline objects must use JSON syntax: %w", err)
 		}
-		return v, nil
+		return value, nil
 	}
 	if (strings.HasPrefix(s, "\"") && strings.HasSuffix(s, "\"")) || (strings.HasPrefix(s, "'") && strings.HasSuffix(s, "'")) {
 		if s[0] == '\'' {
 			return strings.ReplaceAll(s[1:len(s)-1], "''", "'"), nil
 		}
-		v, err := strconv.Unquote(s)
+		value, err := strconv.Unquote(s)
 		if err != nil {
 			return nil, err
 		}
-		return v, nil
+		return value, nil
 	}
 	switch strings.ToLower(s) {
 	case "true":
@@ -332,11 +446,11 @@ func parseScalar(s string) (any, error) {
 	case "null", "~":
 		return nil, nil
 	}
-	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
-		return i, nil
+	if integer, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return integer, nil
 	}
-	if f, err := strconv.ParseFloat(s, 64); err == nil && strings.ContainsAny(s, ".eE") {
-		return f, nil
+	if float, err := strconv.ParseFloat(s, 64); err == nil && strings.ContainsAny(s, ".eE") {
+		return float, nil
 	}
 	return s, nil
 }

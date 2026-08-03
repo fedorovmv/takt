@@ -1,57 +1,93 @@
-# Результаты проверки v0.1.1-alpha
+# Результаты проверки v0.1.2-alpha
 
-Проверка выполнена в среде Go 1.23.2.
+Проверка выполнена в среде Go 1.23.2 после стабилизационного аудита.
 
-## Команды
+## Базовые проверки
 
 ```bash
+go test ./...
+go test -race ./...
+go vet ./...
+go build ./cmd/takt
 ./scripts/verify.sh
 ```
 
 Результат:
 
 ```text
+unit tests: PASS
+race detector: PASS
+go vet: PASS
+build: PASS
 verification: PASS
 ```
 
-Дополнительно выполнены сквозные сценарии:
+## Сквозные CLI-сценарии
 
-1. `hook-retry`: внешний hook дважды проверяет результат и вызывает повтор узла;
-2. самостоятельный запуск Markdown-команды через `takt command run`;
-3. Route DSL workflow: DAG → `loop_group` → approval → отдельный `takt answer` → завершение Run.
+Проверены в отдельной временной рабочей директории:
 
-Все три сценария завершились успешно.
+1. Route DSL: `run` → `waiting` → отдельный `answer` → `completed`;
+2. hook retry: первая проверка вызывает retry, вторая попытка завершается успешно;
+3. отсутствующий assistant binary при `allow_failure: true` завершает Run ошибкой `start`, а не `completed`;
+4. неизвестный CLI flag в JSON-режиме возвращает единственный корректный JSON error envelope;
+5. изменённый workflow блокирует `answer`, при этом approval остаётся `waiting` и не потребляется.
 
-## Unit tests
+Все сценарии прошли.
+
+## Контрактные тесты отказов
+
+Добавлены и пройдены тесты:
+
+- ненулевой exit code с `allow_failure`;
+- start error с `allow_failure`;
+- `all_done` после failed dependency;
+- `all_success` skip после failed dependency;
+- `when` и `trigger_rule` внутри `loop_group`;
+- node timeout и downstream cleanup;
+- persistence error propagation;
+- state/event revision mismatch;
+- concurrent Run lock;
+- unsafe Run ID;
+- process start classification;
+- process timeout;
+- output truncation;
+- fingerprints Markdown-команд;
+- block scalar с пустыми строками и chomp modes;
+- JSON mode defaults.
+
+## Покрытие
 
 ```bash
-go test ./...
-go vet ./...
-go build ./cmd/takt
+go test -cover ./...
 ```
 
-Все команды завершились успешно.
+Наиболее содержательные пакеты:
 
-Покрытие наиболее содержательных пакетов в текущем прототипе:
-
-- `internal/runtime`: 63.3%;
-- `internal/yamlmini`: 55.0%;
-- `internal/assistant`: 54.0%;
+- `internal/assistant`: 67.8%;
+- `internal/runtime`: 66.5%;
+- `internal/definition`: 74.0%;
+- `internal/config`: 57.9%;
+- `internal/yamlmini`: 55.3%;
+- `internal/store`: 54.9%;
 - `internal/command`: 52.6%;
-- `internal/workflow`: 47.1%.
+- `internal/workflow`: 49.5%;
+- `cmd/takt`: 18.3%.
 
-## Что не проверялось
+## Схемы и документация
 
-- запуск реальных Pi и OpenCode: process-конфигурации являются шаблонами;
-- восстановление session ID конкретного кодового агента;
+- все `schemas/*.json` успешно разбираются JSON parser;
+- README links проверены;
+- workflow/config schemas включают `timeout` и `max_output_bytes`;
+- RunState/Event schemas включают revisions, fingerprints и новые statuses;
+- документация отражает trusted local scope и исправления аудита.
+
+## Что пока не проверялось
+
+- реальный Pi и OpenCode;
+- session resume конкретного кодового агента;
 - native hooks конкретных SDK;
-- параллельное выполнение DAG;
-- MCP-интерфейс;
-- поведение при одновременном изменении одного Run несколькими процессами.
-
-## Проверка документации и схем
-
-- все JSON Schema файлы успешно разбираются стандартным JSON parser;
-- ссылки README на целевые спецификации проверены;
-- process adapter проверен с переменными `TAKT_MODEL_NAME` и `TAKT_MODEL_ID`;
-- `HARNESS_*` сохранены только как временная обратная совместимость.
+- platform-specific process-group termination вне Unix;
+- `takt cancel`;
+- server/untrusted scope;
+- parallel DAG;
+- MCP и Web UI.

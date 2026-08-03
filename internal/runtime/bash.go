@@ -3,34 +3,46 @@ package runtime
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os/exec"
 	"strings"
+
+	"takt/internal/execution"
 )
 
 func runBash(ctx context.Context, workspace, script string) (execResult, error) {
 	cmd := exec.CommandContext(ctx, "bash", "-lc", script)
+	execution.ConfigureCommand(cmd)
 	cmd.Dir = workspace
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
-	exitCode := 0
-	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			exitCode = ee.ExitCode()
-		} else {
-			exitCode = -1
+	result := execResult{Output: combineBashOutput(stdout.String(), stderr.String()), ExitCode: 0}
+	if err == nil {
+		return result, nil
+	}
+	if ctx.Err() != nil {
+		kind := execution.KindCancelled
+		if ctx.Err() == context.DeadlineExceeded {
+			kind = execution.KindTimedOut
 		}
+		result.ExitCode = -1
+		return result, &execution.Error{Kind: kind, ExitCode: -1, Op: "bash", Err: ctx.Err()}
 	}
-	output := strings.TrimSpace(stdout.String())
-	if strings.TrimSpace(stderr.String()) != "" {
-		if output != "" {
-			output += "\n"
+	if ee, ok := err.(*exec.ExitError); ok {
+		result.ExitCode = ee.ExitCode()
+		return result, &execution.Error{Kind: execution.KindExit, ExitCode: result.ExitCode, Op: "bash", Err: err}
+	}
+	result.ExitCode = -1
+	return result, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "bash", Err: err}
+}
+
+func combineBashOutput(stdout, stderr string) string {
+	out := strings.TrimSpace(stdout)
+	if value := strings.TrimSpace(stderr); value != "" {
+		if out != "" {
+			out += "\n"
 		}
-		output += strings.TrimSpace(stderr.String())
+		out += value
 	}
-	if err != nil {
-		return execResult{Output: output, ExitCode: exitCode}, fmt.Errorf("bash exited with code %d: %s", exitCode, output)
-	}
-	return execResult{Output: output, ExitCode: exitCode}, nil
+	return out
 }

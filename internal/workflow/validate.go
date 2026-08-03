@@ -3,6 +3,7 @@ package workflow
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"takt/internal/spec"
 )
@@ -54,6 +55,12 @@ func validateNodes(nodes []spec.Node, scope string) error {
 		}
 		if n.Attempts.Max < 0 {
 			return fmt.Errorf("node %q attempts.max cannot be negative", n.ID)
+		}
+		if n.Timeout != "" {
+			duration, err := time.ParseDuration(n.Timeout)
+			if err != nil || duration <= 0 {
+				return fmt.Errorf("node %q has invalid timeout %q", n.ID, n.Timeout)
+			}
 		}
 		if n.Approval != nil && strings.TrimSpace(n.Approval.Message) == "" {
 			return fmt.Errorf("approval node %q requires message", n.ID)

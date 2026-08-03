@@ -1,29 +1,71 @@
 package yamlmini
 
-import (
-	"takt/internal/spec"
-	"testing"
-)
+import "testing"
 
-func TestUnmarshalWorkflowShape(t *testing.T) {
-	src := `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: test
-nodes:
-  - id: a
-    bash: echo ok
-  - id: b
-    depends_on: [a]
-    approval:
-      message: Continue?
-      capture_response: true
-`
-	var v spec.Workflow
-	if err := Unmarshal([]byte(src), &v); err != nil {
+type blockDoc struct {
+	Prompt string `json:"prompt"`
+	Folded string `json:"folded"`
+	Strip  string `json:"strip"`
+	Keep   string `json:"keep"`
+}
+
+func TestUnmarshalBasic(t *testing.T) {
+	var got struct {
+		Name  string `json:"name"`
+		Items []any  `json:"items"`
+	}
+	err := Unmarshal([]byte("name: demo\nitems: [one, 2, true]\n"), &got)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Metadata.Name != "test" || len(v.Nodes) != 2 || v.Nodes[1].ID != "b" {
-		t.Fatalf("unexpected decode: %+v", v)
+	if got.Name != "demo" || len(got.Items) != 3 {
+		t.Fatalf("unexpected value: %+v", got)
+	}
+}
+
+func TestBlockScalarPreservesBlankLinesAndSpecialText(t *testing.T) {
+	src := `prompt: |
+  first
+
+  second: value # literal comment
+  ${feedback}
+folded: >
+  first
+  second
+
+  third
+strip: |-
+  a
+
+keep: |+
+  b
+
+`
+	var got blockDoc
+	if err := Unmarshal([]byte(src), &got); err != nil {
+		t.Fatal(err)
+	}
+	wantPrompt := "first\n\nsecond: value # literal comment\n${feedback}\n"
+	if got.Prompt != wantPrompt {
+		t.Fatalf("prompt mismatch\nwant: %q\n got: %q", wantPrompt, got.Prompt)
+	}
+	wantFolded := "first second\n\nthird\n"
+	if got.Folded != wantFolded {
+		t.Fatalf("folded mismatch\nwant: %q\n got: %q", wantFolded, got.Folded)
+	}
+	if got.Strip != "a" {
+		t.Fatalf("strip mismatch: %q", got.Strip)
+	}
+	if got.Keep != "b\n\n\n" {
+		t.Fatalf("keep mismatch: %q", got.Keep)
+	}
+}
+
+func TestUnknownFieldsRemainStrict(t *testing.T) {
+	var got struct {
+		Known string `json:"known"`
+	}
+	if err := Unmarshal([]byte("known: yes\nunknown: no\n"), &got); err == nil {
+		t.Fatal("expected unknown-field error")
 	}
 }

@@ -32,6 +32,9 @@ func Load(path string) (*spec.Config, error) {
 		if assistant.Type == "process" && len(assistant.Argv) == 0 {
 			return nil, fmt.Errorf("process assistant %q requires argv", name)
 		}
+		if assistant.MaxOutputBytes < 0 {
+			return nil, fmt.Errorf("assistant %q max_output_bytes cannot be negative", name)
+		}
 	}
 	return &cfg, nil
 }
