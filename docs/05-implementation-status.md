@@ -42,7 +42,9 @@
 - сквозной `fresh → retry → resume` через process protocol и Pi adapter;
 - Pi RPC: version probe, provider/model/thinking mapping, verified Session ID, ожидание `agent_settled`, per-attempt usage delta, строгая последовательность usage snapshots и resolved model;
 - приоритет timeout/cancellation над совпавшим output overflow в Pi adapter;
-- fake-Pi contract suite и opt-in smoke test с реальным CLI.
+- fake-Pi contract suite и opt-in smoke test с реальным CLI;
+- интеграционные overflow+timeout/cancel проверки через `Pi.Run` и сохранение `OutputTruncated` в `NodeState`;
+- воспроизводимый Route DSL end-to-end с двумя попытками, feedback, resume, обязательной проверкой, артефактами и approval.
 
 ### CLI
 
@@ -68,7 +70,7 @@
 ## Не реализовано
 
 - специализированный OpenCode adapter;
-- реальный Route DSL end-to-end;
+- подключение штатного Route DSL validator и реального набора заданий;
 - capability negotiation по фактическим возможностям adapter;
 - MCP-интерфейс Takt;
 - параллельный scheduler;
@@ -78,4 +80,4 @@
 
 ## Ближайший целевой срез
 
-Следующий этап — opt-in проверка установленного Pi и Route DSL end-to-end: Pi → валидатор → feedback → retry/resume → approval. OpenCode adapter остаётся следующим сменным исполнителем, но не блокирует проверку основного сценария.
+Контрактный Route DSL end-to-end реализован на fake Pi и минимальном валидаторе. Следующий срез — заменить тестовый валидатор штатным `route-tool`, прогнать реальный набор технических заданий и собирать iterations, duration, usage, diagnostics и manual corrections. OpenCode adapter остаётся сменным исполнителем и не блокирует эту проверку.

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" != "validate" || -z "${2:-}" ]]; then
+  printf '%s\n' '{"valid":false,"diagnostics":[{"code":"USAGE","message":"usage: route-tool validate <file>"}]}'
+  exit 2
+fi
+
+file="$2"
+if [[ ! -f "$file" ]]; then
+  printf '%s\n' '{"valid":false,"diagnostics":[{"code":"ROUTE_MISSING","path":"route.yaml","message":"route file does not exist"}]}'
+  exit 1
+fi
+
+if ! grep -q '^apiVersion: synapse/v1$' "$file"; then
+  printf '%s\n' '{"valid":false,"diagnostics":[{"code":"ROUTE_API_VERSION","path":"route.yaml","line":1,"message":"expected apiVersion synapse/v1"}]}'
+  exit 1
+fi
+if ! grep -q '^kind: Route$' "$file"; then
+  printf '%s\n' '{"valid":false,"diagnostics":[{"code":"ROUTE_KIND","path":"route.yaml","line":2,"message":"expected kind Route"}]}'
+  exit 1
+fi
+if ! grep -q '^valid: true$' "$file"; then
+  printf '%s\n' 'ROUTE_INVALID: route.yaml must contain valid: true'
+  exit 1
+fi
+if ! grep -q '^  - from: http$' "$file" || ! grep -q '^  - transform: jq$' "$file" || ! grep -q '^  - to: target$' "$file"; then
+  printf '%s\n' '{"valid":false,"diagnostics":[{"code":"ROUTE_STEPS","path":"route.yaml","message":"expected http -> jq -> target steps"}]}'
+  exit 1
+fi
+
+printf '%s\n' '{"valid":true,"diagnostics":[]}'

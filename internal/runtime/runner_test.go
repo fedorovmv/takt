@@ -472,6 +472,35 @@ func TestProtocolAssistantResumesSessionAcrossRetry(t *testing.T) {
 	}
 }
 
+func TestNodeStatePreservesTruncatedForContextErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		kind       execution.Kind
+		wantStatus string
+	}{
+		{name: "timeout", kind: execution.KindTimedOut, wantStatus: store.NodeTimedOut},
+		{name: "cancellation", kind: execution.KindCancelled, wantStatus: store.NodeCancelled},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			r := New(&spec.Workflow{}, &spec.Config{}, "<workflow>", "<config>", dir)
+			state := &store.RunState{ID: "context-overflow", Status: store.RunRunning, Workspace: dir, Nodes: map[string]*store.NodeState{"agent": {Status: store.NodeRunning}}, Approvals: map[string]string{}}
+			err := &execution.Error{Kind: tt.kind, ExitCode: -1, Op: "pi rpc", Err: context.Canceled}
+			if tt.kind == execution.KindTimedOut {
+				err.Err = context.DeadlineExceeded
+			}
+			if commitErr := r.finishNodeExecutionError(state, "agent", tt.kind, err, execResult{ExitCode: -1, Truncated: true}); commitErr != nil {
+				t.Fatal(commitErr)
+			}
+			node := state.Nodes["agent"]
+			if node.Status != tt.wantStatus || node.ErrorCode != string(tt.kind) || !node.OutputTruncated {
+				t.Fatalf("unexpected node state: %+v", node)
+			}
+		})
+	}
+}
+
 func TestPiAssistantResumesSessionAcrossRetry(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {

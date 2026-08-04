@@ -49,7 +49,7 @@
 - resume rejection не превращается в fresh;
 - session ID сохраняется в NodeState.
 
-## 4. Этап C. Первый реальный adapter — Pi реализован в v0.1.8-alpha и стабилизирован в v0.1.9–v0.1.10-alpha
+## 4. Этап C. Первый реальный adapter — Pi реализован в v0.1.8-alpha и стабилизирован в v0.1.9–v0.1.11-alpha
 
 Выбран Pi. Adapter использует официальный RPC mode, contract tests с fake Pi и отдельный opt-in smoke test. OpenCode остаётся альтернативным исполнителем после проверки Route DSL.
 
@@ -69,7 +69,7 @@
 - retry `resume` продолжает предыдущую либо возвращает явную ошибку;
 - timeout работает.
 
-## 5. Этап D. Route DSL end-to-end
+## 5. Этап D. Route DSL end-to-end — контрактный срез реализован в v0.1.11-alpha
 
 ```text
 prepare input
@@ -80,12 +80,19 @@ prepare input
 → approval
 ```
 
-### Задачи
+### Реализовано
 
-- заменить mock на реальный adapter;
-- подключить route-tool;
-- нормализовать diagnostics;
-- сохранить route.yaml и validation report как artifacts;
+- workflow на `type: pi` с `session: resume`;
+- обязательный validator hook и полный validation node;
+- diagnostics попадают в `${feedback}` следующей попытки;
+- тест требует двух попыток и проверяет продолжение Session ID;
+- `route.yaml` и validation report сохраняются как artifacts;
+- approval/resume проходит через CLI.
+
+### Остаётся
+
+- заменить минимальный проверочный стенд штатным `route-tool`;
+- нормализовать diagnostics в типизированную структуру;
 - добавить eval-набор минимум из 10 заданий;
 - собирать iterations, tokens, duration, validation errors и manual corrections.
 

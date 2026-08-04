@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.10-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.11-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -72,11 +72,9 @@ make check
 
 ## С чего продолжать разработку
 
-Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Следующий вертикальный этап:
+Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-1. opt-in smoke test с установленным и авторизованным Pi;
-2. Route DSL end-to-end: Pi → валидатор → feedback → retry/resume → approval;
-3. OpenCode adapter только после проверки основного сценария либо при явной необходимости сравнения исполнителей.
+Следующий вертикальный этап — подключить штатный Route DSL validator и реальный набор технических заданий, затем собрать метрики качества. OpenCode adapter нужен после проверки этого набора либо при явной необходимости сравнения исполнителей.
 
 Подробности:
 
@@ -89,6 +87,8 @@ make check
 - [Усиление protocol contract v0.1.7](docs/21-protocol-hardening-v0.1.7.md)
 - [Pi RPC adapter v0.1.8](docs/22-pi-adapter-v0.1.8.md)
 - [Согласование Pi RPC-контракта v0.1.9](docs/23-pi-rpc-alignment-v0.1.9.md)
+- [Усиление context/usage Pi v0.1.10](docs/24-pi-context-usage-hardening-v0.1.10.md)
+- [Route DSL end-to-end v0.1.11](docs/25-route-dsl-e2e-v0.1.11.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -116,6 +116,8 @@ make check
 - [Усиление protocol contract v0.1.7](docs/21-protocol-hardening-v0.1.7.md)
 - [Pi RPC adapter v0.1.8](docs/22-pi-adapter-v0.1.8.md)
 - [Согласование Pi RPC-контракта v0.1.9](docs/23-pi-rpc-alignment-v0.1.9.md)
+- [Усиление context/usage Pi v0.1.10](docs/24-pi-context-usage-hardening-v0.1.10.md)
+- [Route DSL end-to-end v0.1.11](docs/25-route-dsl-e2e-v0.1.11.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

@@ -32,13 +32,13 @@ go build ./cmd/takt
 
 ## Первая рекомендуемая задача
 
-Начни с `TAKT-011`: Route DSL end-to-end на уже реализованном Pi adapter.
+Начни с `TAKT-011B`: производственная проверка уже реализованного Route DSL end-to-end.
 
 Требования:
 
-- сначала выполни opt-in Pi smoke при доступных credentials;
-- замени mock в Route DSL workflow на `type: pi`;
-- подключи реальный validator и передавай его diagnostics в retry;
+- используй `examples/route-dsl-e2e` как базовый контракт;
+- выполни opt-in Pi smoke при доступных credentials;
+- замени минимальный `route-tool` штатным валидатором и сохрани передачу diagnostics в retry;
 - не меняй timeout, output limit, fresh/resume и error classification без обновления спецификации и ADR;
 - сохраняй контракт `takt-assistant/v1alpha1` для универсальных process adapters; Pi использует отдельный RPC adapter;
 - не допускай тихого fallback с resume на fresh;

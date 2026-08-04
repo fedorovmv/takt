@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.11-alpha
+
+- добавлены fake-Pi overflow-сценарии, проходящие через реальный `Pi.Run`;
+- интеграционно проверены `timed_out`/`cancelled` и `Result.Truncated=true`;
+- runtime-регрессия подтверждает сохранение `NodeState.OutputTruncated` для context errors;
+- добавлен воспроизводимый Route DSL end-to-end: Pi → validator → feedback → retry/resume → artifacts → approval;
+- первая попытка намеренно не проходит проверку, вторая использует Session ID и диагностику;
+- новый сквозной сценарий включён в `make check` и `scripts/verify.sh`;
+- добавлены ADR-023 и отчёт `docs/25-route-dsl-e2e-v0.1.11.md`.
+
 ## v0.1.10-alpha
 
 - timeout/cancellation Pi attempt имеют приоритет над одновременно обнаруженным output overflow;

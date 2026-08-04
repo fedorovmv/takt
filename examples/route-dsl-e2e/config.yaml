@@ -1,0 +1,17 @@
+apiVersion: takt/v1alpha1
+kind: Config
+
+models:
+  route-model:
+    provider: aihub
+    id: Qwen/Qwen3.6-27B
+    params:
+      reasoning_effort: high
+
+assistants:
+  pi:
+    type: pi
+    binary: pi
+    session_dir: .takt/pi-sessions
+    project_trust: approve
+    max_output_bytes: 10485760

@@ -1,6 +1,6 @@
 # Спецификация адаптеров исполнителей
 
-Статус: process-протокол и fake contract suite реализованы в `v0.1.7-alpha`; специализированный Pi RPC adapter реализован в `v0.1.8-alpha` и согласован с финальной RPC-семантикой Pi в `v0.1.9-alpha` и усилен по приоритету context/usage snapshots в `v0.1.10-alpha`. OpenCode adapter, capability discovery и потоковый EventSink остаются целевыми возможностями v0.2.
+Статус: process-протокол и fake contract suite реализованы в `v0.1.7-alpha`; специализированный Pi RPC adapter реализован в `v0.1.8-alpha` и согласован с финальной RPC-семантикой Pi в `v0.1.9-alpha` и усилен по приоритету context/usage snapshots в `v0.1.11-alpha`. OpenCode adapter, capability discovery и потоковый EventSink остаются целевыми возможностями v0.2.
 
 ## 1. Назначение
 

@@ -11,14 +11,16 @@ import (
 )
 
 type options struct {
-	caseName     string
-	mode         string
-	provider     string
-	model        string
-	thinking     string
-	session      string
-	sessionDir   string
-	projectTrust string
+	caseName      string
+	mode          string
+	provider      string
+	model         string
+	thinking      string
+	session       string
+	sessionDir    string
+	projectTrust  string
+	marker        string
+	overflowDelay time.Duration
 }
 
 type fakeState struct {
@@ -60,6 +62,9 @@ func main() {
 	}
 	if opts.caseName == "resume-mismatch" && opts.session != "" {
 		sessionID = "different-session"
+	}
+	if opts.session != "" {
+		_ = os.Setenv("TAKT_FAKE_PI_RESUME", "1")
 	}
 
 	state := &fakeState{attemptInput: 111, attemptOutput: 22, attemptCost: 0.0125}
@@ -126,7 +131,7 @@ func main() {
 				continue
 			}
 			writeResponse(writer, id, typeName, true, nil, "")
-			handlePrompt(opts.caseName, writer, state)
+			handlePrompt(opts, writer, state)
 		case "get_messages":
 			writeResponse(writer, id, typeName, true, map[string]any{"messages": state.messagesValue()}, "")
 		case "get_last_assistant_text":
@@ -141,12 +146,43 @@ func main() {
 	}
 }
 
-func handlePrompt(caseName string, writer *safeWriter, state *fakeState) {
+func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
+	caseName := opts.caseName
 	switch caseName {
 	case "timeout", "cancel":
 		for {
 			time.Sleep(time.Hour)
 		}
+	case "timeout-overflow", "cancel-overflow":
+		if opts.overflowDelay > 0 {
+			time.Sleep(opts.overflowDelay)
+		}
+		if optsMarker := os.Getenv("TAKT_FAKE_PI_MARKER"); optsMarker != "" {
+			_ = os.WriteFile(optsMarker, []byte("overflow-started"), 0o644)
+		}
+		_, _ = os.Stderr.WriteString(strings.Repeat("overflow", 64*1024))
+		for {
+			time.Sleep(time.Hour)
+		}
+	case "route-dsl":
+		valid := opts.session != "" && strings.Contains(state.promptValue(), "ROUTE_INVALID")
+		content := "apiVersion: synapse/v1\nkind: Route\nvalid: false\n"
+		text := "created an invalid route for validator feedback"
+		if valid {
+			content = "apiVersion: synapse/v1\nkind: Route\nvalid: true\nsteps:\n  - from: http\n  - transform: jq\n  - to: target\n"
+			text = "corrected route.yaml using validator feedback"
+		}
+		_ = os.WriteFile("route.yaml", []byte(content), 0o644)
+		message := map[string]any{
+			"role":       "assistant",
+			"content":    []any{map[string]any{"type": "text", "text": text}},
+			"stopReason": "stop",
+		}
+		state.finish(text, []any{message})
+		writeJSON(writer, map[string]any{"type": "agent_start"})
+		writeJSON(writer, map[string]any{"type": "message_end", "message": message})
+		writeJSON(writer, map[string]any{"type": "agent_end", "messages": []any{message}, "willRetry": false})
+		writeJSON(writer, map[string]any{"type": "agent_settled"})
 	case "malformed":
 		writer.line([]byte("{not-json}\n"))
 	case "huge-line":
@@ -313,6 +349,17 @@ func parseArgs(args []string) (options, error) {
 		case "--fake-case":
 			value, err = next()
 			opts.caseName = value
+		case "--fake-marker":
+			value, err = next()
+			opts.marker = value
+			if err == nil {
+				_ = os.Setenv("TAKT_FAKE_PI_MARKER", value)
+			}
+		case "--fake-overflow-delay":
+			value, err = next()
+			if err == nil {
+				opts.overflowDelay, err = time.ParseDuration(value)
+			}
 		case "--fake-delay":
 			value, err = next()
 			if err == nil {

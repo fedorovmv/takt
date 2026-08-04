@@ -1,6 +1,6 @@
 # Backlog Takt v0.2
 
-Статус обновлён после согласования Pi RPC adapter с официальной settlement/usage семантикой в `v0.1.10-alpha`.
+Статус обновлён после интеграционных Pi overflow-регрессий и первого Route DSL end-to-end в `v0.1.11-alpha`.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 
@@ -88,7 +88,7 @@
 
 **Приёмка:** process adapter проходит contract cases success, exit, start, timeout, cancel, concurrent output, malformed result, fresh, resume и resume rejection. Suite включён в `scripts/verify.sh`; будущий specialized adapter обязан переиспользовать эти контракты.
 
-## Завершено в v0.1.8–v0.1.10-alpha
+## Завершено в v0.1.8–v0.1.11-alpha
 
 ### TAKT-009. Specialized Pi adapter — выполнено
 
@@ -106,15 +106,22 @@
 
 **Приёмка:** fresh, resume success и resume failure реализованы для process protocol; подтверждены на Pi adapter; OpenCode получит тот же контракт при реализации.
 
-## Следующий этап
+## Завершено в v0.1.11-alpha
 
-### TAKT-011. Route DSL end-to-end
+### TAKT-011. Route DSL end-to-end — контрактный срез выполнен
 
-**Цель:** заменить mock в основном примере.
+**Цель:** заменить mock в основном сценарии и доказать управляющий контур.
 
-**Результат:** agent → validator → feedback → retry → success → approval.
+**Результат:** Pi → validator → feedback → retry/resume → success → artifacts → approval.
 
-**Приёмка:** минимум один тест требует двух попыток; success определяется только валидатором.
+**Приёмка:** сквозной CLI-тест требует двух попыток; вторая попытка использует сохранённый Session ID и диагностику первой проверки; success определяется только валидатором; Run завершается после отдельного `takt answer`.
+
+### TAKT-011B. Производственная проверка Route DSL — следующий этап
+
+- подключить штатный `route-tool`;
+- прогнать минимум 10 реальных технических заданий;
+- нормализовать diagnostics;
+- собирать iterations, usage, duration и manual corrections.
 
 ## Далее
 

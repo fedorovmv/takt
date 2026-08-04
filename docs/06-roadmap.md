@@ -4,7 +4,7 @@
 
 ## Этап 1. Проверка модели
 
-- прогнать Route DSL workflow;
+- заменить минимальный Route DSL validator штатным `route-tool` и прогнать eval-набор;
 - прогнать исправление Go-проекта;
 - прогнать подготовку документа;
 - собрать единый eval-набор;
@@ -12,7 +12,7 @@
 
 ## Этап 2. Исполнители
 
-- стабилизировать Pi adapter;
+- поддерживать Pi adapter по официальному RPC contract;
 - стабилизировать OpenCode adapter;
 - добавить Codex/Claude Code adapters;
 - ввести capability negotiation;

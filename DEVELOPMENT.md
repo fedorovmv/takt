@@ -26,7 +26,8 @@ go build -o bin/takt ./cmd/takt
 
 ```text
 Pi adapter contract suite и opt-in smoke
-→ Route DSL end-to-end на Pi
+→ Route DSL contract end-to-end — выполнено
+→ штатный route-tool и eval-набор
 → OpenCode adapter при необходимости сравнения
 → Go и document workflows
 ```
@@ -54,6 +55,7 @@ go vet ./...
 go build ./cmd/takt
 go build ./cmd/takt-fake-pi
 ./scripts/test-pi-adapter.sh
+./scripts/test-route-dsl-e2e.sh
 ./scripts/verify.sh
 ```
 

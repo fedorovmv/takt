@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +42,24 @@ func fakePiRequest(workspace string) Request {
 	}
 }
 
+// markerPriorityContext is a deterministic test seam. The fake Pi creates the
+// marker immediately before overflowing the real shared stdout/stderr budget;
+// Err then makes the caller context authoritative at finish without relying on
+// wall-clock races between SIGKILL and a timer.
+type markerPriorityContext struct {
+	context.Context
+	marker string
+	err    error
+}
+
+func (c markerPriorityContext) Done() <-chan struct{} { return nil }
+func (c markerPriorityContext) Err() error {
+	if _, statErr := os.Stat(c.marker); statErr == nil {
+		return c.err
+	}
+	return nil
+}
+
 func TestPiPriorityError(t *testing.T) {
 	t.Run("timeout plus overflow keeps timed out", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
@@ -60,6 +79,34 @@ func TestPiPriorityError(t *testing.T) {
 			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
 		}
 	})
+}
+
+func TestPiRunPreservesContextPriorityWithRealOverflow(t *testing.T) {
+	tests := []struct {
+		name     string
+		caseName string
+		ctxErr   error
+		wantKind execution.Kind
+	}{
+		{name: "timeout plus overflow", caseName: "timeout-overflow", ctxErr: context.DeadlineExceeded, wantKind: execution.KindTimedOut},
+		{name: "cancel plus overflow", caseName: "cancel-overflow", ctxErr: context.Canceled, wantKind: execution.KindCancelled},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			marker := filepath.Join(t.TempDir(), "overflow.marker")
+			adapter := fakePi(tt.caseName)
+			adapter.spec.Args = append(adapter.spec.Args, "--fake-marker", marker)
+			adapter.spec.MaxOutputBytes = 1024
+			ctx := markerPriorityContext{Context: context.Background(), marker: marker, err: tt.ctxErr}
+			result, err := adapter.Run(ctx, fakePiRequest(t.TempDir()))
+			if execution.KindOf(err) != tt.wantKind {
+				t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+			}
+			if !result.Truncated {
+				t.Fatalf("overflow diagnostic was lost: %+v", result)
+			}
+		})
+	}
 }
 
 func TestPiAdapterContract(t *testing.T) {
