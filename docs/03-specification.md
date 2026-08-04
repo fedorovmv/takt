@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.9-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.10-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -88,7 +88,7 @@ assistants:
 - `session_dir` — каталог сессий, передаётся как `--session-dir`;
 - `project_trust` — `default`, `approve` или `deny`; последние два соответствуют `--approve` и `--no-approve`;
 - `env` — дополнительные переменные окружения;
-- `max_output_bytes` — общий лимит RPC stdout и stderr; при нуле используется безопасный лимит adapter по умолчанию.
+- `max_output_bytes` — общий лимит RPC stdout и stderr; при нуле используется безопасный лимит adapter по умолчанию. Если timeout или cancellation совпали с переполнением, причина context сохраняет классификацию `timed_out` или `cancelled`, а truncation остаётся диагностическим признаком.
 
 Takt сам задаёт `--mode rpc`, `--provider`, `--model`, `--thinking`, `--session` и параметры trust/session directory. Эти флаги запрещены в `args`, чтобы исключить расхождение структурированного Request и фактического запуска.
 
@@ -97,7 +97,7 @@ Takt сам задаёт `--mode rpc`, `--provider`, `--model`, `--thinking`, `-
 При `session: resume` adapter передаёт `--session <id>` и проверяет через `get_state`, что Pi действительно открыл тот же Session ID. Тихий переход на fresh запрещён. В режиме `fresh` сохранённый ID не передаётся.
 
 
-Статистика `get_session_stats` является накопленной по всей сессии. Adapter снимает её до prompt и после `agent_settled`, а в `Result.Usage` записывает неотрицательную дельту текущей попытки. Уменьшение накопленных значений классифицируется как `protocol`. Полные снимки сохраняются в structured result как `stats_before` и `stats_after`.
+Статистика `get_session_stats` является накопленной по всей сессии. Adapter снимает её до prompt и после `agent_settled`, а в `Result.Usage` записывает неотрицательную дельту текущей попытки. Уменьшение накопленных значений или исчезновение usage из второго снимка после его наличия в первом классифицируется как `protocol`. Явные нулевые значения валидны. Полные снимки сохраняются в structured result как `stats_before` и `stats_after`.
 
 `metadata` остаётся необязательным полем внутреннего Request. Текущий workflow runtime его не формирует, однако Pi adapter прозрачно передаёт заполненное значение через `TAKT_METADATA_JSON`. `native_hooks` передаются через `TAKT_NATIVE_HOOKS_JSON`; автоматического преобразования в Pi extensions в `v1alpha1` нет.
 

@@ -1,16 +1,15 @@
-# Результаты проверки v0.1.9-alpha
+# Результаты проверки v0.1.10-alpha
 
 ## Исправления Pi RPC
 
 Проверены:
 
-- ожидание `agent_settled` после нескольких `agent_end`;
-- automatic retry без возврата частичного результата;
-- полный deny-list session/mode-флагов Pi;
-- fire-and-forget `set_editor_text`;
-- per-attempt usage delta для fresh и resume;
-- protocol error при уменьшении cumulative stats;
-- старые timeout/cancel/output-limit/resume/runtime контракты.
+- timeout + output overflow сохраняет `timed_out`;
+- cancellation + output overflow сохраняет `cancelled`;
+- overflow без завершённого parent context остаётся `protocol`;
+- исчезновение cumulative usage после валидного первого снимка возвращает `protocol`;
+- явные нулевые cumulative usage-значения дают успешную нулевую дельту;
+- прежние `agent_settled`, retry, resume, output-limit и process-contract сценарии.
 
 ## Команды
 

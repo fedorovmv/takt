@@ -95,15 +95,11 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		result.Stdout = stdout.String()
 		result.Stderr = stderr.String()
 		result.Truncated = stdout.Truncated() || stderr.Truncated()
-		if result.Truncated {
-			return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "pi rpc", Err: fmt.Errorf("pi output exceeded max_output_bytes")}
-		}
-		if ctx.Err() != nil {
-			kind := execution.KindCancelled
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				kind = execution.KindTimedOut
-			}
-			return result, &execution.Error{Kind: kind, ExitCode: -1, Op: "pi rpc", Err: ctx.Err()}
+		// The caller context is authoritative. A deadline or cancellation that
+		// coincides with output overflow must retain timed_out/cancelled semantics
+		// instead of being reclassified as a protocol failure.
+		if priorityErr := piPriorityError(ctx, result.Truncated); priorityErr != nil {
+			return result, priorityErr
 		}
 		if runErr != nil {
 			return result, runErr
@@ -232,6 +228,20 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		return finish(result, &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "pi agent", Err: errors.New(failure)})
 	}
 	return finish(result, nil)
+}
+
+func piPriorityError(ctx context.Context, truncated bool) error {
+	if ctx != nil && ctx.Err() != nil {
+		kind := execution.KindCancelled
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			kind = execution.KindTimedOut
+		}
+		return &execution.Error{Kind: kind, ExitCode: -1, Op: "pi rpc", Err: ctx.Err()}
+	}
+	if truncated {
+		return &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "pi rpc", Err: fmt.Errorf("pi output exceeded max_output_bytes")}
+	}
+	return nil
 }
 
 func piArgs(s spec.AssistantSpec, req Request) []string {
@@ -659,6 +669,9 @@ func deltaPiUsage(beforeRaw, afterRaw json.RawMessage) (*ProtocolUsage, error) {
 	before := decodePiUsage(beforeRaw)
 	after := decodePiUsage(afterRaw)
 	if after == nil {
+		if before != nil {
+			return nil, fmt.Errorf("Pi session statistics lost cumulative usage: before=%+v after=<missing>", *before)
+		}
 		return nil, nil
 	}
 	if before == nil {

@@ -1,6 +1,6 @@
 # Спецификация адаптеров исполнителей
 
-Статус: process-протокол и fake contract suite реализованы в `v0.1.7-alpha`; специализированный Pi RPC adapter реализован в `v0.1.8-alpha` и согласован с финальной RPC-семантикой Pi в `v0.1.9-alpha`. OpenCode adapter, capability discovery и потоковый EventSink остаются целевыми возможностями v0.2.
+Статус: process-протокол и fake contract suite реализованы в `v0.1.7-alpha`; специализированный Pi RPC adapter реализован в `v0.1.8-alpha` и согласован с финальной RPC-семантикой Pi в `v0.1.9-alpha` и усилен по приоритету context/usage snapshots в `v0.1.10-alpha`. OpenCode adapter, capability discovery и потоковый EventSink остаются целевыми возможностями v0.2.
 
 ## 1. Назначение
 
@@ -247,7 +247,7 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 5. перед prompt снимается накопленная статистика `get_session_stats`;
 6. adapter ждёт `agent_settled`; события `agent_end` учитываются как отдельные низкоуровневые запуски и могут иметь `willRetry: true`;
 7. после settlement читаются `get_messages`, `get_last_assistant_text`, повторный `get_session_stats` и `get_state`;
-8. usage вычисляется как дельта накопленной статистики до/после попытки;
+8. usage вычисляется как дельта накопленной статистики до/после попытки; уменьшение значений и исчезновение ранее присутствовавшего usage являются protocol error;
 9. закрытие stdin штатно завершает RPC-процесс.
 
 Поддержано:
@@ -255,6 +255,7 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 - выбор provider/model и thinking level;
 - `fresh` и проверенный `resume` через `--session`;
 - timeout/cancellation вместе с process group;
+- приоритет `timed_out`/`cancelled` над одновременно обнаруженным output overflow;
 - общий race-safe лимит stdout/stderr;
 - Session ID, resolved model и per-attempt usage delta;
 - дополнительные env и нерезервированные Pi flags;

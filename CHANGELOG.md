@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.10-alpha
+
+- timeout/cancellation Pi attempt имеют приоритет над одновременно обнаруженным output overflow;
+- `output_truncated` сохраняется как диагностика без изменения `timed_out`/`cancelled`;
+- исчезновение cumulative usage после его наличия в первом снимке классифицируется как `protocol`;
+- явные нулевые usage-значения остаются валидными;
+- добавлены регрессии timeout+overflow, cancel+overflow, missing usage и zero usage;
+- добавлены ADR-022 и отчёт `docs/24-pi-context-usage-hardening-v0.1.10.md`.
+
 ## v0.1.9-alpha
 
 - Pi adapter завершает попытку только после `agent_settled`, а не первого `agent_end`;

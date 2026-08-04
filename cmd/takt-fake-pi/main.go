@@ -95,23 +95,28 @@ func main() {
 				"messageCount":  2,
 			}, "")
 		case "get_session_stats":
+			observed := map[string]any{
+				"provider":      opts.provider,
+				"model":         opts.model,
+				"thinking":      opts.thinking,
+				"session":       opts.session,
+				"session_dir":   opts.sessionDir,
+				"project_trust": opts.projectTrust,
+				"prompt":        state.promptValue(),
+				"run_id":        os.Getenv("TAKT_RUN_ID"),
+				"node_id":       os.Getenv("TAKT_NODE_ID"),
+				"metadata":      os.Getenv("TAKT_METADATA_JSON"),
+				"native_hooks":  os.Getenv("TAKT_NATIVE_HOOKS_JSON"),
+			}
+			if opts.caseName == "stats-disappear" && state.settledValue() {
+				writeResponse(writer, id, typeName, true, map[string]any{"observed": observed}, "")
+				continue
+			}
 			input, output, cost := state.stats(opts.caseName)
 			writeResponse(writer, id, typeName, true, map[string]any{
-				"tokens": map[string]any{"input": input, "output": output, "total": input + output},
-				"cost":   cost,
-				"observed": map[string]any{
-					"provider":      opts.provider,
-					"model":         opts.model,
-					"thinking":      opts.thinking,
-					"session":       opts.session,
-					"session_dir":   opts.sessionDir,
-					"project_trust": opts.projectTrust,
-					"prompt":        state.promptValue(),
-					"run_id":        os.Getenv("TAKT_RUN_ID"),
-					"node_id":       os.Getenv("TAKT_NODE_ID"),
-					"metadata":      os.Getenv("TAKT_METADATA_JSON"),
-					"native_hooks":  os.Getenv("TAKT_NATIVE_HOOKS_JSON"),
-				},
+				"tokens":   map[string]any{"input": input, "output": output, "total": input + output},
+				"cost":     cost,
+				"observed": observed,
 			}, "")
 		case "prompt":
 			prompt, _ := command["message"].(string)
@@ -230,6 +235,9 @@ func (s *fakeState) finish(text string, messages []any) {
 func (s *fakeState) stats(caseName string) (int, int, float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if caseName == "stats-zero" {
+		return 0, 0, 0
+	}
 	input, output, cost := s.baseInput, s.baseOutput, s.baseCost
 	if s.settled {
 		if caseName == "stats-decrease" {
@@ -240,6 +248,12 @@ func (s *fakeState) stats(caseName string) (int, int, float64) {
 		cost += s.attemptCost
 	}
 	return input, output, cost
+}
+
+func (s *fakeState) settledValue() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.settled
 }
 
 func (s *fakeState) promptValue() string {

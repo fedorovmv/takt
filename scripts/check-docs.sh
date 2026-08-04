@@ -37,20 +37,23 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-019" \
   "ARCHITECTURE_DECISIONS.md|ADR-020" \
   "ARCHITECTURE_DECISIONS.md|ADR-021" \
+  "ARCHITECTURE_DECISIONS.md|ADR-022" \
   "docs/03-specification.md|allow_failure" \
   "docs/03-specification.md|родительский \`loop_group\`" \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.9-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.10-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \
   "docs/10-assistant-adapter-spec.md|adapter ждёт \`agent_settled\`" \
   "docs/10-assistant-adapter-spec.md|per-attempt usage delta" \
+  "docs/10-assistant-adapter-spec.md|приоритет \`timed_out\`/\`cancelled\`" \
   "docs/12-document-map.md|21-protocol-hardening-v0.1.7.md" \
   "docs/12-document-map.md|22-pi-adapter-v0.1.8.md" \
   "docs/12-document-map.md|23-pi-rpc-alignment-v0.1.9.md" \
+  "docs/12-document-map.md|24-pi-context-usage-hardening-v0.1.10.md" \
   "docs/14-backlog-v0.2.md|TAKT-008. Fake assistant protocol suite — выполнено" \
   "docs/14-backlog-v0.2.md|TAKT-009. Specialized Pi adapter — выполнено" \
   "docs/15-coding-agent-start.md|takt-assistant/v1alpha1" \
@@ -58,7 +61,9 @@ for check in \
   "docs/21-protocol-hardening-v0.1.7.md|обязаны совпадать всегда" \
   "docs/22-pi-adapter-v0.1.8.md|pi --mode rpc" \
   "docs/23-pi-rpc-alignment-v0.1.9.md|agent_settled" \
-  "docs/23-pi-rpc-alignment-v0.1.9.md|attempt_delta"
+  "docs/23-pi-rpc-alignment-v0.1.9.md|attempt_delta" \
+  "docs/24-pi-context-usage-hardening-v0.1.10.md|timeout + output overflow" \
+  "docs/24-pi-context-usage-hardening-v0.1.10.md|исчез после \`agent_settled\`"
 do
   file="${check%%|*}"
   text="${check#*|}"

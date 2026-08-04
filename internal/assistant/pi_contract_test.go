@@ -41,6 +41,27 @@ func fakePiRequest(workspace string) Request {
 	}
 }
 
+func TestPiPriorityError(t *testing.T) {
+	t.Run("timeout plus overflow keeps timed out", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+		defer cancel()
+		<-ctx.Done()
+		err := piPriorityError(ctx, true)
+		if execution.KindOf(err) != execution.KindTimedOut {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+
+	t.Run("cancel plus overflow keeps cancelled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := piPriorityError(ctx, true)
+		if execution.KindOf(err) != execution.KindCancelled {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+}
+
 func TestPiAdapterContract(t *testing.T) {
 	t.Run("success and request mapping", func(t *testing.T) {
 		result, err := fakePi("success").Run(context.Background(), fakePiRequest(t.TempDir()))
@@ -160,6 +181,26 @@ func TestPiAdapterContract(t *testing.T) {
 		_, err := fakePi("stats-decrease").Run(context.Background(), req)
 		if execution.KindOf(err) != execution.KindProtocol {
 			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+
+	t.Run("disappearing cumulative stats are protocol error", func(t *testing.T) {
+		req := fakePiRequest(t.TempDir())
+		req.SessionMode = "resume"
+		req.SessionID = "session-123"
+		_, err := fakePi("stats-disappear").Run(context.Background(), req)
+		if execution.KindOf(err) != execution.KindProtocol {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+
+	t.Run("explicit zero cumulative usage remains valid", func(t *testing.T) {
+		result, err := fakePi("stats-zero").Run(context.Background(), fakePiRequest(t.TempDir()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Usage == nil || result.Usage.InputTokens != 0 || result.Usage.OutputTokens != 0 || result.Usage.Cost != 0 {
+			t.Fatalf("unexpected zero usage: %+v", result.Usage)
 		}
 	})
 

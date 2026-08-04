@@ -40,7 +40,8 @@
 - проверка version/type/status, usage, session resume и неизвестных полей;
 - fake-assistant binary и отрицательный contract suite;
 - сквозной `fresh → retry → resume` через process protocol и Pi adapter;
-- Pi RPC: version probe, provider/model/thinking mapping, verified Session ID, ожидание `agent_settled`, per-attempt usage delta и resolved model;
+- Pi RPC: version probe, provider/model/thinking mapping, verified Session ID, ожидание `agent_settled`, per-attempt usage delta, строгая последовательность usage snapshots и resolved model;
+- приоритет timeout/cancellation над совпавшим output overflow в Pi adapter;
 - fake-Pi contract suite и opt-in smoke test с реальным CLI.
 
 ### CLI

@@ -49,7 +49,7 @@
 - resume rejection не превращается в fresh;
 - session ID сохраняется в NodeState.
 
-## 4. Этап C. Первый реальный adapter — Pi реализован в v0.1.8-alpha и стабилизирован в v0.1.9-alpha
+## 4. Этап C. Первый реальный adapter — Pi реализован в v0.1.8-alpha и стабилизирован в v0.1.9–v0.1.10-alpha
 
 Выбран Pi. Adapter использует официальный RPC mode, contract tests с fake Pi и отдельный opt-in smoke test. OpenCode остаётся альтернативным исполнителем после проверки Route DSL.
 

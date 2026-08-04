@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints и persistence уже реализована в `v0.1.9-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints и persistence уже реализована в `v0.1.10-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -164,7 +164,7 @@ Output, exit code, session ID и признак truncation сохраняютс�
 - downstream `all_done` может выполниться;
 - итоговый Run становится `failed`.
 
-При отмене родительского context Node и Run становятся `cancelled`. Команда `takt cancel` остаётся задачей v0.2.
+При отмене родительского context Node и Run становятся `cancelled`. Причина context имеет приоритет над одновременно обнаруженным output overflow: Node сохраняет `timed_out` или `cancelled`, а `output_truncated` остаётся дополнительным полем результата. Команда `takt cancel` остаётся задачей v0.2.
 
 ## 9. Hooks
 
