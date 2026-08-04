@@ -69,7 +69,7 @@
 - retry `resume` продолжает предыдущую либо возвращает явную ошибку;
 - timeout работает.
 
-## 5. Этап D. Route DSL end-to-end и evaluation — benchmark-контур реализован в v0.1.11–v0.1.15-alpha
+## 5. Этап D. Route DSL end-to-end и evaluation — benchmark-контур реализован в v0.1.11–v0.1.16-alpha
 
 ```text
 prepare input

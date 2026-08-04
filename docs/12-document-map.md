@@ -59,7 +59,7 @@
 | Строгая OS/envelope семантика | `21-protocol-hardening-v0.1.7.md` | фактический |
 | Pi RPC adapter | `22-pi-adapter-v0.1.8.md`, `23-pi-rpc-alignment-v0.1.9.md`, `24-pi-context-usage-hardening-v0.1.10.md` | фактический |
 | Route DSL end-to-end | `25-route-dsl-e2e-v0.1.11.md`, `../examples/route-dsl-e2e/` | контрактный срез реализован |
-| Evaluation runner и метрики | `26-evaluation-runner-v0.1.12.md`, `27-evaluation-isolation-report-v0.1.13.md`, `28-benchmark-identity-quality-v0.1.14.md`, `29-benchmark-metric-semantics-v0.1.15.md`, `../examples/route-dsl-eval/`, `../examples/route-dsl-benchmark/` | идентичность, per-attempt usage и предметные метрики реализованы; реальный baseline требует штатного валидатора |
+| Evaluation runner и метрики | `26-evaluation-runner-v0.1.12.md`, `27-evaluation-isolation-report-v0.1.13.md`, `28-benchmark-identity-quality-v0.1.14.md`, `29-benchmark-metric-semantics-v0.1.15.md`, `30-quality-envelope-semantics-v0.1.16.md`, `../examples/route-dsl-eval/`, `../examples/route-dsl-benchmark/` | идентичность, per-attempt usage и предметные метрики реализованы; реальный baseline требует штатного валидатора |
 | Восстановление документации релиза | `19-document-recovery-v0.1.5.md` | фактический |
 | Граница безопасности | `../SECURITY.md` | действующий |
 | Ближайшее целевое состояние | `08-target-v0.2.md` | целевой |

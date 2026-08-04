@@ -394,6 +394,9 @@
         },
         "quality_expected": {
           "type": "boolean"
+        },
+        "quality_node_status": {
+          "type": "string"
         }
       }
     },

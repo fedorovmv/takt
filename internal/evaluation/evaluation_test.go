@@ -344,8 +344,8 @@ func TestFinishReportUsesTotalCostPerValidResult(t *testing.T) {
 		StartedAt: time.Now().Add(-time.Second),
 		Summary:   newSummary(),
 		Runs: []RunRecord{
-			{Cost: 2, DurationMS: 100, AttemptsToValid: 1, QualityExpected: true, Quality: &validation.Result{Valid: true, Score: &score}},
-			{Cost: 3, DurationMS: 200, QualityExpected: true, Quality: &validation.Result{Valid: false}},
+			{Cost: 2, DurationMS: 100, AttemptsToValid: 1, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: true, Score: &score}},
+			{Cost: 3, DurationMS: 200, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: false}},
 		},
 	}
 	for _, record := range report.Runs {
@@ -394,6 +394,10 @@ func TestEvaluationReportSchemaMatchesVersion(t *testing.T) {
 	}
 	if _, ok := summary["duration_per_valid_ms"]; ok {
 		t.Fatal("evaluation report schema still exposes ambiguous duration_per_valid_ms")
+	}
+	run := defs["run"].(map[string]any)["properties"].(map[string]any)
+	if _, ok := run["quality_node_status"]; !ok {
+		t.Fatal("evaluation report schema misses quality_node_status")
 	}
 	benchmark := defs["benchmark"].(map[string]any)["properties"].(map[string]any)
 	if _, ok := benchmark["workspace_fingerprint"]; !ok {
@@ -561,8 +565,7 @@ nodes:
   - id: quality
     depends_on: [implement]
     bash: |
-      printf '%s\n' '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":true,"score":100}'
-      exit 7
+      exec /bin/sh -c 'printf "%s\n" "$1"; exit "$2"' sh '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":true,"score":100}' 7
 `, 0o644)
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
@@ -576,11 +579,106 @@ nodes:
 		t.Fatalf("failed quality execution must remain a benchmark result, got %v", err)
 	}
 	run := report.Runs[0]
-	if run.Quality != nil || !strings.Contains(run.QualityError, "did not complete: status=failed") {
-		t.Fatalf("failed quality output was trusted: %+v", run)
+	if run.Quality == nil || !run.Quality.Valid || run.QualityNodeStatus != string(store.NodeFailed) || !strings.Contains(run.QualityError, "did not complete: status=failed") {
+		t.Fatalf("failed quality envelope was not preserved: %+v", run)
 	}
-	if report.Summary.Valid != 0 || report.Summary.Invalid != 1 || floatValue(report.Summary.FinalSuccessRate) != 0 {
-		t.Fatalf("failed quality node changed success metrics: %+v", report.Summary)
+	if run.AttemptsToValid != 0 || run.ValidAtFirstAttempt {
+		t.Fatalf("failed quality node was treated as valid: %+v", run)
+	}
+	if report.Summary.Valid != 0 || report.Summary.Invalid != 1 || report.Summary.ScoredRuns != 1 || floatValue(report.Summary.AverageScore) != 100 || floatValue(report.Summary.FinalSuccessRate) != 0 {
+		t.Fatalf("failed quality node changed success metrics or lost score: %+v", report.Summary)
+	}
+}
+
+func TestFailedQualityNodePreservesInvalidEnvelopeDiagnostics(t *testing.T) {
+	root := t.TempDir()
+	workflowPath := filepath.Join(root, "workflow.yaml")
+	configPath := filepath.Join(root, "config.yaml")
+	casesDir := filepath.Join(root, "cases")
+	templateDir := filepath.Join(root, "template")
+	outputDir := filepath.Join(root, "output")
+	for _, dir := range []string{casesDir, templateDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: invalid-quality
+nodes:
+  - id: implement
+    bash: |
+      true
+  - id: quality
+    depends_on: [implement]
+    bash: |
+      exec /bin/sh -c 'printf "%s\n" "$1"; exit "$2"' sh '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":false,"score":42,"diagnostics":[{"code":"ROUTE_INVALID","severity":"error","path":"route.yaml","message":"invalid route"}]}' 1
+`, 0o644)
+	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
+	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
+
+	report, err := Run(context.Background(), RunOptions{
+		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
+		WorkspaceTemplate: templateDir, OutputDir: outputDir,
+		QualityNode: "quality", GenerationNode: "implement",
+	})
+	if err != nil {
+		t.Fatalf("invalid validation result is a benchmark outcome, got %v", err)
+	}
+	run := report.Runs[0]
+	if run.Quality == nil || run.Quality.Valid || run.Quality.Score == nil || *run.Quality.Score != 42 || len(run.Quality.Diagnostics) != 1 {
+		t.Fatalf("invalid quality envelope was not preserved: %+v", run)
+	}
+	if run.QualityNodeStatus != string(store.NodeFailed) || !strings.Contains(run.QualityError, "status=failed") {
+		t.Fatalf("quality execution status was not preserved: %+v", run)
+	}
+	if report.Summary.Valid != 0 || report.Summary.Invalid != 1 || report.Summary.ScoredRuns != 1 || floatValue(report.Summary.AverageScore) != 42 {
+		t.Fatalf("invalid quality score was not aggregated: %+v", report.Summary)
+	}
+	if report.Summary.DiagnosticsByCode["ROUTE_INVALID"] != 1 || report.Summary.DiagnosticsBySeverity["error"] != 1 {
+		t.Fatalf("invalid quality diagnostics were not aggregated: %+v", report.Summary)
+	}
+}
+
+func TestFailedQualityNodeWithMalformedEnvelopeIsContractError(t *testing.T) {
+	root := t.TempDir()
+	workflowPath := filepath.Join(root, "workflow.yaml")
+	configPath := filepath.Join(root, "config.yaml")
+	casesDir := filepath.Join(root, "cases")
+	templateDir := filepath.Join(root, "template")
+	outputDir := filepath.Join(root, "output")
+	for _, dir := range []string{casesDir, templateDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: malformed-failed-quality
+nodes:
+  - id: implement
+    bash: |
+      true
+  - id: quality
+    depends_on: [implement]
+    bash: |
+      exec /bin/sh -c 'printf "%s\n" "$1"; exit "$2"' sh '{"valid":false}' 1
+`, 0o644)
+	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
+	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
+
+	report, err := Run(context.Background(), RunOptions{
+		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
+		WorkspaceTemplate: templateDir, OutputDir: outputDir,
+		QualityNode: "quality", GenerationNode: "implement",
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported validation protocol_version") {
+		t.Fatalf("expected failed malformed quality contract error, got report=%+v err=%v", report, err)
+	}
+	if report == nil || len(report.Runs) != 1 || report.Runs[0].Status != "evaluation_error" || report.Runs[0].ErrorCode != "quality_contract" {
+		t.Fatalf("failed malformed quality error not preserved: %+v", report)
 	}
 }
 

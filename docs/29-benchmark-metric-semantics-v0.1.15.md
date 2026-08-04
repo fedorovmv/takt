@@ -66,7 +66,7 @@ Summary увеличивает `mixed_execution_identity_nodes` и группи�
 
 ## Quality-node
 
-Результат `takt-validation/v1alpha1` принимается только от узла со статусом `completed`.
+В `v0.1.15-alpha` success gate был привязан к статусу `completed`, но реализация сначала проверяла status и теряла структурированный envelope неуспешного валидатора. Начиная с `v0.1.16-alpha`, доступный `takt-validation/v1alpha1` декодируется при любом terminal status: score, checks и diagnostics сохраняются. Success rate повышается только при `completed && valid=true`.
 
 Следующие состояния не могут повысить success rate, даже если stdout содержит `valid: true`:
 
@@ -77,7 +77,7 @@ Summary увеличивает `mixed_execution_identity_nodes` и группи�
 - `skipped`;
 - `blocked`.
 
-Для них report сохраняет `quality_error`, а запуск учитывается как невалидный предметный результат. Нарушение JSON-контракта успешно завершившимся quality-node остаётся ошибкой измерительного контура.
+Для них report сохраняет `quality_node_status`, `quality_error` и, при наличии корректного envelope, сам `quality` со score и diagnostics. Нарушение JSON-контракта при любом terminal status остаётся ошибкой измерительного контура.
 
 ## Fingerprint валидатора
 

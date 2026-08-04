@@ -84,6 +84,7 @@ type runRecord struct {
 	AttemptsToValid     int                   `json:"attempts_to_valid"`
 	ValidAtFirstAttempt bool                  `json:"valid_at_first_attempt"`
 	Quality             *quality              `json:"quality"`
+	QualityNodeStatus   string                `json:"quality_node_status"`
 	Nodes               map[string]nodeRecord `json:"nodes"`
 }
 
@@ -161,7 +162,7 @@ func main() {
 		if run.Status != "completed" || run.Answers != 1 || run.Resumed != 1 {
 			fail("unexpected run: %+v", run)
 		}
-		if run.Quality == nil || run.Quality.ProtocolVersion != "takt-validation/v1alpha1" || !run.Quality.Valid || run.Quality.Score != 100 || run.AttemptsToValid != 2 || run.ValidAtFirstAttempt {
+		if run.QualityNodeStatus != "completed" || run.Quality == nil || run.Quality.ProtocolVersion != "takt-validation/v1alpha1" || !run.Quality.Valid || run.Quality.Score != 100 || run.AttemptsToValid != 2 || run.ValidAtFirstAttempt {
 			fail("unexpected quality result: %+v", run)
 		}
 		node := run.Nodes["implement"]

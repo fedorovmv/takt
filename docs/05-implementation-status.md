@@ -50,7 +50,7 @@
 - `takt eval run/report`, предварительная проверка уникальности `case_id`, запрет пересечения template/output, fingerprints стратегии/benchmark/workspace/валидатора, assistant/version/requested/resolved model и JSON-отчёт с предметными метриками качества;
 - раздельная атрибуция usage по execution identity и явная отметка mixed identity;
 - явные нулевые quality-метрики и `null` для недоступных средних значений;
-- учёт quality только после успешного завершения quality-node;
+- сохранение validation envelope при любом terminal status quality-node и success gate `completed && valid=true`;
 - строгие схемы `takt-validation/v1alpha1` и `takt-evaluation/v1alpha1`;
 - стартовый Route DSL eval-набор из десяти синтетических заданий.
 

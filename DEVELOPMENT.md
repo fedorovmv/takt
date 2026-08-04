@@ -61,7 +61,7 @@ make route-benchmark
 - отделять infrastructure contract suite от quality benchmark.
 - сохранять per-attempt execution identity при любом retry;
 - не трактовать амортизированную длительность benchmark как time-to-valid;
-- учитывать quality-result только после успешного завершения quality-node.
+- декодировать доступный validation envelope независимо от exit code; считать успехом только `completed && valid=true`.
 
 ## Тесты
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.16-alpha
+
+- quality envelope декодируется и сохраняется независимо от exit code и terminal status quality-node;
+- `score`, `checks` и diagnostics из `valid: false` с ненулевым exit code участвуют в предметных агрегатах;
+- успех benchmark определяется только сочетанием `quality_node_status: completed` и `quality.valid: true`;
+- `valid: true` из failed/errored/timed_out/cancelled узла сохраняется для аудита, но не повышает success rate;
+- malformed validation envelope при любом статусе остаётся ошибкой измерительного контура;
+- evaluation report сохраняет `quality_node_status`;
+- добавлены ADR-028 и документ `docs/30-quality-envelope-semantics-v0.1.16.md`.
+
 ## v0.1.15-alpha
 
 - quality summary сохраняет измеренные нули как `0`, а недоступные средние значения как `null`;

@@ -155,6 +155,7 @@ type RunRecord struct {
 	ErrorCode           string                `json:"error_code,omitempty"`
 	Error               string                `json:"error,omitempty"`
 	Quality             *validation.Result    `json:"quality,omitempty"`
+	QualityNodeStatus   string                `json:"quality_node_status,omitempty"`
 	QualityError        string                `json:"quality_error,omitempty"`
 	QualityExpected     bool                  `json:"quality_expected"`
 	Nodes               map[string]NodeRecord `json:"nodes"`
@@ -557,6 +558,19 @@ func applyQuality(record *RunRecord, state *store.RunState, qualityNode, generat
 	if node == nil {
 		return fmt.Errorf("quality node %q has no runtime state", qualityNode)
 	}
+	record.QualityNodeStatus = string(node.Status)
+
+	output := strings.TrimSpace(node.Output)
+	if output != "" {
+		result, err := validation.Decode([]byte(node.Output))
+		if err != nil {
+			return fmt.Errorf("quality node %q: %w", qualityNode, err)
+		}
+		record.Quality = result
+	} else if node.Status == store.NodeCompleted {
+		return fmt.Errorf("quality node %q produced no validation result", qualityNode)
+	}
+
 	if node.Status != store.NodeCompleted {
 		record.QualityError = fmt.Sprintf("quality node %q did not complete: status=%s", qualityNode, node.Status)
 		if node.ErrorCode != "" {
@@ -567,19 +581,15 @@ func applyQuality(record *RunRecord, state *store.RunState, qualityNode, generat
 		}
 		return nil
 	}
-	if strings.TrimSpace(node.Output) == "" {
+
+	if record.Quality == nil {
 		return fmt.Errorf("quality node %q produced no validation result", qualityNode)
 	}
-	result, err := validation.Decode([]byte(node.Output))
-	if err != nil {
-		return fmt.Errorf("quality node %q: %w", qualityNode, err)
-	}
-	record.Quality = result
 	generator := state.Nodes[generationNode]
 	if generator == nil {
 		return fmt.Errorf("generation node %q has no runtime state", generationNode)
 	}
-	if result.Valid {
+	if record.Quality.Valid {
 		record.AttemptsToValid = generator.Attempts
 		record.ValidAtFirstAttempt = generator.Attempts == 1
 	}
@@ -681,7 +691,7 @@ func addSummary(summary *Summary, record RunRecord) {
 		return
 	}
 	summary.QualityRuns++
-	if record.Quality != nil && record.Quality.Valid {
+	if qualitySucceeded(record) {
 		summary.Valid++
 		if record.ValidAtFirstAttempt {
 			summary.ValidAtFirstAttempt++
@@ -695,6 +705,10 @@ func addSummary(summary *Summary, record RunRecord) {
 			summary.DiagnosticsByCode[diagnostic.Code]++
 		}
 	}
+}
+
+func qualitySucceeded(record RunRecord) bool {
+	return record.QualityNodeStatus == string(store.NodeCompleted) && record.Quality != nil && record.Quality.Valid
 }
 
 func finishReport(report *SuiteReport) {
@@ -715,7 +729,7 @@ func finishReport(report *SuiteReport) {
 			scored++
 			scoreTotal += *record.Quality.Score
 		}
-		if record.Quality.Valid {
+		if qualitySucceeded(record) {
 			attemptsToValid += record.AttemptsToValid
 		}
 	}
