@@ -213,3 +213,10 @@
 - DAG, hooks, retries, loop_group и approval pause/resume;
 - локальное состояние и журнал событий;
 - примеры Route DSL и hook retry.
+
+## v0.1.21-alpha
+
+- Добавлены пакеты профилей и команды `takt init <profile>`, `takt validate <profile>`, `takt run <profile>`.
+- Добавлен встроенный профиль `code` для реализации Markdown-плана без обязательного task AST.
+- Добавлена схема `schemas/profile.schema.json` и контрактный тест `scripts/test-code-profile.sh`.
+- Authoring skill обновлён до 0.3.0 и обучен использовать готовые профили.

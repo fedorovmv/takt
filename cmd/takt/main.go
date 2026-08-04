@@ -15,6 +15,7 @@ import (
 	cfgpkg "takt/internal/config"
 	"takt/internal/definition"
 	"takt/internal/evaluation"
+	"takt/internal/profile"
 	"takt/internal/runtime"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -39,6 +40,8 @@ func run(args []string) error {
 		return usage()
 	}
 	switch args[0] {
+	case "init":
+		return initCmd(args[1:])
 	case "validate":
 		return validateCmd(args[1:])
 	case "run":
@@ -61,6 +64,28 @@ func run(args []string) error {
 	}
 }
 
+func initCmd(args []string) error {
+	fs := newFlagSet("init")
+	dir := fs.String("dir", ".", "destination project directory")
+	force := fs.Bool("force", false, "replace an existing profile")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--dir": true, "--force": false, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt init <profile> [--dir project]")
+	}
+	abs, err := filepath.Abs(*dir)
+	if err != nil {
+		return err
+	}
+	root, err := profile.Init(fs.Arg(0), abs, *force)
+	if err != nil {
+		return err
+	}
+	return printResult(*jsonOut, map[string]any{"profile": fs.Arg(0), "path": root})
+}
+
 func validateCmd(args []string) error {
 	fs := newFlagSet("validate")
 	configPath := fs.String("config", ".takt/config.yaml", "config path")
@@ -72,15 +97,14 @@ func validateCmd(args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt validate <workflow> [--config path]")
 	}
-	wfPath, err := filepath.Abs(fs.Arg(0))
-	if err != nil {
-		return err
-	}
-	cfgPath, err := filepath.Abs(*configPath)
-	if err != nil {
-		return err
-	}
 	absWorkspace, err := filepath.Abs(*workspace)
+	if err != nil {
+		return err
+	}
+	wfPath, cfgPath, _, err := resolveWorkflowArgument(fs.Arg(0), absWorkspace, *configPath, flagPresent(args, "--config"))
+	if err != nil {
+		return err
+	}
 	if err != nil {
 		return err
 	}
@@ -115,11 +139,7 @@ func runCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	wfPath, err := filepath.Abs(fs.Arg(0))
-	if err != nil {
-		return err
-	}
-	cfgPath, err := filepath.Abs(*configPath)
+	wfPath, cfgPath, resolvedProfile, err := resolveWorkflowArgument(fs.Arg(0), absWorkspace, *configPath, flagPresent(args, "--config"))
 	if err != nil {
 		return err
 	}
@@ -135,7 +155,12 @@ func runCmd(args []string) error {
 	if err := validateReferences(wf.Nodes, wf.Defaults, cfg, resolver); err != nil {
 		return err
 	}
-	inputValue, err := readInput(*input)
+	var inputValue string
+	if resolvedProfile != nil {
+		inputValue, err = profile.PrepareInput(resolvedProfile.Manifest.Input, *input)
+	} else {
+		inputValue, err = readInput(*input)
+	}
 	if err != nil {
 		return err
 	}
@@ -469,6 +494,38 @@ func validateReferences(nodes []spec.Node, defaults spec.Defaults, cfg *spec.Con
 	return nil
 }
 
+func resolveWorkflowArgument(value, workspace, configValue string, configExplicit bool) (string, string, *profile.Resolved, error) {
+	if info, err := os.Stat(value); err == nil && !info.IsDir() {
+		wfPath, err := filepath.Abs(value)
+		if err != nil {
+			return "", "", nil, err
+		}
+		cfgPath, err := filepath.Abs(configValue)
+		return wfPath, cfgPath, nil, err
+	}
+	resolved, err := profile.Resolve(value, workspace)
+	if err != nil {
+		return "", "", nil, err
+	}
+	cfgPath := resolved.ConfigPath
+	if configExplicit {
+		cfgPath, err = filepath.Abs(configValue)
+		if err != nil {
+			return "", "", nil, err
+		}
+	}
+	return resolved.WorkflowPath, cfgPath, resolved, nil
+}
+
+func flagPresent(args []string, name string) bool {
+	for _, arg := range args {
+		if arg == name || strings.HasPrefix(arg, name+"=") {
+			return true
+		}
+	}
+	return false
+}
+
 func readInput(v string) (string, error) {
 	if v == "" {
 		return "", nil
@@ -547,5 +604,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <validate|run|answer|resume|status|command|eval|version>")
+	return fmt.Errorf("usage: takt <init|validate|run|answer|resume|status|command|eval|version>")
 }

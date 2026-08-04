@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+set -eu
+
+if [ -n "${TAKT_VALIDATE_COMMAND:-}" ]; then
+  exec sh -c "$TAKT_VALIDATE_COMMAND"
+fi
+
+if [ -x ./scripts/verify.sh ]; then
+  exec ./scripts/verify.sh
+fi
+if [ -f Makefile ] && grep -Eq '^[[:space:]]*check:' Makefile; then
+  exec make check
+fi
+if [ -f go.mod ]; then
+  exec go test ./...
+fi
+if [ -f package.json ]; then
+  if command -v npm >/dev/null 2>&1; then
+    exec npm test
+  fi
+fi
+
+printf '%s\n' 'No validation command detected. Set TAKT_VALIDATE_COMMAND.' >&2
+exit 2

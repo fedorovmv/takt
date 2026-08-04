@@ -99,3 +99,5 @@
 - изменение семантики — `09-runtime-semantics.md` и contract tests;
 - реализованная задача — обновить `05`, `11`, `14` и changelog;
 - несовместимое изменение — новая `apiVersion` или мигратор.
+
+- `35-profile-packages-code-v0.1.21.md` — пакеты профилей, `takt init` и режим разработки по Markdown-плану.

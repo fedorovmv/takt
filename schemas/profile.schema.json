@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/profile.schema.json",
+  "title": "Takt Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "workflow", "config"],
+  "properties": {
+    "apiVersion": {"const": "takt/v1alpha1"},
+    "kind": {"const": "Profile"},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "description": {"type": "string"}
+      }
+    },
+    "workflow": {"type": "string", "minLength": 1},
+    "config": {"type": "string", "minLength": 1},
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {"enum": ["text", "markdown"]},
+        "preserve_path": {"type": "boolean"}
+      }
+    }
+  }
+}

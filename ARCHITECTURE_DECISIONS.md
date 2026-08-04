@@ -137,3 +137,11 @@ Resume считается успешным только при совпаден�
 ## ADR-031. Provider diagnostics дополняют context classification OpenCode
 
 Timeout и cancellation остаются authoritative execution kind. При этом OpenCode adapter обязан сохранить доступные сообщения о provider retry и connection failure из stderr и JSON `error` events. Эти данные записываются в raw stdout/stderr, logical output и текст context-ошибки. Scheduler не заменяет специализированную ошибку adapter общим `node attempt`, если execution kind уже совпадает с завершившимся parent context.
+
+## ADR-032. Markdown остаётся авторитетным планом профиля code
+
+**Статус:** принято.
+
+Профиль `code` передаёт coding agent исходный путь и содержимое Markdown-плана. Runtime не преобразует план в обязательный task AST. Формализованные входы могут появляться как расширяемые adapters и использоваться только профилями, которым это действительно нужно.
+
+Это сохраняет сильную сторону coding agents — работу с естественным Markdown-контекстом — и отделяет пользовательский формат задания от runtime-модели DAG.

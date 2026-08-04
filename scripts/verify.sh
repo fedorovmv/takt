@@ -15,6 +15,7 @@ go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
 ./scripts/test-route-dsl-e2e.sh
 ./scripts/test-route-dsl-eval.sh
 ./scripts/test-takt-skill.sh
+./scripts/test-code-profile.sh
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \

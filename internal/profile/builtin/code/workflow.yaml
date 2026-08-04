@@ -1,0 +1,66 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: code-plan
+  description: Implement a Markdown plan, validate the project, review the diff, and request approval
+defaults:
+  assistant: opencode
+  model: implementation
+  session: resume
+nodes:
+  - id: implement
+    command: implement-plan
+    attempts:
+      max: 3
+    timeout: 60m
+    hooks:
+      after_node:
+        - id: project-validation
+          bash: |
+            ./.takt/profiles/code/tools/validate
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: review
+    depends_on: [implement]
+    assistant: opencode
+    model: review
+    session: fresh
+    command: review-changes
+    timeout: 30m
+
+  - id: fix-review
+    depends_on: [review]
+    assistant: opencode
+    model: implementation
+    session: resume
+    prompt: |
+      Review the current implementation and fix every actionable issue below.
+      Preserve the intent of the Markdown plan and keep its progress markers accurate.
+
+      Review findings:
+      ${nodes.review.output}
+
+      Run the project validation command before finishing.
+    attempts:
+      max: 2
+    hooks:
+      after_node:
+        - id: project-validation-after-review
+          bash: |
+            ./.takt/profiles/code/tools/validate
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: final-validation
+    depends_on: [fix-review]
+    bash: |
+      ./.takt/profiles/code/tools/validate
+
+  - id: approve
+    depends_on: [final-validation]
+    approval:
+      message: Implementation and review are complete. Approve the result.
+      capture_response: true

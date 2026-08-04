@@ -1,0 +1,10 @@
+apiVersion: takt/v1alpha1
+kind: Profile
+metadata:
+  name: code
+  description: Implement and review a Markdown development plan
+workflow: workflow.yaml
+config: ../../config.yaml
+input:
+  format: markdown
+  preserve_path: true

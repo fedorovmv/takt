@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.2.1" \
+  "skills/takt/VERSION|0.3.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -69,6 +69,13 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-031" \
   "docs/33-opencode-adapter-v0.1.19.md|opencode run --format json" \
   "docs/34-opencode-provider-diagnostics-v0.1.20.md|OpenCode diagnostics" \
+  "docs/35-profile-packages-code-v0.1.21.md|Markdown-планом" \
+  "ARCHITECTURE_DECISIONS.md|ADR-032" \
+  "README.md|takt init code" \
+  "schemas/profile.schema.json|Takt Profile" \
+  "skills/takt/VERSION|0.3.0" \
+  "skills/takt/SKILL.md|Готовые профили" \
+  "scripts/test-code-profile.sh|code profile contract: PASS" \
   "docs/10-assistant-adapter-spec.md|OpenCode adapter реализован" \
   "docs/03-specification.md|### OpenCode assistant" \
   "skills/takt/references/configuration.md|Assistant opencode" \
