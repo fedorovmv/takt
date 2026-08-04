@@ -21,7 +21,8 @@ Takt — Go-runtime, который снаружи оркестрирует го
 
 - `allow_failure` разрешает только ненулевой exit code.
 - `timed_out` и `cancelled` имеют приоритет над производными ошибками и output overflow.
-- Root DAG и дочерний DAG `loop_group` используют одну scheduler-семантику; вложенные `loop_group` в `v1alpha1` запрещены.
+- Root DAG, `loop_group`, скомпилированные `subworkflow` и `foreach` используют одну scheduler-семантику; вложенные `loop_group` в `v1alpha1` запрещены.
+- Markdown-план не преобразуется в task AST; `foreach` принимает только явный список или будущий явно выбранный adapter.
 - `takt-assistant/v1alpha1` принимает один строгий JSON envelope; OS exit code совпадает с `result.exit_code`.
 - Pi adapter ждёт `agent_settled`, проверяет Session ID, считает usage delta и не заменяет неуспешный resume на fresh.
 - Retry сохраняет отдельную execution record с assistant, версией, requested/resolved model и usage.

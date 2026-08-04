@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant для узлов, собрать DAG, retry/feedback, hooks, approval, loop_group, диагностировать workflow либо подготовить готовый .takt-профиль.
+description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant для узлов, собрать DAG, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, диагностировать workflow либо подготовить готовый .takt-профиль.
 ---
 
 # Работа с Takt
@@ -18,7 +18,9 @@ description: Создаёт, устанавливает, изменяет, пр�
    - `bash` — детерминированная команда;
    - hook с `retry` — проверка и исправление результата;
    - `approval` — отдельное сохраняемое решение пользователя;
-   - `loop_group` — только когда нужен повтор вложенного DAG, а обычных attempts недостаточно.
+   - `loop_group` — только когда нужен повтор вложенного DAG, а обычных attempts недостаточно;
+   - `subworkflow` — когда блок процесса должен переиспользоваться как отдельный Workflow;
+   - `foreach` — только для явно заданного списка элементов, без скрытого разбора Markdown.
 5. Сначала используй существующие model aliases и assistants из config. Новые добавляй только при необходимости.
 6. Внеси минимальные изменения и проверь их командой `takt validate`.
 7. Если пользователь просит рабочий запуск и среда готова, выполни `takt run`; при `waiting` покажи запрос approval и продолжи через `takt answer` только после ответа пользователя.
@@ -51,7 +53,7 @@ takt run code --workspace . --input docs/plan.md --json
 
 ## Критичные правила
 
-- Узел определяет ровно одно действие: `command`, `prompt`, `bash`, `approval` или `loop_group`.
+- Узел определяет ровно одно действие: `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow` или `foreach`.
 - Приоритет assistant/model: узел → frontmatter Markdown-команды → `workflow.defaults`.
 - Имена моделей в workflow ссылаются на aliases из `config.models`, а не напрямую на provider ID.
 - `session: resume` требует реального сохранения Session ID; не подменяй неуспешный resume на fresh.
@@ -61,12 +63,43 @@ takt run code --workspace . --input docs/plan.md --json
 - `${feedback}` содержит вывод неуспешных hooks предыдущей попытки.
 - Текст агента и наличие файла сами по себе не подтверждают успех; нужен bash-валидатор или другой детерминированный gate.
 - Approval оформляй отдельным узлом. Approval внутри `loop_group` не поддерживается.
-- Вложенные `loop_group` в `takt/v1alpha1` не поддерживаются.
+- Вложенные `loop_group` в `takt/v1alpha1` не поддерживаются. `subworkflow` и `foreach` внутри `loop_group` также не поддерживаются в текущем контракте.
 - `allow_failure: true` разрешает только штатный ненулевой exit code, но не timeout, cancellation или ошибку запуска.
 - Bash stdout/stderr сохраняются отдельно, а `${nodes.<id>.output}` содержит объединённый вывод.
 - Validation envelope `takt-validation/v1alpha1` выводится только в stdout; логи валидатора идут в stderr.
 - Takt поддерживает ограниченный YAML subset. Для многострочного prompt или bash используй block scalar `|`.
+- Markdown-план не преобразуй в task AST ради `foreach`: используй `foreach.items` только при наличии явного списка.
 - Не добавляй `system_prompt`, `user_prompt`, автоматический model fallback или иные поля, которых нет в текущем контракте.
+
+## Переиспользование workflow
+
+Используй `subworkflow`, когда несколько профилей или фаз должны выполнять один и тот же DAG:
+
+```yaml
+- id: review
+  subworkflow:
+    path: workflows/review.yaml
+    inputs:
+      plan: ${input}
+    output_node: result
+```
+
+В подключённом workflow вход читается как `${inputs.plan}`. Если terminal-узел один, `output_node` можно не задавать. При нескольких terminal-узлах он обязателен.
+
+Последовательный `foreach` принимает только явный список:
+
+```yaml
+- id: checks
+  foreach:
+    as: check
+    items: [lint, test]
+    subworkflow:
+      path: workflows/check.yaml
+      inputs:
+        name: ${check}
+```
+
+Публичный узел `checks` завершается после последней итерации и возвращает её output. Не используй `foreach` как предлог для преобразования Markdown-плана во внутренний список задач.
 
 ## Выбор prompt или command
 

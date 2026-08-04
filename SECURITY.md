@@ -71,3 +71,7 @@ A future server or untrusted mode requires at minimum:
 ## Evaluation
 
 `takt eval run` копирует и выполняет workspace template для каждого задания. Template, workflow, config, cases, assistant binaries и внешний validator входят в trusted input. Evaluation runner не создаёт sandbox и не должен использоваться для запуска недоверенных наборов заданий или шаблонов.
+
+## Подключённые workflow
+
+Пути `subworkflow.path` считаются доверенными и могут ссылаться на локальные файлы, включая абсолютные пути. Компиляция не создаёт sandbox и не ограничивает чтение definition files. Для untrusted/server режима потребуются отдельная политика корней, запрет выхода из package и проверка символических ссылок.

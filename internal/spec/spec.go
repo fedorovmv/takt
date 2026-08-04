@@ -24,23 +24,46 @@ type Defaults struct {
 }
 
 type Node struct {
-	ID           string          `json:"id"`
-	DependsOn    []string        `json:"depends_on,omitempty"`
-	When         string          `json:"when,omitempty"`
-	TriggerRule  string          `json:"trigger_rule,omitempty"`
-	Assistant    string          `json:"assistant,omitempty"`
-	Model        string          `json:"model,omitempty"`
-	Session      string          `json:"session,omitempty"`
-	Command      string          `json:"command,omitempty"`
-	Prompt       string          `json:"prompt,omitempty"`
-	Bash         string          `json:"bash,omitempty"`
-	Approval     *ApprovalSpec   `json:"approval,omitempty"`
-	LoopGroup    *LoopGroupSpec  `json:"loop_group,omitempty"`
-	Attempts     AttemptsSpec    `json:"attempts,omitempty"`
-	AllowFailure bool            `json:"allow_failure,omitempty"`
-	Timeout      string          `json:"timeout,omitempty"`
-	Hooks        HookSet         `json:"hooks,omitempty"`
-	NativeHooks  json.RawMessage `json:"native_hooks,omitempty"`
+	ID           string            `json:"id"`
+	DependsOn    []string          `json:"depends_on,omitempty"`
+	When         string            `json:"when,omitempty"`
+	TriggerRule  string            `json:"trigger_rule,omitempty"`
+	Assistant    string            `json:"assistant,omitempty"`
+	Model        string            `json:"model,omitempty"`
+	Session      string            `json:"session,omitempty"`
+	Command      string            `json:"command,omitempty"`
+	Prompt       string            `json:"prompt,omitempty"`
+	Bash         string            `json:"bash,omitempty"`
+	Approval     *ApprovalSpec     `json:"approval,omitempty"`
+	LoopGroup    *LoopGroupSpec    `json:"loop_group,omitempty"`
+	Subworkflow  *SubworkflowSpec  `json:"subworkflow,omitempty"`
+	Foreach      *ForeachSpec      `json:"foreach,omitempty"`
+	Internal     *InternalNodeSpec `json:"-"`
+	Attempts     AttemptsSpec      `json:"attempts,omitempty"`
+	AllowFailure bool              `json:"allow_failure,omitempty"`
+	Timeout      string            `json:"timeout,omitempty"`
+	Hooks        HookSet           `json:"hooks,omitempty"`
+	NativeHooks  json.RawMessage   `json:"native_hooks,omitempty"`
+}
+
+type SubworkflowSpec struct {
+	Path       string            `json:"path"`
+	Inputs     map[string]string `json:"inputs,omitempty"`
+	OutputNode string            `json:"output_node,omitempty"`
+}
+
+type ForeachSpec struct {
+	Items       []any           `json:"items"`
+	As          string          `json:"as,omitempty"`
+	Subworkflow SubworkflowSpec `json:"subworkflow"`
+}
+
+// InternalNodeSpec is produced by workflow expansion and is never accepted
+// from user YAML. It keeps subworkflow/foreach execution on the ordinary DAG
+// scheduler without adding a second runtime.
+type InternalNodeSpec struct {
+	Mode       string
+	ResultFrom string
 }
 
 type AttemptsSpec struct {

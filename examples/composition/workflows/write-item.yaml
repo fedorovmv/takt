@@ -1,0 +1,11 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: write-item
+nodes:
+  - id: append
+    bash: |
+      printf '%s\n' '${inputs.name}' >> order.txt
+  - id: result
+    depends_on: [append]
+    bash: cat order.txt

@@ -19,7 +19,7 @@ type Fingerprints struct {
 }
 
 func Compute(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath string, resolver command.Resolver) (Fingerprints, error) {
-	workflowBytes, err := bytesOrJSON(workflowPath, wf)
+	workflowBytes, err := workflowDefinitionBytes(workflowPath, wf)
 	if err != nil {
 		return Fingerprints{}, fmt.Errorf("fingerprint workflow: %w", err)
 	}
@@ -72,6 +72,52 @@ type ChangedError struct {
 
 func (e *ChangedError) Error() string {
 	return fmt.Sprintf("%s definition changed since run start", e.Kind)
+}
+
+func workflowDefinitionBytes(path string, wf *spec.Workflow) ([]byte, error) {
+	var source []byte
+	if path != "" && path[0] != '<' {
+		b, err := os.ReadFile(path)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		source = b
+	}
+	canonical, err := json.Marshal(struct {
+		Workflow *spec.Workflow                   `json:"workflow"`
+		Internal map[string]spec.InternalNodeSpec `json:"internal,omitempty"`
+	}{
+		Workflow: wf,
+		Internal: collectInternalNodes(wf.Nodes),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, 0, len(source)+len(canonical)+1)
+	out = append(out, source...)
+	out = append(out, 0)
+	out = append(out, canonical...)
+	return out, nil
+}
+
+func collectInternalNodes(nodes []spec.Node) map[string]spec.InternalNodeSpec {
+	out := map[string]spec.InternalNodeSpec{}
+	var visit func([]spec.Node)
+	visit = func(items []spec.Node) {
+		for _, node := range items {
+			if node.Internal != nil {
+				out[node.ID] = *node.Internal
+			}
+			if node.LoopGroup != nil {
+				visit(node.LoopGroup.Nodes)
+			}
+		}
+	}
+	visit(nodes)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func bytesOrJSON(path string, value any) ([]byte, error) {

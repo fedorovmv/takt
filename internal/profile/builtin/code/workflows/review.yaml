@@ -1,0 +1,38 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: code-review
+nodes:
+  - id: review
+    assistant: opencode
+    model: review
+    session: fresh
+    command: review-changes
+    timeout: 30m
+
+  - id: fix
+    depends_on: [review]
+    assistant: opencode
+    model: implementation
+    session: resume
+    prompt: |
+      Review the current implementation and fix every actionable issue below.
+      Preserve the intent of the authoritative Markdown plan.
+
+      Plan:
+      ${inputs.plan}
+
+      Review findings:
+      ${nodes.review.output}
+
+      Run the project validation command before finishing.
+    attempts:
+      max: 2
+    hooks:
+      after_node:
+        - id: project-validation-after-review
+          bash: |
+            ./.takt/profiles/code/tools/validate
+          on_failure:
+            action: retry
+            session: resume

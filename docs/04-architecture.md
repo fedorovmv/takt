@@ -78,3 +78,7 @@ TAKT_NATIVE_HOOKS_JSON
 ## Scope безопасности
 
 Текущая архитектура предполагает trusted local input. Наличие path validation для Run ID и process limits не делает runtime безопасным для недоверенных workflow.
+
+## Компиляция композиции
+
+Loader разворачивает `subworkflow` и `foreach` до валидации DAG. Runtime получает обычные nodes и внутренние no-op/result nodes, поэтому отдельного nested scheduler или nested Run store нет. Подключённые definitions входят в fingerprint.

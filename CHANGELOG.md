@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.22-alpha
+
+- добавлены reusable `subworkflow` с inputs, автоматическим или явным `output_node` и публичным output;
+- добавлен последовательный `foreach` по явным scalar/JSON-object items;
+- композиция компилируется в обычный DAG с единым scheduler и сохраняемыми approval/retry/status;
+- подключённые workflow и локальные команды входят в workflow fingerprint;
+- профиль `code` 0.2.0 разделён на переиспользуемые фазы implementation и review;
+- authoring skill обновлён до 0.4.0;
+- добавлены composition example, contract suite, ADR-033 и `docs/36-workflow-composition-v0.1.22.md`.
+
 ## v0.1.20-alpha
 
 - OpenCode сохраняет сообщения о provider retry и connection failure при timeout/cancellation;

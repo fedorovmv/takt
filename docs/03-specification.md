@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.18-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.22-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -207,7 +207,47 @@ until:
 
 Если timeout или cancellation родительской попытки наступают во время выполнения дочернего узла, родительский `loop_group` и Run сохраняют `timed_out` или `cancelled`. Производная ошибка `loop_group exhausted` не переопределяет причину завершения контекста.
 
-Вложенные `loop_group` и approval внутри `loop_group` не поддерживаются в `v1alpha1`.
+Вложенные `loop_group` и approval внутри `loop_group` не поддерживаются в `v1alpha1`. `subworkflow` и `foreach` внутри `loop_group` также не поддерживаются.
+
+### `subworkflow`
+
+Подключает отдельный `takt/v1alpha1 Workflow` и компилирует его в тот же DAG до запуска:
+
+```yaml
+- id: implementation
+  subworkflow:
+    path: workflows/implementation.yaml
+    inputs:
+      plan: ${input}
+    output_node: result
+```
+
+Путь вычисляется относительно содержащего workflow. В подключённом файле значения доступны как `${inputs.<name>}`. Если terminal-узел один, `output_node` выводится автоматически; при нескольких terminal-узлах поле обязательно.
+
+Публичный ID контейнера сохраняется для `depends_on` и `${nodes.<id>.output}`. Дочерние узлы получают стабильный namespace с `__` в Run state. Локальные Markdown-команды рядом с подключённым workflow встраиваются в скомпилированное определение; изменение подключённого workflow или команды меняет workflow fingerprint и блокирует resume старого Run.
+
+Контейнер принимает только `id`, `depends_on`, `when`, `trigger_rule` и `subworkflow`. Attempts, timeout, hooks, assistant/model и allow_failure задаются внутри подключённого workflow.
+
+### `foreach`
+
+Последовательно выполняет один subworkflow для явно заданных элементов:
+
+```yaml
+- id: checks
+  foreach:
+    as: check
+    items:
+      - lint
+      - test
+    subworkflow:
+      path: workflows/check.yaml
+      inputs:
+        name: ${check}
+```
+
+Поддерживаются scalar и inline JSON objects. Для объекта доступны `${check}` как JSON и `${check.<field>}`. `${index}` и `${check.index}` содержат индекс с нуля. Итерации выполняются строго последовательно; публичный узел возвращает output последней итерации.
+
+`foreach.items` является явным списком из workflow. Runtime не преобразует Markdown-план в task AST. Другие источники данных должны подключаться отдельным input adapter.
 
 ## 7. Зависимости, ошибки и итог Run
 
@@ -293,7 +333,9 @@ Takt не заявляет полную совместимость с YAML 1.2. 
 - `${nodes.<id>.exit_code}`;
 - `${nodes.<id>.status}`;
 - `${loop.previous.<id>.output}`;
-- `${approvals.<id>}`.
+- `${approvals.<id>}`;
+- `${inputs.<name>}` внутри подключённого subworkflow;
+- `${item}`, `${item.<field>}`, `${index}` внутри параметров `foreach` до компиляции.
 
 Неизвестные переменные пока сохраняются как исходный token. Строгий renderer остаётся задачей v0.2.
 

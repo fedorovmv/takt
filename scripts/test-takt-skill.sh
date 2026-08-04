@@ -28,6 +28,8 @@ for file in \
   assets/validated-agent-profile/.takt/workflows/basic.yaml \
   assets/validated-agent-profile/.takt/workflows/validated.yaml \
   assets/validated-agent-profile/.takt/workflows/opencode.yaml \
+  assets/validated-agent-profile/.takt/workflows/composition.yaml \
+  assets/validated-agent-profile/.takt/workflows/parts/write.yaml \
   assets/validated-agent-profile/.takt/commands/implement.md \
   assets/validated-agent-profile/.takt/tools/validate-result
  do
@@ -48,6 +50,11 @@ binary="${TAKT_BIN:-$root/bin/takt}"
   --json >/dev/null
 
 "$binary" validate "$profile/.takt/workflows/opencode.yaml" \
+  --config "$profile/.takt/config.yaml" \
+  --workspace "$profile" \
+  --json >/dev/null
+
+"$binary" validate "$profile/.takt/workflows/composition.yaml" \
   --config "$profile/.takt/config.yaml" \
   --workspace "$profile" \
   --json >/dev/null

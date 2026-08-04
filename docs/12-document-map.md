@@ -59,7 +59,7 @@
 | Вопрос | Основной документ | Статус |
 |---|---|---|
 | Правила работы кодовых агентов | `../AGENTS.md` | действующий |
-| Создание и настройка workflow | `../skills/takt/SKILL.md`, `32-takt-authoring-skill-v0.1.18.md` | действующий скилл и проверяемый шаблон |
+| Создание и настройка workflow | `../skills/takt/SKILL.md`, `32-takt-authoring-skill-v0.1.18.md`, `36-workflow-composition-v0.1.22.md` | действующий скилл и проверяемые шаблоны |
 | Зачем нужен Takt | `01-project.md` | действующий |
 | Архитектурный подход | `02-approach.md`, ADR | действующий |
 | Текущий внешний контракт | `03-specification.md` | реализованный `v1alpha1` |
@@ -101,3 +101,5 @@
 - несовместимое изменение — новая `apiVersion` или мигратор.
 
 - `35-profile-packages-code-v0.1.21.md` — пакеты профилей, `takt init` и режим разработки по Markdown-плану.
+
+- `36-workflow-composition-v0.1.22.md` — reusable subworkflow, последовательный foreach и fingerprint подключённых определений.

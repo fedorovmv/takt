@@ -14,6 +14,7 @@ go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
 ./scripts/test-opencode-adapter.sh
 ./scripts/test-route-dsl-e2e.sh
 ./scripts/test-route-dsl-eval.sh
+./scripts/test-composition.sh
 ./scripts/test-takt-skill.sh
 ./scripts/test-code-profile.sh
 ./scripts/check-docs.sh
@@ -41,6 +42,11 @@ go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
 ./bin/takt validate examples/route-dsl-e2e/workflow.yaml \
   --config examples/route-dsl-e2e/config.yaml \
   --workspace examples/route-dsl-e2e \
+  --json >/dev/null
+
+./bin/takt validate examples/composition/workflow.yaml \
+  --config examples/composition/config.yaml \
+  --workspace examples/composition \
   --json >/dev/null
 
 echo 'verification: PASS'

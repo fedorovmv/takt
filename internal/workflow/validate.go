@@ -50,8 +50,26 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		if n.LoopGroup != nil {
 			kinds++
 		}
+		if n.Subworkflow != nil {
+			kinds++
+		}
+		if n.Foreach != nil {
+			kinds++
+		}
+		if n.Internal != nil {
+			kinds++
+		}
 		if kinds != 1 {
-			return fmt.Errorf("node %q must define exactly one of command, prompt, bash, approval, loop_group", n.ID)
+			return fmt.Errorf("node %q must define exactly one action", n.ID)
+		}
+		if n.Subworkflow != nil || n.Foreach != nil {
+			return fmt.Errorf("node %q contains an unexpanded workflow container", n.ID)
+		}
+		if n.Internal != nil && n.Internal.Mode != "noop" && n.Internal.Mode != "result" {
+			return fmt.Errorf("node %q has unsupported internal mode %q", n.ID, n.Internal.Mode)
+		}
+		if n.Internal != nil && n.Internal.Mode == "result" && strings.TrimSpace(n.Internal.ResultFrom) == "" {
+			return fmt.Errorf("node %q internal result requires result source", n.ID)
 		}
 		if n.Attempts.Max < 0 {
 			return fmt.Errorf("node %q attempts.max cannot be negative", n.ID)

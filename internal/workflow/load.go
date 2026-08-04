@@ -17,8 +17,12 @@ func Load(path string) (*spec.Workflow, error) {
 	if err := yamlmini.Unmarshal(b, &wf); err != nil {
 		return nil, fmt.Errorf("parse workflow %s: %w", path, err)
 	}
-	if err := Validate(&wf); err != nil {
+	expanded, err := Expand(path, &wf)
+	if err != nil {
+		return nil, fmt.Errorf("expand workflow %s: %w", path, err)
+	}
+	if err := Validate(expanded); err != nil {
 		return nil, err
 	}
-	return &wf, nil
+	return expanded, nil
 }

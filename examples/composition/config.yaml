@@ -1,0 +1,2 @@
+apiVersion: takt/v1alpha1
+kind: Config

@@ -1,0 +1,189 @@
+package runtime
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"takt/internal/spec"
+	"takt/internal/store"
+	"takt/internal/workflow"
+)
+
+func TestSubworkflowRunsOnParentSchedulerAndResumesApproval(t *testing.T) {
+	dir := t.TempDir()
+	writeCompositionFile(t, filepath.Join(dir, "child.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: prepare
+    bash: |
+      printf '%s' '${inputs.value}' > value.txt
+  - id: approve
+    depends_on: [prepare]
+    approval:
+      message: Approve ${inputs.value}?
+      capture_response: true
+  - id: result
+    depends_on: [approve]
+    bash: cat value.txt
+`)
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: child
+    subworkflow:
+      path: child.yaml
+      inputs:
+        value: ${input}
+  - id: final
+    depends_on: [child]
+    bash: |
+      test "${nodes.child.output}" = "hello"
+`)
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := New(wf, &spec.Config{}, workflowPath, "<config>", dir)
+	state, err := r.Start(context.Background(), "hello")
+	if !errors.Is(err, ErrWaiting) {
+		t.Fatalf("expected approval wait, got %v", err)
+	}
+	if state.Waiting == nil || state.Waiting.NodeID != "child__approve" {
+		t.Fatalf("unexpected waiting state: %+v", state.Waiting)
+	}
+	state.Approvals[state.Waiting.NodeID] = "approved"
+	state.Nodes[state.Waiting.NodeID].Status = store.NodePending
+	state.Waiting = nil
+	state.Status = store.RunRunning
+	if err := r.Store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	state, err = r.Resume(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunCompleted || state.Nodes["child"].Output != "hello" || state.Nodes["final"].Status != store.NodeCompleted {
+		t.Fatalf("unexpected completed state: %+v", state)
+	}
+}
+
+func TestForeachRunsItemsSequentiallyAndReturnsLastOutput(t *testing.T) {
+	dir := t.TempDir()
+	writeCompositionFile(t, filepath.Join(dir, "item.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: item
+nodes:
+  - id: append
+    bash: |
+      printf '%s\n' '${inputs.value}' >> order.txt
+  - id: result
+    depends_on: [append]
+    bash: cat order.txt
+`)
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: foreach
+nodes:
+  - id: batch
+    foreach:
+      items:
+        - one
+        - two
+        - three
+      subworkflow:
+        path: item.yaml
+        inputs:
+          value: ${item}
+  - id: verify
+    depends_on: [batch]
+    bash: |
+      test "$(tr '\n' ',' < order.txt)" = "one,two,three,"
+`)
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := New(wf, &spec.Config{}, workflowPath, "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunCompleted {
+		t.Fatalf("unexpected run state: %+v", state)
+	}
+	if state.Nodes["batch"].Output != "one\ntwo\nthree" {
+		t.Fatalf("unexpected foreach output %q", state.Nodes["batch"].Output)
+	}
+	if state.Nodes["batch__001"].Status != store.NodeCompleted || state.Nodes["batch__002"].Status != store.NodeCompleted || state.Nodes["batch__003"].Status != store.NodeCompleted {
+		t.Fatalf("iteration states were not completed: %+v", state.Nodes)
+	}
+}
+
+func writeCompositionFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSubworkflowDefinitionChangeBlocksResume(t *testing.T) {
+	dir := t.TempDir()
+	childPath := filepath.Join(dir, "child.yaml")
+	writeCompositionFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: wait
+    approval:
+      message: Continue?
+`)
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: child
+    subworkflow:
+      path: child.yaml
+`)
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := New(wf, &spec.Config{}, workflowPath, "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if !errors.Is(err, ErrWaiting) {
+		t.Fatalf("expected waiting run, got %v", err)
+	}
+	writeCompositionFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: wait
+    approval:
+      message: Changed?
+`)
+	changed, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2 := New(changed, &spec.Config{}, workflowPath, "<config>", dir)
+	if _, err := r2.Resume(context.Background(), state); err == nil || !strings.Contains(err.Error(), "workflow definition changed") {
+		t.Fatalf("expected workflow fingerprint error, got %v", err)
+	}
+}

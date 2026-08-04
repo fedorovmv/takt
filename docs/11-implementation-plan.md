@@ -111,7 +111,16 @@ prepare input
 - итоговый успех определяется валидатором;
 - Run воспроизводится с теми же fingerprints.
 
-## 6. Этап E. Проверка универсальности
+## 6. Этап E. Пакеты профилей и композиция — реализовано в v0.1.21–v0.1.22-alpha
+
+- пакеты профилей и `takt init/validate/run <profile>`;
+- Markdown-профиль `code` без обязательного task AST;
+- reusable `subworkflow`;
+- последовательный `foreach` по явному списку;
+- fingerprints подключённых определений;
+- следующий шаг — расширяемые input adapters.
+
+## 7. Проверка универсальности
 
 ### Go workflow
 
@@ -133,7 +142,7 @@ agent draft
 
 Оба процесса добавляются без изменения runtime ядра.
 
-## 7. Этап F. Outputs и iteration history
+## 8. Outputs и iteration history
 
 - строгий template renderer;
 - structured output с JSON Schema;
@@ -141,7 +150,7 @@ agent draft
 - публичный агрегированный output loop node;
 - capability requirements.
 
-## 8. Этап G. Подготовка v1beta1
+## 9. Подготовка v1beta1
 
 - собрать изменения семантики по реальным запускам;
 - добавить мигратор `v1alpha1 → v1beta1`;
@@ -149,17 +158,17 @@ agent draft
 - сформировать compatibility matrix adapters;
 - отделить production backlog от core runtime.
 
-## 9. Текущий порядок ближайших задач
+## 10. Текущий порядок ближайших задач
 
 1. Opt-in smoke test с установленным Pi и целевой моделью.
 2. Route DSL end-to-end.
-3. Поддержка Pi/OpenCode adapters и capability discovery.
-4. Go workflow.
-5. Document workflow.
-6. Strict templates и structured outputs.
-7. v1beta1 design.
+3. Расширяемые input adapters без обязательного преобразования Markdown.
+4. Git worktree и транзакция задачи.
+5. Validation suites и структурированный review protocol.
+6. Parallel scheduler и matrix.
+7. Strict templates, structured outputs и v1beta1 design.
 
-## 10. Пока не начинать
+## 11. Пока не начинать
 
 - parallel DAG;
 - Web UI;

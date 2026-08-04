@@ -118,3 +118,45 @@ Prompt команды должен содержать `${feedback}`.
 ```
 
 Логи и предупреждения направляй в stderr. Для невалидного результата допустим exit code 1; Takt сохранит envelope, но успех засчитает только при `completed && valid=true`.
+
+## Переиспользуемая фаза
+
+Родительский workflow:
+
+```yaml
+- id: implementation
+  subworkflow:
+    path: workflows/implementation.yaml
+    inputs:
+      plan: ${input}
+```
+
+`workflows/implementation.yaml`:
+
+```yaml
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: implementation
+nodes:
+  - id: implement
+    command: implement
+  - id: validate
+    depends_on: [implement]
+    bash: make check
+```
+
+## Явный пакет однотипных действий
+
+```yaml
+- id: environments
+  foreach:
+    as: env
+    items: [dev, stage, prod]
+    subworkflow:
+      path: workflows/render.yaml
+      inputs:
+        environment: ${env}
+```
+
+Такой `foreach` подходит для известного набора окружений, файлов или компонентов. Markdown-план оставляй Markdown-документом и передавай coding agent целиком.

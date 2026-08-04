@@ -145,3 +145,14 @@ Timeout и cancellation остаются authoritative execution kind. При э
 Профиль `code` передаёт coding agent исходный путь и содержимое Markdown-плана. Runtime не преобразует план в обязательный task AST. Формализованные входы могут появляться как расширяемые adapters и использоваться только профилями, которым это действительно нужно.
 
 Это сохраняет сильную сторону coding agents — работу с естественным Markdown-контекстом — и отделяет пользовательский формат задания от runtime-модели DAG.
+
+
+## ADR-033. Subworkflow и foreach компилируются в обычный DAG
+
+**Статус:** принято.
+
+Takt не вводит отдельный runtime для reusable workflow. `subworkflow` и последовательный `foreach` разворачиваются до запуска в обычные узлы с устойчивым namespace `__`, публичным контейнерным ID и тем же scheduler, persistence, retry, approval и error contract.
+
+Подключённые workflow, локальные Markdown-команды, inputs и `foreach.items` входят в каноническое скомпилированное определение и workflow fingerprint. Изменение любого из них блокирует resume ранее начатого Run.
+
+`foreach` принимает только явно заданный список. Markdown-план остаётся авторитетным документом и не преобразуется ядром в обязательный task AST. Другие форматы подключаются будущими input adapters как отдельное расширение.

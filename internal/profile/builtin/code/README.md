@@ -1,5 +1,7 @@
 # Code profile
 
+Version: 0.2.0
+
 This profile keeps the development plan in Markdown. Takt passes the original file path and content to the coding agent; no mandatory task AST is created.
 
 Configure `.takt/config.yaml`, then run:
@@ -14,4 +16,4 @@ Set an explicit validation command when auto-detection is not appropriate:
 TAKT_VALIDATE_COMMAND='go test ./... && go vet ./...' takt run code --input docs/plan.md
 ```
 
-The bundled workflow uses OpenCode for implementation and review so one installed assistant is sufficient. Change the `review` node or command frontmatter to `pi` when an independent assistant is desired.
+The bundled workflow composes reusable implementation and review subworkflows. It uses OpenCode for both phases so one installed assistant is sufficient. Change the `review` node or command frontmatter to `pi` when an independent assistant is desired.

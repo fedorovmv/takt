@@ -15,7 +15,7 @@
 
 - последовательный DAG с `depends_on`, `when` и `trigger_rule`;
 - общая scheduler-семантика root DAG и дочернего DAG `loop_group`;
-- `command`, `prompt`, `bash`, `approval`, `loop_group`;
+- `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow`, последовательный `foreach`;
 - portable hooks и retry с feedback;
 - `all_done` после failure-like состояния зависимости;
 - разделение `exit`, `start`, `timed_out`, `cancelled`, `protocol`, `internal`;
@@ -24,7 +24,7 @@
 - сохранение timeout/cancel на уровне родительского `loop_group`;
 - `until` только по child node со статусом `completed`;
 - pause/resume approval;
-- fingerprints workflow/config/commands;
+- fingerprints workflow/config/commands, включая подключённые subworkflow и локальные команды;
 - блокировка Run и revision consistency state/events;
 - JSONL-журнал событий и файловые артефакты.
 
@@ -66,7 +66,7 @@
 
 ## Осознанно упрощено
 
-- готовые DAG-узлы выполняются последовательно;
+- готовые DAG-узлы и `foreach` выполняются последовательно;
 - состояние хранится локально в файлах;
 - язык выражений ограничен;
 - nested loops запрещены вместо path-based namespace;
@@ -87,8 +87,11 @@
 - параллельный scheduler;
 - server/Web UI;
 - path-based state namespace для вложенных циклов;
+- динамические input adapters для OpenSpec, issue, JSON/YAML и других источников;
 - миграции стабильной схемы.
 
 ## Ближайший целевой срез
+
+Пакеты профилей, reusable `subworkflow` и последовательный `foreach` реализованы без обязательного task AST. Следующий runtime-срез — расширяемые input adapters и типизированные входы для профилей, которым нужна формализация. Markdown-профиль `code` продолжает работать с исходным документом напрямую.
 
 Evaluation runner, изоляция путей, strategy/benchmark/workspace/validator fingerprints, per-attempt execution identity и предметные метрики качества реализованы. Следующий срез — запустить `examples/route-dsl-benchmark` со штатным `route-tool`, получить baseline на десяти реальных обезличенных заданиях и затем сравнить модели или стратегии на неизменных fingerprints. Настоящий time-to-valid потребует временной отметки успешного quality-node; текущий показатель времени является амортизированной end-to-end длительностью benchmark. Нормализованные diagnostics и учёт ручных исправлений остаются следующими расширениями. Pi и OpenCode доступны для практических workflow; следующий предметный шаг остаётся подключением штатного `route-tool`.

@@ -150,3 +150,43 @@ hooks:
 `pending`, `running`, `waiting`, `completed`, `failed`, `errored`, `timed_out`, `cancelled`, `skipped`, `blocked`.
 
 `allow_failure: true` действует только на штатный ненулевой exit code.
+
+## Subworkflow
+
+`subworkflow` подключает отдельный `takt/v1alpha1 Workflow` и компилирует его в тот же DAG до запуска:
+
+```yaml
+- id: implement
+  subworkflow:
+    path: workflows/implement.yaml
+    inputs:
+      request: ${input}
+    output_node: result
+```
+
+В подключённом workflow доступны `${inputs.request}` и другие явно переданные значения. Если terminal-узел один, `output_node` можно не указывать. При нескольких terminal-узлах поле обязательно.
+
+Публичный ID контейнера сохраняется: следующий узел может использовать `depends_on: [implement]` и `${nodes.implement.output}`. В состоянии Run дочерние узлы получают стабильный namespace с `__`.
+
+Контейнер поддерживает `id`, `depends_on`, `when` и `trigger_rule`. Attempts, timeout, hooks, assistant/model и allow_failure задаются внутри подключённого workflow.
+
+## Последовательный foreach
+
+```yaml
+- id: checks
+  foreach:
+    as: check
+    items:
+      - lint
+      - test
+    subworkflow:
+      path: workflows/check.yaml
+      inputs:
+        name: ${check}
+```
+
+Элементы выполняются строго по порядку. Поддерживаются строки, числа, логические значения и inline JSON objects. Для объекта доступны `${check}` как JSON и `${check.<field>}` для полей. `${index}` и `${check.index}` содержат индекс с нуля.
+
+`foreach` возвращает output последней итерации. Список `items` должен быть задан явно; Takt не разбирает Markdown-планы в task AST. Источники OpenSpec, issue или JSON следует подключать будущим input adapter, а не скрытой эвристикой prompt.
+
+`subworkflow` и `foreach` внутри `loop_group` в текущем контракте не поддерживаются.

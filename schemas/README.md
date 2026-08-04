@@ -16,3 +16,5 @@ Go-loader остаётся главным валидатором текущей 
 `evaluation-report.schema.json` всегда сериализует измеряемые нулевые показатели. Недоступные средние значения представлены как `null`. Usage распределяется по `usage_by_execution_identity`, а узлы с разными моделями или версиями между попытками помечаются `mixed_execution_identity`. Поле `amortized_end_to_end_ms_per_valid` отражает суммарную длительность всех Run на один корректный результат и не является временем достижения валидности внутри отдельного Run.
 
 `run-state.schema.json` and `evaluation-report.schema.json` expose separate `stdout` and `stderr` fields for node results. The compatibility field `output`/`diagnostic_output` remains the combined diagnostic representation. Structured validation results are decoded only from `stdout`.
+
+`workflow.schema.json` также описывает reusable `subworkflow` и последовательный `foreach` по явному списку. Подключённые workflow проверяются той же схемой после загрузки и компиляции.

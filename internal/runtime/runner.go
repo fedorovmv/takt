@@ -256,6 +256,9 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		max = 1
 	}
 	hooks := mergeHooks(r.Workflow.Hooks, node.Hooks)
+	if node.Internal != nil {
+		hooks = spec.HookSet{}
+	}
 	for ns.Attempts < max {
 		ns.Attempts++
 		ns.Status = store.NodeRunning
@@ -475,6 +478,19 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		return execResult{}, ErrWaiting
 	case node.LoopGroup != nil:
 		return r.runLoopGroup(ctx, state, node)
+	case node.Internal != nil:
+		switch node.Internal.Mode {
+		case "noop":
+			return execResult{ExitCode: 0}, nil
+		case "result":
+			source := state.Nodes[node.Internal.ResultFrom]
+			if source == nil {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "workflow group result", Err: fmt.Errorf("result source %q is missing", node.Internal.ResultFrom)}
+			}
+			return execResult{Output: source.Output, Stdout: source.Stdout, Stderr: source.Stderr, ExitCode: source.ExitCode, SessionID: source.SessionID, Resumed: source.Resumed, Truncated: source.OutputTruncated}, nil
+		default:
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "workflow group", Err: fmt.Errorf("unsupported internal mode %q", node.Internal.Mode)}
+		}
 	case node.Command != "" || node.Prompt != "":
 		prompt := node.Prompt
 		assistantName, modelName := node.Assistant, node.Model

@@ -119,3 +119,9 @@ TAKT_OPENCODE_SMOKE_PROVIDER=<provider> \
 TAKT_OPENCODE_SMOKE_MODEL=<model> \
 make opencode-contracts
 ```
+
+Проверка reusable workflow и последовательного foreach:
+
+```bash
+make composition
+```

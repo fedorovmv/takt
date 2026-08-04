@@ -285,6 +285,12 @@
           "type": "string",
           "minLength": 1,
           "description": "Go duration, for example 30s or 5m"
+        },
+        "subworkflow": {
+          "$ref": "#/$defs/subworkflow"
+        },
+        "foreach": {
+          "$ref": "#/$defs/foreach"
         }
       },
       "oneOf": [
@@ -312,6 +318,124 @@
           "required": [
             "loop_group"
           ]
+        },
+        {
+          "required": [
+            "subworkflow"
+          ]
+        },
+        {
+          "required": [
+            "foreach"
+          ]
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "subworkflow"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "assistant"
+                  ]
+                },
+                {
+                  "required": [
+                    "model"
+                  ]
+                },
+                {
+                  "required": [
+                    "session"
+                  ]
+                },
+                {
+                  "required": [
+                    "attempts"
+                  ]
+                },
+                {
+                  "required": [
+                    "allow_failure"
+                  ]
+                },
+                {
+                  "required": [
+                    "hooks"
+                  ]
+                },
+                {
+                  "required": [
+                    "native_hooks"
+                  ]
+                },
+                {
+                  "required": [
+                    "timeout"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "foreach"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "assistant"
+                  ]
+                },
+                {
+                  "required": [
+                    "model"
+                  ]
+                },
+                {
+                  "required": [
+                    "session"
+                  ]
+                },
+                {
+                  "required": [
+                    "attempts"
+                  ]
+                },
+                {
+                  "required": [
+                    "allow_failure"
+                  ]
+                },
+                {
+                  "required": [
+                    "hooks"
+                  ]
+                },
+                {
+                  "required": [
+                    "native_hooks"
+                  ]
+                },
+                {
+                  "required": [
+                    "timeout"
+                  ]
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -394,6 +518,51 @@
           ]
         }
       ]
+    },
+    "subworkflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "output_node": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "foreach": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items",
+        "subworkflow"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {}
+        },
+        "as": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+        },
+        "subworkflow": {
+          "$ref": "#/$defs/subworkflow"
+        }
+      }
     }
   }
 }

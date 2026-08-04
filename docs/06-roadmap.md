@@ -21,7 +21,7 @@
 ## Этап 3. Полноценный runtime
 
 - параллельные DAG-слои;
-- subworkflow/include;
+- расширяемые input adapters и typed inputs;
 - retries с backoff;
 - SQLite store;
 - блокировки и recovery;

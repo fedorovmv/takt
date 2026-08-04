@@ -68,3 +68,11 @@ takt status <run-id> --workspace <dir> --json
 takt resume <run-id> --workspace <dir> --json
 takt answer <run-id> <node-id> --workspace <dir> --value <text> --json
 ```
+
+## Subworkflow не загружается
+
+Путь вычисляется относительно workflow, в котором указан `subworkflow`. Проверь `path`, рекурсивные ссылки и `output_node`. Если у подключённого workflow несколько terminal-узлов, укажи один из их исходных ID как `output_node`.
+
+## Foreach выполняется не по ожидаемому списку
+
+Текущая версия принимает только `foreach.items`, записанный в YAML. Она не извлекает пункты из Markdown и не читает произвольный JSON-файл автоматически. Для Markdown используй обычный профиль и передавай документ агенту целиком.

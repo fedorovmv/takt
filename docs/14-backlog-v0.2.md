@@ -180,3 +180,18 @@ Draft → approval comment → revise → artifact без изменения run
 ### TAKT-009B. Specialized OpenCode adapter — выполнено
 
 Реализован `type: opencode` через `opencode run --format json`: model/agent/variant mapping, fresh/resume, version, usage/cost, output limit, context priority, fake contract suite и opt-in smoke.
+
+
+## Завершено в v0.1.21–v0.1.22-alpha
+
+### TAKT-014. Пакеты профилей и композиция workflow — выполнено
+
+- `takt init/validate/run <profile>`;
+- встроенный профиль `code`, сохраняющий Markdown-план исходным документом;
+- reusable `subworkflow` с inputs и публичным output;
+- последовательный `foreach` по явному списку;
+- локальные команды подключённого workflow входят в скомпилированное определение;
+- fingerprints учитывают подключённые workflow и блокируют resume после их изменения;
+- отдельный composition contract suite.
+
+Остаётся отдельная задача input adapters для OpenSpec, issue, JSON/YAML и других форматов. Она не меняет основной Markdown-режим.

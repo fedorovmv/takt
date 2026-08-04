@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.20-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.22-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -17,7 +17,9 @@
 - workflow в YAML или JSON;
 - последовательный DAG с `depends_on`, `when` и `trigger_rule`;
 - единая семантика корневого DAG и дочернего DAG `loop_group`;
-- узлы `command`, `prompt`, `bash`, `approval`, `loop_group`;
+- узлы `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow`, `foreach`;
+- reusable `subworkflow` компилируется в тот же DAG;
+- последовательный `foreach` для явных списков без преобразования Markdown в task AST;
 - вложенные `loop_group` явно запрещены в `v1alpha1`;
 - повтор узла после внешней проверки;
 - переносимые hooks `before_node`, `after_node`, `before_complete`, `on_failure`;
@@ -99,13 +101,39 @@ make check
 ```
 
 
+
+## Композиция workflow
+
+```yaml
+nodes:
+  - id: implementation
+    subworkflow:
+      path: workflows/implementation.yaml
+      inputs:
+        plan: ${input}
+
+  - id: checks
+    depends_on: [implementation]
+    foreach:
+      as: check
+      items: [lint, test]
+      subworkflow:
+        path: workflows/check.yaml
+        inputs:
+          name: ${check}
+```
+
+`subworkflow` и `foreach` разворачиваются до запуска в обычный DAG. Публичные ID `implementation` и `checks` остаются доступными для зависимостей и шаблонов. `foreach.items` задаётся явно; Markdown-планы Takt не преобразует во внутренний список задач.
+
+Рабочий пример: [`examples/composition/`](examples/composition/).
+
 ## Скилл для настройки Takt
 
 Каталог [`skills/takt/`](skills/takt/) содержит переносимый скилл для кодовых агентов. Он помогает:
 
 - собирать `.takt/config.yaml`, workflow и Markdown-команды;
 - выбирать assistant и model на уровне defaults, команды или узла;
-- проектировать retry/feedback, hooks, approval и `loop_group`;
+- проектировать retry/feedback, hooks, approval, `loop_group`, `subworkflow` и `foreach`;
 - использовать inline `prompt` и внешние команды;
 - проверять профиль через `takt validate` и диагностировать ошибки;
 - начинать с проверенного шаблона `skills/takt/assets/validated-agent-profile/`.
@@ -116,7 +144,9 @@ make check
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Следующий вертикальный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
+Пакеты профилей, reusable `subworkflow` и последовательный `foreach` реализованы. Профиль `code` теперь состоит из переиспользуемых фаз реализации и ревью, сохраняя Markdown-план исходным документом. Следующий runtime-срез — расширяемые input adapters для профилей, которым нужен структурированный источник данных.
+
+Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Отдельный предметный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 
 Подробности:
 
@@ -140,6 +170,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Семантика validation envelope v0.1.16](docs/30-quality-envelope-semantics-v0.1.16.md)
 - [Разделение stdout/stderr quality-node v0.1.17](docs/31-quality-stdout-separation-v0.1.17.md)
 - [Скилл настройки Takt v0.1.18](docs/32-takt-authoring-skill-v0.1.18.md)
+- [Композиция workflow v0.1.22](docs/36-workflow-composition-v0.1.22.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -178,6 +209,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Семантика validation envelope v0.1.16](docs/30-quality-envelope-semantics-v0.1.16.md)
 - [Разделение stdout/stderr quality-node v0.1.17](docs/31-quality-stdout-separation-v0.1.17.md)
 - [Скилл настройки Takt v0.1.18](docs/32-takt-authoring-skill-v0.1.18.md)
+- [Композиция workflow v0.1.22](docs/36-workflow-composition-v0.1.22.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 
