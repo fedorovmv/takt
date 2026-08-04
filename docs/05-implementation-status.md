@@ -16,6 +16,11 @@
 - последовательный DAG с `depends_on`, `when` и `trigger_rule`;
 - общая scheduler-семантика root DAG и дочернего DAG `loop_group`;
 - `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow`, последовательный `foreach`;
+- `subworkflow` и `foreach` внутри `loop_group` без отдельного scheduler;
+- inline `foreach.items` и внешний `foreach.items_from.path` с fingerprint содержимого;
+- упорядоченный JSON-массив результатов `foreach`;
+- публичная проекция Run без развёрнутых `__`-ID при сохранении полного состояния для resume;
+- defaults `assistant`, `model`, `session` на композиционном контейнере;
 - portable hooks и retry с feedback;
 - `all_done` после failure-like состояния зависимости;
 - разделение `exit`, `start`, `timed_out`, `cancelled`, `protocol`, `internal`;
@@ -67,6 +72,8 @@
 ## Осознанно упрощено
 
 - готовые DAG-узлы и `foreach` выполняются последовательно;
+- параллельный `foreach` требует отдельного расширения scheduler;
+- `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` композиционной группы задаются в дочернем workflow;
 - состояние хранится локально в файлах;
 - язык выражений ограничен;
 - nested loops запрещены вместо path-based namespace;
@@ -92,6 +99,6 @@
 
 ## Ближайший целевой срез
 
-Пакеты профилей, reusable `subworkflow` и последовательный `foreach` реализованы без обязательного task AST. Следующий runtime-срез — расширяемые input adapters и типизированные входы для профилей, которым нужна формализация. Markdown-профиль `code` продолжает работать с исходным документом напрямую.
+Пакеты профилей, reusable `subworkflow`, внешний массив `items_from` и последовательный `foreach` реализованы без обязательного task AST. Следующие runtime-срезы — параллельный `foreach`, групповые execution policies и расширяемые input adapters для источников сложнее явного YAML/JSON-массива. Markdown-профиль `code` продолжает работать с исходным документом напрямую.
 
 Evaluation runner, изоляция путей, strategy/benchmark/workspace/validator fingerprints, per-attempt execution identity и предметные метрики качества реализованы. Следующий срез — запустить `examples/route-dsl-benchmark` со штатным `route-tool`, получить baseline на десяти реальных обезличенных заданиях и затем сравнить модели или стратегии на неизменных fingerprints. Настоящий time-to-valid потребует временной отметки успешного quality-node; текущий показатель времени является амортизированной end-to-end длительностью benchmark. Нормализованные diagnostics и учёт ручных исправлений остаются следующими расширениями. Pi и OpenCode доступны для практических workflow; следующий предметный шаг остаётся подключением штатного `route-tool`.

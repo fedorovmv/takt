@@ -25,6 +25,8 @@ type Defaults struct {
 
 type Node struct {
 	ID           string            `json:"id"`
+	Hidden       bool              `json:"-"`
+	PublicParent string            `json:"-"`
 	DependsOn    []string          `json:"depends_on,omitempty"`
 	When         string            `json:"when,omitempty"`
 	TriggerRule  string            `json:"trigger_rule,omitempty"`
@@ -53,17 +55,24 @@ type SubworkflowSpec struct {
 }
 
 type ForeachSpec struct {
-	Items       []any           `json:"items"`
-	As          string          `json:"as,omitempty"`
-	Subworkflow SubworkflowSpec `json:"subworkflow"`
+	Items       []any               `json:"items,omitempty"`
+	ItemsFrom   *ForeachItemsSource `json:"items_from,omitempty"`
+	As          string              `json:"as,omitempty"`
+	Subworkflow SubworkflowSpec     `json:"subworkflow"`
+}
+
+type ForeachItemsSource struct {
+	Path string `json:"path"`
 }
 
 // InternalNodeSpec is produced by workflow expansion and is never accepted
 // from user YAML. It keeps subworkflow/foreach execution on the ordinary DAG
 // scheduler without adding a second runtime.
 type InternalNodeSpec struct {
-	Mode       string
-	ResultFrom string
+	Mode           string
+	ResultFrom     string
+	ResultsFrom    []string
+	DefinitionHash string
 }
 
 type AttemptsSpec struct {

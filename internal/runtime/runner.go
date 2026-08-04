@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -88,7 +89,7 @@ func (r *Runner) Start(ctx context.Context, input string) (*store.RunState, erro
 		CommandsFingerprint: fingerprints.Commands,
 	}
 	for _, node := range r.Workflow.Nodes {
-		state.Nodes[node.ID] = &store.NodeState{Status: store.NodePending}
+		state.Nodes[node.ID] = &store.NodeState{Status: store.NodePending, Hidden: node.Hidden, PublicParent: node.PublicParent}
 	}
 	if err := r.commit(state, "run.started", "", map[string]any{"workflow": r.Workflow.Metadata.Name}); err != nil {
 		return nil, err
@@ -488,6 +489,12 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "workflow group result", Err: fmt.Errorf("result source %q is missing", node.Internal.ResultFrom)}
 			}
 			return execResult{Output: source.Output, Stdout: source.Stdout, Stderr: source.Stderr, ExitCode: source.ExitCode, SessionID: source.SessionID, Resumed: source.Resumed, Truncated: source.OutputTruncated}, nil
+		case "collect":
+			output, err := collectNodeOutputs(state, node.Internal.ResultsFrom)
+			if err != nil {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "workflow group collect", Err: err}
+			}
+			return execResult{Output: output, Stdout: output, ExitCode: 0}, nil
 		default:
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "workflow group", Err: fmt.Errorf("unsupported internal mode %q", node.Internal.Mode)}
 		}
@@ -557,6 +564,30 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 	}
 }
 
+func collectNodeOutputs(state *store.RunState, ids []string) (string, error) {
+	values := make([]any, 0, len(ids))
+	for _, id := range ids {
+		source := state.Nodes[id]
+		if source == nil {
+			return "", fmt.Errorf("result source %q is missing", id)
+		}
+		raw := strings.TrimSpace(source.Output)
+		if raw != "" {
+			var value any
+			if json.Unmarshal([]byte(raw), &value) == nil {
+				values = append(values, value)
+				continue
+			}
+		}
+		values = append(values, source.Output)
+	}
+	b, err := json.Marshal(values)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent spec.Node) (execResult, error) {
 	seen := make(map[string]struct{}, len(parent.LoopGroup.Nodes))
 	for _, child := range parent.LoopGroup.Nodes {
@@ -576,7 +607,7 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 			}
 		}
 		for _, child := range parent.LoopGroup.Nodes {
-			state.Nodes[child.ID] = &store.NodeState{Status: store.NodePending}
+			state.Nodes[child.ID] = &store.NodeState{Status: store.NodePending, Hidden: child.Hidden, PublicParent: child.PublicParent}
 		}
 		if err := r.commit(state, "loop.iteration.started", parent.ID, map[string]any{"iteration": iteration}); err != nil {
 			return execResult{}, err

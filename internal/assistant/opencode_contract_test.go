@@ -52,7 +52,7 @@ func TestOpenCodeRunPreservesContextPriorityWithRealOverflow(t *testing.T) {
 			name:     "timeout plus overflow",
 			wantKind: execution.KindTimedOut,
 			context: func(adapter *OpenCode) (context.Context, context.CancelFunc) {
-				ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				adapter.onOutputTruncated = func() { <-ctx.Done() }
 				return ctx, cancel
 			},
@@ -209,7 +209,7 @@ func TestOpenCodeAdapterContract(t *testing.T) {
 	})
 
 	t.Run("provider diagnostics survive timeout", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		result, err := fakeOpenCode("provider-timeout").Run(ctx, fakeOpenCodeRequest(t.TempDir()))
 		if execution.KindOf(err) != execution.KindTimedOut {

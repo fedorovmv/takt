@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.23-alpha
+
+- `foreach` поддерживает внешний YAML/JSON-массив через `items_from.path`; содержимое входит в workflow fingerprint;
+- `subworkflow` и `foreach` разрешены внутри `loop_group` без второго scheduler;
+- output `foreach` стал упорядоченным JSON-массивом результатов всех итераций;
+- CLI возвращает публичное состояние Run без внутренних развёрнутых ID и принимает approval по ID контейнера;
+- контейнер поддерживает defaults `assistant`, `model` и `session`;
+- локальные команды подключённого workflow ищутся до корня композиции, включая корневой `commands/` профиля;
+- схема согласована с value-семантикой контейнера, задокументированы рекурсия и предел глубины 16;
+- усилены timeout/overflow-регрессии, устранена гонка закрытия stderr в Pi adapter, расширены тесты композиции и исправлена проверка документации;
+- профиль `code` обновлён до 0.2.1, authoring skill — до 0.5.0;
+- добавлены ADR-034 и `docs/37-composition-hardening-v0.1.23.md`.
+
 ## v0.1.22-alpha
 
 - добавлены reusable `subworkflow` с inputs, автоматическим или явным `output_node` и публичным output;

@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.22-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.23-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -207,7 +207,7 @@ until:
 
 Если timeout или cancellation родительской попытки наступают во время выполнения дочернего узла, родительский `loop_group` и Run сохраняют `timed_out` или `cancelled`. Производная ошибка `loop_group exhausted` не переопределяет причину завершения контекста.
 
-Вложенные `loop_group` и approval внутри `loop_group` не поддерживаются в `v1alpha1`. `subworkflow` и `foreach` внутри `loop_group` также не поддерживаются.
+`subworkflow` и `foreach` разрешены внутри `loop_group` и компилируются в тот же дочерний DAG. Поле `until.node` ссылается на публичный ID контейнера. Вложенные `loop_group` и approval внутри `loop_group` остаются запрещены в `v1alpha1`.
 
 ### `subworkflow`
 
@@ -215,6 +215,9 @@ until:
 
 ```yaml
 - id: implementation
+  assistant: opencode
+  model: main
+  session: resume
   subworkflow:
     path: workflows/implementation.yaml
     inputs:
@@ -222,32 +225,37 @@ until:
     output_node: result
 ```
 
-Путь вычисляется относительно содержащего workflow. В подключённом файле значения доступны как `${inputs.<name>}`. Если terminal-узел один, `output_node` выводится автоматически; при нескольких terminal-узлах поле обязательно.
+Путь вычисляется относительно содержащего workflow. В подключённом файле значения доступны как `${inputs.<name>}`. Неразрешённая `${inputs.<name>}` является ошибкой загрузки. Если terminal-узел один, `output_node` выводится автоматически; при нескольких terminal-узлах поле обязательно.
 
-Публичный ID контейнера сохраняется для `depends_on` и `${nodes.<id>.output}`. Дочерние узлы получают стабильный namespace с `__` в Run state. Локальные Markdown-команды рядом с подключённым workflow встраиваются в скомпилированное определение; изменение подключённого workflow или команды меняет workflow fingerprint и блокирует resume старого Run.
+Публичный ID контейнера сохраняется для `depends_on` и `${nodes.<id>.output}`. CLI показывает только публичные узлы. Внутренние namespaced ID с `__` сохраняются в `state.json` для точного resume и проверки определения. Approval внутри подключённого workflow отображается и принимается через публичный ID контейнера.
 
-Контейнер принимает только `id`, `depends_on`, `when`, `trigger_rule` и `subworkflow`. Attempts, timeout, hooks, assistant/model и allow_failure задаются внутри подключённого workflow.
+Локальная Markdown-команда сначала ищется в `commands/` рядом с подключённым workflow, затем в родительских каталогах до корня композиции. Поэтому workflow из `profiles/code/workflows/` использует команды из `profiles/code/commands/`. Содержимое встроенной команды входит в workflow fingerprint.
+
+`assistant`, `model` и `session` на контейнере задают defaults вызова. Приоритет: явное поле дочернего узла → контейнер → defaults дочернего workflow → defaults родительского workflow. Положительный `attempts.max`, непустые `timeout`, hooks и `native_hooks`, а также `allow_failure: true` задаются внутри подключённого workflow. Нулевые и пустые значения этих полей трактуются так же, как отсутствие поля; схема повторяет эту семантику кода.
+
+Рекурсивная ссылка отклоняется с цепочкой файлов. Максимальная глубина развёртывания — 16 одновременно активных workflow; превышение возвращает `subworkflow expansion exceeds depth 16`.
 
 ### `foreach`
 
-Последовательно выполняет один subworkflow для явно заданных элементов:
+Последовательно выполняет один subworkflow для элементов из workflow или отдельного YAML/JSON-файла:
 
 ```yaml
 - id: checks
   foreach:
     as: check
-    items:
-      - lint
-      - test
+    items_from:
+      path: checks.yaml
     subworkflow:
       path: workflows/check.yaml
       inputs:
         name: ${check}
 ```
 
-Поддерживаются scalar и inline JSON objects. Для объекта доступны `${check}` как JSON и `${check.<field>}`. `${index}` и `${check.index}` содержат индекс с нуля. Итерации выполняются строго последовательно; публичный узел возвращает output последней итерации.
+Нужно задать ровно один источник: `items` или `items_from.path`. Путь вычисляется относительно содержащего workflow; файл должен содержать непустой массив верхнего уровня. Его исходные байты входят в fingerprint определения, поэтому изменение списка блокирует resume ранее начатого Run.
 
-`foreach.items` является явным списком из workflow. Runtime не преобразует Markdown-план в task AST. Другие источники данных должны подключаться отдельным input adapter.
+Поддерживаются scalar и inline JSON objects. Для объекта доступны `${check}` как JSON и `${check.<field>}`. `${index}` и `${check.index}` содержат индекс с нуля. Итерации выполняются строго последовательно. Публичный output — JSON-массив результатов всех итераций в исходном порядке; JSON-результаты сохраняют тип, остальные результаты становятся строками.
+
+Runtime читает только явный массив и не преобразует Markdown-план в task AST. Параллельный режим `foreach` в текущем контракте отсутствует.
 
 ## 7. Зависимости, ошибки и итог Run
 

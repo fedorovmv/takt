@@ -207,9 +207,16 @@ func answerCmd(args []string) error {
 	if err := runner.VerifyDefinitions(state); err != nil {
 		return err
 	}
-	nodeID := fs.Arg(1)
-	if state.Waiting == nil || state.Waiting.NodeID != nodeID {
-		return fmt.Errorf("run is not waiting for approval node %q", nodeID)
+	requestedNodeID := fs.Arg(1)
+	if state.Waiting == nil {
+		return fmt.Errorf("run is not waiting for approval node %q", requestedNodeID)
+	}
+	nodeID := state.Waiting.NodeID
+	if requestedNodeID != nodeID {
+		node := state.Nodes[nodeID]
+		if node == nil || !node.Hidden || node.PublicParent != requestedNodeID {
+			return fmt.Errorf("run is not waiting for approval node %q", requestedNodeID)
+		}
 	}
 	if state.Approvals == nil {
 		state.Approvals = map[string]string{}
@@ -536,6 +543,9 @@ func readInput(v string) (string, error) {
 	return v, nil
 }
 func printResult(jsonOut bool, value any) error {
+	if state, ok := value.(*store.RunState); ok {
+		value = state.PublicView()
+	}
 	if jsonOut {
 		b, err := json.MarshalIndent(map[string]any{"ok": true, "result": value}, "", "  ")
 		if err != nil {

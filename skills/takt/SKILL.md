@@ -20,7 +20,7 @@ description: Создаёт, устанавливает, изменяет, пр�
    - `approval` — отдельное сохраняемое решение пользователя;
    - `loop_group` — только когда нужен повтор вложенного DAG, а обычных attempts недостаточно;
    - `subworkflow` — когда блок процесса должен переиспользоваться как отдельный Workflow;
-   - `foreach` — только для явно заданного списка элементов, без скрытого разбора Markdown.
+   - `foreach` — для явно заданного inline-списка или внешнего YAML/JSON-массива, без скрытого разбора Markdown.
 5. Сначала используй существующие model aliases и assistants из config. Новые добавляй только при необходимости.
 6. Внеси минимальные изменения и проверь их командой `takt validate`.
 7. Если пользователь просит рабочий запуск и среда готова, выполни `takt run`; при `waiting` покажи запрос approval и продолжи через `takt answer` только после ответа пользователя.
@@ -63,12 +63,12 @@ takt run code --workspace . --input docs/plan.md --json
 - `${feedback}` содержит вывод неуспешных hooks предыдущей попытки.
 - Текст агента и наличие файла сами по себе не подтверждают успех; нужен bash-валидатор или другой детерминированный gate.
 - Approval оформляй отдельным узлом. Approval внутри `loop_group` не поддерживается.
-- Вложенные `loop_group` в `takt/v1alpha1` не поддерживаются. `subworkflow` и `foreach` внутри `loop_group` также не поддерживаются в текущем контракте.
+- Вложенные `loop_group` в `takt/v1alpha1` не поддерживаются. `subworkflow` и `foreach` внутри `loop_group` разрешены; approval внутри цикла остаётся отдельным ограничением.
 - `allow_failure: true` разрешает только штатный ненулевой exit code, но не timeout, cancellation или ошибку запуска.
 - Bash stdout/stderr сохраняются отдельно, а `${nodes.<id>.output}` содержит объединённый вывод.
 - Validation envelope `takt-validation/v1alpha1` выводится только в stdout; логи валидатора идут в stderr.
 - Takt поддерживает ограниченный YAML subset. Для многострочного prompt или bash используй block scalar `|`.
-- Markdown-план не преобразуй в task AST ради `foreach`: используй `foreach.items` только при наличии явного списка.
+- Markdown-план не преобразуй в task AST ради `foreach`: используй явный `foreach.items` или `foreach.items_from.path` к YAML/JSON-массиву.
 - Не добавляй `system_prompt`, `user_prompt`, автоматический model fallback или иные поля, которых нет в текущем контракте.
 
 ## Переиспользование workflow
@@ -86,20 +86,23 @@ takt run code --workspace . --input docs/plan.md --json
 
 В подключённом workflow вход читается как `${inputs.plan}`. Если terminal-узел один, `output_node` можно не задавать. При нескольких terminal-узлах он обязателен.
 
-Последовательный `foreach` принимает только явный список:
+Последовательный `foreach` принимает inline-список или внешний YAML/JSON-массив:
 
 ```yaml
 - id: checks
   foreach:
     as: check
-    items: [lint, test]
+    items_from:
+      path: checks.yaml
     subworkflow:
       path: workflows/check.yaml
       inputs:
         name: ${check}
 ```
 
-Публичный узел `checks` завершается после последней итерации и возвращает её output. Не используй `foreach` как предлог для преобразования Markdown-плана во внутренний список задач.
+Публичный узел `checks` завершается после последней итерации и возвращает JSON-массив outputs в порядке элементов. Изменение внешнего списка меняет fingerprint. Параллельный режим пока отсутствует.
+
+На контейнере можно задать `assistant`, `model` и `session` как defaults дочернего вызова. `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` задавай внутри дочернего workflow. Глубина композиции ограничена 16; рекурсивные ссылки отклоняются.
 
 ## Выбор prompt или command
 

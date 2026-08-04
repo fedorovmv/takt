@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -28,7 +29,8 @@ type compiledGroup struct {
 }
 
 type compiler struct {
-	stack []string
+	stack   []string
+	rootDir string
 }
 
 // Expand compiles subworkflow and foreach containers into ordinary DAG nodes.
@@ -42,7 +44,7 @@ func Expand(path string, wf *spec.Workflow) (*spec.Workflow, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &compiler{stack: []string{abs}}
+	c := &compiler{stack: []string{abs}, rootDir: filepath.Dir(abs)}
 	group, err := c.compileNodes(wf.Nodes, abs, "", wf.Defaults, spec.HookSet{}, nil, false)
 	if err != nil {
 		return nil, err
@@ -120,12 +122,12 @@ func (c *compiler) compileNode(node spec.Node, workflowPath, prefix string, defa
 		if err := validateContainerFields(node); err != nil {
 			return compiledGroup{}, err
 		}
-		return c.compileSubworkflow(node, workflowPath, prefix, vars, siblings)
+		return c.compileSubworkflow(node, workflowPath, prefix, defaults, vars, siblings)
 	case node.Foreach != nil:
 		if err := validateContainerFields(node); err != nil {
 			return compiledGroup{}, err
 		}
-		return c.compileForeach(node, workflowPath, prefix, vars, siblings)
+		return c.compileForeach(node, workflowPath, prefix, defaults, vars, siblings)
 	default:
 		clone, err := cloneNode(node)
 		if err != nil {
@@ -137,7 +139,7 @@ func (c *compiler) compileNode(node spec.Node, workflowPath, prefix string, defa
 		if clone.LoopGroup != nil {
 			applyDefaults(&clone, defaults)
 		}
-		if err := rewriteNode(&clone, prefix, siblings, vars, workflowPath, inlineLocalCommands); err != nil {
+		if err := c.rewriteNode(&clone, prefix, siblings, vars, workflowPath, inlineLocalCommands); err != nil {
 			return compiledGroup{}, err
 		}
 		applyDefaults(&clone, defaults)
@@ -145,31 +147,32 @@ func (c *compiler) compileNode(node spec.Node, workflowPath, prefix string, defa
 	}
 }
 
-func (c *compiler) compileSubworkflow(node spec.Node, workflowPath, prefix string, vars map[string]string, siblings map[string]spec.Node) (compiledGroup, error) {
+func (c *compiler) compileSubworkflow(node spec.Node, workflowPath, prefix string, parentDefaults spec.Defaults, vars map[string]string, siblings map[string]spec.Node) (compiledGroup, error) {
 	publicID := qualify(prefix, node.ID)
 	gateID := publicID + "__start"
-	gate := spec.Node{ID: gateID, DependsOn: qualifyDependencies(prefix, node.DependsOn), When: rewriteNodeRefs(replaceVars(node.When, vars), prefix, siblings), TriggerRule: node.TriggerRule, Internal: &spec.InternalNodeSpec{Mode: "noop"}}
+	gate := spec.Node{ID: gateID, Hidden: true, PublicParent: publicID, DependsOn: qualifyDependencies(prefix, node.DependsOn), When: rewriteWhenNodeRefs(replaceVars(node.When, vars), prefix, siblings), TriggerRule: node.TriggerRule, Internal: &spec.InternalNodeSpec{Mode: "noop"}}
 
 	childPath, child, err := c.loadChild(workflowPath, node.Subworkflow.Path)
 	if err != nil {
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
 	}
 	childVars, err := resolveInputs(node.Subworkflow.Inputs, vars)
-	for key, value := range childVars {
-		childVars[key] = rewriteNodeRefs(value, prefix, siblings)
-	}
 	if err != nil {
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
+	}
+	for key, value := range childVars {
+		childVars[key] = rewriteTemplateNodeRefs(value, prefix, siblings)
 	}
 	if err := c.enter(childPath); err != nil {
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
 	}
-	childGroup, err := c.compileNodes(child.Nodes, childPath, publicID+"__", child.Defaults, child.Hooks, childVars, true)
+	childGroup, err := c.compileNodes(child.Nodes, childPath, publicID+"__", containerDefaults(parentDefaults, child.Defaults, node), child.Hooks, childVars, true)
 	c.leave()
 	if err != nil {
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
 	}
 	addDependency(childGroup.nodes, childGroup.entries, gateID)
+	markExpandedNodes(childGroup.nodes, publicID)
 	outputID, err := chooseOutput(node.Subworkflow.OutputNode, childGroup, childPath)
 	if err != nil {
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
@@ -182,9 +185,10 @@ func (c *compiler) compileSubworkflow(node spec.Node, workflowPath, prefix strin
 	return compiledGroup{nodes: all, entries: []string{gateID}, terminals: []string{publicID}, public: map[string]string{node.ID: publicID}, outputID: publicID}, nil
 }
 
-func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, vars map[string]string, siblings map[string]spec.Node) (compiledGroup, error) {
-	if len(node.Foreach.Items) == 0 {
-		return compiledGroup{}, fmt.Errorf("foreach node %q requires at least one item", node.ID)
+func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, parentDefaults spec.Defaults, vars map[string]string, siblings map[string]spec.Node) (compiledGroup, error) {
+	items, definitionHash, err := c.resolveForeachItems(node, workflowPath)
+	if err != nil {
+		return compiledGroup{}, err
 	}
 	if strings.TrimSpace(node.Foreach.Subworkflow.Path) == "" {
 		return compiledGroup{}, fmt.Errorf("foreach node %q requires subworkflow.path", node.ID)
@@ -199,12 +203,17 @@ func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, v
 
 	publicID := qualify(prefix, node.ID)
 	gateID := publicID + "__start"
-	gate := spec.Node{ID: gateID, DependsOn: qualifyDependencies(prefix, node.DependsOn), When: rewriteNodeRefs(replaceVars(node.When, vars), prefix, siblings), TriggerRule: node.TriggerRule, Internal: &spec.InternalNodeSpec{Mode: "noop"}}
+	gate := spec.Node{
+		ID: gateID, Hidden: true, PublicParent: publicID,
+		DependsOn: qualifyDependencies(prefix, node.DependsOn),
+		When:      rewriteWhenNodeRefs(replaceVars(node.When, vars), prefix, siblings), TriggerRule: node.TriggerRule,
+		Internal: &spec.InternalNodeSpec{Mode: "noop", DefinitionHash: definitionHash},
+	}
 	all := []spec.Node{gate}
 	previous := gateID
-	lastResult := ""
+	iterationResults := make([]string, 0, len(items))
 
-	for index, item := range node.Foreach.Items {
+	for index, item := range items {
 		itemVars, err := foreachVars(as, index, item)
 		if err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q item %d: %w", node.ID, index, err)
@@ -215,35 +224,80 @@ func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, v
 			return compiledGroup{}, fmt.Errorf("foreach node %q: %w", node.ID, err)
 		}
 		childInputs, err := resolveInputs(node.Foreach.Subworkflow.Inputs, merged)
-		for key, value := range childInputs {
-			childInputs[key] = rewriteNodeRefs(value, prefix, siblings)
-		}
 		if err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q item %d: %w", node.ID, index, err)
+		}
+		for key, value := range childInputs {
+			childInputs[key] = rewriteTemplateNodeRefs(value, prefix, siblings)
 		}
 		iterationID := publicID + "__" + fmt.Sprintf("%03d", index+1)
 		if err := c.enter(childPath); err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q item %d: %w", node.ID, index, err)
 		}
-		childGroup, err := c.compileNodes(child.Nodes, childPath, iterationID+"__", child.Defaults, child.Hooks, childInputs, true)
+		childGroup, err := c.compileNodes(child.Nodes, childPath, iterationID+"__", containerDefaults(parentDefaults, child.Defaults, node), child.Hooks, childInputs, true)
 		c.leave()
 		if err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q item %d: %w", node.ID, index, err)
 		}
 		addDependency(childGroup.nodes, childGroup.entries, previous)
+		markExpandedNodes(childGroup.nodes, publicID)
 		outputID, err := chooseOutput(node.Foreach.Subworkflow.OutputNode, childGroup, childPath)
 		if err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q item %d: %w", node.ID, index, err)
 		}
-		iterationResult := spec.Node{ID: iterationID, DependsOn: append([]string{}, childGroup.terminals...), Internal: &spec.InternalNodeSpec{Mode: "result", ResultFrom: outputID}}
+		iterationResult := spec.Node{
+			ID: iterationID, Hidden: true, PublicParent: publicID,
+			DependsOn: append([]string{}, childGroup.terminals...),
+			Internal:  &spec.InternalNodeSpec{Mode: "result", ResultFrom: outputID},
+		}
 		all = append(all, childGroup.nodes...)
 		all = append(all, iterationResult)
 		previous = iterationID
-		lastResult = iterationID
+		iterationResults = append(iterationResults, iterationID)
 	}
-	aggregator := spec.Node{ID: publicID, DependsOn: []string{previous}, Internal: &spec.InternalNodeSpec{Mode: "result", ResultFrom: lastResult}}
+	aggregator := spec.Node{
+		ID:        publicID,
+		DependsOn: append([]string{}, iterationResults...),
+		Internal:  &spec.InternalNodeSpec{Mode: "collect", ResultsFrom: append([]string{}, iterationResults...)},
+	}
 	all = append(all, aggregator)
 	return compiledGroup{nodes: all, entries: []string{gateID}, terminals: []string{publicID}, public: map[string]string{node.ID: publicID}, outputID: publicID}, nil
+}
+
+func (c *compiler) resolveForeachItems(node spec.Node, workflowPath string) ([]any, string, error) {
+	hasInline := len(node.Foreach.Items) > 0
+	hasSource := node.Foreach.ItemsFrom != nil
+	if hasInline == hasSource {
+		return nil, "", fmt.Errorf("foreach node %q requires exactly one of items or items_from", node.ID)
+	}
+	if hasInline {
+		return node.Foreach.Items, "", nil
+	}
+	rel := strings.TrimSpace(node.Foreach.ItemsFrom.Path)
+	if rel == "" {
+		return nil, "", fmt.Errorf("foreach node %q items_from.path is required", node.ID)
+	}
+	path := rel
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(filepath.Dir(workflowPath), path)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, "", err
+	}
+	b, err := os.ReadFile(abs)
+	if err != nil {
+		return nil, "", fmt.Errorf("foreach node %q read items_from %s: %w", node.ID, abs, err)
+	}
+	var items []any
+	if err := yamlmini.Unmarshal(b, &items); err != nil {
+		return nil, "", fmt.Errorf("foreach node %q parse items_from %s: %w", node.ID, abs, err)
+	}
+	if len(items) == 0 {
+		return nil, "", fmt.Errorf("foreach node %q items_from %s must contain at least one item", node.ID, abs)
+	}
+	hash := sha256.Sum256(b)
+	return items, fmt.Sprintf("%x", hash[:]), nil
 }
 
 func (c *compiler) loadChild(parentPath, rel string) (string, *spec.Workflow, error) {
@@ -290,31 +344,34 @@ func (c *compiler) leave() {
 	c.stack = c.stack[:len(c.stack)-1]
 }
 
-func rewriteNode(node *spec.Node, prefix string, siblings map[string]spec.Node, vars map[string]string, workflowPath string, inlineLocalCommands bool) error {
-	rewrite := func(value string) string {
-		return rewriteNodeRefs(replaceVars(value, vars), prefix, siblings)
+func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[string]spec.Node, vars map[string]string, workflowPath string, inlineLocalCommands bool) error {
+	rewriteTemplate := func(value string) string {
+		return rewriteTemplateNodeRefs(replaceVars(value, vars), prefix, siblings)
 	}
-	node.When = rewrite(node.When)
-	node.Prompt = rewrite(node.Prompt)
-	node.Bash = rewrite(node.Bash)
+	node.When = rewriteWhenNodeRefs(replaceVars(node.When, vars), prefix, siblings)
+	node.Prompt = rewriteTemplate(node.Prompt)
+	node.Bash = rewriteTemplate(node.Bash)
 	if node.Approval != nil {
-		node.Approval.Message = rewrite(node.Approval.Message)
+		node.Approval.Message = rewriteTemplate(node.Approval.Message)
 	}
-	rewriteHooks(&node.Hooks, rewrite)
+	rewriteHooks(&node.Hooks, rewriteTemplate)
 
 	if node.LoopGroup != nil {
-		if err := rewriteLoopGroup(node, prefix, siblings, vars, workflowPath, inlineLocalCommands); err != nil {
+		if err := c.rewriteLoopGroup(node, vars, workflowPath, inlineLocalCommands); err != nil {
 			return err
 		}
 	}
 	if inlineLocalCommands && node.Command != "" {
-		local := filepath.Join(filepath.Dir(workflowPath), "commands", node.Command+".md")
-		if b, err := os.ReadFile(local); err == nil {
+		local, b, found, err := c.readLocalCommand(workflowPath, node.Command)
+		if err != nil {
+			return err
+		}
+		if found {
 			cmd, err := command.Parse(node.Command, local, string(b))
 			if err != nil {
 				return err
 			}
-			node.Prompt = rewrite(cmd.Body)
+			node.Prompt = rewriteTemplate(cmd.Body)
 			node.Command = ""
 			if node.Assistant == "" {
 				node.Assistant = cmd.Assistant
@@ -322,8 +379,6 @@ func rewriteNode(node *spec.Node, prefix string, siblings map[string]spec.Node, 
 			if node.Model == "" {
 				node.Model = cmd.Model
 			}
-		} else if !os.IsNotExist(err) {
-			return err
 		}
 	}
 	if unresolved := unresolvedInput(node); unresolved != "" {
@@ -358,30 +413,61 @@ func unresolvedInput(node *spec.Node) string {
 	return ""
 }
 
-func rewriteLoopGroup(node *spec.Node, prefix string, siblings map[string]spec.Node, vars map[string]string, workflowPath string, inlineLocalCommands bool) error {
+func (c *compiler) rewriteLoopGroup(node *spec.Node, vars map[string]string, workflowPath string, inlineLocalCommands bool) error {
 	loop := node.LoopGroup
+	originalUntil := loop.Until.Node
 	childPrefix := node.ID + "__"
-	childSiblings := make(map[string]spec.Node, len(loop.Nodes))
-	for _, child := range loop.Nodes {
-		if child.LoopGroup != nil || child.Subworkflow != nil || child.Foreach != nil || child.Approval != nil {
-			return fmt.Errorf("loop_group %q supports only command, prompt, or bash children in this release", node.ID)
-		}
-		childSiblings[child.ID] = child
+	defaults := spec.Defaults{Assistant: node.Assistant, Model: node.Model, Session: node.Session}
+	group, err := c.compileNodes(loop.Nodes, workflowPath, childPrefix, defaults, spec.HookSet{}, vars, inlineLocalCommands)
+	if err != nil {
+		return fmt.Errorf("loop_group %q: %w", node.ID, err)
 	}
-	for i := range loop.Nodes {
-		child := &loop.Nodes[i]
-		child.ID = qualify(childPrefix, child.ID)
-		child.DependsOn = qualifyDependencies(childPrefix, child.DependsOn)
-		applyDefaults(child, spec.Defaults{Assistant: node.Assistant, Model: node.Model, Session: node.Session})
-		if err := rewriteNode(child, childPrefix, childSiblings, vars, workflowPath, inlineLocalCommands); err != nil {
-			return err
-		}
+	untilID, ok := group.public[originalUntil]
+	if !ok {
+		return fmt.Errorf("loop_group %q until.node %q does not exist", node.ID, originalUntil)
 	}
-	loop.Until.Node = qualify(childPrefix, loop.Until.Node)
+	for i := range group.nodes {
+		group.nodes[i].PublicParent = node.ID
+	}
+	loop.Nodes = group.nodes
+	loop.Until.Node = untilID
 	loop.Until.OutputContains = replaceVars(loop.Until.OutputContains, vars)
-	_ = prefix
-	_ = siblings
 	return nil
+}
+
+func (c *compiler) readLocalCommand(workflowPath, name string) (string, []byte, bool, error) {
+	dir := filepath.Dir(workflowPath)
+	for {
+		path := filepath.Join(dir, "commands", name+".md")
+		b, err := os.ReadFile(path)
+		if err == nil {
+			return path, b, true, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", nil, false, err
+		}
+		if dir == c.rootDir {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir || !isWithin(parent, c.rootDir) {
+			break
+		}
+		dir = parent
+	}
+	return "", nil, false, nil
+}
+
+func isWithin(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func markExpandedNodes(nodes []spec.Node, publicParent string) {
+	for i := range nodes {
+		nodes[i].Hidden = true
+		nodes[i].PublicParent = publicParent
+	}
 }
 
 func sourceKinds(node spec.Node) int {
@@ -414,10 +500,33 @@ func sourceKinds(node spec.Node) int {
 }
 
 func validateContainerFields(node spec.Node) error {
-	if node.Assistant != "" || node.Model != "" || node.Session != "" || node.Attempts.Max != 0 || node.AllowFailure || node.Timeout != "" || !hookSetEmpty(node.Hooks) || len(node.NativeHooks) != 0 {
-		return fmt.Errorf("container node %q supports only id, depends_on, when, trigger_rule and subworkflow/foreach", node.ID)
+	if node.Attempts.Max != 0 || node.AllowFailure || node.Timeout != "" || !hookSetEmpty(node.Hooks) || len(node.NativeHooks) != 0 {
+		return fmt.Errorf("container node %q supports assistant/model/session defaults, but group attempts, timeout, hooks, native_hooks and allow_failure must be defined inside the child workflow", node.ID)
 	}
 	return nil
+}
+
+func containerDefaults(parent, child spec.Defaults, node spec.Node) spec.Defaults {
+	out := child
+	if out.Assistant == "" {
+		out.Assistant = parent.Assistant
+	}
+	if out.Model == "" {
+		out.Model = parent.Model
+	}
+	if out.Session == "" {
+		out.Session = parent.Session
+	}
+	if node.Assistant != "" {
+		out.Assistant = node.Assistant
+	}
+	if node.Model != "" {
+		out.Model = node.Model
+	}
+	if node.Session != "" {
+		out.Session = node.Session
+	}
+	return out
 }
 
 func chooseOutput(name string, group compiledGroup, path string) (string, error) {
@@ -467,14 +576,24 @@ func applyDefaults(node *spec.Node, defaults spec.Defaults) {
 	}
 }
 
-func rewriteNodeRefs(value, prefix string, siblings map[string]spec.Node) string {
+func rewriteTemplateNodeRefs(value, prefix string, siblings map[string]spec.Node) string {
 	if value == "" || prefix == "" {
 		return value
 	}
 	for id := range siblings {
 		value = strings.ReplaceAll(value, "${nodes."+id+".", "${nodes."+qualify(prefix, id)+".")
-		value = strings.ReplaceAll(value, "nodes."+id+".", "nodes."+qualify(prefix, id)+".")
 		value = strings.ReplaceAll(value, "${loop.previous."+id+".", "${loop.previous."+qualify(prefix, id)+".")
+	}
+	return value
+}
+
+func rewriteWhenNodeRefs(value, prefix string, siblings map[string]spec.Node) string {
+	value = rewriteTemplateNodeRefs(value, prefix, siblings)
+	if value == "" || prefix == "" {
+		return value
+	}
+	for id := range siblings {
+		value = strings.ReplaceAll(value, "nodes."+id+".", "nodes."+qualify(prefix, id)+".")
 	}
 	return value
 }

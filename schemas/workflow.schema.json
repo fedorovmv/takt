@@ -283,7 +283,6 @@
         "native_hooks": {},
         "timeout": {
           "type": "string",
-          "minLength": 1,
           "description": "Go duration, for example 30s or 5m"
         },
         "subworkflow": {
@@ -338,48 +337,41 @@
             ]
           },
           "then": {
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "assistant"
-                  ]
-                },
-                {
-                  "required": [
-                    "model"
-                  ]
-                },
-                {
-                  "required": [
-                    "session"
-                  ]
-                },
-                {
-                  "required": [
-                    "attempts"
-                  ]
-                },
-                {
-                  "required": [
-                    "allow_failure"
-                  ]
-                },
-                {
-                  "required": [
-                    "hooks"
-                  ]
-                },
-                {
-                  "required": [
-                    "native_hooks"
-                  ]
-                },
-                {
-                  "required": [
-                    "timeout"
-                  ]
+            "properties": {
+              "attempts": {
+                "properties": {
+                  "max": {
+                    "const": 0
+                  }
                 }
+              },
+              "allow_failure": {
+                "const": false
+              },
+              "hooks": {
+                "type": "object",
+                "properties": {
+                  "before_node": {
+                    "maxItems": 0
+                  },
+                  "after_node": {
+                    "maxItems": 0
+                  },
+                  "before_complete": {
+                    "maxItems": 0
+                  },
+                  "on_failure": {
+                    "maxItems": 0
+                  }
+                }
+              },
+              "timeout": {
+                "maxLength": 0
+              }
+            },
+            "not": {
+              "required": [
+                "native_hooks"
               ]
             }
           }
@@ -391,48 +383,41 @@
             ]
           },
           "then": {
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "assistant"
-                  ]
-                },
-                {
-                  "required": [
-                    "model"
-                  ]
-                },
-                {
-                  "required": [
-                    "session"
-                  ]
-                },
-                {
-                  "required": [
-                    "attempts"
-                  ]
-                },
-                {
-                  "required": [
-                    "allow_failure"
-                  ]
-                },
-                {
-                  "required": [
-                    "hooks"
-                  ]
-                },
-                {
-                  "required": [
-                    "native_hooks"
-                  ]
-                },
-                {
-                  "required": [
-                    "timeout"
-                  ]
+            "properties": {
+              "attempts": {
+                "properties": {
+                  "max": {
+                    "const": 0
+                  }
                 }
+              },
+              "allow_failure": {
+                "const": false
+              },
+              "hooks": {
+                "type": "object",
+                "properties": {
+                  "before_node": {
+                    "maxItems": 0
+                  },
+                  "after_node": {
+                    "maxItems": 0
+                  },
+                  "before_complete": {
+                    "maxItems": 0
+                  },
+                  "on_failure": {
+                    "maxItems": 0
+                  }
+                }
+              },
+              "timeout": {
+                "maxLength": 0
+              }
+            },
+            "not": {
+              "required": [
+                "native_hooks"
               ]
             }
           }
@@ -497,8 +482,13 @@
         "native_hooks": {},
         "timeout": {
           "type": "string",
-          "minLength": 1,
           "description": "Go duration, for example 30s or 5m"
+        },
+        "subworkflow": {
+          "$ref": "#/$defs/subworkflow"
+        },
+        "foreach": {
+          "$ref": "#/$defs/foreach"
         }
       },
       "oneOf": [
@@ -516,6 +506,110 @@
           "required": [
             "bash"
           ]
+        },
+        {
+          "required": [
+            "subworkflow"
+          ]
+        },
+        {
+          "required": [
+            "foreach"
+          ]
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "subworkflow"
+            ]
+          },
+          "then": {
+            "properties": {
+              "attempts": {
+                "properties": {
+                  "max": {
+                    "const": 0
+                  }
+                }
+              },
+              "allow_failure": {
+                "const": false
+              },
+              "hooks": {
+                "type": "object",
+                "properties": {
+                  "before_node": {
+                    "maxItems": 0
+                  },
+                  "after_node": {
+                    "maxItems": 0
+                  },
+                  "before_complete": {
+                    "maxItems": 0
+                  },
+                  "on_failure": {
+                    "maxItems": 0
+                  }
+                }
+              },
+              "timeout": {
+                "maxLength": 0
+              }
+            },
+            "not": {
+              "required": [
+                "native_hooks"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "foreach"
+            ]
+          },
+          "then": {
+            "properties": {
+              "attempts": {
+                "properties": {
+                  "max": {
+                    "const": 0
+                  }
+                }
+              },
+              "allow_failure": {
+                "const": false
+              },
+              "hooks": {
+                "type": "object",
+                "properties": {
+                  "before_node": {
+                    "maxItems": 0
+                  },
+                  "after_node": {
+                    "maxItems": 0
+                  },
+                  "before_complete": {
+                    "maxItems": 0
+                  },
+                  "on_failure": {
+                    "maxItems": 0
+                  }
+                }
+              },
+              "timeout": {
+                "maxLength": 0
+              }
+            },
+            "not": {
+              "required": [
+                "native_hooks"
+              ]
+            }
+          }
         }
       ]
     },
@@ -546,7 +640,6 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "items",
         "subworkflow"
       ],
       "properties": {
@@ -561,8 +654,33 @@
         },
         "subworkflow": {
           "$ref": "#/$defs/subworkflow"
+        },
+        "items_from": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
-      }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "items"
+          ]
+        },
+        {
+          "required": [
+            "items_from"
+          ]
+        }
+      ]
     }
   }
 }

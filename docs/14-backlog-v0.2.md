@@ -182,16 +182,18 @@ Draft → approval comment → revise → artifact без изменения run
 Реализован `type: opencode` через `opencode run --format json`: model/agent/variant mapping, fresh/resume, version, usage/cost, output limit, context priority, fake contract suite и opt-in smoke.
 
 
-## Завершено в v0.1.21–v0.1.22-alpha
+## Завершено в v0.1.21–v0.1.23-alpha
 
 ### TAKT-014. Пакеты профилей и композиция workflow — выполнено
 
 - `takt init/validate/run <profile>`;
 - встроенный профиль `code`, сохраняющий Markdown-план исходным документом;
 - reusable `subworkflow` с inputs и публичным output;
-- последовательный `foreach` по явному списку;
+- последовательный `foreach` по inline-списку и внешнему YAML/JSON-массиву;
+- композиция внутри `loop_group`;
+- публичная проекция Run и JSON-массив результатов итераций;
 - локальные команды подключённого workflow входят в скомпилированное определение;
 - fingerprints учитывают подключённые workflow и блокируют resume после их изменения;
 - отдельный composition contract suite.
 
-Остаётся отдельная задача input adapters для OpenSpec, issue, JSON/YAML и других форматов. Она не меняет основной Markdown-режим.
+Остаются отдельные задачи параллельного `foreach`, групповых attempts/timeout/hooks и input adapters для OpenSpec, issue и других структурированных источников. Явный YAML/JSON-массив уже поддерживается через `items_from`; основной Markdown-режим сохраняется.

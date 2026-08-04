@@ -103,7 +103,7 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 	go readPiRPC(stdoutPipe, stdout, records, streamErr)
 	go func() {
 		_, copyErr := io.Copy(stderr, stderrPipe)
-		if copyErr != nil {
+		if copyErr != nil && !errors.Is(copyErr, os.ErrClosed) {
 			streamErr <- fmt.Errorf("read pi stderr: %w", copyErr)
 		}
 	}()

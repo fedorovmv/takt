@@ -93,3 +93,58 @@ func TestJSONModeDefaults(t *testing.T) {
 		t.Fatal("eval should default to JSON")
 	}
 }
+
+func TestAnswerAcceptsPublicSubworkflowNodeID(t *testing.T) {
+	dir := t.TempDir()
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	childPath := filepath.Join(dir, "child.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: approve
+    approval:
+      message: Continue?
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workflowPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: child
+    subworkflow:
+      path: child.yaml
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("apiVersion: takt/v1alpha1\nkind: Config\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := cfgpkg.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := runtime.New(wf, cfg, workflowPath, configPath, dir)
+	state, err := runner.Start(context.Background(), "")
+	if !errors.Is(err, runtime.ErrWaiting) {
+		t.Fatalf("expected waiting, got %v", err)
+	}
+	if err := answerCmd([]string{state.ID, "child", "--value", "yes", "--workspace", dir, "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := (store.FS{Workspace: dir}).Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != store.RunCompleted || loaded.Approvals["child__approve"] != "yes" {
+		t.Fatalf("public approval alias was not resolved: %+v", loaded)
+	}
+}

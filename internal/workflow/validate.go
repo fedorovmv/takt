@@ -65,11 +65,14 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		if n.Subworkflow != nil || n.Foreach != nil {
 			return fmt.Errorf("node %q contains an unexpanded workflow container", n.ID)
 		}
-		if n.Internal != nil && n.Internal.Mode != "noop" && n.Internal.Mode != "result" {
+		if n.Internal != nil && n.Internal.Mode != "noop" && n.Internal.Mode != "result" && n.Internal.Mode != "collect" {
 			return fmt.Errorf("node %q has unsupported internal mode %q", n.ID, n.Internal.Mode)
 		}
 		if n.Internal != nil && n.Internal.Mode == "result" && strings.TrimSpace(n.Internal.ResultFrom) == "" {
 			return fmt.Errorf("node %q internal result requires result source", n.ID)
+		}
+		if n.Internal != nil && n.Internal.Mode == "collect" && len(n.Internal.ResultsFrom) == 0 {
+			return fmt.Errorf("node %q internal collect requires result sources", n.ID)
 		}
 		if n.Attempts.Max < 0 {
 			return fmt.Errorf("node %q attempts.max cannot be negative", n.ID)

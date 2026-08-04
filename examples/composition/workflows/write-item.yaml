@@ -8,4 +8,4 @@ nodes:
       printf '%s\n' '${inputs.name}' >> order.txt
   - id: result
     depends_on: [append]
-    bash: cat order.txt
+    bash: printf '%s' '${inputs.name}'

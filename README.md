@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.22-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.23-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -19,7 +19,10 @@
 - единая семантика корневого DAG и дочернего DAG `loop_group`;
 - узлы `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow`, `foreach`;
 - reusable `subworkflow` компилируется в тот же DAG;
-- последовательный `foreach` для явных списков без преобразования Markdown в task AST;
+- последовательный `foreach` для inline-списков и внешних YAML/JSON-массивов без преобразования Markdown в task AST;
+- `subworkflow` и `foreach` внутри `loop_group`;
+- JSON-массив результатов всех итераций `foreach`;
+- публичное состояние Run без внутренних развёрнутых ID;
 - вложенные `loop_group` явно запрещены в `v1alpha1`;
 - повтор узла после внешней проверки;
 - переносимые hooks `before_node`, `after_node`, `before_complete`, `on_failure`;
@@ -123,7 +126,7 @@ nodes:
           name: ${check}
 ```
 
-`subworkflow` и `foreach` разворачиваются до запуска в обычный DAG. Публичные ID `implementation` и `checks` остаются доступными для зависимостей и шаблонов. `foreach.items` задаётся явно; Markdown-планы Takt не преобразует во внутренний список задач.
+`subworkflow` и `foreach` разворачиваются до запуска в обычный DAG, включая дочерний DAG `loop_group`. Публичные ID `implementation` и `checks` остаются доступными для зависимостей и шаблонов, а внутренние ID скрыты из CLI-состояния. `foreach` принимает inline `items` или `items_from.path` и возвращает JSON-массив результатов; Markdown-планы Takt не преобразует во внутренний список задач.
 
 Рабочий пример: [`examples/composition/`](examples/composition/).
 
@@ -171,6 +174,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Разделение stdout/stderr quality-node v0.1.17](docs/31-quality-stdout-separation-v0.1.17.md)
 - [Скилл настройки Takt v0.1.18](docs/32-takt-authoring-skill-v0.1.18.md)
 - [Композиция workflow v0.1.22](docs/36-workflow-composition-v0.1.22.md)
+- [Усиление композиции v0.1.23](docs/37-composition-hardening-v0.1.23.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -210,6 +214,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Разделение stdout/stderr quality-node v0.1.17](docs/31-quality-stdout-separation-v0.1.17.md)
 - [Скилл настройки Takt v0.1.18](docs/32-takt-authoring-skill-v0.1.18.md)
 - [Композиция workflow v0.1.22](docs/36-workflow-composition-v0.1.22.md)
+- [Усиление композиции v0.1.23](docs/37-composition-hardening-v0.1.23.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

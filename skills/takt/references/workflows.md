@@ -102,7 +102,7 @@ nodes:
       exit_code: 0
 ```
 
-Approval и вложенный `loop_group` внутри `loop_group` не поддерживаются.
+Approval и вложенный `loop_group` внутри `loop_group` не поддерживаются. `subworkflow` и `foreach` внутри цикла разрешены; `until.node` использует публичный ID контейнера.
 
 ## Hooks
 
@@ -166,9 +166,11 @@ hooks:
 
 В подключённом workflow доступны `${inputs.request}` и другие явно переданные значения. Если terminal-узел один, `output_node` можно не указывать. При нескольких terminal-узлах поле обязательно.
 
-Публичный ID контейнера сохраняется: следующий узел может использовать `depends_on: [implement]` и `${nodes.implement.output}`. В состоянии Run дочерние узлы получают стабильный namespace с `__`.
+Публичный ID контейнера сохраняется: следующий узел может использовать `depends_on: [implement]` и `${nodes.implement.output}`. CLI скрывает namespaced узлы с `__`; полное состояние хранится на диске для resume. Approval принимается через публичный ID контейнера.
 
-Контейнер поддерживает `id`, `depends_on`, `when` и `trigger_rule`. Attempts, timeout, hooks, assistant/model и allow_failure задаются внутри подключённого workflow.
+Контейнер поддерживает `id`, `depends_on`, `when`, `trigger_rule`, `assistant`, `model` и `session`. Последние три поля задают defaults дочернего вызова. Положительный `attempts.max`, непустые timeout/hooks/native_hooks и `allow_failure: true` задаются внутри подключённого workflow.
+
+Глубина композиции ограничена 16. Рекурсивные ссылки отклоняются при загрузке. Локальная команда ищется рядом с дочерним workflow и далее вверх до корня композиции.
 
 ## Последовательный foreach
 
@@ -176,9 +178,8 @@ hooks:
 - id: checks
   foreach:
     as: check
-    items:
-      - lint
-      - test
+    items_from:
+      path: checks.yaml
     subworkflow:
       path: workflows/check.yaml
       inputs:
@@ -187,6 +188,6 @@ hooks:
 
 Элементы выполняются строго по порядку. Поддерживаются строки, числа, логические значения и inline JSON objects. Для объекта доступны `${check}` как JSON и `${check.<field>}` для полей. `${index}` и `${check.index}` содержат индекс с нуля.
 
-`foreach` возвращает output последней итерации. Список `items` должен быть задан явно; Takt не разбирает Markdown-планы в task AST. Источники OpenSpec, issue или JSON следует подключать будущим input adapter, а не скрытой эвристикой prompt.
+`foreach` принимает ровно один источник: inline `items` или `items_from.path` к непустому YAML/JSON-массиву. Результат — JSON-массив outputs всех итераций в исходном порядке. Содержимое внешнего файла входит в fingerprint. Takt не разбирает Markdown-планы в task AST. Параллельный `foreach` пока не поддерживается.
 
-`subworkflow` и `foreach` внутри `loop_group` в текущем контракте не поддерживаются.
+`subworkflow` и `foreach` внутри `loop_group` используют ту же компиляцию в DAG.

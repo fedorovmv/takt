@@ -76,7 +76,7 @@ nodes:
 	}
 }
 
-func TestForeachRunsItemsSequentiallyAndReturnsLastOutput(t *testing.T) {
+func TestForeachRunsItemsSequentiallyAndCollectsOutputs(t *testing.T) {
 	dir := t.TempDir()
 	writeCompositionFile(t, filepath.Join(dir, "item.yaml"), `apiVersion: takt/v1alpha1
 kind: Workflow
@@ -88,7 +88,7 @@ nodes:
       printf '%s\n' '${inputs.value}' >> order.txt
   - id: result
     depends_on: [append]
-    bash: cat order.txt
+    bash: printf '%s' '${inputs.value}'
 `)
 	workflowPath := filepath.Join(dir, "workflow.yaml")
 	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
@@ -123,7 +123,7 @@ nodes:
 	if state.Status != store.RunCompleted {
 		t.Fatalf("unexpected run state: %+v", state)
 	}
-	if state.Nodes["batch"].Output != "one\ntwo\nthree" {
+	if state.Nodes["batch"].Output != `["one","two","three"]` {
 		t.Fatalf("unexpected foreach output %q", state.Nodes["batch"].Output)
 	}
 	if state.Nodes["batch__001"].Status != store.NodeCompleted || state.Nodes["batch__002"].Status != store.NodeCompleted || state.Nodes["batch__003"].Status != store.NodeCompleted {
@@ -185,5 +185,130 @@ nodes:
 	r2 := New(changed, &spec.Config{}, workflowPath, "<config>", dir)
 	if _, err := r2.Resume(context.Background(), state); err == nil || !strings.Contains(err.Error(), "workflow definition changed") {
 		t.Fatalf("expected workflow fingerprint error, got %v", err)
+	}
+}
+
+func TestLoopGroupRunsComposedChild(t *testing.T) {
+	dir := t.TempDir()
+	writeCompositionFile(t, filepath.Join(dir, "step.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: step
+nodes:
+  - id: result
+    bash: echo done
+`)
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: loop-composition
+nodes:
+  - id: retry
+    loop_group:
+      max_iterations: 2
+      nodes:
+        - id: child
+          subworkflow:
+            path: step.yaml
+      until:
+        node: child
+        output_contains: done
+`)
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := New(wf, &spec.Config{}, workflowPath, "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunCompleted || state.Nodes["retry"].Output != "done" {
+		t.Fatalf("unexpected loop state: %+v", state)
+	}
+	previous := state.Nodes["retry"].LoopPrevious
+	if previous["retry__child"].Status != store.NodeCompleted {
+		t.Fatalf("public composed child is missing from loop state: %+v", previous)
+	}
+	if !previous["retry__child__result"].Hidden {
+		t.Fatalf("expanded child state is not marked internal: %+v", previous["retry__child__result"])
+	}
+}
+
+func TestPublicRunStateHidesExpandedNodesAndAliasesApproval(t *testing.T) {
+	dir := t.TempDir()
+	writeCompositionFile(t, filepath.Join(dir, "child.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: approve
+    approval:
+      message: Continue?
+`)
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: child
+    subworkflow:
+      path: child.yaml
+`)
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := New(wf, &spec.Config{}, workflowPath, "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if !errors.Is(err, ErrWaiting) {
+		t.Fatalf("expected waiting state, got %v", err)
+	}
+	public := state.PublicView()
+	if public.Waiting == nil || public.Waiting.NodeID != "child" {
+		t.Fatalf("approval alias was not exposed: %+v", public.Waiting)
+	}
+	if len(public.Nodes) != 1 || public.Nodes["child"] == nil {
+		t.Fatalf("expanded nodes leaked into public state: %+v", public.Nodes)
+	}
+}
+
+func TestPublicRunStateUsesLocalLoopChildIDs(t *testing.T) {
+	dir := t.TempDir()
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: loop-public-view
+nodes:
+  - id: retry
+    loop_group:
+      max_iterations: 1
+      nodes:
+        - id: result
+          bash: echo done
+      until:
+        node: result
+        output_contains: done
+`)
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := New(wf, &spec.Config{}, workflowPath, "<config>", dir).Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := state.PublicView()
+	previous := public.Nodes["retry"].LoopPrevious
+	if _, ok := previous["result"]; !ok {
+		t.Fatalf("public loop child ID is missing: %+v", previous)
+	}
+	for id := range previous {
+		if strings.Contains(id, "__") {
+			t.Fatalf("public loop state exposes expanded ID %q", id)
+		}
 	}
 }

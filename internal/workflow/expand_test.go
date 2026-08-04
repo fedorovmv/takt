@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -211,4 +212,252 @@ func contains(values []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func TestLoadExpandsForeachItemsFromFile(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "items.yaml"), `
+- alpha
+- beta
+`)
+	writeTestFile(t, filepath.Join(dir, "item.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: item
+nodes:
+  - id: result
+    bash: printf '%s' '${inputs.name}'
+`)
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: batch
+nodes:
+  - id: batch
+    foreach:
+      items_from:
+        path: items.yaml
+      subworkflow:
+        path: item.yaml
+        inputs:
+          name: ${item}
+`)
+	wf, err := Load(filepath.Join(dir, "workflow.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := nodeIDs(wf.Nodes)
+	for _, expected := range []string{"batch__001__result", "batch__002__result", "batch"} {
+		if !contains(ids, expected) {
+			t.Fatalf("expanded ids %v do not contain %s", ids, expected)
+		}
+	}
+}
+
+func TestLoadExpandsCompositionInsideLoopGroup(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "step.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: step
+nodes:
+  - id: result
+    bash: echo done
+`)
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: retry
+    loop_group:
+      max_iterations: 2
+      nodes:
+        - id: child
+          subworkflow:
+            path: step.yaml
+      until:
+        node: child
+        output_contains: done
+`)
+	wf, err := Load(filepath.Join(dir, "workflow.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loop := wf.Nodes[0].LoopGroup
+	if loop == nil || loop.Until.Node != "retry__child" {
+		t.Fatalf("unexpected expanded loop: %+v", loop)
+	}
+	ids := nodeIDs(loop.Nodes)
+	for _, expected := range []string{"retry__child__start", "retry__child__result", "retry__child"} {
+		if !contains(ids, expected) {
+			t.Fatalf("loop ids %v do not contain %s", ids, expected)
+		}
+	}
+}
+
+func TestLoadRejectsExpansionBeyondDepthLimit(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i <= maxExpansionDepth; i++ {
+		next := ""
+		if i < maxExpansionDepth {
+			next = fmt.Sprintf("nodes:\n  - id: next\n    subworkflow:\n      path: %d.yaml\n", i+1)
+		} else {
+			next = "nodes:\n  - id: done\n    bash: echo done\n"
+		}
+		writeTestFile(t, filepath.Join(dir, fmt.Sprintf("%d.yaml", i)), fmt.Sprintf("apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: depth-%d\n%s", i, next))
+	}
+	_, err := Load(filepath.Join(dir, "0.yaml"))
+	if err == nil || !strings.Contains(err.Error(), "exceeds depth 16") {
+		t.Fatalf("expected depth error, got %v", err)
+	}
+}
+
+func TestLoadRejectsUnresolvedSubworkflowInput(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "child.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: result
+    bash: echo '${inputs.missing}'
+`)
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: child
+    subworkflow:
+      path: child.yaml
+`)
+	_, err := Load(filepath.Join(dir, "workflow.yaml"))
+	if err == nil || !strings.Contains(err.Error(), "unresolved subworkflow input ${inputs.missing}") {
+		t.Fatalf("expected unresolved input error, got %v", err)
+	}
+}
+
+func TestLoadFindsCommandsAtCompositionRoot(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "commands"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(dir, "commands", "shared.md"), "echo from-root\n")
+	writeTestFile(t, filepath.Join(dir, "workflows", "child.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: result
+    command: shared
+`)
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: child
+    subworkflow:
+      path: workflows/child.yaml
+`)
+	wf, err := Load(filepath.Join(dir, "workflow.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range wf.Nodes {
+		if node.ID == "child__result" {
+			if node.Command != "" || !strings.Contains(node.Prompt, "from-root") {
+				t.Fatalf("root command was not inlined: %+v", node)
+			}
+			return
+		}
+	}
+	t.Fatal("expanded result node not found")
+}
+
+func TestRewriteNodeRefsDoesNotChangeProse(t *testing.T) {
+	value := "Explain nodes.build.output in prose and use ${nodes.build.output} as a template."
+	rewritten := rewriteTemplateNodeRefs(value, "child__", map[string]spec.Node{"build": {ID: "build"}})
+	if !strings.Contains(rewritten, "Explain nodes.build.output in prose") {
+		t.Fatalf("prose reference was rewritten: %q", rewritten)
+	}
+	if !strings.Contains(rewritten, "${nodes.child__build.output}") {
+		t.Fatalf("template reference was not rewritten: %q", rewritten)
+	}
+}
+
+func TestCompositionContainerProvidesChildExecutionDefaults(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "child.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: implement
+    prompt: do work
+`)
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+defaults:
+  assistant: parent-assistant
+  model: parent-model
+  session: fresh
+nodes:
+  - id: child
+    assistant: invocation-assistant
+    session: resume
+    subworkflow:
+      path: child.yaml
+`)
+	wf, err := Load(filepath.Join(dir, "workflow.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range wf.Nodes {
+		if node.ID != "child__implement" {
+			continue
+		}
+		if node.Assistant != "invocation-assistant" || node.Model != "parent-model" || node.Session != "resume" {
+			t.Fatalf("container defaults were not inherited: %+v", node)
+		}
+		return
+	}
+	t.Fatal("expanded child node not found")
+}
+
+func TestValidateContainerFieldsMatchesValueSemantics(t *testing.T) {
+	if err := validateContainerFields(spec.Node{
+		ID:           "container",
+		Attempts:     spec.AttemptsSpec{Max: 0},
+		AllowFailure: false,
+		Timeout:      "",
+		Hooks:        spec.HookSet{},
+	}); err != nil {
+		t.Fatalf("zero-value container fields must be accepted: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		node spec.Node
+	}{
+		{name: "attempts", node: spec.Node{Attempts: spec.AttemptsSpec{Max: 1}}},
+		{name: "allow failure", node: spec.Node{AllowFailure: true}},
+		{name: "timeout", node: spec.Node{Timeout: "1s"}},
+		{name: "hooks", node: spec.Node{Hooks: spec.HookSet{BeforeNode: []spec.HookSpec{{Bash: "true"}}}}},
+		{name: "native hooks", node: spec.Node{NativeHooks: []byte(`{}`)}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.node.ID = "container"
+			if err := validateContainerFields(tc.node); err == nil {
+				t.Fatalf("expected %s to be rejected", tc.name)
+			}
+		})
+	}
 }

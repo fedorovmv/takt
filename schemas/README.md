@@ -17,4 +17,4 @@ Go-loader остаётся главным валидатором текущей 
 
 `run-state.schema.json` and `evaluation-report.schema.json` expose separate `stdout` and `stderr` fields for node results. The compatibility field `output`/`diagnostic_output` remains the combined diagnostic representation. Structured validation results are decoded only from `stdout`.
 
-`workflow.schema.json` также описывает reusable `subworkflow` и последовательный `foreach` по явному списку. Подключённые workflow проверяются той же схемой после загрузки и компиляции.
+`workflow.schema.json` также описывает reusable `subworkflow`, последовательный `foreach` с `items` или `items_from.path` и композицию внутри `loop_group`. Подключённые workflow проверяются той же схемой после загрузки и компиляции.

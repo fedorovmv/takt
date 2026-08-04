@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.4.0" \
+  "skills/takt/VERSION|0.5.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -73,15 +73,16 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-032" \
   "ARCHITECTURE_DECISIONS.md|ADR-033" \
   "docs/36-workflow-composition-v0.1.22.md|Последовательный foreach" \
+  "docs/37-composition-hardening-v0.1.23.md|Публичная проекция Run" \
+  "ARCHITECTURE_DECISIONS.md|ADR-034" \
   "docs/03-specification.md|Подключает отдельный \`takt/v1alpha1 Workflow\`" \
-  "docs/03-specification.md|Последовательно выполняет один subworkflow" \
+  "docs/03-specification.md|отдельного YAML/JSON-файла" \
   "skills/takt/references/workflows.md|## Subworkflow" \
   "skills/takt/assets/validated-agent-profile/.takt/workflows/composition.yaml|foreach:" \
-  "examples/composition/workflow.yaml|subworkflow:" \
+  "examples/composition/workflow.yaml|items_from:" \
   "scripts/test-composition.sh|workflow composition: PASS" \
   "README.md|takt init code" \
   "schemas/profile.schema.json|Takt Profile" \
-  "skills/takt/VERSION|0.4.0" \
   "skills/takt/SKILL.md|Готовые профили" \
   "scripts/test-code-profile.sh|code profile contract: PASS" \
   "docs/10-assistant-adapter-spec.md|OpenCode adapter реализован" \

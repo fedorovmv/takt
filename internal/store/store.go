@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -85,6 +86,8 @@ type NodeState struct {
 	Error            string               `json:"error,omitempty"`
 	Executions       []ExecutionState     `json:"executions,omitempty"`
 	LoopPrevious     map[string]NodeState `json:"loop_previous,omitempty"`
+	Hidden           bool                 `json:"internal,omitempty"`
+	PublicParent     string               `json:"public_parent,omitempty"`
 }
 
 func (n NodeState) Terminal() bool {
@@ -130,6 +133,64 @@ type RunState struct {
 type WaitingState struct {
 	NodeID  string `json:"node_id"`
 	Message string `json:"message"`
+}
+
+func (s *RunState) PublicView() *RunState {
+	if s == nil {
+		return nil
+	}
+	out := *s
+	out.Nodes = make(map[string]*NodeState, len(s.Nodes))
+	for id, node := range s.Nodes {
+		if node == nil || node.Hidden || node.PublicParent != "" {
+			continue
+		}
+		clone := *node
+		clone.Hidden = false
+		clone.PublicParent = ""
+		clone.LoopPrevious = publicLoopPrevious(id, node.LoopPrevious)
+		out.Nodes[id] = &clone
+	}
+	if s.Waiting != nil {
+		waiting := *s.Waiting
+		if node := s.Nodes[waiting.NodeID]; node != nil && node.PublicParent != "" {
+			waiting.NodeID = node.PublicParent
+		}
+		out.Waiting = &waiting
+	}
+	if node := s.Nodes[s.CurrentNode]; node != nil && node.PublicParent != "" {
+		out.CurrentNode = node.PublicParent
+	}
+	out.Approvals = make(map[string]string, len(s.Approvals))
+	for id, value := range s.Approvals {
+		publicID := id
+		if node := s.Nodes[id]; node != nil && node.PublicParent != "" {
+			publicID = node.PublicParent
+		}
+		out.Approvals[publicID] = value
+	}
+	return &out
+}
+
+func publicLoopPrevious(parentID string, values map[string]NodeState) map[string]NodeState {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]NodeState, len(values))
+	for id, node := range values {
+		if node.Hidden {
+			continue
+		}
+		node.Hidden = false
+		node.PublicParent = ""
+		node.LoopPrevious = publicLoopPrevious(id, node.LoopPrevious)
+		publicID := strings.TrimPrefix(id, parentID+"__")
+		out[publicID] = node
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 type Event struct {

@@ -13,9 +13,8 @@ nodes:
     depends_on: [prepare]
     foreach:
       as: service
-      items:
-        - second
-        - third
+      items_from:
+        path: items.yaml
       subworkflow:
         path: workflows/write-item.yaml
         inputs:

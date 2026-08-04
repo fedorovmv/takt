@@ -737,7 +737,7 @@ func TestOpenCodeTimeoutPreservesProviderDiagnostics(t *testing.T) {
 		Metadata:   spec.Metadata{Name: "opencode-provider-timeout"},
 		Defaults:   spec.Defaults{Assistant: "opencode", Model: "m"},
 		Nodes: []spec.Node{{
-			ID: "agent", Prompt: "hello", Timeout: "100ms",
+			ID: "agent", Prompt: "hello", Timeout: "2s",
 		}},
 	}
 	cfg := &spec.Config{

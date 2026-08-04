@@ -184,6 +184,12 @@
           "items": {
             "$ref": "#/$defs/executionState"
           }
+        },
+        "internal": {
+          "type": "boolean"
+        },
+        "public_parent": {
+          "type": "string"
         }
       }
     },
