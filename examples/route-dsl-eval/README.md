@@ -1,40 +1,33 @@
-# Оценка генерации Route DSL
+# Инфраструктурная оценка генерации Route DSL
 
-Каталог содержит стартовый набор из десяти заданий для сравнения моделей и стратегий Takt. Это синтетические примеры для проверки механики evaluation; перед рабочей оценкой замените или дополните их реальными обезличенными техническими заданиями.
+Каталог содержит десять синтетических заданий для проверки механики evaluation. Fake Pi и минимальный валидатор создают заранее определённый retry/resume-сценарий, поэтому этот набор подтверждает инфраструктуру, но не качество модели.
 
-Запуск с настроенным Pi:
+Пример запуска:
 
 ```bash
 takt eval run ../route-dsl-e2e/workflow.yaml \
   --config ../route-dsl-e2e/config.yaml \
   --cases cases \
   --workspace-template ../route-dsl-e2e \
-  --output .takt/evals/qwen-resume \
+  --output .takt/evals/fake-route \
+  --strategy-id fake-pi-route-feedback-v1 \
+  --benchmark-id route-dsl-infrastructure \
+  --quality-node full-validation \
+  --generation-node implement \
+  --validator-id synthetic-route-tool \
+  --validator-version 1 \
+  --validator-path ../route-dsl-e2e/route-tool \
   --answer approved \
-  --repeat 3 \
   --replace \
   --json
 ```
 
-В каждой рабочей области используется валидатор из шаблона. Для производственного прогона поместите штатный `route-tool` или совместимый wrapper в каталог шаблона. Контракт остаётся прежним: код `0` означает успех, ненулевой код и stdout/stderr содержат диагностику для следующей попытки.
+Отчёт сохраняет fingerprints стратегии, cases и валидатора, assistant/requested/resolved model, resume, feedback, usage и результат `takt-validation/v1alpha1`.
 
-Отчёт сохраняется в `<output>/report.json` и содержит:
-
-- результат каждого запуска;
-- количество попыток;
-- длительность;
-- input/output tokens и стоимость, когда их возвращает adapter;
-- число ответов approval;
-- статусы узлов, ошибки и признаки обрезанного вывода.
-
-Повторный просмотр:
-
-```bash
-takt eval report .takt/evals/qwen-resume --json
-```
+Для сравнения реальных моделей используйте `../route-dsl-benchmark/`: он требует Pi, штатный Route DSL validator и выполняет те же десять заданий как отдельный quality benchmark.
 
 ## Ограничения путей и идентификаторов
 
 - имена Markdown-файлов после нормализации должны давать уникальные `case_id`; например, `a b.md` и `a+b.md` конфликтуют и отклоняются до запуска;
 - `--workspace-template` и `--output` должны находиться в непересекающихся каталогах;
-- `report.json` содержит `resumed`, `feedback`, `error` и `diagnostic_output` для каждого узла.
+- malformed quality result получает `quality_contract` и останавливает benchmark.

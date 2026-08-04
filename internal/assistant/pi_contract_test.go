@@ -123,6 +123,9 @@ func TestPiAdapterContract(t *testing.T) {
 		if result.ResolvedModel == nil || result.ResolvedModel.Provider != "openai" || result.ResolvedModel.ID != "gpt-test" {
 			t.Fatalf("resolved model missing: %+v", result.ResolvedModel)
 		}
+		if !strings.Contains(result.AssistantVersion, "0.83.0") {
+			t.Fatalf("assistant version missing: %q", result.AssistantVersion)
+		}
 		if result.Usage == nil || result.Usage.InputTokens != 111 || result.Usage.OutputTokens != 22 || math.Abs(result.Usage.Cost-0.0125) > 1e-9 {
 			t.Fatalf("usage missing: %+v", result.Usage)
 		}
@@ -250,6 +253,16 @@ func TestPiAdapterContract(t *testing.T) {
 		}
 		if result.Usage == nil || result.Usage.InputTokens != 0 || result.Usage.OutputTokens != 0 || result.Usage.Cost != 0 {
 			t.Fatalf("unexpected zero usage: %+v", result.Usage)
+		}
+	})
+
+	t.Run("response model overrides selected model", func(t *testing.T) {
+		result, err := fakePi("resolved-model").Run(context.Background(), fakePiRequest(t.TempDir()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.ResolvedModel == nil || result.ResolvedModel.Provider != "openai" || result.ResolvedModel.ID != "resolved-gpt-test" {
+			t.Fatalf("responseModel was not preserved: %+v", result.ResolvedModel)
 		}
 	})
 

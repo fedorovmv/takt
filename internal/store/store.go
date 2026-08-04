@@ -32,6 +32,13 @@ const (
 	RunCancelled = "cancelled"
 )
 
+type ModelRef struct {
+	Name     string         `json:"name,omitempty"`
+	Provider string         `json:"provider,omitempty"`
+	ID       string         `json:"id,omitempty"`
+	Params   map[string]any `json:"params,omitempty"`
+}
+
 type Usage struct {
 	InputTokens  int     `json:"input_tokens,omitempty"`
 	OutputTokens int     `json:"output_tokens,omitempty"`
@@ -39,18 +46,22 @@ type Usage struct {
 }
 
 type NodeState struct {
-	Status          string               `json:"status"`
-	Output          string               `json:"output,omitempty"`
-	OutputTruncated bool                 `json:"output_truncated,omitempty"`
-	Usage           *Usage               `json:"usage,omitempty"`
-	ExitCode        int                  `json:"exit_code,omitempty"`
-	Attempts        int                  `json:"attempts,omitempty"`
-	Feedback        string               `json:"feedback,omitempty"`
-	SessionID       string               `json:"session_id,omitempty"`
-	Resumed         bool                 `json:"resumed,omitempty"`
-	ErrorCode       string               `json:"error_code,omitempty"`
-	Error           string               `json:"error,omitempty"`
-	LoopPrevious    map[string]NodeState `json:"loop_previous,omitempty"`
+	Status           string               `json:"status"`
+	Output           string               `json:"output,omitempty"`
+	OutputTruncated  bool                 `json:"output_truncated,omitempty"`
+	Usage            *Usage               `json:"usage,omitempty"`
+	Assistant        string               `json:"assistant,omitempty"`
+	AssistantVersion string               `json:"assistant_version,omitempty"`
+	RequestedModel   *ModelRef            `json:"requested_model,omitempty"`
+	ResolvedModel    *ModelRef            `json:"resolved_model,omitempty"`
+	ExitCode         int                  `json:"exit_code,omitempty"`
+	Attempts         int                  `json:"attempts,omitempty"`
+	Feedback         string               `json:"feedback,omitempty"`
+	SessionID        string               `json:"session_id,omitempty"`
+	Resumed          bool                 `json:"resumed,omitempty"`
+	ErrorCode        string               `json:"error_code,omitempty"`
+	Error            string               `json:"error,omitempty"`
+	LoopPrevious     map[string]NodeState `json:"loop_previous,omitempty"`
 }
 
 func (n NodeState) Terminal() bool {

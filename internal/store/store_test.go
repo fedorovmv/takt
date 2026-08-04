@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,5 +65,24 @@ func TestUnsafeRunIDRejected(t *testing.T) {
 	fs := FS{Workspace: t.TempDir()}
 	if _, err := fs.Load("../escape"); err == nil {
 		t.Fatal("expected unsafe id error")
+	}
+}
+
+func TestRunStateSchemaContainsExecutionIdentity(t *testing.T) {
+	path := filepath.Join("..", "..", "schemas", "run-state.schema.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatal(err)
+	}
+	defs := schema["$defs"].(map[string]any)
+	node := defs["nodeState"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"assistant", "assistant_version", "requested_model", "resolved_model"} {
+		if _, ok := node[field]; !ok {
+			t.Fatalf("run-state schema misses %s", field)
+		}
 	}
 }

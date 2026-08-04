@@ -44,6 +44,13 @@ CFG
   --workspace-template examples/route-dsl-e2e \
   --output "$tmp/eval" \
   --answer approved \
+  --strategy-id fake-pi-route-feedback-v1 \
+  --benchmark-id route-dsl-infrastructure \
+  --quality-node full-validation \
+  --generation-node implement \
+  --validator-id synthetic-route-tool \
+  --validator-version 1 \
+  --validator-path route-tool \
   --replace \
   --json > "$tmp/result.json"
 

@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.13-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.14-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -79,7 +79,7 @@ assistants:
 
 ### Pi assistant
 
-`type: pi` использует официальный RPC-режим Pi. Takt запускает отдельный процесс на попытку узла, запрашивает состояние сессии и накопленную статистику, отправляет prompt через JSONL RPC и ждёт финальное событие `agent_settled`. Событие `agent_end` считается границей одного низкоуровневого запуска и не завершает попытку, если Pi выполняет автоматический retry, compaction retry или queued continuation. После `agent_settled` adapter читает итоговый текст, сообщения, повторную статистику и Session ID, затем закрывает stdin для штатного завершения процесса.
+`type: pi` использует официальный RPC-режим Pi. Takt запускает отдельный процесс на попытку узла, запрашивает состояние сессии и накопленную статистику, отправляет prompt через JSONL RPC и ждёт финальное событие `agent_settled`. Событие `agent_end` считается границей одного низкоуровневого запуска и не завершает попытку, если Pi выполняет автоматический retry, compaction retry или queued continuation. После `agent_settled` adapter читает итоговый текст, сообщения, повторную статистику и Session ID. Фактическая модель берётся из `responseModel` последнего assistant message с fallback на выбранную модель сессии; результат version probe также сохраняется в `NodeState`. Затем adapter закрывает stdin для штатного завершения процесса.
 
 Поля конфигурации:
 
@@ -304,7 +304,8 @@ RunState содержит:
 - revision;
 - статусы и ошибки узлов;
 - approval answers;
-- session IDs;
+- session IDs и подтверждённый resume;
+- assistant, версию assistant, requested model и resolved model агентных узлов;
 - aggregate usage узлов: input/output tokens и cost всех агентных попыток;
 - результаты последней loop iteration.
 
@@ -349,13 +350,15 @@ takt answer <run-id> <node-id> --workspace <dir> --value <text>
 takt resume <run-id> --workspace <dir>
 takt status <run-id> --workspace <dir>
 takt command run <name> --config <config> --workspace <dir> --input <text>
-takt eval run <workflow> --config <config> --cases <dir> --workspace-template <dir> --output <dir>
+takt eval run <workflow> --config <config> --cases <dir> --workspace-template <dir> --output <dir> [--strategy-id <id>] [--benchmark-id <id>] [--quality-node <id>] [--generation-node <id>] [--validator-path <path>]
 takt eval report <evaluation-output-dir>
 ```
 
 Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status`, `command run` и `eval` используют JSON по умолчанию.
 
-`eval run` выполняет preflight до создания output: нормализованные `case_id` должны быть уникальны, а `workspace-template` и `output` не могут совпадать или быть вложены друг в друга, включая пути через символические ссылки. Затем runner копирует template для каждого Markdown-задания, выполняет workflow и сохраняет `report.json` с attempts, duration, usage, approval answers, statuses, resume-фактом, feedback, ошибками узлов и диагностическим выводом. Workflow и внешний валидатор остаются источником критерия успеха; evaluation runner только запускает процесс и агрегирует состояние.
+`eval run` выполняет preflight до создания output: нормализованные `case_id` должны быть уникальны, а `workspace-template` и `output` не могут совпадать или быть вложены друг в друга, включая пути через символические ссылки. До запуска вычисляются fingerprints workflow, config, Markdown-команд, упорядоченного набора заданий, копируемого workspace template и указанного валидатора.
+
+`report.json` использует `takt-evaluation/v1alpha1` и сохраняет strategy/benchmark identity, версию Takt и Go-окружение, assistant и его версию, requested model, фактический Pi `responseModel`, attempts, duration, usage, approval answers, statuses, resume, feedback, ошибки узлов и диагностический вывод. При заданном `--quality-node` указанный узел обязан вернуть строгий `takt-validation/v1alpha1`. Runner агрегирует `success_at_1`, итоговую долю корректных результатов, среднюю оценку, попытки до успеха, стоимость/время на корректный результат и diagnostics по severity/code. Workflow и предметный валидатор остаются источником критерия качества; Takt не интерпретирует семантику Route DSL.
 
 ## 13. Ограничения
 

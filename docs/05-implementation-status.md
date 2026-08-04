@@ -40,13 +40,14 @@
 - проверка version/type/status, usage, session resume и неизвестных полей;
 - fake-assistant binary и отрицательный contract suite;
 - сквозной `fresh → retry → resume` через process protocol и Pi adapter;
-- Pi RPC: version probe, provider/model/thinking mapping, verified Session ID, ожидание `agent_settled`, per-attempt usage delta, строгая последовательность usage snapshots и resolved model;
+- Pi RPC: version probe с сохранением версии, provider/model/thinking mapping, verified Session ID, ожидание `agent_settled`, per-attempt usage delta, строгая последовательность usage snapshots и фактический `responseModel`;
 - приоритет timeout/cancellation над совпавшим output overflow в Pi adapter;
 - fake-Pi contract suite и opt-in smoke test с реальным CLI;
 - интеграционные overflow+timeout/cancel проверки через `Pi.Run` с корректными parent contexts и сохранение `OutputTruncated` в `NodeState`;
 - воспроизводимый Route DSL end-to-end с двумя попытками, feedback, resume, обязательной проверкой, артефактами и approval;
 - накопление usage по всем агентным попыткам в `NodeState`;
-- `takt eval run/report`, предварительная проверка уникальности `case_id`, запрет пересечения template/output и JSON-отчёт с attempts, duration, usage, resume, feedback, diagnostics, approvals и errors;
+- `takt eval run/report`, предварительная проверка уникальности `case_id`, запрет пересечения template/output, fingerprints стратегии/benchmark/workspace/валидатора, assistant/version/requested/resolved model и JSON-отчёт с предметными метриками качества;
+- строгие схемы `takt-validation/v1alpha1` и `takt-evaluation/v1alpha1`;
 - стартовый Route DSL eval-набор из десяти синтетических заданий.
 
 ### CLI
@@ -83,4 +84,4 @@
 
 ## Ближайший целевой срез
 
-Evaluation runner, безопасная изоляция путей, диагностический отчёт и сбор attempts/duration/usage реализованы. Следующий срез — заменить тестовый валидатор штатным `route-tool`, прогнать реальные обезличенные задания и добавить нормализованные diagnostics и учёт ручных исправлений результата. OpenCode adapter остаётся сменным исполнителем и не блокирует эту проверку.
+Evaluation runner, изоляция путей, strategy/benchmark/workspace/validator fingerprints, execution identity и предметные метрики качества реализованы. Следующий срез — запустить `examples/route-dsl-benchmark` со штатным `route-tool`, получить baseline на десяти реальных обезличенных заданиях и затем сравнить модели или стратегии на неизменных fingerprints. Нормализованные diagnostics и учёт ручных исправлений остаются следующими расширениями. OpenCode adapter не блокирует эту проверку.

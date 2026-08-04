@@ -1,0 +1,515 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/v1alpha1/evaluation-report.schema.json",
+  "title": "Takt Evaluation Report v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_version",
+    "takt_version",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "workflow",
+    "config",
+    "cases_dir",
+    "output_dir",
+    "strategy",
+    "benchmark",
+    "environment",
+    "runs",
+    "summary"
+  ],
+  "properties": {
+    "report_version": {
+      "const": "takt-evaluation/v1alpha1"
+    },
+    "takt_version": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "workflow": {
+      "type": "string"
+    },
+    "config": {
+      "type": "string"
+    },
+    "cases_dir": {
+      "type": "string"
+    },
+    "output_dir": {
+      "type": "string"
+    },
+    "strategy": {
+      "$ref": "#/$defs/strategy"
+    },
+    "benchmark": {
+      "$ref": "#/$defs/benchmark"
+    },
+    "environment": {
+      "$ref": "#/$defs/environment"
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/run"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "fingerprint",
+        "workflow_fingerprint",
+        "config_fingerprint",
+        "commands_fingerprint"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "workflow_fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "config_fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "commands_fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "validator": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        }
+      }
+    },
+    "benchmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "fingerprint",
+        "dataset_fingerprint",
+        "workspace_fingerprint",
+        "case_count",
+        "validator"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "dataset_fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "workspace_fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "case_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quality_node": {
+          "type": "string"
+        },
+        "generation_node": {
+          "type": "string"
+        },
+        "validation_protocol": {
+          "type": "string"
+        },
+        "validator": {
+          "$ref": "#/$defs/validator"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goos",
+        "goarch",
+        "go_version"
+      ],
+      "properties": {
+        "goos": {
+          "type": "string"
+        },
+        "goarch": {
+          "type": "string"
+        },
+        "go_version": {
+          "type": "string"
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assistant": {
+          "type": "string"
+        },
+        "assistant_version": {
+          "type": "string"
+        },
+        "requested_model": {
+          "$ref": "#/$defs/model"
+        },
+        "resolved_model": {
+          "$ref": "#/$defs/model"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "resumed": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "error_code": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "feedback": {
+          "type": "string"
+        },
+        "diagnostic_output": {
+          "type": "string"
+        },
+        "output_truncated": {
+          "type": "boolean"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "repeat",
+        "status",
+        "workspace",
+        "duration_ms",
+        "attempts",
+        "nodes"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attempts_to_valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid_at_first_attempt": {
+          "type": "boolean"
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0
+        },
+        "answers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resumed_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error_code": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "quality": {
+          "$ref": "validation-result.schema.json"
+        },
+        "nodes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "quality_error": {
+          "type": "string"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "by_status",
+        "attempts",
+        "input_tokens",
+        "output_tokens",
+        "cost",
+        "duration_ms",
+        "answers",
+        "truncated_nodes",
+        "resumed_nodes"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "answers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resumed_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_assistant": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_assistant_version": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_requested_model": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_resolved_model": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "quality_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid_at_first_attempt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "success_at_1": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "final_success_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "average_attempts_to_valid": {
+          "type": "number",
+          "minimum": 0
+        },
+        "average_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "cost_per_valid": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_per_valid_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "diagnostics_by_severity": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "diagnostics_by_code": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

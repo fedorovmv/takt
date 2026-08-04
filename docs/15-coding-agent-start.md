@@ -38,7 +38,8 @@ go build ./cmd/takt
 
 - используй `examples/route-dsl-e2e` как базовый контракт;
 - выполни opt-in Pi smoke при доступных credentials;
-- используй `takt eval run` и `examples/route-dsl-eval` как базовый контур;
+- используй `examples/route-dsl-eval` только как инфраструктурный contract suite;
+- для сравнения моделей используй `examples/route-dsl-benchmark`, `--strategy-id`, `--benchmark-id`, fingerprints валидатора и `takt-validation/v1alpha1`;
 - замени минимальный `route-tool` штатным валидатором и сохрани передачу diagnostics в retry;
 - замени синтетические задания реальными обезличенными примерами;
 - не меняй timeout, output limit, fresh/resume и error classification без обновления спецификации и ADR;

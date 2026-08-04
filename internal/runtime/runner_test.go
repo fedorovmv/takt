@@ -623,4 +623,13 @@ func TestPiAssistantResumesSessionAcrossRetry(t *testing.T) {
 	if node.Usage == nil || node.Usage.InputTokens != 222 || node.Usage.OutputTokens != 44 || math.Abs(node.Usage.Cost-0.025) > 1e-9 {
 		t.Fatalf("attempt usage was not accumulated: %+v", node.Usage)
 	}
+	if node.Assistant != "pi" || node.RequestedModel == nil || node.RequestedModel.Name != "m" || node.RequestedModel.Provider != "openai" || node.RequestedModel.ID != "fake-model" {
+		t.Fatalf("requested execution identity was not preserved: %+v", node)
+	}
+	if node.ResolvedModel == nil || node.ResolvedModel.Provider != "openai" || node.ResolvedModel.ID != "fake-model" {
+		t.Fatalf("resolved execution identity was not preserved: %+v", node.ResolvedModel)
+	}
+	if !strings.Contains(node.AssistantVersion, "0.83.0") {
+		t.Fatalf("assistant version was not preserved: %q", node.AssistantVersion)
+	}
 }

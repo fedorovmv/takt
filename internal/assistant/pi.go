@@ -111,6 +111,7 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 
 	client := &piRPCClient{stdin: stdin, records: records, streamErr: streamErr, process: processWait}
 	finish := func(result Result, runErr error) (Result, error) {
+		result.AssistantVersion = version
 		_ = stdin.Close()
 		waitErr := client.waitProcess(ctx)
 		result.Stdout = stdout.String()
@@ -238,9 +239,7 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		ExitCode:   0,
 		Usage:      usage,
 	}
-	if stateAfter.Model != nil {
-		result.ResolvedModel = &ProtocolModel{Name: req.ModelName, Provider: stateAfter.Model.Provider, ID: stateAfter.Model.ID}
-	}
+	result.ResolvedModel = piResolvedModel(messagesRaw, req.ModelName, stateAfter.Model)
 	if failure != "" {
 		result.ExitCode = 1
 		if result.Output == "" {
@@ -738,6 +737,46 @@ func findJSONNumber(value any, keys ...string) (float64, bool) {
 		}
 	}
 	return 0, false
+}
+
+func piResolvedModel(raw json.RawMessage, logicalName string, fallback *piModel) *ProtocolModel {
+	var payload struct {
+		Messages []struct {
+			Role          string `json:"role"`
+			Provider      string `json:"provider"`
+			Model         string `json:"model"`
+			ResponseModel string `json:"responseModel"`
+		} `json:"messages"`
+	}
+	if json.Unmarshal(raw, &payload) == nil {
+		for i := len(payload.Messages) - 1; i >= 0; i-- {
+			message := payload.Messages[i]
+			if message.Role != "assistant" {
+				continue
+			}
+			provider := message.Provider
+			id := message.ResponseModel
+			if id == "" {
+				id = message.Model
+			}
+			if fallback != nil {
+				if provider == "" {
+					provider = fallback.Provider
+				}
+				if id == "" {
+					id = fallback.ID
+				}
+			}
+			if provider != "" || id != "" {
+				return &ProtocolModel{Name: logicalName, Provider: provider, ID: id}
+			}
+			break
+		}
+	}
+	if fallback == nil {
+		return nil
+	}
+	return &ProtocolModel{Name: logicalName, Provider: fallback.Provider, ID: fallback.ID}
 }
 
 func piAgentFailure(raw json.RawMessage) string {

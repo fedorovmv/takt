@@ -257,7 +257,7 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 - timeout/cancellation вместе с process group;
 - приоритет `timed_out`/`cancelled` над одновременно обнаруженным output overflow;
 - общий race-safe лимит stdout/stderr;
-- Session ID, resolved model и per-attempt usage delta;
+- Session ID, версия Pi, фактический `responseModel` и per-attempt usage delta;
 - дополнительные env и нерезервированные Pi flags;
 - opt-in smoke test с реальным бинарником.
 

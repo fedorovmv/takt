@@ -22,16 +22,17 @@ type Request struct {
 }
 
 type Result struct {
-	Output        string
-	Structured    json.RawMessage
-	SessionID     string
-	Resumed       bool
-	ExitCode      int
-	Stdout        string
-	Stderr        string
-	ResolvedModel *ProtocolModel
-	Usage         *ProtocolUsage
-	Truncated     bool
+	Output           string
+	Structured       json.RawMessage
+	SessionID        string
+	Resumed          bool
+	ExitCode         int
+	Stdout           string
+	Stderr           string
+	AssistantVersion string
+	ResolvedModel    *ProtocolModel
+	Usage            *ProtocolUsage
+	Truncated        bool
 }
 
 type Adapter interface {

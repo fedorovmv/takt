@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.14-alpha
+
+- evaluation report получил формат `takt-evaluation/v1alpha1`;
+- добавлены `strategy_id` и fingerprints workflow/config/Markdown-команд;
+- добавлены benchmark/dataset/workspace/validator fingerprints и версия валидатора;
+- `NodeState` и report сохраняют assistant, его версию, requested model и фактический Pi `responseModel`;
+- добавлен строгий предметно-независимый контракт `takt-validation/v1alpha1`;
+- summary рассчитывает success@1, final success, average score, attempts/cost/time per valid и diagnostics по severity/code;
+- `examples/route-dsl-eval` закреплён как инфраструктурный suite, добавлен отдельный `examples/route-dsl-benchmark` для реального Pi и штатного валидатора;
+- добавлены схемы validation result/evaluation report, ADR-026 и отчёт `docs/28-benchmark-identity-quality-v0.1.14.md`.
+
 ## v0.1.13-alpha
 
 - evaluation preflight отклоняет коллизии нормализованных `case_id` до создания output;

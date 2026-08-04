@@ -1,32 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+emit_invalid() {
+  local code="$1" path="$2" message="$3" score="${4:-0}"
+  printf '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":false,"score":%s,"checks":{"syntax":{"passed":false,"score":%s}},"diagnostics":[{"code":"%s","severity":"error","path":"%s","message":"%s"}]}\n' "$score" "$score" "$code" "$path" "$message"
+}
+
 if [[ "${1:-}" != "validate" || -z "${2:-}" ]]; then
-  printf '%s\n' '{"valid":false,"diagnostics":[{"code":"USAGE","message":"usage: route-tool validate <file>"}]}'
+  emit_invalid "USAGE" "" "usage: route-tool validate <file>" 0
   exit 2
 fi
 
 file="$2"
 if [[ ! -f "$file" ]]; then
-  printf '%s\n' '{"valid":false,"diagnostics":[{"code":"ROUTE_MISSING","path":"route.yaml","message":"route file does not exist"}]}'
+  emit_invalid "ROUTE_MISSING" "route.yaml" "route file does not exist" 0
   exit 1
 fi
 
 if ! grep -q '^apiVersion: synapse/v1$' "$file"; then
-  printf '%s\n' '{"valid":false,"diagnostics":[{"code":"ROUTE_API_VERSION","path":"route.yaml","line":1,"message":"expected apiVersion synapse/v1"}]}'
+  emit_invalid "ROUTE_API_VERSION" "route.yaml" "expected apiVersion synapse/v1" 20
   exit 1
 fi
 if ! grep -q '^kind: Route$' "$file"; then
-  printf '%s\n' '{"valid":false,"diagnostics":[{"code":"ROUTE_KIND","path":"route.yaml","line":2,"message":"expected kind Route"}]}'
+  emit_invalid "ROUTE_KIND" "route.yaml" "expected kind Route" 30
   exit 1
 fi
 if ! grep -q '^valid: true$' "$file"; then
-  printf '%s\n' 'ROUTE_INVALID: route.yaml must contain valid: true'
+  emit_invalid "ROUTE_INVALID" "route.yaml" "route.yaml must contain valid: true" 50
   exit 1
 fi
 if ! grep -q '^  - from: http$' "$file" || ! grep -q '^  - transform: jq$' "$file" || ! grep -q '^  - to: target$' "$file"; then
-  printf '%s\n' '{"valid":false,"diagnostics":[{"code":"ROUTE_STEPS","path":"route.yaml","message":"expected http -> jq -> target steps"}]}'
+  emit_invalid "ROUTE_STEPS" "route.yaml" "expected http -> jq -> target steps" 70
   exit 1
 fi
 
-printf '%s\n' '{"valid":true,"diagnostics":[]}'
+printf '%s\n' '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":true,"score":100,"checks":{"syntax":{"passed":true,"score":100,"weight":1},"schema":{"passed":true,"score":100,"weight":1},"references":{"passed":true,"score":100,"weight":1}},"diagnostics":[],"metadata":{"validator":"synthetic-route-tool","version":"1"}}'

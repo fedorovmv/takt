@@ -61,7 +61,7 @@ TAKT_NATIVE_HOOKS_JSON
 
 ## Pi assistant
 
-Специализированный `pi` adapter запускает `pi --mode rpc`, передаёт prompt по JSONL и получает Session ID, итоговый текст, статистику и фактическую модель через RPC-команды. `fresh` создаёт новую сессию, `resume` передаёт сохранённый ID через `--session` и проверяет его по `get_state`. Инструменты, файлы, shell, skills и история остаются внутри Pi.
+Специализированный `pi` adapter запускает `pi --mode rpc`, передаёт prompt по JSONL и получает Session ID, итоговый текст, статистику и сообщения через RPC-команды. Версия Pi сохраняется из version probe, а фактическая модель определяется по `responseModel` последнего assistant message с fallback на выбранную модель сессии. `fresh` создаёт новую сессию, `resume` передаёт сохранённый ID через `--session` и проверяет его по `get_state`. Инструменты, файлы, shell, skills и история остаются внутри Pi.
 
 ## Состояние
 
@@ -69,7 +69,7 @@ TAKT_NATIVE_HOOKS_JSON
 
 ## Evaluation
 
-`takt eval run` выполняет каждый Markdown-case в отдельной копии workspace template. Предметный validator остаётся частью workflow и определяет успех; evaluation только управляет серией Run и агрегирует attempts, duration, usage, approvals, errors и truncation.
+`takt eval run` выполняет каждый Markdown-case в отдельной копии workspace template. Перед запуском evaluation вычисляет strategy fingerprint из workflow/config/commands и benchmark fingerprint из набора заданий, копируемого workspace template, quality/generation nodes и валидатора. Предметный validator остаётся частью workflow и возвращает `takt-validation/v1alpha1`; evaluation сохраняет assistant/version/requested/resolved model и агрегирует attempts, duration, usage, approvals, errors, diagnostics и метрики качества.
 
 ## Scope безопасности
 

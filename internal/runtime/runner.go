@@ -308,7 +308,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		if contextErr := attemptContextError(attemptCtx, "node attempt"); contextErr != nil {
 			execErr = contextErr
 		}
-		ns.Output, ns.ExitCode, ns.SessionID, ns.Resumed, ns.OutputTruncated = result.Output, result.ExitCode, result.SessionID, result.Resumed, result.Truncated
+		applyExecResult(ns, result)
 		accumulateUsage(ns, result.Usage)
 		if execErr != nil && node.AllowFailure && execution.IsExit(execErr) {
 			execErr = nil
@@ -424,12 +424,16 @@ func attemptContextError(ctx context.Context, op string) error {
 }
 
 type execResult struct {
-	Output    string
-	ExitCode  int
-	SessionID string
-	Resumed   bool
-	Truncated bool
-	Usage     *assistant.ProtocolUsage
+	Output           string
+	ExitCode         int
+	SessionID        string
+	Resumed          bool
+	Truncated        bool
+	Usage            *assistant.ProtocolUsage
+	Assistant        string
+	AssistantVersion string
+	RequestedModel   *store.ModelRef
+	ResolvedModel    *store.ModelRef
 }
 
 func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.Node, loopPrevious map[string]store.NodeState) (execResult, error) {
@@ -510,7 +514,17 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		}
 		prompt = renderTemplate(prompt, state, local, feedback, artifacts)
 		result, err := adapter.Run(ctx, assistant.Request{RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts, Prompt: prompt, Workspace: r.Workspace, ModelName: modelName, Model: model, SessionMode: sessionMode, SessionID: sessionID, NativeHooks: node.NativeHooks})
-		return execResult{Output: result.Output, ExitCode: result.ExitCode, SessionID: result.SessionID, Resumed: result.Resumed, Truncated: result.Truncated, Usage: result.Usage}, err
+		execResult := execResult{
+			Output: result.Output, ExitCode: result.ExitCode, SessionID: result.SessionID,
+			Resumed: result.Resumed, Truncated: result.Truncated, Usage: result.Usage,
+			Assistant:        assistantName,
+			AssistantVersion: result.AssistantVersion,
+			RequestedModel:   &store.ModelRef{Name: modelName, Provider: model.Provider, ID: model.ID, Params: cloneParams(model.Params)},
+		}
+		if result.ResolvedModel != nil {
+			execResult.ResolvedModel = &store.ModelRef{Name: result.ResolvedModel.Name, Provider: result.ResolvedModel.Provider, ID: result.ResolvedModel.ID, Params: cloneParams(result.ResolvedModel.Params)}
+		}
+		return execResult, err
 	default:
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "execute node", Err: fmt.Errorf("unsupported node %q", node.ID)}
 	}
@@ -607,6 +621,44 @@ func (r *Runner) runHooks(ctx context.Context, state *store.RunState, node spec.
 	return "continue", "", nil
 }
 
+func applyExecResult(node *store.NodeState, result execResult) {
+	if node == nil {
+		return
+	}
+	node.Output = result.Output
+	node.ExitCode = result.ExitCode
+	node.SessionID = result.SessionID
+	node.Resumed = result.Resumed
+	node.OutputTruncated = result.Truncated
+	if result.Assistant != "" {
+		node.Assistant = result.Assistant
+	}
+	if result.AssistantVersion != "" {
+		node.AssistantVersion = result.AssistantVersion
+	}
+	if result.RequestedModel != nil {
+		copy := *result.RequestedModel
+		copy.Params = cloneParams(result.RequestedModel.Params)
+		node.RequestedModel = &copy
+	}
+	if result.ResolvedModel != nil {
+		copy := *result.ResolvedModel
+		copy.Params = cloneParams(result.ResolvedModel.Params)
+		node.ResolvedModel = &copy
+	}
+}
+
+func cloneParams(values map[string]any) map[string]any {
+	if values == nil {
+		return nil
+	}
+	out := make(map[string]any, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
 func accumulateUsage(node *store.NodeState, usage *assistant.ProtocolUsage) {
 	if node == nil || usage == nil {
 		return
@@ -633,7 +685,7 @@ func (r *Runner) finishNodeExecutionError(state *store.RunState, nodeID string, 
 	ns.Status = status
 	ns.ErrorCode = string(kind)
 	ns.Error = err.Error()
-	ns.Output, ns.ExitCode, ns.SessionID, ns.Resumed, ns.OutputTruncated = result.Output, result.ExitCode, result.SessionID, result.Resumed, result.Truncated
+	applyExecResult(ns, result)
 
 	state.CurrentNode = ""
 	return r.commit(state, "node."+status, nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "exit_code": ns.ExitCode, "usage": ns.Usage})
@@ -644,7 +696,7 @@ func (r *Runner) finishNodeError(state *store.RunState, nodeID, code string, err
 	ns.Status = store.NodeErrored
 	ns.ErrorCode = code
 	ns.Error = err.Error()
-	ns.Output, ns.ExitCode, ns.SessionID, ns.Resumed, ns.OutputTruncated = result.Output, result.ExitCode, result.SessionID, result.Resumed, result.Truncated
+	applyExecResult(ns, result)
 
 	state.CurrentNode = ""
 	return r.commit(state, "node.errored", nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "usage": ns.Usage})
@@ -655,7 +707,7 @@ func (r *Runner) finishNodeFailure(state *store.RunState, nodeID, code string, e
 	ns.Status = store.NodeFailed
 	ns.ErrorCode = code
 	ns.Error = err.Error()
-	ns.Output, ns.ExitCode, ns.SessionID, ns.Resumed, ns.OutputTruncated = result.Output, result.ExitCode, result.SessionID, result.Resumed, result.Truncated
+	applyExecResult(ns, result)
 
 	state.CurrentNode = ""
 	return r.commit(state, "node.failed", nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "usage": ns.Usage})

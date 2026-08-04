@@ -39,7 +39,7 @@ These controls improve reliability but do not form a sandbox.
 
 ## Secrets
 
-Takt does not intentionally copy assistant environment variables into state or events. However, command output, hook feedback, model responses and error messages may contain secrets and are currently persisted without automatic redaction.
+Takt does not intentionally copy assistant environment variables into state or events. However, command output, hook feedback, model responses and error messages may contain secrets and are currently persisted without automatic redaction. Evaluation reports also persist model `params` used for execution identity; credentials and secret headers must remain in environment or an external secret source, not in `models.*.params`.
 
 Before production-like use, define:
 

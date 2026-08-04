@@ -1,10 +1,10 @@
 # План оценки агентных стратегий
 
-Статус: базовый runner реализован в `v0.1.13-alpha` командами `takt eval run/report`.
+Статус: benchmark-контур реализован в `v0.1.14-alpha` командами `takt eval run/report`. Инфраструктурный набор с fake Pi отделён от реального Route DSL benchmark.
 
 ## 1. Цель
 
-Takt должен позволять сравнивать стратегии выполнения, а не только запускать workflow. Для сравнения нужен фиксированный набор задач и единый журнал метрик.
+Takt должен позволять сравнивать стратегии выполнения, а не только запускать workflow. Для доказательного сравнения нужны неизменный набор задач, предметный валидатор и полная идентичность эксперимента.
 
 ## 2. Стратегии
 
@@ -16,6 +16,8 @@ Takt должен позволять сравнивать стратегии в�
 4. реализация → LLM review;
 5. реализация → детерминированная проверка;
 6. реализация → две проверки → исправление.
+
+Читаемый `strategy_id` задаётся явно. Содержательную идентичность определяет fingerprint workflow, config и всех используемых Markdown-команд.
 
 ## 3. Наборы задач
 
@@ -45,37 +47,79 @@ Takt должен позволять сравнивать стратегии в�
 - сравнение вариантов;
 - документ со структурированным результатом.
 
-## 4. Метрики
+## 4. Идентичность benchmark
+
+`report.json` фиксирует:
+
+- версию Takt и формат `takt-evaluation/v1alpha1`;
+- `strategy_id` и fingerprints workflow/config/commands;
+- `benchmark_id`, fingerprints упорядоченного набора заданий и копируемого workspace template, число cases;
+- quality/generation nodes;
+- ID, версию и fingerprint валидатора;
+- assistant, его версия, requested provider/model/params и фактический `responseModel` каждого агентного узла;
+- GOOS, GOARCH и версию Go.
+
+Результаты разных fingerprints считаются разными экспериментами даже при совпадающем читаемом имени.
+
+## 5. Предметный результат качества
+
+Узел `--quality-node` возвращает один объект `takt-validation/v1alpha1`:
+
+```json
+{
+  "protocol_version": "takt-validation/v1alpha1",
+  "type": "validation_result",
+  "valid": true,
+  "score": 94,
+  "checks": {
+    "syntax": {"passed": true, "score": 100, "weight": 1},
+    "semantics": {"passed": true, "score": 88, "weight": 4}
+  },
+  "diagnostics": []
+}
+```
+
+Состав checks определяет предметный валидатор. Takt проверяет только общий контракт и хранит результат без знания Route DSL.
+
+## 6. Метрики
 
 Для каждого Run:
 
-- strategy ID;
-- workflow/config/command fingerprints;
-- assistant и model;
-- success/failure;
-- число попыток и loop iterations;
+- success/failure и предметный `valid`;
+- score и checks;
+- число попыток до корректного результата;
+- assistant/version, requested/resolved model;
+- Session ID и resume;
 - длительность;
-- input/output tokens, когда доступны;
-- стоимость, когда доступна;
-- коды ошибок проверок;
-- число ручных ответов;
-- количество ручных исправлений результата;
-- итоговое качество по предметному валидатору.
+- input/output tokens и стоимость;
+- diagnostics, feedback и ошибки;
+- число approval answers;
+- количество ручных исправлений результата — следующий отдельный показатель.
 
-## 5. Правила сравнения
+Агрегаты:
+
+- `success_at_1`;
+- `final_success_rate`;
+- `average_attempts_to_valid`;
+- `average_score`;
+- `cost_per_valid`;
+- `duration_per_valid_ms`;
+- diagnostics по severity/code;
+- распределение assistant/requested/resolved model.
+
+Стоимость и время на корректный результат включают затраты неуспешных запусков.
+
+## 7. Правила сравнения
 
 - одна стратегия запускается на всех заданиях;
-- изменения prompts получают новую версию/fingerprint;
-- результаты не сравниваются при различном наборе инструментов без отдельной отметки;
+- изменения prompts, config или commands создают новый fingerprint;
+- набор заданий, workspace template и валидатор должны иметь одинаковые fingerprints;
 - успех определяется внешним критерием, а не сообщением агента;
-- минимум три повтора на задачу для стохастических моделей.
+- минимум три повтора на задачу для стохастических моделей;
+- resolved model проверяется отдельно от запрошенной модели, а версия assistant — отдельно от config fingerprint;
+- infrastructure contract suite не смешивается с quality benchmark.
 
-## 6. Критерий полезности Takt
-
-Takt подтверждает ценность, если новая стратегия добавляется изменением конфигурации и файлов команд, а общий eval-набор запускается без изменения runtime кода.
-
-
-## 7. Реализованный запуск
+## 8. Запуск
 
 ```bash
 takt eval run <workflow> \
@@ -83,10 +127,21 @@ takt eval run <workflow> \
   --cases <cases-dir> \
   --workspace-template <template-dir> \
   --output <output-dir> \
+  --strategy-id <strategy-id> \
+  --benchmark-id <benchmark-id> \
+  --quality-node <validator-node> \
+  --generation-node <generator-node> \
+  --validator-id <validator-id> \
+  --validator-version <version> \
+  --validator-path <file-or-dir> \
   --repeat 3 \
   --answer approved \
   --replace \
   --json
 ```
 
-Runner до создания output проверяет уникальность нормализованных `case_id` и отсутствие пересечения `workspace-template`/`output`. `report.json` сохраняет resume, feedback, ошибки и diagnostic output каждого узла. Tokens и cost берутся из aggregate `NodeState.usage`; успех по-прежнему определяет предметный валидатор внутри workflow.
+`examples/route-dsl-eval` проверяет инфраструктуру с fake Pi. `examples/route-dsl-benchmark` запускает реальный Pi и штатный валидатор на десяти заданиях.
+
+## 9. Критерий полезности Takt
+
+Takt подтверждает ценность, если новая стратегия добавляется изменением workflow/config/commands, общий benchmark запускается без изменения runtime, а отчёт позволяет доказательно связать результат с точной моделью, стратегией, набором заданий и валидатором.

@@ -1,16 +1,21 @@
-# Результаты проверки v0.1.13-alpha
+# Результаты проверки v0.1.14-alpha
 
-## Исправления аудита evaluation
+## Benchmark identity и предметное качество
 
 Проверено:
 
-- коллизии нормализованных `case_id` отклоняются до создания output;
-- `--replace` не может удалить workspace другого задания с тем же нормализованным именем;
-- `workspace-template` и `output` не могут совпадать или быть вложены друг в друга;
-- проверка учитывает существующие символические ссылки и выполняется до `MkdirAll`;
-- `NodeState.resumed` сохраняет подтверждённое продолжение сессии;
-- `report.json` содержит resume, feedback, node error и diagnostic output;
-- Route DSL eval assertion подтверждает две попытки, resume, `ROUTE_INVALID` и успешный вывод полного валидатора.
+- `report.json` использует формат `takt-evaluation/v1alpha1`;
+- strategy fingerprint объединяет fingerprints workflow, config и используемых Markdown-команд;
+- benchmark fingerprint включает упорядоченный набор заданий, копируемый workspace template, quality/generation nodes, протокол качества и fingerprint валидатора;
+- изменение файла или каталога валидатора меняет его SHA-256;
+- `NodeState` и evaluation report сохраняют assistant, его версию, requested model и фактический Pi `responseModel`;
+- Pi version probe переносится в `assistant_version`;
+- строгий decoder `takt-validation/v1alpha1` отклоняет неизвестные поля, отсутствующий `valid`, явный `null`, неверные диапазоны, неизвестную severity и второй JSON-объект;
+- malformed validator result получает `quality_contract` и останавливает benchmark;
+- неуспешный workflow с пропущенным quality node учитывается как предметно невалидный результат, а не теряется из denominator;
+- `success_at_1`, `final_success_rate`, score, diagnostics, attempts/cost/time per valid рассчитываются по всем запускам;
+- стоимость и время неуспешных заданий входят в стоимость и время одного корректного результата;
+- infrastructure fake-Pi suite и реальный Route DSL benchmark разделены.
 
 ## Команды
 
@@ -28,6 +33,9 @@ go build ./cmd/takt-fake-pi
 ./scripts/test-route-dsl-eval.sh
 ./scripts/check-docs.sh
 ./scripts/verify.sh
+sha256sum -c MANIFEST.sha256
 ```
 
-Реальный Pi smoke с `aihub/Qwen/Qwen3.6-27B` подтверждён внешним аудитом `v0.1.12-alpha` за 4,83 секунды. В среде сборки `v0.1.13-alpha` он повторно не запускался, поскольку пользовательская авторизация и модель недоступны.
+Дополнительно сформированный evaluation report проверен локально по `schemas/evaluation-report.schema.json` и `schemas/validation-result.schema.json` валидатором JSON Schema Draft 2020-12.
+
+Реальный benchmark `v0.1.14-alpha` с Pi и штатным Route DSL validator в среде сборки не запускался: отсутствуют бинарник Pi, пользовательская авторизация, доступная модель и предметный валидатор. Успешный внешний Pi smoke предыдущей версии подтверждает transport-контур, но не является baseline качества этого релиза.

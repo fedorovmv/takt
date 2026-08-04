@@ -160,6 +160,18 @@
         },
         "usage": {
           "$ref": "#/$defs/usage"
+        },
+        "assistant": {
+          "type": "string"
+        },
+        "assistant_version": {
+          "type": "string"
+        },
+        "requested_model": {
+          "$ref": "#/$defs/modelRef"
+        },
+        "resolved_model": {
+          "$ref": "#/$defs/modelRef"
         }
       }
     },
@@ -178,6 +190,25 @@
         "cost": {
           "type": "number",
           "minimum": 0
+        }
+      }
+    },
+    "modelRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true
         }
       }
     }

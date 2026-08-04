@@ -14,10 +14,10 @@ go build -o bin/takt ./cmd/takt
 
 1. `docs/12-document-map.md`;
 2. `docs/05-implementation-status.md`;
-3. `docs/18-audit-remediation-v0.1.4.md`;
-4. `docs/17-audit-remediation-v0.1.3.md`;
-5. `docs/16-audit-remediation-v0.1.2.md`;
-6. `docs/09-runtime-semantics.md`;
+3. `docs/28-benchmark-identity-quality-v0.1.14.md`;
+4. `docs/13-evaluation-plan.md`;
+5. `docs/09-runtime-semantics.md`;
+6. `docs/10-assistant-adapter-spec.md`;
 7. `ARCHITECTURE_DECISIONS.md`.
 
 ## С чего продолжать реализацию
@@ -25,11 +25,22 @@ go build -o bin/takt ./cmd/takt
 Текущая рекомендуемая ветка работ:
 
 ```text
-Pi adapter contract suite и opt-in smoke
-→ Route DSL contract end-to-end — выполнено
-→ штатный route-tool и eval-набор
-→ OpenCode adapter при необходимости сравнения
-→ Go и document workflows
+Pi adapter и Route DSL contract suites — выполнено
+→ evaluation identity и quality contract — выполнено
+→ baseline на реальном Pi, штатном validator и обезличенных заданиях
+→ сравнение моделей и стратегий на одинаковых fingerprints
+→ manual-correction metric и CLI сравнения отчётов
+→ OpenCode adapter при подтверждённой необходимости
+```
+
+Реальный benchmark запускается отдельно:
+
+```bash
+make build
+TAKT_CONFIG=/path/to/config.yaml \
+TAKT_ROUTE_VALIDATOR=/path/to/route-tool \
+TAKT_REPEAT=3 \
+make route-benchmark
 ```
 
 Подробная декомпозиция находится в `docs/11-implementation-plan.md` и `docs/14-backlog-v0.2.md`.
@@ -40,11 +51,13 @@ Pi adapter contract suite и opt-in smoke
 - считать текущий scope локальным и доверенным;
 - добавлять общую абстракцию после появления минимум двух сценариев;
 - сопровождать изменение семантики contract test и обновлением `docs/09-runtime-semantics.md`;
-- сопровождать изменение YAML-контракта обновлением `docs/03-specification.md` и `schemas/*.json`;
+- сопровождать изменение YAML или JSON-контракта обновлением спецификации и `schemas/*.json`;
 - оформлять изменение архитектурной границы новым ADR;
-- не записывать секреты в `state.json`, `events.jsonl` и JSON CLI;
+- не записывать секреты в `state.json`, `events.jsonl` и evaluation report;
+- хранить credentials в окружении или внешнем secret source, а не в `models.*.params`;
 - не игнорировать ошибки persistence;
-- не использовать `allow_failure` для transport/runtime errors.
+- не использовать `allow_failure` для transport/runtime errors;
+- отделять infrastructure contract suite от quality benchmark.
 
 ## Тесты
 
@@ -53,14 +66,17 @@ go test ./...
 go test -race ./...
 go vet ./...
 go build ./cmd/takt
+go build ./cmd/takt-fake-assistant
 go build ./cmd/takt-fake-pi
+./scripts/test-fake-assistant.sh
 ./scripts/test-pi-adapter.sh
 ./scripts/test-route-dsl-e2e.sh
 ./scripts/test-route-dsl-eval.sh
+./scripts/check-docs.sh
 ./scripts/verify.sh
 ```
 
-Реальные интеграционные тесты Pi/OpenCode должны быть opt-in и пропускаться в обычном CI при отсутствии бинарника или credentials.
+Реальные интеграционные тесты Pi/OpenCode и quality benchmark должны быть opt-in и пропускаться в обычном CI при отсутствии бинарника, credentials, модели или штатного валидатора.
 
 ## Структура задачи
 
@@ -73,4 +89,4 @@ go build ./cmd/takt-fake-pi
 - критерии приёмки;
 - unit/contract tests;
 - сквозной пример;
-- обновление спецификации и status.
+- обновление спецификации, схем и status.

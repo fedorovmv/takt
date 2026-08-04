@@ -168,11 +168,7 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 			text = "corrected route.yaml using validator feedback"
 		}
 		_ = os.WriteFile("route.yaml", []byte(content), 0o644)
-		message := map[string]any{
-			"role":       "assistant",
-			"content":    []any{map[string]any{"type": "text", "text": text}},
-			"stopReason": "stop",
-		}
+		message := assistantMessage(opts, text, "stop", "")
 		state.finish(text, []any{message})
 		writeJSON(writer, map[string]any{"type": "agent_start"})
 		writeJSON(writer, map[string]any{"type": "message_end", "message": message})
@@ -188,16 +184,16 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 		writeJSON(writer, map[string]any{"type": "extension_ui_request", "id": "ui-1", "method": "confirm", "title": "Confirm"})
 	case "extension-ui-set-editor-text":
 		writeJSON(writer, map[string]any{"type": "extension_ui_request", "id": "ui-1", "method": "set_editor_text", "text": "updated"})
-		emitSuccess(writer, state)
+		emitSuccess(writer, state, opts)
 	case "agent-failure":
-		message := map[string]any{"role": "assistant", "content": []any{}, "stopReason": "error", "errorMessage": "fake model failure"}
+		message := assistantMessage(opts, "", "error", "fake model failure")
 		state.finish("", []any{message})
 		writeJSON(writer, map[string]any{"type": "agent_start"})
 		writeJSON(writer, map[string]any{"type": "message_end", "message": message})
 		writeJSON(writer, map[string]any{"type": "agent_end", "messages": []any{message}, "willRetry": false})
 		writeJSON(writer, map[string]any{"type": "agent_settled"})
 	case "retry-before-settled":
-		first := map[string]any{"role": "assistant", "content": []any{}, "stopReason": "error", "errorMessage": "transient fake failure"}
+		first := assistantMessage(opts, "", "error", "transient fake failure")
 		state.setPartial("partial Pi result", []any{first})
 		writeJSON(writer, map[string]any{"type": "agent_start"})
 		writeJSON(writer, map[string]any{"type": "message_end", "message": first})
@@ -206,7 +202,7 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 		go func() {
 			time.Sleep(120 * time.Millisecond)
 			writeJSON(writer, map[string]any{"type": "auto_retry_end", "success": true, "attempt": 1})
-			emitSuccess(writer, state)
+			emitSuccess(writer, state, opts)
 		}()
 	case "concurrent-output":
 		var wg sync.WaitGroup
@@ -222,18 +218,37 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 			}
 		}()
 		wg.Wait()
-		emitSuccess(writer, state)
+		emitSuccess(writer, state, opts)
 	default:
-		emitSuccess(writer, state)
+		emitSuccess(writer, state, opts)
 	}
 }
 
-func emitSuccess(writer *safeWriter, state *fakeState) {
-	message := map[string]any{
-		"role":       "assistant",
-		"content":    []any{map[string]any{"type": "text", "text": "fake Pi completed"}},
-		"stopReason": "stop",
+func assistantMessage(opts options, text, stopReason, errorMessage string) map[string]any {
+	responseModel := opts.model
+	if opts.caseName == "resolved-model" {
+		responseModel = "resolved-" + opts.model
 	}
+	message := map[string]any{
+		"role":          "assistant",
+		"provider":      opts.provider,
+		"model":         opts.model,
+		"responseModel": responseModel,
+		"content":       []any{map[string]any{"type": "text", "text": text}},
+		"stopReason":    stopReason,
+	}
+	if errorMessage != "" {
+		message["errorMessage"] = errorMessage
+	}
+	return message
+}
+
+func emitSuccess(writer *safeWriter, state *fakeState, opts ...options) {
+	resolved := options{provider: "openai", model: "fake-model"}
+	if len(opts) > 0 {
+		resolved = opts[0]
+	}
+	message := assistantMessage(resolved, "fake Pi completed", "stop", "")
 	state.finish("fake Pi completed", []any{message})
 	writeJSON(writer, map[string]any{"type": "agent_start"})
 	writeJSON(writer, map[string]any{"type": "message_end", "message": message})

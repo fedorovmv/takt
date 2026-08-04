@@ -2,6 +2,8 @@ package evaluation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,15 +11,22 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	goruntime "runtime"
 	"sort"
 	"strings"
 	"time"
 
 	cfgpkg "takt/internal/config"
+	"takt/internal/definition"
 	"takt/internal/runtime"
+	"takt/internal/spec"
 	"takt/internal/store"
+	"takt/internal/validation"
+	"takt/internal/version"
 	"takt/internal/workflow"
 )
+
+const ReportVersion = "takt-evaluation/v1alpha1"
 
 type RunOptions struct {
 	WorkflowPath      string
@@ -28,64 +37,134 @@ type RunOptions struct {
 	Repeat            int
 	ApprovalAnswer    string
 	Replace           bool
+	StrategyID        string
+	BenchmarkID       string
+	QualityNode       string
+	GenerationNode    string
+	ValidatorID       string
+	ValidatorVersion  string
+	ValidatorPath     string
 }
 
 type SuiteReport struct {
-	StartedAt  time.Time   `json:"started_at"`
-	FinishedAt time.Time   `json:"finished_at"`
-	DurationMS int64       `json:"duration_ms"`
-	Workflow   string      `json:"workflow"`
-	Config     string      `json:"config"`
-	CasesDir   string      `json:"cases_dir"`
-	OutputDir  string      `json:"output_dir"`
-	Runs       []RunRecord `json:"runs"`
-	Summary    Summary     `json:"summary"`
+	ReportVersion string              `json:"report_version"`
+	TaktVersion   string              `json:"takt_version"`
+	StartedAt     time.Time           `json:"started_at"`
+	FinishedAt    time.Time           `json:"finished_at"`
+	DurationMS    int64               `json:"duration_ms"`
+	Workflow      string              `json:"workflow"`
+	Config        string              `json:"config"`
+	CasesDir      string              `json:"cases_dir"`
+	OutputDir     string              `json:"output_dir"`
+	Strategy      StrategyIdentity    `json:"strategy"`
+	Benchmark     BenchmarkIdentity   `json:"benchmark"`
+	Environment   EnvironmentIdentity `json:"environment"`
+	Runs          []RunRecord         `json:"runs"`
+	Summary       Summary             `json:"summary"`
+}
+
+type StrategyIdentity struct {
+	ID                  string `json:"id"`
+	Fingerprint         string `json:"fingerprint"`
+	WorkflowFingerprint string `json:"workflow_fingerprint"`
+	ConfigFingerprint   string `json:"config_fingerprint"`
+	CommandsFingerprint string `json:"commands_fingerprint"`
+}
+
+type BenchmarkIdentity struct {
+	ID                   string            `json:"id"`
+	Fingerprint          string            `json:"fingerprint"`
+	DatasetFingerprint   string            `json:"dataset_fingerprint"`
+	WorkspaceFingerprint string            `json:"workspace_fingerprint"`
+	CaseCount            int               `json:"case_count"`
+	QualityNode          string            `json:"quality_node,omitempty"`
+	GenerationNode       string            `json:"generation_node,omitempty"`
+	ValidationProtocol   string            `json:"validation_protocol,omitempty"`
+	Validator            ValidatorIdentity `json:"validator,omitempty"`
+}
+
+type ValidatorIdentity struct {
+	ID          string `json:"id,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Path        string `json:"path,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+}
+
+type EnvironmentIdentity struct {
+	GOOS      string `json:"goos"`
+	GOARCH    string `json:"goarch"`
+	GoVersion string `json:"go_version"`
 }
 
 type Summary struct {
-	Total        int            `json:"total"`
-	ByStatus     map[string]int `json:"by_status"`
-	Attempts     int            `json:"attempts"`
-	InputTokens  int            `json:"input_tokens"`
-	OutputTokens int            `json:"output_tokens"`
-	Cost         float64        `json:"cost"`
-	DurationMS   int64          `json:"duration_ms"`
-	Answers      int            `json:"answers"`
-	Truncated    int            `json:"truncated_nodes"`
-	Resumed      int            `json:"resumed_nodes"`
+	Total                  int            `json:"total"`
+	ByStatus               map[string]int `json:"by_status"`
+	Attempts               int            `json:"attempts"`
+	InputTokens            int            `json:"input_tokens"`
+	OutputTokens           int            `json:"output_tokens"`
+	Cost                   float64        `json:"cost"`
+	DurationMS             int64          `json:"duration_ms"`
+	Answers                int            `json:"answers"`
+	Truncated              int            `json:"truncated_nodes"`
+	Resumed                int            `json:"resumed_nodes"`
+	ByAssistant            map[string]int `json:"by_assistant,omitempty"`
+	ByAssistantVersion     map[string]int `json:"by_assistant_version,omitempty"`
+	ByRequestedModel       map[string]int `json:"by_requested_model,omitempty"`
+	ByResolvedModel        map[string]int `json:"by_resolved_model,omitempty"`
+	QualityRuns            int            `json:"quality_runs,omitempty"`
+	Valid                  int            `json:"valid,omitempty"`
+	Invalid                int            `json:"invalid,omitempty"`
+	ValidAtFirstAttempt    int            `json:"valid_at_first_attempt,omitempty"`
+	SuccessAt1             float64        `json:"success_at_1,omitempty"`
+	FinalSuccessRate       float64        `json:"final_success_rate,omitempty"`
+	AverageAttemptsToValid float64        `json:"average_attempts_to_valid,omitempty"`
+	AverageScore           float64        `json:"average_score,omitempty"`
+	CostPerValid           float64        `json:"cost_per_valid,omitempty"`
+	DurationPerValidMS     float64        `json:"duration_per_valid_ms,omitempty"`
+	DiagnosticsBySeverity  map[string]int `json:"diagnostics_by_severity,omitempty"`
+	DiagnosticsByCode      map[string]int `json:"diagnostics_by_code,omitempty"`
 }
 
 type RunRecord struct {
-	CaseID       string                `json:"case_id"`
-	Repeat       int                   `json:"repeat"`
-	RunID        string                `json:"run_id,omitempty"`
-	Status       string                `json:"status"`
-	Workspace    string                `json:"workspace"`
-	DurationMS   int64                 `json:"duration_ms"`
-	Attempts     int                   `json:"attempts"`
-	InputTokens  int                   `json:"input_tokens,omitempty"`
-	OutputTokens int                   `json:"output_tokens,omitempty"`
-	Cost         float64               `json:"cost,omitempty"`
-	Answers      int                   `json:"answers,omitempty"`
-	Truncated    int                   `json:"truncated_nodes,omitempty"`
-	Resumed      int                   `json:"resumed_nodes,omitempty"`
-	ErrorCode    string                `json:"error_code,omitempty"`
-	Error        string                `json:"error,omitempty"`
-	Nodes        map[string]NodeRecord `json:"nodes"`
+	CaseID              string                `json:"case_id"`
+	Repeat              int                   `json:"repeat"`
+	RunID               string                `json:"run_id,omitempty"`
+	Status              string                `json:"status"`
+	Workspace           string                `json:"workspace"`
+	DurationMS          int64                 `json:"duration_ms"`
+	Attempts            int                   `json:"attempts"`
+	AttemptsToValid     int                   `json:"attempts_to_valid,omitempty"`
+	ValidAtFirstAttempt bool                  `json:"valid_at_first_attempt,omitempty"`
+	InputTokens         int                   `json:"input_tokens,omitempty"`
+	OutputTokens        int                   `json:"output_tokens,omitempty"`
+	Cost                float64               `json:"cost,omitempty"`
+	Answers             int                   `json:"answers,omitempty"`
+	Truncated           int                   `json:"truncated_nodes,omitempty"`
+	Resumed             int                   `json:"resumed_nodes,omitempty"`
+	ErrorCode           string                `json:"error_code,omitempty"`
+	Error               string                `json:"error,omitempty"`
+	Quality             *validation.Result    `json:"quality,omitempty"`
+	QualityError        string                `json:"quality_error,omitempty"`
+	QualityExpected     bool                  `json:"-"`
+	Nodes               map[string]NodeRecord `json:"nodes"`
 }
 
 type NodeRecord struct {
-	Status           string       `json:"status"`
-	Attempts         int          `json:"attempts,omitempty"`
-	SessionID        string       `json:"session_id,omitempty"`
-	Resumed          bool         `json:"resumed,omitempty"`
-	ExitCode         int          `json:"exit_code,omitempty"`
-	ErrorCode        string       `json:"error_code,omitempty"`
-	Error            string       `json:"error,omitempty"`
-	Feedback         string       `json:"feedback,omitempty"`
-	DiagnosticOutput string       `json:"diagnostic_output,omitempty"`
-	OutputTruncated  bool         `json:"output_truncated,omitempty"`
-	Usage            *store.Usage `json:"usage,omitempty"`
+	Status           string          `json:"status"`
+	Attempts         int             `json:"attempts,omitempty"`
+	Assistant        string          `json:"assistant,omitempty"`
+	AssistantVersion string          `json:"assistant_version,omitempty"`
+	RequestedModel   *store.ModelRef `json:"requested_model,omitempty"`
+	ResolvedModel    *store.ModelRef `json:"resolved_model,omitempty"`
+	SessionID        string          `json:"session_id,omitempty"`
+	Resumed          bool            `json:"resumed,omitempty"`
+	ExitCode         int             `json:"exit_code,omitempty"`
+	ErrorCode        string          `json:"error_code,omitempty"`
+	Error            string          `json:"error,omitempty"`
+	Feedback         string          `json:"feedback,omitempty"`
+	DiagnosticOutput string          `json:"diagnostic_output,omitempty"`
+	OutputTruncated  bool            `json:"output_truncated,omitempty"`
+	Usage            *store.Usage    `json:"usage,omitempty"`
 }
 
 var safeCaseID = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -109,14 +188,51 @@ func Run(ctx context.Context, opts RunOptions) (*SuiteReport, error) {
 	if err != nil {
 		return nil, err
 	}
+	wf, err := workflow.Load(paths.WorkflowPath)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := cfgpkg.Load(paths.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	if opts.StrategyID == "" {
+		opts.StrategyID = wf.Metadata.Name
+	}
+	if opts.BenchmarkID == "" {
+		opts.BenchmarkID = filepath.Base(paths.CasesDir)
+	}
+	if opts.QualityNode != "" {
+		if !workflowHasNode(wf.Nodes, opts.QualityNode) {
+			return nil, fmt.Errorf("quality node %q is not present in workflow", opts.QualityNode)
+		}
+		if opts.GenerationNode == "" {
+			opts.GenerationNode = firstAssistantNode(wf.Nodes)
+		}
+		if opts.GenerationNode == "" || !workflowHasNode(wf.Nodes, opts.GenerationNode) {
+			return nil, fmt.Errorf("generation node %q is not present in workflow", opts.GenerationNode)
+		}
+	}
+	ids, err := buildIdentities(paths, opts, wf, cfg, cases, caseIDs)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(paths.OutputDir, 0o755); err != nil {
 		return nil, err
 	}
 
 	report := &SuiteReport{
-		StartedAt: time.Now().UTC(), Workflow: paths.WorkflowPath, Config: paths.ConfigPath,
-		CasesDir: paths.CasesDir, OutputDir: paths.OutputDir,
-		Summary: Summary{ByStatus: map[string]int{}},
+		ReportVersion: ReportVersion,
+		TaktVersion:   version.Value,
+		StartedAt:     time.Now().UTC(),
+		Workflow:      paths.WorkflowPath,
+		Config:        paths.ConfigPath,
+		CasesDir:      paths.CasesDir,
+		OutputDir:     paths.OutputDir,
+		Strategy:      ids.Strategy,
+		Benchmark:     ids.Benchmark,
+		Environment:   EnvironmentIdentity{GOOS: goruntime.GOOS, GOARCH: goruntime.GOARCH, GoVersion: goruntime.Version()},
+		Summary:       newSummary(),
 	}
 	for _, casePath := range cases {
 		caseID := caseIDs[casePath]
@@ -126,19 +242,111 @@ func Run(ctx context.Context, opts RunOptions) (*SuiteReport, error) {
 			report.Runs = append(report.Runs, record)
 			addSummary(&report.Summary, record)
 			if runErr != nil && isInfrastructureError(runErr) {
-				report.FinishedAt = time.Now().UTC()
-				report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
+				finishReport(report)
 				_ = writeReport(paths.OutputDir, report)
 				return report, runErr
 			}
 		}
 	}
-	report.FinishedAt = time.Now().UTC()
-	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
+	finishReport(report)
 	if err := writeReport(paths.OutputDir, report); err != nil {
 		return report, err
 	}
 	return report, nil
+}
+
+type identities struct {
+	Strategy  StrategyIdentity
+	Benchmark BenchmarkIdentity
+}
+
+func buildIdentities(paths resolvedOptions, opts RunOptions, wf *spec.Workflow, cfg *spec.Config, cases []string, caseIDs map[string]string) (identities, error) {
+	resolver := runtime.New(wf, cfg, paths.WorkflowPath, paths.ConfigPath, paths.WorkspaceTemplate).Commands
+	fingerprints, err := definition.Compute(wf, cfg, paths.WorkflowPath, paths.ConfigPath, resolver)
+	if err != nil {
+		return identities{}, err
+	}
+	strategyFingerprint, err := hashJSON(struct {
+		Workflow string `json:"workflow"`
+		Config   string `json:"config"`
+		Commands string `json:"commands"`
+	}{fingerprints.Workflow, fingerprints.Config, fingerprints.Commands})
+	if err != nil {
+		return identities{}, err
+	}
+	datasetFingerprint, err := hashCases(cases, caseIDs)
+	if err != nil {
+		return identities{}, err
+	}
+	workspaceFingerprint, err := hashWorkspaceTemplate(paths.WorkspaceTemplate)
+	if err != nil {
+		return identities{}, fmt.Errorf("fingerprint workspace template: %w", err)
+	}
+	validator, err := buildValidatorIdentity(paths, opts)
+	if err != nil {
+		return identities{}, err
+	}
+	protocol := ""
+	if opts.QualityNode != "" {
+		protocol = validation.ProtocolV1Alpha1
+	}
+	benchmarkFingerprint, err := hashJSON(struct {
+		Dataset              string `json:"dataset"`
+		Workspace            string `json:"workspace"`
+		QualityNode          string `json:"quality_node"`
+		GenerationNode       string `json:"generation_node"`
+		ValidationProtocol   string `json:"validation_protocol"`
+		ValidatorFingerprint string `json:"validator_fingerprint"`
+	}{datasetFingerprint, workspaceFingerprint, opts.QualityNode, opts.GenerationNode, protocol, validator.Fingerprint})
+	if err != nil {
+		return identities{}, err
+	}
+	return identities{
+		Strategy: StrategyIdentity{
+			ID: opts.StrategyID, Fingerprint: strategyFingerprint,
+			WorkflowFingerprint: fingerprints.Workflow,
+			ConfigFingerprint:   fingerprints.Config,
+			CommandsFingerprint: fingerprints.Commands,
+		},
+		Benchmark: BenchmarkIdentity{
+			ID: opts.BenchmarkID, Fingerprint: benchmarkFingerprint,
+			DatasetFingerprint: datasetFingerprint, WorkspaceFingerprint: workspaceFingerprint, CaseCount: len(cases),
+			QualityNode: opts.QualityNode, GenerationNode: opts.GenerationNode,
+			ValidationProtocol: protocol, Validator: validator,
+		},
+	}, nil
+}
+
+func buildValidatorIdentity(paths resolvedOptions, opts RunOptions) (ValidatorIdentity, error) {
+	identity := ValidatorIdentity{ID: opts.ValidatorID, Version: opts.ValidatorVersion}
+	if opts.ValidatorPath == "" {
+		return identity, nil
+	}
+	path := opts.ValidatorPath
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(paths.WorkspaceTemplate, path)
+	}
+	canonical, err := canonicalPath(path)
+	if err != nil {
+		return identity, fmt.Errorf("resolve validator path: %w", err)
+	}
+	if _, err := os.Stat(canonical); err != nil {
+		return identity, fmt.Errorf("validator path: %w", err)
+	}
+	fingerprint, err := hashPath(canonical)
+	if err != nil {
+		return identity, fmt.Errorf("fingerprint validator: %w", err)
+	}
+	if identity.ID == "" {
+		identity.ID = filepath.Base(canonical)
+	}
+	identity.Fingerprint = fingerprint
+	if rel, err := filepath.Rel(paths.WorkspaceTemplate, canonical); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		identity.Path = filepath.ToSlash(rel)
+	} else {
+		identity.Path = canonical
+	}
+	return identity, nil
 }
 
 type resolvedOptions struct {
@@ -241,21 +449,21 @@ func listCases(dir string) ([]string, error) {
 	return paths, nil
 }
 
-func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePath, caseID string, repeat int, workspace string) (RunRecord, error) {
-	record := RunRecord{CaseID: caseID, Repeat: repeat, Workspace: workspace, Status: "not_started", Nodes: map[string]NodeRecord{}}
-	if _, err := os.Stat(workspace); err == nil {
+func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePath, caseID string, repeat int, workspacePath string) (RunRecord, error) {
+	record := RunRecord{CaseID: caseID, Repeat: repeat, Workspace: workspacePath, Status: "not_started", Nodes: map[string]NodeRecord{}}
+	if _, err := os.Stat(workspacePath); err == nil {
 		if !opts.Replace {
 			record.Status = "infrastructure_error"
 			record.Error = "workspace already exists; use --replace"
-			return record, fmt.Errorf("workspace %s already exists", workspace)
+			return record, fmt.Errorf("workspace %s already exists", workspacePath)
 		}
-		if err := os.RemoveAll(workspace); err != nil {
+		if err := os.RemoveAll(workspacePath); err != nil {
 			return record, err
 		}
 	} else if !os.IsNotExist(err) {
 		return record, err
 	}
-	if err := copyTree(paths.WorkspaceTemplate, workspace); err != nil {
+	if err := copyTree(paths.WorkspaceTemplate, workspacePath); err != nil {
 		record.Status, record.Error = "infrastructure_error", err.Error()
 		return record, err
 	}
@@ -274,7 +482,7 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 		record.Status, record.Error = "infrastructure_error", err.Error()
 		return record, err
 	}
-	runner := runtime.New(wf, cfg, paths.WorkflowPath, paths.ConfigPath, workspace)
+	runner := runtime.New(wf, cfg, paths.WorkflowPath, paths.ConfigPath, workspacePath)
 	state, runErr := runner.Start(ctx, string(input))
 	for errors.Is(runErr, runtime.ErrWaiting) && opts.ApprovalAnswer != "" {
 		if state.Waiting == nil {
@@ -293,7 +501,16 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 		state, runErr = runner.Resume(ctx, state)
 	}
 	if state != nil {
-		record = recordFromState(caseID, repeat, workspace, state)
+		record = recordFromState(caseID, repeat, workspacePath, state)
+		record.QualityExpected = opts.QualityNode != ""
+		if opts.QualityNode != "" {
+			if err := applyQuality(&record, state, opts.QualityNode, opts.GenerationNode); err != nil {
+				record.Status = "evaluation_error"
+				record.ErrorCode = "quality_contract"
+				record.Error = err.Error()
+				return record, err
+			}
+		}
 	}
 	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
 		if record.Error == "" {
@@ -304,9 +521,39 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 	return record, nil
 }
 
-func recordFromState(caseID string, repeat int, workspace string, state *store.RunState) RunRecord {
+func applyQuality(record *RunRecord, state *store.RunState, qualityNode, generationNode string) error {
+	node := state.Nodes[qualityNode]
+	if node == nil {
+		return fmt.Errorf("quality node %q has no runtime state", qualityNode)
+	}
+	if strings.TrimSpace(node.Output) == "" {
+		switch node.Status {
+		case store.NodeSkipped, store.NodeBlocked, store.NodePending:
+			record.QualityError = fmt.Sprintf("quality node %q did not run: status=%s", qualityNode, node.Status)
+			return nil
+		default:
+			return fmt.Errorf("quality node %q produced no validation result", qualityNode)
+		}
+	}
+	result, err := validation.Decode([]byte(node.Output))
+	if err != nil {
+		return fmt.Errorf("quality node %q: %w", qualityNode, err)
+	}
+	record.Quality = result
+	generator := state.Nodes[generationNode]
+	if generator == nil {
+		return fmt.Errorf("generation node %q has no runtime state", generationNode)
+	}
+	if result.Valid {
+		record.AttemptsToValid = generator.Attempts
+		record.ValidAtFirstAttempt = generator.Attempts == 1
+	}
+	return nil
+}
+
+func recordFromState(caseID string, repeat int, workspacePath string, state *store.RunState) RunRecord {
 	record := RunRecord{
-		CaseID: caseID, Repeat: repeat, RunID: state.ID, Status: state.Status, Workspace: workspace,
+		CaseID: caseID, Repeat: repeat, RunID: state.ID, Status: state.Status, Workspace: workspacePath,
 		DurationMS: state.UpdatedAt.Sub(state.CreatedAt).Milliseconds(), Answers: len(state.Approvals),
 		ErrorCode: state.ErrorCode, Error: state.Error, Nodes: map[string]NodeRecord{},
 	}
@@ -327,12 +574,22 @@ func recordFromState(caseID string, repeat int, workspace string, state *store.R
 			record.Cost += node.Usage.Cost
 		}
 		record.Nodes[id] = NodeRecord{
-			Status: node.Status, Attempts: node.Attempts, SessionID: node.SessionID, Resumed: node.Resumed,
+			Status: node.Status, Attempts: node.Attempts, Assistant: node.Assistant, AssistantVersion: node.AssistantVersion,
+			RequestedModel: node.RequestedModel, ResolvedModel: node.ResolvedModel,
+			SessionID: node.SessionID, Resumed: node.Resumed,
 			ExitCode: node.ExitCode, ErrorCode: node.ErrorCode, Error: node.Error, Feedback: node.Feedback,
 			DiagnosticOutput: node.Output, OutputTruncated: node.OutputTruncated, Usage: node.Usage,
 		}
 	}
 	return record
+}
+
+func newSummary() Summary {
+	return Summary{
+		ByStatus: map[string]int{}, ByAssistant: map[string]int{}, ByAssistantVersion: map[string]int{},
+		ByRequestedModel: map[string]int{}, ByResolvedModel: map[string]int{},
+		DiagnosticsBySeverity: map[string]int{}, DiagnosticsByCode: map[string]int{},
+	}
 }
 
 func addSummary(summary *Summary, record RunRecord) {
@@ -346,6 +603,84 @@ func addSummary(summary *Summary, record RunRecord) {
 	summary.Answers += record.Answers
 	summary.Truncated += record.Truncated
 	summary.Resumed += record.Resumed
+	for _, node := range record.Nodes {
+		if node.Assistant != "" {
+			summary.ByAssistant[node.Assistant]++
+		}
+		if node.AssistantVersion != "" {
+			summary.ByAssistantVersion[node.AssistantVersion]++
+		}
+		if key := modelKey(node.RequestedModel); key != "" {
+			summary.ByRequestedModel[key]++
+		}
+		if key := modelKey(node.ResolvedModel); key != "" {
+			summary.ByResolvedModel[key]++
+		}
+	}
+	if !record.QualityExpected {
+		return
+	}
+	summary.QualityRuns++
+	if record.Quality != nil && record.Quality.Valid {
+		summary.Valid++
+		if record.ValidAtFirstAttempt {
+			summary.ValidAtFirstAttempt++
+		}
+	} else {
+		summary.Invalid++
+	}
+	if record.Quality != nil {
+		for _, diagnostic := range record.Quality.Diagnostics {
+			summary.DiagnosticsBySeverity[diagnostic.Severity]++
+			summary.DiagnosticsByCode[diagnostic.Code]++
+		}
+	}
+}
+
+func finishReport(report *SuiteReport) {
+	report.FinishedAt = time.Now().UTC()
+	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
+	if report.Summary.QualityRuns == 0 {
+		return
+	}
+	report.Summary.SuccessAt1 = float64(report.Summary.ValidAtFirstAttempt) / float64(report.Summary.QualityRuns)
+	report.Summary.FinalSuccessRate = float64(report.Summary.Valid) / float64(report.Summary.QualityRuns)
+	var attemptsToValid, scored int
+	var scoreTotal float64
+	for _, record := range report.Runs {
+		if record.Quality == nil {
+			continue
+		}
+		if record.Quality.Score != nil {
+			scored++
+			scoreTotal += *record.Quality.Score
+		}
+		if record.Quality.Valid {
+			attemptsToValid += record.AttemptsToValid
+		}
+	}
+	if report.Summary.Valid > 0 {
+		report.Summary.AverageAttemptsToValid = float64(attemptsToValid) / float64(report.Summary.Valid)
+		report.Summary.CostPerValid = report.Summary.Cost / float64(report.Summary.Valid)
+		report.Summary.DurationPerValidMS = float64(report.Summary.DurationMS) / float64(report.Summary.Valid)
+	}
+	if scored > 0 {
+		report.Summary.AverageScore = scoreTotal / float64(scored)
+	}
+}
+
+func modelKey(model *store.ModelRef) string {
+	if model == nil {
+		return ""
+	}
+	identity := model.ID
+	if model.Provider != "" {
+		identity = model.Provider + "/" + identity
+	}
+	if model.Name != "" {
+		identity = model.Name + "=" + identity
+	}
+	return identity
 }
 
 func writeReport(outputDir string, report *SuiteReport) error {
@@ -370,7 +705,7 @@ func copyTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		if rel == ".takt" || strings.HasPrefix(rel, ".takt"+string(filepath.Separator)) || rel == "bin" || strings.HasPrefix(rel, "bin"+string(filepath.Separator)) {
+		if skipWorkspacePath(rel) {
 			if entry.IsDir() {
 				return filepath.SkipDir
 			}
@@ -402,6 +737,148 @@ func sanitizeCaseID(value string) string {
 		return "case"
 	}
 	return value
+}
+
+func workflowHasNode(nodes []spec.Node, id string) bool {
+	for _, node := range nodes {
+		if node.ID == id {
+			return true
+		}
+		if node.LoopGroup != nil && workflowHasNode(node.LoopGroup.Nodes, id) {
+			return true
+		}
+	}
+	return false
+}
+
+func firstAssistantNode(nodes []spec.Node) string {
+	for _, node := range nodes {
+		if node.Command != "" || node.Prompt != "" {
+			return node.ID
+		}
+		if node.LoopGroup != nil {
+			if id := firstAssistantNode(node.LoopGroup.Nodes); id != "" {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
+func hashCases(paths []string, caseIDs map[string]string) (string, error) {
+	h := sha256.New()
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		_, _ = h.Write([]byte(caseIDs[path]))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write(data)
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func hashPath(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return hashFiles(path, []string{path}, false)
+	}
+	files, err := collectFiles(path, false)
+	if err != nil {
+		return "", err
+	}
+	return hashFiles(path, files, true)
+}
+
+func hashWorkspaceTemplate(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("workspace template is not a directory: %s", path)
+	}
+	files, err := collectFiles(path, true)
+	if err != nil {
+		return "", err
+	}
+	return hashFiles(path, files, true)
+}
+
+func collectFiles(root string, workspaceFilter bool) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(root, func(current string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(root, current)
+		if err != nil {
+			return err
+		}
+		if workspaceFilter && skipWorkspacePath(rel) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !entry.IsDir() {
+			files = append(files, current)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	return files, nil
+}
+
+func hashFiles(root string, files []string, useRelativePath bool) (string, error) {
+	h := sha256.New()
+	for _, file := range files {
+		name := filepath.Base(file)
+		if useRelativePath {
+			rel, err := filepath.Rel(root, file)
+			if err != nil {
+				return "", err
+			}
+			name = filepath.ToSlash(rel)
+		}
+		info, err := os.Stat(file)
+		if err != nil {
+			return "", err
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return "", err
+		}
+		_, _ = h.Write([]byte(name))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(fmt.Sprintf("%04o", info.Mode().Perm())))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write(data)
+		_, _ = h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func skipWorkspacePath(rel string) bool {
+	return rel == ".takt" || strings.HasPrefix(rel, ".takt"+string(filepath.Separator)) ||
+		rel == "bin" || strings.HasPrefix(rel, "bin"+string(filepath.Separator))
+}
+
+func hashJSON(value any) (string, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func isInfrastructureError(err error) bool {

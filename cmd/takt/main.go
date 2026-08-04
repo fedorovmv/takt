@@ -18,6 +18,7 @@ import (
 	"takt/internal/runtime"
 	"takt/internal/spec"
 	"takt/internal/store"
+	"takt/internal/version"
 	"takt/internal/workflow"
 )
 
@@ -53,7 +54,7 @@ func run(args []string) error {
 	case "eval":
 		return evalCmd(args[1:])
 	case "version":
-		fmt.Println("takt v0.1.13-alpha")
+		fmt.Println("takt v" + version.Value)
 		return nil
 	default:
 		return usage()
@@ -350,10 +351,20 @@ func evalCmd(args []string) error {
 		repeat := fs.Int("repeat", 1, "number of repetitions per case")
 		answer := fs.String("answer", "", "automatic approval answer")
 		replace := fs.Bool("replace", false, "replace existing case workspaces")
+		strategyID := fs.String("strategy-id", "", "stable strategy identifier")
+		benchmarkID := fs.String("benchmark-id", "", "stable benchmark identifier")
+		qualityNode := fs.String("quality-node", "", "node that emits takt-validation/v1alpha1")
+		generationNode := fs.String("generation-node", "", "generation node used for success@1")
+		validatorID := fs.String("validator-id", "", "validator identifier")
+		validatorVersion := fs.String("validator-version", "", "validator version")
+		validatorPath := fs.String("validator-path", "", "validator file or directory to fingerprint")
 		jsonOut := fs.Bool("json", true, "JSON output")
 		values := map[string]bool{
 			"--config": true, "--cases": true, "--workspace-template": true, "--output": true,
 			"--repeat": true, "--answer": true, "--replace": false, "--json": false,
+			"--strategy-id": true, "--benchmark-id": true, "--quality-node": true,
+			"--generation-node": true, "--validator-id": true, "--validator-version": true,
+			"--validator-path": true,
 		}
 		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
 			return err
@@ -365,6 +376,9 @@ func evalCmd(args []string) error {
 			WorkflowPath: fs.Arg(0), ConfigPath: *configPath, CasesDir: *casesDir,
 			WorkspaceTemplate: *templateDir, OutputDir: *outputDir, Repeat: *repeat,
 			ApprovalAnswer: *answer, Replace: *replace,
+			StrategyID: *strategyID, BenchmarkID: *benchmarkID,
+			QualityNode: *qualityNode, GenerationNode: *generationNode,
+			ValidatorID: *validatorID, ValidatorVersion: *validatorVersion, ValidatorPath: *validatorPath,
 		})
 		if err != nil {
 			return err
