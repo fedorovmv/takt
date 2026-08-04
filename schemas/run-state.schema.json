@@ -172,6 +172,12 @@
         },
         "resolved_model": {
           "$ref": "#/$defs/modelRef"
+        },
+        "executions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/executionState"
+          }
         }
       }
     },
@@ -209,6 +215,62 @@
         "params": {
           "type": "object",
           "additionalProperties": true
+        }
+      }
+    },
+    "executionState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt",
+        "status"
+      ],
+      "properties": {
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "errored",
+            "cancelled",
+            "timed_out"
+          ]
+        },
+        "assistant": {
+          "type": "string"
+        },
+        "assistant_version": {
+          "type": "string"
+        },
+        "requested_model": {
+          "$ref": "#/$defs/modelRef"
+        },
+        "resolved_model": {
+          "$ref": "#/$defs/modelRef"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "resumed": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "error_code": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "output_truncated": {
+          "type": "boolean"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
         }
       }
     }

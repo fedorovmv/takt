@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.15-alpha
+
+- quality summary сохраняет измеренные нули как `0`, а недоступные средние значения как `null`;
+- `NodeState.executions` сохраняет assistant/version/requested/resolved model и usage каждой фактической попытки;
+- evaluation report помечает mixed execution identity и группирует tokens/cost по отдельным identity;
+- JSON с `valid: true` учитывается только от quality-node со статусом `completed`;
+- benchmark fingerprint включает ID и объявленную версию валидатора;
+- `duration_per_valid_ms` заменён на точное по смыслу `amortized_end_to_end_ms_per_valid`;
+- opt-in Pi smoke проверяет наличие фактического `ResolvedModel`;
+- добавлены ADR-027 и отчёт `docs/29-benchmark-metric-semantics-v0.1.15.md`.
+
 ## v0.1.14-alpha
 
 - evaluation report получил формат `takt-evaluation/v1alpha1`;

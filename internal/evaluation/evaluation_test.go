@@ -3,6 +3,7 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -279,7 +280,7 @@ assistants:
 	if report.Benchmark.ID != "route-quality-10" || report.Benchmark.CaseCount != 2 || len(report.Benchmark.DatasetFingerprint) != 64 || len(report.Benchmark.WorkspaceFingerprint) != 64 || len(report.Benchmark.Validator.Fingerprint) != 64 {
 		t.Fatalf("benchmark identity missing: %+v", report.Benchmark)
 	}
-	if report.Summary.QualityRuns != 2 || report.Summary.Valid != 2 || report.Summary.SuccessAt1 != 1 || report.Summary.FinalSuccessRate != 1 || report.Summary.AverageScore != 88 {
+	if report.Summary.QualityRuns != 2 || report.Summary.Valid != 2 || floatValue(report.Summary.SuccessAt1) != 1 || floatValue(report.Summary.FinalSuccessRate) != 1 || floatValue(report.Summary.AverageScore) != 88 {
 		t.Fatalf("quality summary mismatch: %+v", report.Summary)
 	}
 	if report.Summary.DiagnosticsByCode["STYLE"] != 2 || report.Summary.DiagnosticsBySeverity["warning"] != 2 {
@@ -351,7 +352,7 @@ func TestFinishReportUsesTotalCostPerValidResult(t *testing.T) {
 		addSummary(&report.Summary, record)
 	}
 	finishReport(report)
-	if report.Summary.Valid != 1 || report.Summary.CostPerValid != 5 || report.Summary.DurationPerValidMS != 300 {
+	if report.Summary.Valid != 1 || floatValue(report.Summary.CostPerValid) != 5 || floatValue(report.Summary.AmortizedEndToEndMSPerValid) != 300 {
 		t.Fatalf("failed runs were not included in cost/time per valid: %+v", report.Summary)
 	}
 }
@@ -375,9 +376,24 @@ func TestEvaluationReportSchemaMatchesVersion(t *testing.T) {
 	if _, ok := node["assistant_version"]; !ok {
 		t.Fatal("evaluation report schema misses assistant_version")
 	}
+	if _, ok := node["executions"]; !ok {
+		t.Fatal("evaluation report schema misses per-execution records")
+	}
+	if _, ok := defs["execution"]; !ok {
+		t.Fatal("evaluation report schema misses execution definition")
+	}
 	summary := defs["summary"].(map[string]any)["properties"].(map[string]any)
 	if _, ok := summary["by_assistant_version"]; !ok {
 		t.Fatal("evaluation report schema misses by_assistant_version")
+	}
+	if _, ok := summary["usage_by_execution_identity"]; !ok {
+		t.Fatal("evaluation report schema misses usage_by_execution_identity")
+	}
+	if _, ok := summary["amortized_end_to_end_ms_per_valid"]; !ok {
+		t.Fatal("evaluation report schema misses renamed amortized duration metric")
+	}
+	if _, ok := summary["duration_per_valid_ms"]; ok {
+		t.Fatal("evaluation report schema still exposes ambiguous duration_per_valid_ms")
 	}
 	benchmark := defs["benchmark"].(map[string]any)["properties"].(map[string]any)
 	if _, ok := benchmark["workspace_fingerprint"]; !ok {
@@ -394,9 +410,16 @@ func TestMissingQualityAfterRunFailureCountsAsInvalid(t *testing.T) {
 	report := &SuiteReport{StartedAt: time.Now().Add(-time.Second), Summary: newSummary(), Runs: []RunRecord{record}}
 	addSummary(&report.Summary, record)
 	finishReport(report)
-	if report.Summary.QualityRuns != 1 || report.Summary.Valid != 0 || report.Summary.Invalid != 1 || report.Summary.FinalSuccessRate != 0 {
+	if report.Summary.QualityRuns != 1 || report.Summary.Valid != 0 || report.Summary.Invalid != 1 || floatValue(report.Summary.FinalSuccessRate) != 0 {
 		t.Fatalf("missing quality result was not counted as invalid: %+v", report.Summary)
 	}
+}
+
+func floatValue(value *float64) float64 {
+	if value == nil {
+		return -1
+	}
+	return *value
 }
 
 func TestRunCountsSkippedQualityAfterGenerationFailureAsInvalid(t *testing.T) {
@@ -482,5 +505,156 @@ func TestWorkspaceFingerprintTracksCopiedContext(t *testing.T) {
 	}
 	if third == fourth {
 		t.Fatal("workspace file mode change did not change fingerprint")
+	}
+}
+
+func TestZeroQualityMetricsRemainExplicitInJSON(t *testing.T) {
+	record := RunRecord{
+		Status: "failed", QualityExpected: true, Nodes: map[string]NodeRecord{},
+	}
+	report := &SuiteReport{StartedAt: time.Now().Add(-time.Second), Summary: newSummary(), Runs: []RunRecord{record}}
+	addSummary(&report.Summary, record)
+	finishReport(report)
+
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	summary := decoded["summary"].(map[string]any)
+	for _, key := range []string{"success_at_1", "final_success_rate", "average_score", "cost_per_valid", "amortized_end_to_end_ms_per_valid"} {
+		if _, ok := summary[key]; !ok {
+			t.Fatalf("summary key %q disappeared from JSON: %s", key, data)
+		}
+	}
+	if summary["success_at_1"] != float64(0) || summary["final_success_rate"] != float64(0) {
+		t.Fatalf("zero success metrics were not serialized explicitly: %+v", summary)
+	}
+	if summary["average_score"] != nil || summary["cost_per_valid"] != nil || summary["amortized_end_to_end_ms_per_valid"] != nil {
+		t.Fatalf("unavailable metrics must be null, not zero: %+v", summary)
+	}
+}
+
+func TestFailedQualityNodeCannotContributeValidResult(t *testing.T) {
+	root := t.TempDir()
+	workflowPath := filepath.Join(root, "workflow.yaml")
+	configPath := filepath.Join(root, "config.yaml")
+	casesDir := filepath.Join(root, "cases")
+	templateDir := filepath.Join(root, "template")
+	outputDir := filepath.Join(root, "output")
+	for _, dir := range []string{casesDir, templateDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: failed-quality
+nodes:
+  - id: implement
+    bash: |
+      true
+  - id: quality
+    depends_on: [implement]
+    bash: |
+      printf '%s\n' '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":true,"score":100}'
+      exit 7
+`, 0o644)
+	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
+	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
+
+	report, err := Run(context.Background(), RunOptions{
+		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
+		WorkspaceTemplate: templateDir, OutputDir: outputDir,
+		QualityNode: "quality", GenerationNode: "implement",
+	})
+	if err != nil {
+		t.Fatalf("failed quality execution must remain a benchmark result, got %v", err)
+	}
+	run := report.Runs[0]
+	if run.Quality != nil || !strings.Contains(run.QualityError, "did not complete: status=failed") {
+		t.Fatalf("failed quality output was trusted: %+v", run)
+	}
+	if report.Summary.Valid != 0 || report.Summary.Invalid != 1 || floatValue(report.Summary.FinalSuccessRate) != 0 {
+		t.Fatalf("failed quality node changed success metrics: %+v", report.Summary)
+	}
+}
+
+func TestBenchmarkFingerprintIncludesValidatorIDAndVersion(t *testing.T) {
+	root := t.TempDir()
+	workflowPath := filepath.Join(root, "workflow.yaml")
+	configPath := filepath.Join(root, "config.yaml")
+	casesDir := filepath.Join(root, "cases")
+	templateDir := filepath.Join(root, "template")
+	for _, dir := range []string{casesDir, templateDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, workflowPath, "apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: fingerprint\nnodes:\n  - id: done\n    bash: |\n      true\n", 0o644)
+	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
+	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
+
+	run := func(id, version, output string) *SuiteReport {
+		report, err := Run(context.Background(), RunOptions{
+			WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
+			WorkspaceTemplate: templateDir, OutputDir: filepath.Join(root, output),
+			ValidatorID: id, ValidatorVersion: version,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return report
+	}
+	first := run("route-validator", "1.0.0", "first")
+	second := run("route-validator", "2.0.0", "second")
+	third := run("other-validator", "1.0.0", "third")
+	if first.Benchmark.Fingerprint == second.Benchmark.Fingerprint {
+		t.Fatal("validator version did not change benchmark fingerprint")
+	}
+	if first.Benchmark.Fingerprint == third.Benchmark.Fingerprint {
+		t.Fatal("validator ID did not change benchmark fingerprint")
+	}
+}
+
+func TestUsageIsAttributedPerExecutionIdentity(t *testing.T) {
+	state := &store.RunState{
+		ID: "run", Status: store.RunCompleted,
+		CreatedAt: time.Unix(100, 0), UpdatedAt: time.Unix(101, 0),
+		Nodes: map[string]*store.NodeState{
+			"generate": {
+				Status: store.NodeCompleted, Attempts: 2,
+				Assistant: "pi", AssistantVersion: "0.83.0",
+				ResolvedModel: &store.ModelRef{Provider: "router", ID: "model-b"},
+				Usage:         &store.Usage{InputTokens: 30, OutputTokens: 3, Cost: 0.3},
+				Executions: []store.ExecutionState{
+					{Attempt: 1, Status: store.NodeCompleted, Assistant: "pi", AssistantVersion: "0.83.0", ResolvedModel: &store.ModelRef{Provider: "router", ID: "model-a"}, Usage: &store.Usage{InputTokens: 10, OutputTokens: 1, Cost: 0.1}},
+					{Attempt: 2, Status: store.NodeCompleted, Assistant: "pi", AssistantVersion: "0.84.0", ResolvedModel: &store.ModelRef{Provider: "router", ID: "model-b"}, Usage: &store.Usage{InputTokens: 20, OutputTokens: 2, Cost: 0.2}},
+				},
+			},
+		},
+	}
+	record := recordFromState("case", 1, "/workspace", state)
+	if record.MixedIdentityNodes != 1 || !record.Nodes["generate"].MixedIdentity || len(record.Nodes["generate"].Executions) != 2 {
+		t.Fatalf("mixed execution identities were not preserved: %+v", record)
+	}
+	summary := newSummary()
+	addSummary(&summary, record)
+	if summary.MixedExecutionIdentityNodes != 1 || len(summary.UsageByExecutionIdentity) != 2 {
+		t.Fatalf("usage identities were merged: %+v", summary)
+	}
+	var total UsageBreakdown
+	for _, usage := range summary.UsageByExecutionIdentity {
+		total.Executions += usage.Executions
+		total.InputTokens += usage.InputTokens
+		total.OutputTokens += usage.OutputTokens
+		total.Cost += usage.Cost
+	}
+	if total.Executions != 2 || total.InputTokens != 30 || total.OutputTokens != 3 || math.Abs(total.Cost-0.3) > 1e-9 {
+		t.Fatalf("per-identity usage does not match aggregate usage: %+v", summary.UsageByExecutionIdentity)
 	}
 }

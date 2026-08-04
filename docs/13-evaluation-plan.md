@@ -1,6 +1,6 @@
 # План оценки агентных стратегий
 
-Статус: benchmark-контур реализован в `v0.1.14-alpha` командами `takt eval run/report`. Инфраструктурный набор с fake Pi отделён от реального Route DSL benchmark.
+Статус: benchmark-контур реализован в `v0.1.15-alpha` командами `takt eval run/report`. Инфраструктурный набор с fake Pi отделён от реального Route DSL benchmark.
 
 ## 1. Цель
 
@@ -56,7 +56,7 @@ Takt должен позволять сравнивать стратегии в�
 - `benchmark_id`, fingerprints упорядоченного набора заданий и копируемого workspace template, число cases;
 - quality/generation nodes;
 - ID, версию и fingerprint валидатора;
-- assistant, его версия, requested provider/model/params и фактический `responseModel` каждого агентного узла;
+- assistant, его версия, requested provider/model/params и фактический `responseModel` каждой попытки;
 - GOOS, GOARCH и версию Go.
 
 Результаты разных fingerprints считаются разными экспериментами даже при совпадающем читаемом имени.
@@ -79,7 +79,7 @@ Takt должен позволять сравнивать стратегии в�
 }
 ```
 
-Состав checks определяет предметный валидатор. Takt проверяет только общий контракт и хранит результат без знания Route DSL.
+Состав checks определяет предметный валидатор. Takt проверяет только общий контракт и хранит результат без знания Route DSL. Результат учитывается только при статусе quality-node `completed`.
 
 ## 6. Метрики
 
@@ -88,7 +88,7 @@ Takt должен позволять сравнивать стратегии в�
 - success/failure и предметный `valid`;
 - score и checks;
 - число попыток до корректного результата;
-- assistant/version, requested/resolved model;
+- assistant/version, requested/resolved model по каждой фактической попытке;
 - Session ID и resume;
 - длительность;
 - input/output tokens и стоимость;
@@ -103,11 +103,14 @@ Takt должен позволять сравнивать стратегии в�
 - `average_attempts_to_valid`;
 - `average_score`;
 - `cost_per_valid`;
-- `duration_per_valid_ms`;
+- `amortized_end_to_end_ms_per_valid`;
 - diagnostics по severity/code;
-- распределение assistant/requested/resolved model.
+- распределение assistant/requested/resolved model;
+- `usage_by_execution_identity` и число mixed-узлов.
 
-Стоимость и время на корректный результат включают затраты неуспешных запусков.
+Стоимость и амортизированная end-to-end длительность на корректный результат включают затраты неуспешных запусков. Настоящий time-to-valid пока не рассчитывается.
+
+Измеренный ноль сериализуется как `0`; недоступный показатель — как `null`.
 
 ## 7. Правила сравнения
 
@@ -117,6 +120,7 @@ Takt должен позволять сравнивать стратегии в�
 - успех определяется внешним критерием, а не сообщением агента;
 - минимум три повтора на задачу для стохастических моделей;
 - resolved model проверяется отдельно от запрошенной модели, а версия assistant — отдельно от config fingerprint;
+- usage сравнивается по execution identity, а mixed-узлы анализируются отдельно;
 - infrastructure contract suite не смешивается с quality benchmark.
 
 ## 8. Запуск

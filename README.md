@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.14-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.15-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -40,8 +40,11 @@
 - полное совпадение OS exit code и envelope `exit_code`, включая ноль;
 - единый JSON envelope CLI для успеха и ошибок;
 - строгий YAML subset с сохранением пустых строк в block scalar;
-- aggregate usage по узлам: input/output tokens и стоимость всех попыток;
+- aggregate usage по узлам и отдельные execution records по каждой фактической попытке;
 - `takt eval run/report` для воспроизводимой оценки каталогов заданий с fingerprints стратегии, benchmark, workspace и валидатора, версией assistant, requested/resolved model и предметными метриками качества;
+- атрибуция tokens/cost по execution identity; смена assistant, его версии или resolved model между retry помечается как mixed;
+- измеренные нулевые показатели сохраняются как `0`, а недоступные средние значения — как `null`;
+- quality-result учитывается только после успешного завершения quality-node;
 - строгий контракт результата валидатора `takt-validation/v1alpha1`;
 - только стандартная библиотека Go.
 
@@ -98,7 +101,7 @@ make check
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Evaluation runner теперь фиксирует идентичность стратегии, набора заданий, workspace и валидатора, assistant и его версию, requested model, фактический Pi `responseModel` и предметные метрики качества. Следующий вертикальный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter нужен после этого сравнения либо при явной необходимости сопоставить исполнителей.
+Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Следующий вертикальный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter нужен после этого сравнения либо при явной необходимости сопоставить исполнителей.
 
 Подробности:
 
@@ -116,6 +119,7 @@ Evaluation runner теперь фиксирует идентичность ст�
 - [Evaluation runner v0.1.12](docs/26-evaluation-runner-v0.1.12.md)
 - [Изоляция и диагностика evaluation v0.1.13](docs/27-evaluation-isolation-report-v0.1.13.md)
 - [Идентичность benchmark и качество v0.1.14](docs/28-benchmark-identity-quality-v0.1.14.md)
+- [Семантика метрик и execution identity v0.1.15](docs/29-benchmark-metric-semantics-v0.1.15.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -148,6 +152,7 @@ Evaluation runner теперь фиксирует идентичность ст�
 - [Evaluation runner v0.1.12](docs/26-evaluation-runner-v0.1.12.md)
 - [Изоляция и диагностика evaluation v0.1.13](docs/27-evaluation-isolation-report-v0.1.13.md)
 - [Идентичность benchmark и качество v0.1.14](docs/28-benchmark-identity-quality-v0.1.14.md)
+- [Семантика метрик и execution identity v0.1.15](docs/29-benchmark-metric-semantics-v0.1.15.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

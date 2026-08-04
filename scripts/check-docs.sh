@@ -42,12 +42,13 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-024" \
   "ARCHITECTURE_DECISIONS.md|ADR-025" \
   "ARCHITECTURE_DECISIONS.md|ADR-026" \
+  "ARCHITECTURE_DECISIONS.md|ADR-027" \
   "docs/03-specification.md|allow_failure" \
   "docs/03-specification.md|родительский \`loop_group\`" \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.14-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.15-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \
@@ -62,6 +63,7 @@ for check in \
   "docs/12-document-map.md|26-evaluation-runner-v0.1.12.md" \
   "docs/12-document-map.md|27-evaluation-isolation-report-v0.1.13.md" \
   "docs/12-document-map.md|28-benchmark-identity-quality-v0.1.14.md" \
+  "docs/12-document-map.md|29-benchmark-metric-semantics-v0.1.15.md" \
   "docs/14-backlog-v0.2.md|TAKT-008. Fake assistant protocol suite — выполнено" \
   "docs/14-backlog-v0.2.md|TAKT-009. Specialized Pi adapter — выполнено" \
   "docs/15-coding-agent-start.md|takt-assistant/v1alpha1" \
@@ -82,6 +84,9 @@ for check in \
   "docs/28-benchmark-identity-quality-v0.1.14.md|strategy.fingerprint" \
   "docs/28-benchmark-identity-quality-v0.1.14.md|responseModel" \
   "docs/28-benchmark-identity-quality-v0.1.14.md|workspace template" \
+  "docs/29-benchmark-metric-semantics-v0.1.15.md|execution identity" \
+  "docs/29-benchmark-metric-semantics-v0.1.15.md|amortized_end_to_end_ms_per_valid" \
+  "docs/29-benchmark-metric-semantics-v0.1.15.md|completed" \
   "DEVELOPMENT.md|make route-benchmark" \
   "SECURITY.md|models.*.params" \
   "examples/route-dsl-eval/README.md|takt eval run" \
@@ -92,10 +97,14 @@ for check in \
   "schemas/run-state.schema.json|resumed" \
   "schemas/run-state.schema.json|assistant_version" \
   "schemas/run-state.schema.json|resolved_model" \
+  "schemas/run-state.schema.json|executions" \
   "schemas/validation-result.schema.json|takt-validation/v1alpha1" \
   "schemas/evaluation-report.schema.json|takt-evaluation/v1alpha1" \
   "schemas/evaluation-report.schema.json|workspace_fingerprint" \
-  "schemas/evaluation-report.schema.json|by_assistant_version"
+  "schemas/evaluation-report.schema.json|by_assistant_version" \
+  "schemas/evaluation-report.schema.json|usage_by_execution_identity" \
+  "schemas/evaluation-report.schema.json|amortized_end_to_end_ms_per_valid" \
+  "schemas/evaluation-report.schema.json|mixed_execution_identity"
 do
   file="${check%%|*}"
   text="${check#*|}"

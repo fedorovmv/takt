@@ -69,7 +69,7 @@
 - retry `resume` продолжает предыдущую либо возвращает явную ошибку;
 - timeout работает.
 
-## 5. Этап D. Route DSL end-to-end и evaluation — benchmark-контур реализован в v0.1.11–v0.1.14-alpha
+## 5. Этап D. Route DSL end-to-end и evaluation — benchmark-контур реализован в v0.1.11–v0.1.15-alpha
 
 ```text
 prepare input
@@ -89,9 +89,11 @@ prepare input
 - `route.yaml` и validation report сохраняются как artifacts;
 - approval/resume проходит через CLI;
 - `takt eval run/report` прогоняет каталог заданий в изолированных workspace;
-- отчёт фиксирует strategy/benchmark/workspace/validator fingerprints, assistant version, requested model и фактический resolved model;
+- отчёт фиксирует strategy/benchmark/workspace/validator fingerprints и per-attempt assistant version, requested model и фактический resolved model;
 - quality node возвращает `takt-validation/v1alpha1`, а summary рассчитывает success@1, final success, score и cost/time per valid;
-- `NodeState` и evaluation report сохраняют attempts, duration, usage, resume, feedback, diagnostic output, approvals и errors;
+- `NodeState` и evaluation report сохраняют attempts, execution records, duration, usage, resume, feedback, diagnostic output, approvals и errors;
+- usage группируется по execution identity; mixed retry не приписывается последней модели;
+- нулевые измеренные quality-метрики сериализуются явно, а недоступные значения — как `null`;
 - preflight отклоняет коллизии нормализованных `case_id` и пересечение workspace template/output;
 - инфраструктурный fake-Pi набор и реальный Route DSL benchmark разделены; реальный набор содержит десять заданий и требует штатный валидатор.
 

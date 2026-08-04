@@ -226,6 +226,12 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "attempts",
+        "executions",
+        "exit_code",
+        "mixed_execution_identity",
+        "output_truncated",
+        "resumed",
         "status"
       ],
       "properties": {
@@ -274,6 +280,15 @@
         },
         "usage": {
           "$ref": "#/$defs/usage"
+        },
+        "mixed_execution_identity": {
+          "type": "boolean"
+        },
+        "executions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/execution"
+          }
         }
       }
     },
@@ -281,13 +296,23 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "case_id",
-        "repeat",
-        "status",
-        "workspace",
-        "duration_ms",
+        "answers",
         "attempts",
-        "nodes"
+        "attempts_to_valid",
+        "case_id",
+        "cost",
+        "duration_ms",
+        "input_tokens",
+        "mixed_execution_identity_nodes",
+        "nodes",
+        "output_tokens",
+        "quality_expected",
+        "repeat",
+        "resumed_nodes",
+        "status",
+        "truncated_nodes",
+        "valid_at_first_attempt",
+        "workspace"
       ],
       "properties": {
         "case_id": {
@@ -362,6 +387,13 @@
         },
         "quality_error": {
           "type": "string"
+        },
+        "mixed_execution_identity_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quality_expected": {
+          "type": "boolean"
         }
       }
     },
@@ -369,16 +401,35 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "total",
-        "by_status",
-        "attempts",
-        "input_tokens",
-        "output_tokens",
-        "cost",
-        "duration_ms",
+        "amortized_end_to_end_ms_per_valid",
         "answers",
+        "attempts",
+        "average_attempts_to_valid",
+        "average_score",
+        "by_assistant",
+        "by_assistant_version",
+        "by_requested_model",
+        "by_resolved_model",
+        "by_status",
+        "cost",
+        "cost_per_valid",
+        "diagnostics_by_code",
+        "diagnostics_by_severity",
+        "duration_ms",
+        "final_success_rate",
+        "input_tokens",
+        "invalid",
+        "mixed_execution_identity_nodes",
+        "output_tokens",
+        "quality_runs",
+        "resumed_nodes",
+        "scored_runs",
+        "success_at_1",
+        "total",
         "truncated_nodes",
-        "resumed_nodes"
+        "usage_by_execution_identity",
+        "valid",
+        "valid_at_first_attempt"
       ],
       "properties": {
         "total": {
@@ -469,30 +520,41 @@
           "minimum": 0
         },
         "success_at_1": {
-          "type": "number",
+          "type": [
+            "number",
+            "null"
+          ],
           "minimum": 0,
           "maximum": 1
         },
         "final_success_rate": {
-          "type": "number",
+          "type": [
+            "number",
+            "null"
+          ],
           "minimum": 0,
           "maximum": 1
         },
         "average_attempts_to_valid": {
-          "type": "number",
+          "type": [
+            "number",
+            "null"
+          ],
           "minimum": 0
         },
         "average_score": {
-          "type": "number",
+          "type": [
+            "number",
+            "null"
+          ],
           "minimum": 0,
           "maximum": 100
         },
         "cost_per_valid": {
-          "type": "number",
-          "minimum": 0
-        },
-        "duration_per_valid_ms": {
-          "type": "number",
+          "type": [
+            "number",
+            "null"
+          ],
           "minimum": 0
         },
         "diagnostics_by_severity": {
@@ -508,6 +570,108 @@
             "type": "integer",
             "minimum": 0
           }
+        },
+        "usage_by_execution_identity": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/usageBreakdown"
+          }
+        },
+        "mixed_execution_identity_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scored_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "amortized_end_to_end_ms_per_valid": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt",
+        "status",
+        "resumed",
+        "exit_code",
+        "output_truncated"
+      ],
+      "properties": {
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "type": "string"
+        },
+        "assistant": {
+          "type": "string"
+        },
+        "assistant_version": {
+          "type": "string"
+        },
+        "requested_model": {
+          "$ref": "#/$defs/model"
+        },
+        "resolved_model": {
+          "$ref": "#/$defs/model"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "resumed": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "error_code": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "output_truncated": {
+          "type": "boolean"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      }
+    },
+    "usageBreakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executions",
+        "input_tokens",
+        "output_tokens",
+        "cost"
+      ],
+      "properties": {
+        "executions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0
         }
       }
     }

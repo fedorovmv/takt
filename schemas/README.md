@@ -11,4 +11,6 @@
 
 Go-loader остаётся главным валидатором текущей реализации: кроме структуры он проверяет DAG, ссылки на модели/исполнителей, duration и ограничения `loop_group`. JSON Schema предназначены для редакторов, внешних инструментов и подготовки стабильной схемы.
 
-`run-state.schema.json` включает подтверждённый флаг `nodes.*.resumed`, assistant/version, requested/resolved model и aggregate usage всех выполненных агентных попыток.
+`run-state.schema.json` включает подтверждённый флаг `nodes.*.resumed`, aggregate-поля узла и массив `nodes.*.executions` с assistant/version, requested/resolved model и usage каждой фактической попытки.
+
+`evaluation-report.schema.json` всегда сериализует измеряемые нулевые показатели. Недоступные средние значения представлены как `null`. Usage распределяется по `usage_by_execution_identity`, а узлы с разными моделями или версиями между попытками помечаются `mixed_execution_identity`. Поле `amortized_end_to_end_ms_per_valid` отражает суммарную длительность всех Run на один корректный результат и не является временем достижения валидности внутри отдельного Run.

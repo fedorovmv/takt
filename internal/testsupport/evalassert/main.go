@@ -46,23 +46,32 @@ type validator struct {
 }
 
 type summary struct {
-	Total                  int            `json:"total"`
-	ByStatus               map[string]int `json:"by_status"`
-	InputTokens            int            `json:"input_tokens"`
-	OutputTokens           int            `json:"output_tokens"`
-	Cost                   float64        `json:"cost"`
-	Answers                int            `json:"answers"`
-	QualityRuns            int            `json:"quality_runs"`
-	Valid                  int            `json:"valid"`
-	ValidAtFirstAttempt    int            `json:"valid_at_first_attempt"`
-	SuccessAt1             float64        `json:"success_at_1"`
-	FinalSuccessRate       float64        `json:"final_success_rate"`
-	AverageAttemptsToValid float64        `json:"average_attempts_to_valid"`
-	AverageScore           float64        `json:"average_score"`
-	ByAssistant            map[string]int `json:"by_assistant"`
-	ByAssistantVersion     map[string]int `json:"by_assistant_version"`
-	ByRequestedModel       map[string]int `json:"by_requested_model"`
-	ByResolvedModel        map[string]int `json:"by_resolved_model"`
+	Total                       int                       `json:"total"`
+	ByStatus                    map[string]int            `json:"by_status"`
+	InputTokens                 int                       `json:"input_tokens"`
+	OutputTokens                int                       `json:"output_tokens"`
+	Cost                        float64                   `json:"cost"`
+	Answers                     int                       `json:"answers"`
+	QualityRuns                 int                       `json:"quality_runs"`
+	Valid                       int                       `json:"valid"`
+	ValidAtFirstAttempt         int                       `json:"valid_at_first_attempt"`
+	SuccessAt1                  *float64                  `json:"success_at_1"`
+	FinalSuccessRate            *float64                  `json:"final_success_rate"`
+	AverageAttemptsToValid      *float64                  `json:"average_attempts_to_valid"`
+	AverageScore                *float64                  `json:"average_score"`
+	ByAssistant                 map[string]int            `json:"by_assistant"`
+	ByAssistantVersion          map[string]int            `json:"by_assistant_version"`
+	ByRequestedModel            map[string]int            `json:"by_requested_model"`
+	ByResolvedModel             map[string]int            `json:"by_resolved_model"`
+	UsageByExecutionIdentity    map[string]usageBreakdown `json:"usage_by_execution_identity"`
+	MixedExecutionIdentityNodes int                       `json:"mixed_execution_identity_nodes"`
+}
+
+type usageBreakdown struct {
+	Executions   int     `json:"executions"`
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	Cost         float64 `json:"cost"`
 }
 
 type runRecord struct {
@@ -85,16 +94,29 @@ type quality struct {
 }
 
 type nodeRecord struct {
+	Status           string            `json:"status"`
+	Attempts         int               `json:"attempts"`
+	Assistant        string            `json:"assistant"`
+	AssistantVersion string            `json:"assistant_version"`
+	RequestedModel   *modelRef         `json:"requested_model"`
+	ResolvedModel    *modelRef         `json:"resolved_model"`
+	Resumed          bool              `json:"resumed"`
+	Feedback         string            `json:"feedback"`
+	Error            string            `json:"error"`
+	DiagnosticOutput string            `json:"diagnostic_output"`
+	Usage            *usage            `json:"usage"`
+	MixedIdentity    bool              `json:"mixed_execution_identity"`
+	Executions       []executionRecord `json:"executions"`
+}
+
+type executionRecord struct {
+	Attempt          int       `json:"attempt"`
 	Status           string    `json:"status"`
-	Attempts         int       `json:"attempts"`
 	Assistant        string    `json:"assistant"`
 	AssistantVersion string    `json:"assistant_version"`
 	RequestedModel   *modelRef `json:"requested_model"`
 	ResolvedModel    *modelRef `json:"resolved_model"`
 	Resumed          bool      `json:"resumed"`
-	Feedback         string    `json:"feedback"`
-	Error            string    `json:"error"`
-	DiagnosticOutput string    `json:"diagnostic_output"`
 	Usage            *usage    `json:"usage"`
 }
 
@@ -143,7 +165,7 @@ func main() {
 			fail("unexpected quality result: %+v", run)
 		}
 		node := run.Nodes["implement"]
-		if node.Status != "completed" || node.Attempts != 2 || !node.Resumed || node.Usage == nil {
+		if node.Status != "completed" || node.Attempts != 2 || !node.Resumed || node.Usage == nil || node.MixedIdentity || len(node.Executions) != 2 {
 			fail("unexpected implement node: %+v", node)
 		}
 		if node.Assistant != "pi" || !strings.Contains(node.AssistantVersion, "0.83.0") || node.RequestedModel == nil || node.RequestedModel.Name != "route-model" || node.RequestedModel.Provider != "openai" || node.RequestedModel.ID != "fake-route-model" {
@@ -166,13 +188,28 @@ func main() {
 	if r.Summary.InputTokens != 444 || r.Summary.OutputTokens != 88 || r.Summary.Answers != 2 || math.Abs(r.Summary.Cost-0.05) > 1e-9 {
 		fail("unexpected aggregate metrics: %+v", r.Summary)
 	}
-	if r.Summary.QualityRuns != 2 || r.Summary.Valid != 2 || r.Summary.ValidAtFirstAttempt != 0 || r.Summary.SuccessAt1 != 0 || r.Summary.FinalSuccessRate != 1 || r.Summary.AverageAttemptsToValid != 2 || r.Summary.AverageScore != 100 {
+	if r.Summary.QualityRuns != 2 || r.Summary.Valid != 2 || r.Summary.ValidAtFirstAttempt != 0 || metricValue(r.Summary.SuccessAt1) != 0 || metricValue(r.Summary.FinalSuccessRate) != 1 || metricValue(r.Summary.AverageAttemptsToValid) != 2 || metricValue(r.Summary.AverageScore) != 100 {
 		fail("unexpected quality metrics: %+v", r.Summary)
 	}
-	if r.Summary.ByAssistant["pi"] != 2 || r.Summary.ByAssistantVersion["takt-fake-pi 0.83.0"] != 2 || r.Summary.ByRequestedModel["route-model=openai/fake-route-model"] != 2 || r.Summary.ByResolvedModel["route-model=openai/fake-route-model"] != 2 {
+	if r.Summary.ByAssistant["pi"] != 4 || r.Summary.ByAssistantVersion["takt-fake-pi 0.83.0"] != 4 || r.Summary.ByRequestedModel["route-model=openai/fake-route-model"] != 4 || r.Summary.ByResolvedModel["route-model=openai/fake-route-model"] != 4 || r.Summary.MixedExecutionIdentityNodes != 0 {
 		fail("unexpected model summary: %+v", r.Summary)
 	}
+	if len(r.Summary.UsageByExecutionIdentity) != 1 {
+		fail("usage was not grouped by execution identity: %+v", r.Summary.UsageByExecutionIdentity)
+	}
+	for _, breakdown := range r.Summary.UsageByExecutionIdentity {
+		if breakdown.Executions != 4 || breakdown.InputTokens != 444 || breakdown.OutputTokens != 88 || math.Abs(breakdown.Cost-0.05) > 1e-9 {
+			fail("unexpected identity usage: %+v", breakdown)
+		}
+	}
 	fmt.Println("Route DSL evaluation: PASS")
+}
+
+func metricValue(number *float64) float64 {
+	if number == nil {
+		return math.NaN()
+	}
+	return *number
 }
 
 func fail(format string, args ...any) {

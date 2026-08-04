@@ -7,21 +7,22 @@
 1. `README.md`;
 2. `docs/01-project.md`;
 3. `docs/05-implementation-status.md`;
-4. `docs/28-benchmark-identity-quality-v0.1.14.md`;
-5. `docs/27-evaluation-isolation-report-v0.1.13.md`;
-6. `docs/26-evaluation-runner-v0.1.12.md`;
-7. `docs/25-route-dsl-e2e-v0.1.11.md`;
-8. `docs/24-pi-context-usage-hardening-v0.1.10.md`;
-9. `docs/23-pi-rpc-alignment-v0.1.9.md`;
-10. `docs/22-pi-adapter-v0.1.8.md`;
-11. `docs/21-protocol-hardening-v0.1.7.md`;
-12. `docs/20-fake-assistant-contract-v0.1.6.md`;
-13. `docs/19-document-recovery-v0.1.5.md`;
-14. `docs/18-audit-remediation-v0.1.4.md`;
-15. `docs/17-audit-remediation-v0.1.3.md`;
-16. `docs/16-audit-remediation-v0.1.2.md`;
-17. `docs/08-target-v0.2.md`;
-18. `docs/11-implementation-plan.md`.
+4. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
+5. `docs/28-benchmark-identity-quality-v0.1.14.md`;
+6. `docs/27-evaluation-isolation-report-v0.1.13.md`;
+7. `docs/26-evaluation-runner-v0.1.12.md`;
+8. `docs/25-route-dsl-e2e-v0.1.11.md`;
+9. `docs/24-pi-context-usage-hardening-v0.1.10.md`;
+10. `docs/23-pi-rpc-alignment-v0.1.9.md`;
+11. `docs/22-pi-adapter-v0.1.8.md`;
+12. `docs/21-protocol-hardening-v0.1.7.md`;
+13. `docs/20-fake-assistant-contract-v0.1.6.md`;
+14. `docs/19-document-recovery-v0.1.5.md`;
+15. `docs/18-audit-remediation-v0.1.4.md`;
+16. `docs/17-audit-remediation-v0.1.3.md`;
+17. `docs/16-audit-remediation-v0.1.2.md`;
+18. `docs/08-target-v0.2.md`;
+19. `docs/11-implementation-plan.md`.
 
 Для изменения runtime:
 
@@ -58,7 +59,7 @@
 | Строгая OS/envelope семантика | `21-protocol-hardening-v0.1.7.md` | фактический |
 | Pi RPC adapter | `22-pi-adapter-v0.1.8.md`, `23-pi-rpc-alignment-v0.1.9.md`, `24-pi-context-usage-hardening-v0.1.10.md` | фактический |
 | Route DSL end-to-end | `25-route-dsl-e2e-v0.1.11.md`, `../examples/route-dsl-e2e/` | контрактный срез реализован |
-| Evaluation runner и метрики | `26-evaluation-runner-v0.1.12.md`, `27-evaluation-isolation-report-v0.1.13.md`, `28-benchmark-identity-quality-v0.1.14.md`, `../examples/route-dsl-eval/`, `../examples/route-dsl-benchmark/` | идентичность и предметные метрики реализованы; реальный baseline требует штатного валидатора |
+| Evaluation runner и метрики | `26-evaluation-runner-v0.1.12.md`, `27-evaluation-isolation-report-v0.1.13.md`, `28-benchmark-identity-quality-v0.1.14.md`, `29-benchmark-metric-semantics-v0.1.15.md`, `../examples/route-dsl-eval/`, `../examples/route-dsl-benchmark/` | идентичность, per-attempt usage и предметные метрики реализованы; реальный baseline требует штатного валидатора |
 | Восстановление документации релиза | `19-document-recovery-v0.1.5.md` | фактический |
 | Граница безопасности | `../SECURITY.md` | действующий |
 | Ближайшее целевое состояние | `08-target-v0.2.md` | целевой |

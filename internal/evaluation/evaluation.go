@@ -97,32 +97,42 @@ type EnvironmentIdentity struct {
 }
 
 type Summary struct {
-	Total                  int            `json:"total"`
-	ByStatus               map[string]int `json:"by_status"`
-	Attempts               int            `json:"attempts"`
-	InputTokens            int            `json:"input_tokens"`
-	OutputTokens           int            `json:"output_tokens"`
-	Cost                   float64        `json:"cost"`
-	DurationMS             int64          `json:"duration_ms"`
-	Answers                int            `json:"answers"`
-	Truncated              int            `json:"truncated_nodes"`
-	Resumed                int            `json:"resumed_nodes"`
-	ByAssistant            map[string]int `json:"by_assistant,omitempty"`
-	ByAssistantVersion     map[string]int `json:"by_assistant_version,omitempty"`
-	ByRequestedModel       map[string]int `json:"by_requested_model,omitempty"`
-	ByResolvedModel        map[string]int `json:"by_resolved_model,omitempty"`
-	QualityRuns            int            `json:"quality_runs,omitempty"`
-	Valid                  int            `json:"valid,omitempty"`
-	Invalid                int            `json:"invalid,omitempty"`
-	ValidAtFirstAttempt    int            `json:"valid_at_first_attempt,omitempty"`
-	SuccessAt1             float64        `json:"success_at_1,omitempty"`
-	FinalSuccessRate       float64        `json:"final_success_rate,omitempty"`
-	AverageAttemptsToValid float64        `json:"average_attempts_to_valid,omitempty"`
-	AverageScore           float64        `json:"average_score,omitempty"`
-	CostPerValid           float64        `json:"cost_per_valid,omitempty"`
-	DurationPerValidMS     float64        `json:"duration_per_valid_ms,omitempty"`
-	DiagnosticsBySeverity  map[string]int `json:"diagnostics_by_severity,omitempty"`
-	DiagnosticsByCode      map[string]int `json:"diagnostics_by_code,omitempty"`
+	Total                       int                       `json:"total"`
+	ByStatus                    map[string]int            `json:"by_status"`
+	Attempts                    int                       `json:"attempts"`
+	InputTokens                 int                       `json:"input_tokens"`
+	OutputTokens                int                       `json:"output_tokens"`
+	Cost                        float64                   `json:"cost"`
+	DurationMS                  int64                     `json:"duration_ms"`
+	Answers                     int                       `json:"answers"`
+	Truncated                   int                       `json:"truncated_nodes"`
+	Resumed                     int                       `json:"resumed_nodes"`
+	ByAssistant                 map[string]int            `json:"by_assistant"`
+	ByAssistantVersion          map[string]int            `json:"by_assistant_version"`
+	ByRequestedModel            map[string]int            `json:"by_requested_model"`
+	ByResolvedModel             map[string]int            `json:"by_resolved_model"`
+	UsageByExecutionIdentity    map[string]UsageBreakdown `json:"usage_by_execution_identity"`
+	MixedExecutionIdentityNodes int                       `json:"mixed_execution_identity_nodes"`
+	QualityRuns                 int                       `json:"quality_runs"`
+	Valid                       int                       `json:"valid"`
+	Invalid                     int                       `json:"invalid"`
+	ValidAtFirstAttempt         int                       `json:"valid_at_first_attempt"`
+	ScoredRuns                  int                       `json:"scored_runs"`
+	SuccessAt1                  *float64                  `json:"success_at_1"`
+	FinalSuccessRate            *float64                  `json:"final_success_rate"`
+	AverageAttemptsToValid      *float64                  `json:"average_attempts_to_valid"`
+	AverageScore                *float64                  `json:"average_score"`
+	CostPerValid                *float64                  `json:"cost_per_valid"`
+	AmortizedEndToEndMSPerValid *float64                  `json:"amortized_end_to_end_ms_per_valid"`
+	DiagnosticsBySeverity       map[string]int            `json:"diagnostics_by_severity"`
+	DiagnosticsByCode           map[string]int            `json:"diagnostics_by_code"`
+}
+
+type UsageBreakdown struct {
+	Executions   int     `json:"executions"`
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	Cost         float64 `json:"cost"`
 }
 
 type RunRecord struct {
@@ -133,37 +143,56 @@ type RunRecord struct {
 	Workspace           string                `json:"workspace"`
 	DurationMS          int64                 `json:"duration_ms"`
 	Attempts            int                   `json:"attempts"`
-	AttemptsToValid     int                   `json:"attempts_to_valid,omitempty"`
-	ValidAtFirstAttempt bool                  `json:"valid_at_first_attempt,omitempty"`
-	InputTokens         int                   `json:"input_tokens,omitempty"`
-	OutputTokens        int                   `json:"output_tokens,omitempty"`
-	Cost                float64               `json:"cost,omitempty"`
-	Answers             int                   `json:"answers,omitempty"`
-	Truncated           int                   `json:"truncated_nodes,omitempty"`
-	Resumed             int                   `json:"resumed_nodes,omitempty"`
+	AttemptsToValid     int                   `json:"attempts_to_valid"`
+	ValidAtFirstAttempt bool                  `json:"valid_at_first_attempt"`
+	InputTokens         int                   `json:"input_tokens"`
+	OutputTokens        int                   `json:"output_tokens"`
+	Cost                float64               `json:"cost"`
+	Answers             int                   `json:"answers"`
+	Truncated           int                   `json:"truncated_nodes"`
+	Resumed             int                   `json:"resumed_nodes"`
+	MixedIdentityNodes  int                   `json:"mixed_execution_identity_nodes"`
 	ErrorCode           string                `json:"error_code,omitempty"`
 	Error               string                `json:"error,omitempty"`
 	Quality             *validation.Result    `json:"quality,omitempty"`
 	QualityError        string                `json:"quality_error,omitempty"`
-	QualityExpected     bool                  `json:"-"`
+	QualityExpected     bool                  `json:"quality_expected"`
 	Nodes               map[string]NodeRecord `json:"nodes"`
 }
 
 type NodeRecord struct {
+	Status           string            `json:"status"`
+	Attempts         int               `json:"attempts"`
+	Assistant        string            `json:"assistant,omitempty"`
+	AssistantVersion string            `json:"assistant_version,omitempty"`
+	RequestedModel   *store.ModelRef   `json:"requested_model,omitempty"`
+	ResolvedModel    *store.ModelRef   `json:"resolved_model,omitempty"`
+	SessionID        string            `json:"session_id,omitempty"`
+	Resumed          bool              `json:"resumed"`
+	ExitCode         int               `json:"exit_code"`
+	ErrorCode        string            `json:"error_code,omitempty"`
+	Error            string            `json:"error,omitempty"`
+	Feedback         string            `json:"feedback,omitempty"`
+	DiagnosticOutput string            `json:"diagnostic_output,omitempty"`
+	OutputTruncated  bool              `json:"output_truncated"`
+	Usage            *store.Usage      `json:"usage,omitempty"`
+	MixedIdentity    bool              `json:"mixed_execution_identity"`
+	Executions       []ExecutionRecord `json:"executions"`
+}
+
+type ExecutionRecord struct {
+	Attempt          int             `json:"attempt"`
 	Status           string          `json:"status"`
-	Attempts         int             `json:"attempts,omitempty"`
 	Assistant        string          `json:"assistant,omitempty"`
 	AssistantVersion string          `json:"assistant_version,omitempty"`
 	RequestedModel   *store.ModelRef `json:"requested_model,omitempty"`
 	ResolvedModel    *store.ModelRef `json:"resolved_model,omitempty"`
 	SessionID        string          `json:"session_id,omitempty"`
-	Resumed          bool            `json:"resumed,omitempty"`
-	ExitCode         int             `json:"exit_code,omitempty"`
+	Resumed          bool            `json:"resumed"`
+	ExitCode         int             `json:"exit_code"`
 	ErrorCode        string          `json:"error_code,omitempty"`
 	Error            string          `json:"error,omitempty"`
-	Feedback         string          `json:"feedback,omitempty"`
-	DiagnosticOutput string          `json:"diagnostic_output,omitempty"`
-	OutputTruncated  bool            `json:"output_truncated,omitempty"`
+	OutputTruncated  bool            `json:"output_truncated"`
 	Usage            *store.Usage    `json:"usage,omitempty"`
 }
 
@@ -296,8 +325,10 @@ func buildIdentities(paths resolvedOptions, opts RunOptions, wf *spec.Workflow, 
 		QualityNode          string `json:"quality_node"`
 		GenerationNode       string `json:"generation_node"`
 		ValidationProtocol   string `json:"validation_protocol"`
+		ValidatorID          string `json:"validator_id"`
+		ValidatorVersion     string `json:"validator_version"`
 		ValidatorFingerprint string `json:"validator_fingerprint"`
-	}{datasetFingerprint, workspaceFingerprint, opts.QualityNode, opts.GenerationNode, protocol, validator.Fingerprint})
+	}{datasetFingerprint, workspaceFingerprint, opts.QualityNode, opts.GenerationNode, protocol, validator.ID, validator.Version, validator.Fingerprint})
 	if err != nil {
 		return identities{}, err
 	}
@@ -526,14 +557,18 @@ func applyQuality(record *RunRecord, state *store.RunState, qualityNode, generat
 	if node == nil {
 		return fmt.Errorf("quality node %q has no runtime state", qualityNode)
 	}
-	if strings.TrimSpace(node.Output) == "" {
-		switch node.Status {
-		case store.NodeSkipped, store.NodeBlocked, store.NodePending:
-			record.QualityError = fmt.Sprintf("quality node %q did not run: status=%s", qualityNode, node.Status)
-			return nil
-		default:
-			return fmt.Errorf("quality node %q produced no validation result", qualityNode)
+	if node.Status != store.NodeCompleted {
+		record.QualityError = fmt.Sprintf("quality node %q did not complete: status=%s", qualityNode, node.Status)
+		if node.ErrorCode != "" {
+			record.QualityError += " error_code=" + node.ErrorCode
 		}
+		if node.Error != "" {
+			record.QualityError += " error=" + node.Error
+		}
+		return nil
+	}
+	if strings.TrimSpace(node.Output) == "" {
+		return fmt.Errorf("quality node %q produced no validation result", qualityNode)
 	}
 	result, err := validation.Decode([]byte(node.Output))
 	if err != nil {
@@ -573,22 +608,48 @@ func recordFromState(caseID string, repeat int, workspacePath string, state *sto
 			record.OutputTokens += node.Usage.OutputTokens
 			record.Cost += node.Usage.Cost
 		}
+		executions := make([]ExecutionRecord, 0, len(node.Executions))
+		identities := map[string]struct{}{}
+		for _, executionState := range node.Executions {
+			executionRecord := executionRecordFromState(executionState)
+			executions = append(executions, executionRecord)
+			if key := executionIdentityKey(executionRecord.Assistant, executionRecord.AssistantVersion, executionRecord.RequestedModel, executionRecord.ResolvedModel); key != "" {
+				identities[key] = struct{}{}
+			}
+		}
+		mixedIdentity := len(identities) > 1
+		if mixedIdentity {
+			record.MixedIdentityNodes++
+		}
 		record.Nodes[id] = NodeRecord{
 			Status: node.Status, Attempts: node.Attempts, Assistant: node.Assistant, AssistantVersion: node.AssistantVersion,
 			RequestedModel: node.RequestedModel, ResolvedModel: node.ResolvedModel,
 			SessionID: node.SessionID, Resumed: node.Resumed,
 			ExitCode: node.ExitCode, ErrorCode: node.ErrorCode, Error: node.Error, Feedback: node.Feedback,
 			DiagnosticOutput: node.Output, OutputTruncated: node.OutputTruncated, Usage: node.Usage,
+			MixedIdentity: mixedIdentity, Executions: executions,
 		}
 	}
 	return record
+}
+
+func executionRecordFromState(state store.ExecutionState) ExecutionRecord {
+	return ExecutionRecord{
+		Attempt: state.Attempt, Status: state.Status,
+		Assistant: state.Assistant, AssistantVersion: state.AssistantVersion,
+		RequestedModel: state.RequestedModel, ResolvedModel: state.ResolvedModel,
+		SessionID: state.SessionID, Resumed: state.Resumed,
+		ExitCode: state.ExitCode, ErrorCode: state.ErrorCode, Error: state.Error,
+		OutputTruncated: state.OutputTruncated, Usage: state.Usage,
+	}
 }
 
 func newSummary() Summary {
 	return Summary{
 		ByStatus: map[string]int{}, ByAssistant: map[string]int{}, ByAssistantVersion: map[string]int{},
 		ByRequestedModel: map[string]int{}, ByResolvedModel: map[string]int{},
-		DiagnosticsBySeverity: map[string]int{}, DiagnosticsByCode: map[string]int{},
+		UsageByExecutionIdentity: map[string]UsageBreakdown{},
+		DiagnosticsBySeverity:    map[string]int{}, DiagnosticsByCode: map[string]int{},
 	}
 }
 
@@ -603,18 +664,17 @@ func addSummary(summary *Summary, record RunRecord) {
 	summary.Answers += record.Answers
 	summary.Truncated += record.Truncated
 	summary.Resumed += record.Resumed
+	summary.MixedExecutionIdentityNodes += record.MixedIdentityNodes
 	for _, node := range record.Nodes {
-		if node.Assistant != "" {
-			summary.ByAssistant[node.Assistant]++
+		if len(node.Executions) == 0 {
+			addExecutionIdentitySummary(summary, ExecutionRecord{
+				Assistant: node.Assistant, AssistantVersion: node.AssistantVersion,
+				RequestedModel: node.RequestedModel, ResolvedModel: node.ResolvedModel, Usage: node.Usage,
+			})
+			continue
 		}
-		if node.AssistantVersion != "" {
-			summary.ByAssistantVersion[node.AssistantVersion]++
-		}
-		if key := modelKey(node.RequestedModel); key != "" {
-			summary.ByRequestedModel[key]++
-		}
-		if key := modelKey(node.ResolvedModel); key != "" {
-			summary.ByResolvedModel[key]++
+		for _, executionRecord := range node.Executions {
+			addExecutionIdentitySummary(summary, executionRecord)
 		}
 	}
 	if !record.QualityExpected {
@@ -643,8 +703,8 @@ func finishReport(report *SuiteReport) {
 	if report.Summary.QualityRuns == 0 {
 		return
 	}
-	report.Summary.SuccessAt1 = float64(report.Summary.ValidAtFirstAttempt) / float64(report.Summary.QualityRuns)
-	report.Summary.FinalSuccessRate = float64(report.Summary.Valid) / float64(report.Summary.QualityRuns)
+	report.Summary.SuccessAt1 = floatPointer(float64(report.Summary.ValidAtFirstAttempt) / float64(report.Summary.QualityRuns))
+	report.Summary.FinalSuccessRate = floatPointer(float64(report.Summary.Valid) / float64(report.Summary.QualityRuns))
 	var attemptsToValid, scored int
 	var scoreTotal float64
 	for _, record := range report.Runs {
@@ -660,14 +720,57 @@ func finishReport(report *SuiteReport) {
 		}
 	}
 	if report.Summary.Valid > 0 {
-		report.Summary.AverageAttemptsToValid = float64(attemptsToValid) / float64(report.Summary.Valid)
-		report.Summary.CostPerValid = report.Summary.Cost / float64(report.Summary.Valid)
-		report.Summary.DurationPerValidMS = float64(report.Summary.DurationMS) / float64(report.Summary.Valid)
+		report.Summary.AverageAttemptsToValid = floatPointer(float64(attemptsToValid) / float64(report.Summary.Valid))
+		report.Summary.CostPerValid = floatPointer(report.Summary.Cost / float64(report.Summary.Valid))
+		report.Summary.AmortizedEndToEndMSPerValid = floatPointer(float64(report.Summary.DurationMS) / float64(report.Summary.Valid))
 	}
 	if scored > 0 {
-		report.Summary.AverageScore = scoreTotal / float64(scored)
+		report.Summary.ScoredRuns = scored
+		report.Summary.AverageScore = floatPointer(scoreTotal / float64(scored))
 	}
 }
+
+func addExecutionIdentitySummary(summary *Summary, executionRecord ExecutionRecord) {
+	if executionRecord.Assistant != "" {
+		summary.ByAssistant[executionRecord.Assistant]++
+	}
+	if executionRecord.AssistantVersion != "" {
+		summary.ByAssistantVersion[executionRecord.AssistantVersion]++
+	}
+	if key := modelKey(executionRecord.RequestedModel); key != "" {
+		summary.ByRequestedModel[key]++
+	}
+	if key := modelKey(executionRecord.ResolvedModel); key != "" {
+		summary.ByResolvedModel[key]++
+	}
+	if executionRecord.Usage == nil {
+		return
+	}
+	key := executionIdentityKey(executionRecord.Assistant, executionRecord.AssistantVersion, executionRecord.RequestedModel, executionRecord.ResolvedModel)
+	if key == "" {
+		key = "unknown"
+	}
+	usage := summary.UsageByExecutionIdentity[key]
+	usage.Executions++
+	usage.InputTokens += executionRecord.Usage.InputTokens
+	usage.OutputTokens += executionRecord.Usage.OutputTokens
+	usage.Cost += executionRecord.Usage.Cost
+	summary.UsageByExecutionIdentity[key] = usage
+}
+
+func executionIdentityKey(assistantName, assistantVersion string, requested, resolved *store.ModelRef) string {
+	if assistantName == "" && assistantVersion == "" && requested == nil && resolved == nil {
+		return ""
+	}
+	return strings.Join([]string{
+		"assistant=" + assistantName,
+		"version=" + assistantVersion,
+		"requested=" + modelKey(requested),
+		"resolved=" + modelKey(resolved),
+	}, "|")
+}
+
+func floatPointer(value float64) *float64 { return &value }
 
 func modelKey(model *store.ModelRef) string {
 	if model == nil {

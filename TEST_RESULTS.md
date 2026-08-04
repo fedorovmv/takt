@@ -1,21 +1,33 @@
-# Результаты проверки v0.1.14-alpha
+# Результаты проверки v0.1.15-alpha
 
-## Benchmark identity и предметное качество
+## Семантика benchmark-метрик
 
 Проверено:
 
-- `report.json` использует формат `takt-evaluation/v1alpha1`;
-- strategy fingerprint объединяет fingerprints workflow, config и используемых Markdown-команд;
-- benchmark fingerprint включает упорядоченный набор заданий, копируемый workspace template, quality/generation nodes, протокол качества и fingerprint валидатора;
-- изменение файла или каталога валидатора меняет его SHA-256;
-- `NodeState` и evaluation report сохраняют assistant, его версию, requested model и фактический Pi `responseModel`;
-- Pi version probe переносится в `assistant_version`;
-- строгий decoder `takt-validation/v1alpha1` отклоняет неизвестные поля, отсутствующий `valid`, явный `null`, неверные диапазоны, неизвестную severity и второй JSON-объект;
-- malformed validator result получает `quality_contract` и останавливает benchmark;
-- неуспешный workflow с пропущенным quality node учитывается как предметно невалидный результат, а не теряется из denominator;
-- `success_at_1`, `final_success_rate`, score, diagnostics, attempts/cost/time per valid рассчитываются по всем запускам;
-- стоимость и время неуспешных заданий входят в стоимость и время одного корректного результата;
-- infrastructure fake-Pi suite и реальный Route DSL benchmark разделены.
+- измеренные нулевые показатели `success_at_1` и `final_success_rate` всегда присутствуют в `report.json` как `0`;
+- недоступные средние значения сериализуются как `null`, а не исчезают из отчёта;
+- `NodeState.executions` сохраняет отдельную execution-запись для каждого фактического вызова узла;
+- каждая запись содержит assistant, версию assistant, requested/resolved model, Session ID, resume, usage и классификацию завершения;
+- смена assistant, версии или модели между retry помечает узел `mixed_execution_identity`;
+- токены и стоимость распределяются по `summary.usage_by_execution_identity`, а не приписываются последней попытке;
+- aggregate `NodeState.usage` остаётся суммой для обратной совместимости;
+- `valid: true` учитывается только от quality-node со статусом `completed`;
+- stdout неуспешного, прерванного или пропущенного quality-node не повышает показатели качества;
+- `benchmark.fingerprint` меняется при изменении validator ID или version;
+- неоднозначное поле `duration_per_valid_ms` заменено на `amortized_end_to_end_ms_per_valid`;
+- opt-in Pi smoke требует непустой фактический `ResolvedModel`.
+
+## Согласованность схем
+
+Проверено:
+
+- `schemas/run-state.schema.json` описывает `nodes.*.executions`;
+- `schemas/evaluation-report.schema.json` требует нулевые счётчики и допускает `null` только для недоступных средних;
+- схема содержит `execution`, `usage_by_execution_identity`, mixed identity и новое имя временной метрики;
+- старое `duration_per_valid_ms` в текущей схеме отсутствует;
+- все JSON Schema синтаксически корректны;
+- сформированный Route DSL evaluation report успешно проверен по Draft 2020-12 schema с локальным `validation-result.schema.json`;
+- проверка документации требует ADR-027 и документ `29-benchmark-metric-semantics-v0.1.15.md`.
 
 ## Команды
 
@@ -33,9 +45,8 @@ go build ./cmd/takt-fake-pi
 ./scripts/test-route-dsl-eval.sh
 ./scripts/check-docs.sh
 ./scripts/verify.sh
-sha256sum -c MANIFEST.sha256
 ```
 
-Дополнительно сформированный evaluation report проверен локально по `schemas/evaluation-report.schema.json` и `schemas/validation-result.schema.json` валидатором JSON Schema Draft 2020-12.
+Все перечисленные проверки прошли на рабочем дереве, восстановленном из опубликованного `v0.1.14-alpha`, и повторно — после чистой распаковки релизного архива. `MANIFEST.sha256` и версия CLI `takt v0.1.15-alpha` подтверждены отдельно.
 
-Реальный benchmark `v0.1.14-alpha` с Pi и штатным Route DSL validator в среде сборки не запускался: отсутствуют бинарник Pi, пользовательская авторизация, доступная модель и предметный валидатор. Успешный внешний Pi smoke предыдущей версии подтверждает transport-контур, но не является baseline качества этого релиза.
+Реальный Pi smoke и реальный Route DSL benchmark в среде сборки не запускались: бинарник Pi, пользовательская авторизация, модель и штатный предметный валидатор отсутствуют. Opt-in smoke остаётся в наборе и теперь дополнительно проверяет фактически разрешённую модель.

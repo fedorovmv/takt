@@ -404,4 +404,7 @@ func TestPiAdapterOptInSmoke(t *testing.T) {
 	if !strings.Contains(result.Output, "TAKT_PI_SMOKE_OK") {
 		t.Fatalf("unexpected Pi smoke output: %q", result.Output)
 	}
+	if result.ResolvedModel == nil || result.ResolvedModel.Provider == "" || result.ResolvedModel.ID == "" {
+		t.Fatalf("Pi smoke did not expose resolved model: %+v", result.ResolvedModel)
+	}
 }

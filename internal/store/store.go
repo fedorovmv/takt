@@ -45,6 +45,26 @@ type Usage struct {
 	Cost         float64 `json:"cost,omitempty"`
 }
 
+// ExecutionState records one actual node action invocation. NodeState keeps
+// aggregate fields for compatibility and quick inspection, while Executions
+// preserves the per-attempt identity needed to attribute usage when retries
+// resolve to different assistants or models.
+type ExecutionState struct {
+	Attempt          int       `json:"attempt"`
+	Status           string    `json:"status"`
+	Assistant        string    `json:"assistant,omitempty"`
+	AssistantVersion string    `json:"assistant_version,omitempty"`
+	RequestedModel   *ModelRef `json:"requested_model,omitempty"`
+	ResolvedModel    *ModelRef `json:"resolved_model,omitempty"`
+	SessionID        string    `json:"session_id,omitempty"`
+	Resumed          bool      `json:"resumed,omitempty"`
+	ExitCode         int       `json:"exit_code,omitempty"`
+	ErrorCode        string    `json:"error_code,omitempty"`
+	Error            string    `json:"error,omitempty"`
+	OutputTruncated  bool      `json:"output_truncated,omitempty"`
+	Usage            *Usage    `json:"usage,omitempty"`
+}
+
 type NodeState struct {
 	Status           string               `json:"status"`
 	Output           string               `json:"output,omitempty"`
@@ -61,6 +81,7 @@ type NodeState struct {
 	Resumed          bool                 `json:"resumed,omitempty"`
 	ErrorCode        string               `json:"error_code,omitempty"`
 	Error            string               `json:"error,omitempty"`
+	Executions       []ExecutionState     `json:"executions,omitempty"`
 	LoopPrevious     map[string]NodeState `json:"loop_previous,omitempty"`
 }
 

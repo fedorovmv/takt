@@ -1,6 +1,6 @@
 # Backlog Takt v0.2
 
-Статус обновлён после добавления идентичности benchmark и предметных метрик качества в `v0.1.14-alpha`.
+Статус обновлён после уточнения семантики benchmark-метрик и per-attempt execution identity в `v0.1.15-alpha`.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 
@@ -106,7 +106,7 @@
 
 **Приёмка:** fresh, resume success и resume failure реализованы для process protocol; подтверждены на Pi adapter; OpenCode получит тот же контракт при реализации.
 
-## Завершено в v0.1.11–v0.1.14-alpha
+## Завершено в v0.1.11–v0.1.15-alpha
 
 ### TAKT-011. Route DSL end-to-end — контрактный срез выполнен
 
@@ -118,7 +118,7 @@
 
 ### TAKT-011B. Производственная проверка Route DSL — выполняется
 
-В `v0.1.12-alpha` реализован evaluation runner; в `v0.1.13-alpha` закрыты коллизии `case_id`, пересечение путей и потеря resume/feedback/diagnostics. В `v0.1.14-alpha` добавлены strategy/benchmark/workspace/validator fingerprints, assistant/version/requested/resolved model, `takt-validation/v1alpha1` и агрегаты success@1/final success/score/cost per valid.
+В `v0.1.12-alpha` реализован evaluation runner; в `v0.1.13-alpha` закрыты коллизии `case_id`, пересечение путей и потеря resume/feedback/diagnostics. В `v0.1.14-alpha` добавлены strategy/benchmark/workspace/validator fingerprints, assistant/version/requested/resolved model, `takt-validation/v1alpha1` и агрегаты success@1/final success/score/cost per valid. В `v0.1.15-alpha` добавлены per-attempt execution records, раздельная атрибуция usage, mixed identity, явные `0`/`null` и приём качества только от завершившегося quality-node.
 
 Остаётся:
 
@@ -163,7 +163,7 @@ Draft → approval comment → revise → artifact без изменения run
 
 ### TAKT-020. Eval metrics — основной JSON-контур реализован
 
-`takt eval run/report` собирает идентичность стратегии/benchmark/workspace/валидатора, assistant/version/requested/resolved model, status, attempts, duration, usage, approvals, diagnostics и предметное качество. Реализованы success@1, final success, average score, attempts/cost/time per valid. Остаются CLI-сравнение нескольких отчётов, экспорт таблиц и manual corrections.
+`takt eval run/report` собирает идентичность стратегии/benchmark/workspace/валидатора, per-attempt assistant/version/requested/resolved model, status, attempts, duration, usage, approvals, diagnostics и предметное качество. Реализованы success@1, final success, average score, attempts/cost per valid, амортизированная end-to-end длительность и usage по execution identity. Остаются настоящий time-to-valid, CLI-сравнение нескольких отчётов, экспорт таблиц и manual corrections.
 
 ## Вне v0.2
 

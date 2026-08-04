@@ -46,7 +46,11 @@
 - интеграционные overflow+timeout/cancel проверки через `Pi.Run` с корректными parent contexts и сохранение `OutputTruncated` в `NodeState`;
 - воспроизводимый Route DSL end-to-end с двумя попытками, feedback, resume, обязательной проверкой, артефактами и approval;
 - накопление usage по всем агентным попыткам в `NodeState`;
+- отдельные execution records для каждой попытки с assistant/version/requested/resolved model и usage;
 - `takt eval run/report`, предварительная проверка уникальности `case_id`, запрет пересечения template/output, fingerprints стратегии/benchmark/workspace/валидатора, assistant/version/requested/resolved model и JSON-отчёт с предметными метриками качества;
+- раздельная атрибуция usage по execution identity и явная отметка mixed identity;
+- явные нулевые quality-метрики и `null` для недоступных средних значений;
+- учёт quality только после успешного завершения quality-node;
 - строгие схемы `takt-validation/v1alpha1` и `takt-evaluation/v1alpha1`;
 - стартовый Route DSL eval-набор из десяти синтетических заданий.
 
@@ -84,4 +88,4 @@
 
 ## Ближайший целевой срез
 
-Evaluation runner, изоляция путей, strategy/benchmark/workspace/validator fingerprints, execution identity и предметные метрики качества реализованы. Следующий срез — запустить `examples/route-dsl-benchmark` со штатным `route-tool`, получить baseline на десяти реальных обезличенных заданиях и затем сравнить модели или стратегии на неизменных fingerprints. Нормализованные diagnostics и учёт ручных исправлений остаются следующими расширениями. OpenCode adapter не блокирует эту проверку.
+Evaluation runner, изоляция путей, strategy/benchmark/workspace/validator fingerprints, per-attempt execution identity и предметные метрики качества реализованы. Следующий срез — запустить `examples/route-dsl-benchmark` со штатным `route-tool`, получить baseline на десяти реальных обезличенных заданиях и затем сравнить модели или стратегии на неизменных fingerprints. Настоящий time-to-valid потребует временной отметки успешного quality-node; текущий показатель времени является амортизированной end-to-end длительностью benchmark. Нормализованные diagnostics и учёт ручных исправлений остаются следующими расширениями. OpenCode adapter не блокирует эту проверку.

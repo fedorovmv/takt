@@ -308,6 +308,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		if contextErr := attemptContextError(attemptCtx, "node attempt"); contextErr != nil {
 			execErr = contextErr
 		}
+		recordExecution(ns, result, execErr)
 		applyExecResult(ns, result)
 		accumulateUsage(ns, result.Usage)
 		if execErr != nil && node.AllowFailure && execution.IsExit(execErr) {
@@ -669,6 +670,61 @@ func accumulateUsage(node *store.NodeState, usage *assistant.ProtocolUsage) {
 	node.Usage.InputTokens += usage.InputTokens
 	node.Usage.OutputTokens += usage.OutputTokens
 	node.Usage.Cost += usage.Cost
+}
+
+func recordExecution(node *store.NodeState, result execResult, err error) {
+	if node == nil {
+		return
+	}
+	status := store.NodeCompleted
+	errorCode := ""
+	errorText := ""
+	if err != nil {
+		kind := execution.KindOf(err)
+		errorCode = string(kind)
+		errorText = err.Error()
+		switch kind {
+		case execution.KindExit:
+			status = store.NodeFailed
+		case execution.KindCancelled:
+			status = store.NodeCancelled
+		case execution.KindTimedOut:
+			status = store.NodeTimedOut
+		default:
+			status = store.NodeErrored
+		}
+	}
+	record := store.ExecutionState{
+		Attempt:          node.Attempts,
+		Status:           status,
+		Assistant:        result.Assistant,
+		AssistantVersion: result.AssistantVersion,
+		RequestedModel:   cloneModelRef(result.RequestedModel),
+		ResolvedModel:    cloneModelRef(result.ResolvedModel),
+		SessionID:        result.SessionID,
+		Resumed:          result.Resumed,
+		ExitCode:         result.ExitCode,
+		ErrorCode:        errorCode,
+		Error:            errorText,
+		OutputTruncated:  result.Truncated,
+	}
+	if result.Usage != nil {
+		record.Usage = &store.Usage{
+			InputTokens:  result.Usage.InputTokens,
+			OutputTokens: result.Usage.OutputTokens,
+			Cost:         result.Usage.Cost,
+		}
+	}
+	node.Executions = append(node.Executions, record)
+}
+
+func cloneModelRef(model *store.ModelRef) *store.ModelRef {
+	if model == nil {
+		return nil
+	}
+	copy := *model
+	copy.Params = cloneParams(model.Params)
+	return &copy
 }
 
 func (r *Runner) finishNodeExecutionError(state *store.RunState, nodeID string, kind execution.Kind, err error, result execResult) error {

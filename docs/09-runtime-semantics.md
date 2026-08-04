@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints и persistence уже реализована в `v0.1.14-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity уже реализована в `v0.1.15-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -19,6 +19,10 @@
 ### Attempt
 
 Один фактический запуск действия узла. Approval, переводящий Run в `waiting`, попытку не расходует.
+
+### Execution record
+
+Сохраняемая запись одного фактического вызова действия. Она содержит номер попытки, assistant, его версию, requested/resolved model, Session ID, usage и результат выполнения. Агрегированные поля Node описывают итог узла, а execution records сохраняют различия между retry.
 
 ### Iteration
 
@@ -148,7 +152,9 @@ node.started
 
 `allow_failure: true` разрешает только `exit`. Он не скрывает `start`, timeout, cancellation, protocol или internal error.
 
-Output, exit code, session ID и признак truncation сохраняются даже при неуспешном результате, если они доступны. Для агентного узла также сохраняются assistant, версия assistant, requested model и resolved model. Pi adapter использует `responseModel` последнего assistant message и только при его отсутствии берёт модель из `get_state`. Usage каждой агентной попытки добавляется к aggregate `NodeState.usage`; retry после внешней проверки не теряет стоимость уже выполненной попытки.
+Output, exit code, session ID и признак truncation сохраняются даже при неуспешном результате, если они доступны. Для агентного узла также сохраняются assistant, версия assistant, requested model и resolved model. Pi adapter использует `responseModel` последнего assistant message и только при его отсутствии берёт модель из `get_state`.
+
+Usage каждой агентной попытки добавляется к aggregate `NodeState.usage`, а сама попытка записывается в `NodeState.executions`. Поэтому retry после внешней проверки не теряет стоимость и не приписывает usage предыдущих попыток последней модели. Различающиеся assistant/version/requested/resolved model образуют mixed execution identity.
 
 Для process assistant с `takt-assistant/v1alpha1` OS exit code и envelope `exit_code` обязаны совпадать всегда. Расхождение классифицируется как `protocol` до применения `allow_failure`. Runtime также отклоняет дополнительный JSON, неизвестные поля, несовместимые status/exit, отрицательный usage и неподтверждённый resume.
 

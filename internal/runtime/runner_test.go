@@ -632,4 +632,66 @@ func TestPiAssistantResumesSessionAcrossRetry(t *testing.T) {
 	if !strings.Contains(node.AssistantVersion, "0.83.0") {
 		t.Fatalf("assistant version was not preserved: %q", node.AssistantVersion)
 	}
+	if len(node.Executions) != 2 {
+		t.Fatalf("per-attempt executions were not preserved: %+v", node.Executions)
+	}
+	for index, executionRecord := range node.Executions {
+		if executionRecord.Attempt != index+1 || executionRecord.Status != store.NodeCompleted || executionRecord.Usage == nil || executionRecord.Usage.InputTokens != 111 || executionRecord.Usage.OutputTokens != 22 {
+			t.Fatalf("unexpected execution record %d: %+v", index, executionRecord)
+		}
+	}
+}
+
+func TestRetryPreservesPerExecutionModelIdentityAndUsage(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{
+		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "mixed-model-retry"},
+		Defaults: spec.Defaults{Assistant: "dynamic", Model: "logical", Session: "resume"},
+		Nodes: []spec.Node{{
+			ID: "agent", Prompt: "generate", Attempts: spec.AttemptsSpec{Max: 2},
+			Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
+				ID: "retry-once", Bash: `test -f retried || { touch retried; echo retry; exit 1; }`,
+				OnFailure: spec.HookDecision{Action: "retry"},
+			}}},
+		}},
+	}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"logical": {Provider: "router", ID: "requested"}}}
+	calls := 0
+	adapter := adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
+		calls++
+		resolved := "model-a"
+		version := "adapter-1"
+		usage := &assistant.ProtocolUsage{InputTokens: 10, OutputTokens: 1, Cost: 0.1}
+		if calls == 2 {
+			resolved = "model-b"
+			version = "adapter-2"
+			usage = &assistant.ProtocolUsage{InputTokens: 20, OutputTokens: 2, Cost: 0.2}
+		}
+		return assistant.Result{
+			Output: "ok", ExitCode: 0, SessionID: "session", Resumed: req.SessionID != "",
+			AssistantVersion: version,
+			ResolvedModel:    &assistant.ProtocolModel{Provider: "router", ID: resolved},
+			Usage:            usage,
+		}, nil
+	})
+	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := state.Nodes["agent"]
+	if node.Status != store.NodeCompleted || node.Attempts != 2 || len(node.Executions) != 2 {
+		t.Fatalf("unexpected node state: %+v", node)
+	}
+	first, second := node.Executions[0], node.Executions[1]
+	if first.ResolvedModel == nil || first.ResolvedModel.ID != "model-a" || first.AssistantVersion != "adapter-1" || first.Usage == nil || first.Usage.InputTokens != 10 {
+		t.Fatalf("first execution identity was overwritten: %+v", first)
+	}
+	if second.ResolvedModel == nil || second.ResolvedModel.ID != "model-b" || second.AssistantVersion != "adapter-2" || second.Usage == nil || second.Usage.InputTokens != 20 {
+		t.Fatalf("second execution identity missing: %+v", second)
+	}
+	if node.ResolvedModel == nil || node.ResolvedModel.ID != "model-b" || node.Usage == nil || node.Usage.InputTokens != 30 {
+		t.Fatalf("aggregate compatibility fields are incorrect: %+v", node)
+	}
 }
