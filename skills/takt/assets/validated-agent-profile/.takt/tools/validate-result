@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ! -s result.txt ]]; then
+  echo 'RESULT_EMPTY: result.txt отсутствует или пуст' >&2
+  exit 1
+fi
+
+echo 'result.txt: valid'

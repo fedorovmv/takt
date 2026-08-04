@@ -37,6 +37,20 @@ for check in \
   "AGENTS.md|Takt — Go-runtime" \
   "AGENTS.md|quality_node_status=completed" \
   "AGENTS.md|make check" \
+  "AGENTS.md|skills/takt/SKILL.md" \
+  "README.md|Скилл для настройки Takt" \
+  "skills/takt/SKILL.md|name: takt" \
+  "skills/takt/README.md|Takt authoring skill" \
+  "skills/takt/VERSION|0.1.0" \
+  "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
+  "skills/takt/SKILL.md|takt validate" \
+  "skills/takt/references/configuration.md|Приоритет настроек" \
+  "skills/takt/references/workflows.md|Approval и вложенный" \
+  "skills/takt/references/patterns.md|валидатор → feedback → retry" \
+  "skills/takt/references/troubleshooting.md|Workflow валиден, но не запускается" \
+  "skills/takt/assets/validated-agent-profile/.takt/workflows/basic.yaml|model: deep" \
+  "skills/takt/assets/validated-agent-profile/.takt/workflows/validated.yaml|action: retry" \
+  "docs/32-takt-authoring-skill-v0.1.18.md|scripts/test-takt-skill.sh" \
   "README.md|Краткие правила для кодовых агентов" \
   "DEVELOPMENT.md|\`AGENTS.md\`" \
   "docs/12-document-map.md|Правила работы кодовых агентов" \
@@ -56,7 +70,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.17-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.18-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \
@@ -74,6 +88,7 @@ for check in \
   "docs/12-document-map.md|29-benchmark-metric-semantics-v0.1.15.md" \
   "docs/12-document-map.md|30-quality-envelope-semantics-v0.1.16.md" \
   "docs/12-document-map.md|31-quality-stdout-separation-v0.1.17.md" \
+  "docs/12-document-map.md|32-takt-authoring-skill-v0.1.18.md" \
   "docs/14-backlog-v0.2.md|TAKT-008. Fake assistant protocol suite — выполнено" \
   "docs/14-backlog-v0.2.md|TAKT-009. Specialized Pi adapter — выполнено" \
   "docs/15-coding-agent-start.md|takt-assistant/v1alpha1" \

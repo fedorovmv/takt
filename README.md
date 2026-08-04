@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.17-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.18-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -97,6 +97,20 @@ make check
   --json
 ```
 
+
+## Скилл для настройки Takt
+
+Каталог [`skills/takt/`](skills/takt/) содержит переносимый скилл для кодовых агентов. Он помогает:
+
+- собирать `.takt/config.yaml`, workflow и Markdown-команды;
+- выбирать assistant и model на уровне defaults, команды или узла;
+- проектировать retry/feedback, hooks, approval и `loop_group`;
+- использовать inline `prompt` и внешние команды;
+- проверять профиль через `takt validate` и диагностировать ошибки;
+- начинать с проверенного шаблона `skills/takt/assets/validated-agent-profile/`.
+
+Основной файл скилла: [`skills/takt/SKILL.md`](skills/takt/SKILL.md).
+
 ## С чего продолжать разработку
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
@@ -122,11 +136,13 @@ Evaluation runner фиксирует идентичность стратегии
 - [Семантика метрик и execution identity v0.1.15](docs/29-benchmark-metric-semantics-v0.1.15.md)
 - [Семантика validation envelope v0.1.16](docs/30-quality-envelope-semantics-v0.1.16.md)
 - [Разделение stdout/stderr quality-node v0.1.17](docs/31-quality-stdout-separation-v0.1.17.md)
+- [Скилл настройки Takt v0.1.18](docs/32-takt-authoring-skill-v0.1.18.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
 
 - [Краткие правила для кодовых агентов](AGENTS.md)
+- [Скилл для настройки и использования Takt](skills/takt/SKILL.md)
 - [Описание проекта](docs/01-project.md)
 - [Подход к решению](docs/02-approach.md)
 - [Текущая спецификация `takt/v1alpha1`](docs/03-specification.md)
@@ -158,6 +174,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Семантика метрик и execution identity v0.1.15](docs/29-benchmark-metric-semantics-v0.1.15.md)
 - [Семантика validation envelope v0.1.16](docs/30-quality-envelope-semantics-v0.1.16.md)
 - [Разделение stdout/stderr quality-node v0.1.17](docs/31-quality-stdout-separation-v0.1.17.md)
+- [Скилл настройки Takt v0.1.18](docs/32-takt-authoring-skill-v0.1.18.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

@@ -54,6 +54,8 @@
 - раздельное хранение stdout/stderr bash-узла и декодирование quality envelope только из stdout;
 - строгие схемы `takt-validation/v1alpha1` и `takt-evaluation/v1alpha1`;
 - стартовый Route DSL eval-набор из десяти синтетических заданий.
+- переносимый authoring skill `skills/takt/` для создания config, workflow, Markdown-команд и проверяемых профилей;
+- проверяемый стартовый профиль с inline prompt, моделями на узлах, retry/feedback и approval.
 
 ### CLI
 

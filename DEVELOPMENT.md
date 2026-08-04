@@ -15,14 +15,16 @@ go build -o bin/takt ./cmd/takt
 1. `AGENTS.md`;
 2. `docs/12-document-map.md`;
 3. `docs/05-implementation-status.md`;
-4. `docs/31-quality-stdout-separation-v0.1.17.md`;
-5. `docs/30-quality-envelope-semantics-v0.1.16.md`;
-6. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
-7. `docs/28-benchmark-identity-quality-v0.1.14.md`;
-8. `docs/13-evaluation-plan.md`;
-9. `docs/09-runtime-semantics.md`;
-10. `docs/10-assistant-adapter-spec.md`;
-11. `ARCHITECTURE_DECISIONS.md`.
+4. `skills/takt/SKILL.md`;
+5. `docs/32-takt-authoring-skill-v0.1.18.md`;
+6. `docs/31-quality-stdout-separation-v0.1.17.md`;
+7. `docs/30-quality-envelope-semantics-v0.1.16.md`;
+8. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
+9. `docs/28-benchmark-identity-quality-v0.1.14.md`;
+10. `docs/13-evaluation-plan.md`;
+11. `docs/09-runtime-semantics.md`;
+12. `docs/10-assistant-adapter-spec.md`;
+13. `ARCHITECTURE_DECISIONS.md`.
 
 
 ## С чего продолжать реализацию
@@ -81,6 +83,7 @@ go build ./cmd/takt-fake-pi
 ./scripts/test-pi-adapter.sh
 ./scripts/test-route-dsl-e2e.sh
 ./scripts/test-route-dsl-eval.sh
+./scripts/test-takt-skill.sh
 ./scripts/check-docs.sh
 ./scripts/verify.sh
 ```

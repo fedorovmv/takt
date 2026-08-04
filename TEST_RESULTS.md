@@ -1,37 +1,42 @@
-# Результаты проверки v0.1.17-alpha
+# Результаты проверки v0.1.18-alpha
 
-## AGENTS.md
-
-Проверено:
-
-- корневой `AGENTS.md` присутствует в релизе;
-- инструкция фиксирует границы Takt, runtime/protocol/benchmark-инварианты и порядок изменения контрактов;
-- `README.md`, `DEVELOPMENT.md`, карта документов и проверка документации ссылаются на инструкцию.
-
-## Разделение stdout и stderr
+## Takt authoring skill
 
 Проверено:
 
-- bash runtime сохраняет stdout и stderr отдельно;
-- совместимое поле `output` сохраняет объединённое диагностическое представление;
-- assistant и approval output записываются как логический stdout;
-- quality-node декодирует `takt-validation/v1alpha1` только из stdout;
-- корректный `valid:false` в stdout вместе с произвольным stderr и exit code 1 сохраняет score и diagnostics;
-- stderr не вызывает `quality_contract` и остаётся доступным отдельно и в `diagnostic_output`;
-- схемы Run State и evaluation report содержат `stdout` и `stderr`.
+- canonical skill находится в `skills/takt/SKILL.md`;
+- frontmatter содержит имя и назначение скилла;
+- основной файл фиксирует порядок работы, источники истины и ограничения `takt/v1alpha1`;
+- отдельные references описывают config, workflow, рабочие композиции и диагностику;
+- скилл различает inline `prompt` и Markdown-команду;
+- документирован приоритет model/assistant: узел → frontmatter → defaults;
+- запрещено предлагать неподдерживаемые `system_prompt`, nested `loop_group`, approval внутри loop и тихий resume fallback;
+- стартовый профиль содержит две модели, явную модель узла, retry/feedback, resume, artifacts и approval;
+- `scripts/test-takt-skill.sh` включён в `make check` и `scripts/verify.sh`.
+
+## Проверка шаблонов
+
+Реальным бинарником `takt v0.1.18-alpha` успешно проверены:
+
+```text
+skills/takt/assets/validated-agent-profile/.takt/workflows/basic.yaml
+skills/takt/assets/validated-agent-profile/.takt/workflows/validated.yaml
+```
+
+Оба workflow прошли `takt validate --json` с приложенным config и workspace. Значения provider/model `replace-me` предназначены только для структурной проверки и должны быть заменены перед реальным запуском.
 
 ## Регрессии
 
 Повторно проверено:
 
+- unit tests и race detector;
 - process и Pi contract suites;
 - timeout/cancel/output overflow;
 - Pi `agent_settled`, fresh/resume и usage delta;
 - Route DSL feedback, retry/resume, artifacts и approval;
 - evaluation isolation, fingerprints и предметные метрики;
-- per-attempt execution identity и раздельная атрибуция usage;
-- validation envelope при любом terminal status и success gate `completed && valid=true`;
-- явные нулевые показатели и `null` для недоступных средних значений.
+- validation envelope только из stdout и отдельный stderr;
+- схемы и защита документации от отката.
 
 ## Команды
 
@@ -47,10 +52,11 @@ go build ./cmd/takt-fake-pi
 ./scripts/test-pi-adapter.sh
 ./scripts/test-route-dsl-e2e.sh
 ./scripts/test-route-dsl-eval.sh
+./scripts/test-takt-skill.sh
 ./scripts/check-docs.sh
 ./scripts/verify.sh
 ```
 
-Все проверки прошли на рабочем дереве. Тот же набор повторно выполняется из чистой распаковки релиза вместе с проверкой `MANIFEST.sha256`.
+`make check` и `scripts/verify.sh` прошли на рабочем дереве. `MANIFEST.sha256` и полный `scripts/verify.sh` также прошли из чистой распаковки релизного архива.
 
-Реальный Pi smoke и реальный Route DSL benchmark для `v0.1.17-alpha` в среде сборки не запускались: отсутствуют Pi, пользовательская авторизация, модель и штатный предметный валидатор.
+Реальный Pi smoke и предметный Route DSL запуск для `v0.1.18-alpha` в среде сборки не выполнялись: отсутствуют Pi, пользовательская авторизация, модель и штатный валидатор.

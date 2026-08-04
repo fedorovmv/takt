@@ -1,0 +1,23 @@
+apiVersion: takt/v1alpha1
+kind: Config
+
+models:
+  fast:
+    provider: replace-me
+    id: replace-me-fast
+    params:
+      reasoning_effort: medium
+
+  deep:
+    provider: replace-me
+    id: replace-me-deep
+    params:
+      reasoning_effort: high
+
+assistants:
+  pi:
+    type: pi
+    binary: pi
+    session_dir: .takt/pi-sessions
+    project_trust: deny
+    max_output_bytes: 10485760

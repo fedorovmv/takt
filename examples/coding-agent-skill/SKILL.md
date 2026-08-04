@@ -1,12 +1,14 @@
 ---
-name: takt
-description: Run reproducible agent workflows and surface approval requests.
+name: takt-runner
+description: Запускает уже подготовленные Takt workflows и обрабатывает approval. Для создания и настройки workflow используй canonical skill skills/takt/SKILL.md.
 ---
 
-Use the `takt` CLI instead of manually reproducing a configured workflow.
+# Запуск готового workflow
 
-1. Run `takt validate <workflow> --config <config>`.
-2. Run `takt run <workflow> --config <config> --workspace <workspace> --input <request-file> --json`.
-3. When the result status is `waiting`, show `waiting.message` to the user.
-4. Continue with `takt answer <run-id> <node-id> --workspace <workspace> --value <answer> --json`.
-5. Read artifacts from `<workspace>/.takt/runs/<run-id>/artifacts/`.
+1. Выполни `takt validate <workflow> --config <config> --workspace <workspace> --json`.
+2. Запусти `takt run <workflow> --config <config> --workspace <workspace> --input <request-file> --json`.
+3. При статусе `waiting` покажи пользователю `waiting.message`.
+4. После ответа продолжи через `takt answer <run-id> <node-id> --workspace <workspace> --value <answer> --json`.
+5. Читай результаты из `<workspace>/.takt/runs/<run-id>/artifacts/`.
+
+Этот пример отвечает только за запуск. Полный скилл создания config, workflow, prompts и retry-профилей находится в `skills/takt/`.

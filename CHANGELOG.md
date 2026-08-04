@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.18-alpha
+
+- добавлен canonical skill `skills/takt/SKILL.md` для создания, изменения, проверки и запуска Takt-профилей;
+- справка скилла разделена на configuration, workflows, patterns и troubleshooting;
+- добавлен копируемый `validated-agent-profile` с inline prompt, моделями на узлах, Markdown-командой, validator retry/resume и approval;
+- добавлен контрактный `scripts/test-takt-skill.sh`, который проверяет структуру скилла и валидирует оба шаблонных workflow;
+- прежний `examples/coding-agent-skill` переименован по назначению в минимальный `takt-runner`;
+- добавлен документ `docs/32-takt-authoring-skill-v0.1.18.md`.
+
 ## v0.1.17-alpha
 
 - добавлен корневой `AGENTS.md` с краткими правилами работы кодовых агентов;

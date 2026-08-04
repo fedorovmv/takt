@@ -8,24 +8,26 @@
 2. `README.md`;
 3. `docs/01-project.md`;
 4. `docs/05-implementation-status.md`;
-5. `docs/31-quality-stdout-separation-v0.1.17.md`;
-6. `docs/30-quality-envelope-semantics-v0.1.16.md`;
-7. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
-8. `docs/28-benchmark-identity-quality-v0.1.14.md`;
-9. `docs/27-evaluation-isolation-report-v0.1.13.md`;
-10. `docs/26-evaluation-runner-v0.1.12.md`;
-11. `docs/25-route-dsl-e2e-v0.1.11.md`;
-12. `docs/24-pi-context-usage-hardening-v0.1.10.md`;
-13. `docs/23-pi-rpc-alignment-v0.1.9.md`;
-14. `docs/22-pi-adapter-v0.1.8.md`;
-15. `docs/21-protocol-hardening-v0.1.7.md`;
-16. `docs/20-fake-assistant-contract-v0.1.6.md`;
-17. `docs/19-document-recovery-v0.1.5.md`;
-18. `docs/18-audit-remediation-v0.1.4.md`;
-19. `docs/17-audit-remediation-v0.1.3.md`;
-20. `docs/16-audit-remediation-v0.1.2.md`;
-21. `docs/08-target-v0.2.md`;
-22. `docs/11-implementation-plan.md`.
+5. `skills/takt/SKILL.md`;
+6. `docs/32-takt-authoring-skill-v0.1.18.md`;
+7. `docs/31-quality-stdout-separation-v0.1.17.md`;
+8. `docs/30-quality-envelope-semantics-v0.1.16.md`;
+9. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
+10. `docs/28-benchmark-identity-quality-v0.1.14.md`;
+11. `docs/27-evaluation-isolation-report-v0.1.13.md`;
+12. `docs/26-evaluation-runner-v0.1.12.md`;
+13. `docs/25-route-dsl-e2e-v0.1.11.md`;
+14. `docs/24-pi-context-usage-hardening-v0.1.10.md`;
+15. `docs/23-pi-rpc-alignment-v0.1.9.md`;
+16. `docs/22-pi-adapter-v0.1.8.md`;
+17. `docs/21-protocol-hardening-v0.1.7.md`;
+18. `docs/20-fake-assistant-contract-v0.1.6.md`;
+19. `docs/19-document-recovery-v0.1.5.md`;
+20. `docs/18-audit-remediation-v0.1.4.md`;
+21. `docs/17-audit-remediation-v0.1.3.md`;
+22. `docs/16-audit-remediation-v0.1.2.md`;
+23. `docs/08-target-v0.2.md`;
+24. `docs/11-implementation-plan.md`.
 
 
 Для изменения runtime:
@@ -55,6 +57,7 @@
 | Вопрос | Основной документ | Статус |
 |---|---|---|
 | Правила работы кодовых агентов | `../AGENTS.md` | действующий |
+| Создание и настройка workflow | `../skills/takt/SKILL.md`, `32-takt-authoring-skill-v0.1.18.md` | действующий скилл и проверяемый шаблон |
 | Зачем нужен Takt | `01-project.md` | действующий |
 | Архитектурный подход | `02-approach.md`, ADR | действующий |
 | Текущий внешний контракт | `03-specification.md` | реализованный `v1alpha1` |
