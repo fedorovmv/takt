@@ -99,3 +99,8 @@ State и event одного перехода получают одинакову
 ## ADR-024. Evaluation использует изолированные workspace и состояние runtime
 
 Каждое задание evaluation выполняется как обычный Run в отдельной копии workspace template. Evaluation runner не интерпретирует предметный DSL и не подменяет внешний completion gate. Метрики attempts, duration, usage, approvals, errors и truncation читаются из сохранённого RunState. Workflow failures являются результатами оценки; ошибки подготовки workspace и отчёта являются инфраструктурными.
+
+
+## ADR-025. Evaluation preflight защищает идентичность и границы workspace
+
+Evaluation runner обязан завершить проверку входных путей и идентификаторов до создания output. Два файла, дающие одинаковый нормализованный `case_id`, отклоняются вместо добавления неявного суффикса: исходное имя задания остаётся проверяемой частью набора. `workspace-template` и `output` должны находиться в непересекающихся деревьях после разрешения символических ссылок, чтобы копирование template не могло захватить собственный destination. Отчёт строится из сохранённого `RunState` и включает подтверждённый resume, накопленный feedback, ошибку и diagnostic output узла.

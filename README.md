@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.12-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.13-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -41,7 +41,7 @@
 - единый JSON envelope CLI для успеха и ошибок;
 - строгий YAML subset с сохранением пустых строк в block scalar;
 - aggregate usage по узлам: input/output tokens и стоимость всех попыток;
-- `takt eval run/report` для воспроизводимой оценки каталогов заданий;
+- `takt eval run/report` для воспроизводимой оценки каталогов заданий с проверкой коллизий и безопасной изоляцией путей;
 - только стандартная библиотека Go.
 
 ## Быстрый старт
@@ -90,7 +90,7 @@ make check
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Evaluation runner и сбор базовых метрик реализованы. Следующий вертикальный этап — заменить минимальный Route DSL validator штатным инструментом и прогнать реальные обезличенные технические задания. OpenCode adapter нужен после этого сравнения либо при явной необходимости сопоставить исполнителей.
+Evaluation runner, защита изоляции workspace и диагностический отчёт реализованы. Следующий вертикальный этап — заменить минимальный Route DSL validator штатным инструментом и прогнать реальные обезличенные технические задания. OpenCode adapter нужен после этого сравнения либо при явной необходимости сопоставить исполнителей.
 
 Подробности:
 
@@ -106,6 +106,7 @@ Evaluation runner и сбор базовых метрик реализованы
 - [Усиление context/usage Pi v0.1.10](docs/24-pi-context-usage-hardening-v0.1.10.md)
 - [Route DSL end-to-end v0.1.11](docs/25-route-dsl-e2e-v0.1.11.md)
 - [Evaluation runner v0.1.12](docs/26-evaluation-runner-v0.1.12.md)
+- [Изоляция и диагностика evaluation v0.1.13](docs/27-evaluation-isolation-report-v0.1.13.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -136,6 +137,7 @@ Evaluation runner и сбор базовых метрик реализованы
 - [Усиление context/usage Pi v0.1.10](docs/24-pi-context-usage-hardening-v0.1.10.md)
 - [Route DSL end-to-end v0.1.11](docs/25-route-dsl-e2e-v0.1.11.md)
 - [Evaluation runner v0.1.12](docs/26-evaluation-runner-v0.1.12.md)
+- [Изоляция и диагностика evaluation v0.1.13](docs/27-evaluation-isolation-report-v0.1.13.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

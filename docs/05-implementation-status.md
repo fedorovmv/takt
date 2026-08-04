@@ -46,7 +46,7 @@
 - интеграционные overflow+timeout/cancel проверки через `Pi.Run` с корректными parent contexts и сохранение `OutputTruncated` в `NodeState`;
 - воспроизводимый Route DSL end-to-end с двумя попытками, feedback, resume, обязательной проверкой, артефактами и approval;
 - накопление usage по всем агентным попыткам в `NodeState`;
-- `takt eval run/report`, изолированные workspace и JSON-отчёт с attempts, duration, usage, approvals и errors;
+- `takt eval run/report`, предварительная проверка уникальности `case_id`, запрет пересечения template/output и JSON-отчёт с attempts, duration, usage, resume, feedback, diagnostics, approvals и errors;
 - стартовый Route DSL eval-набор из десяти синтетических заданий.
 
 ### CLI
@@ -83,4 +83,4 @@
 
 ## Ближайший целевой срез
 
-Evaluation runner, базовый набор и сбор attempts/duration/usage реализованы. Следующий срез — заменить тестовый валидатор штатным `route-tool`, прогнать реальные обезличенные задания и добавить нормализованные diagnostics и учёт ручных исправлений результата. OpenCode adapter остаётся сменным исполнителем и не блокирует эту проверку.
+Evaluation runner, безопасная изоляция путей, диагностический отчёт и сбор attempts/duration/usage реализованы. Следующий срез — заменить тестовый валидатор штатным `route-tool`, прогнать реальные обезличенные задания и добавить нормализованные diagnostics и учёт ручных исправлений результата. OpenCode adapter остаётся сменным исполнителем и не блокирует эту проверку.

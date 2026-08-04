@@ -140,6 +140,9 @@
         "session_id": {
           "type": "string"
         },
+        "resumed": {
+          "type": "boolean"
+        },
         "loop_previous": {
           "type": "object",
           "additionalProperties": {

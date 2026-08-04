@@ -1,28 +1,16 @@
-# Результаты проверки v0.1.12-alpha
+# Результаты проверки v0.1.13-alpha
 
-## Исправления аудита
-
-Проверено:
-
-- `scripts/test-route-dsl-e2e.sh` не вызывает `python` или `python3`;
-- JSON-ответы Route E2E проверяются Go helper-ом;
-- timeout + overflow проходит через fake Pi и `Pi.Run` с обычным `context.WithTimeout`;
-- cancel + overflow проходит через fake Pi и `Pi.Run` с обычным `context.WithCancel`;
-- в обоих случаях parent context имеет согласованные `Done()` и `Err()`;
-- `Result.Truncated=true` сохраняется вместе с `timed_out`/`cancelled`;
-- runtime scheduler переносит статус и `output_truncated=true` в итоговый `NodeState`.
-
-## Usage и evaluation
+## Исправления аудита evaluation
 
 Проверено:
 
-- usage двух Pi-попыток суммируется в `NodeState.usage`;
-- `takt eval run` создаёт отдельную рабочую область для каждого задания;
-- два Route DSL задания проходят обязательный validator retry/resume;
-- evaluation автоматически отвечает approval только при заданном `--answer`;
-- `report.json` содержит status, attempts, duration, tokens, cost, approvals и node details;
-- `takt eval report` повторно читает сохранённый отчёт;
-- `make check` и `scripts/verify.sh` включают Route DSL eval suite.
+- коллизии нормализованных `case_id` отклоняются до создания output;
+- `--replace` не может удалить workspace другого задания с тем же нормализованным именем;
+- `workspace-template` и `output` не могут совпадать или быть вложены друг в друга;
+- проверка учитывает существующие символические ссылки и выполняется до `MkdirAll`;
+- `NodeState.resumed` сохраняет подтверждённое продолжение сессии;
+- `report.json` содержит resume, feedback, node error и diagnostic output;
+- Route DSL eval assertion подтверждает две попытки, resume, `ROUTE_INVALID` и успешный вывод полного валидатора.
 
 ## Команды
 
@@ -42,4 +30,4 @@ go build ./cmd/takt-fake-pi
 ./scripts/verify.sh
 ```
 
-Реальный Pi smoke с `aihub/Qwen/Qwen3.6-27B` был подтверждён внешним аудитом `v0.1.11-alpha`. В среде сборки `v0.1.12-alpha` он повторно не запускался, поскольку пользовательская авторизация и модель недоступны.
+Реальный Pi smoke с `aihub/Qwen/Qwen3.6-27B` подтверждён внешним аудитом `v0.1.12-alpha` за 4,83 секунды. В среде сборки `v0.1.13-alpha` он повторно не запускался, поскольку пользовательская авторизация и модель недоступны.

@@ -52,6 +52,7 @@ type Summary struct {
 	DurationMS   int64          `json:"duration_ms"`
 	Answers      int            `json:"answers"`
 	Truncated    int            `json:"truncated_nodes"`
+	Resumed      int            `json:"resumed_nodes"`
 }
 
 type RunRecord struct {
@@ -67,18 +68,24 @@ type RunRecord struct {
 	Cost         float64               `json:"cost,omitempty"`
 	Answers      int                   `json:"answers,omitempty"`
 	Truncated    int                   `json:"truncated_nodes,omitempty"`
+	Resumed      int                   `json:"resumed_nodes,omitempty"`
 	ErrorCode    string                `json:"error_code,omitempty"`
 	Error        string                `json:"error,omitempty"`
 	Nodes        map[string]NodeRecord `json:"nodes"`
 }
 
 type NodeRecord struct {
-	Status          string       `json:"status"`
-	Attempts        int          `json:"attempts,omitempty"`
-	SessionID       string       `json:"session_id,omitempty"`
-	ErrorCode       string       `json:"error_code,omitempty"`
-	OutputTruncated bool         `json:"output_truncated,omitempty"`
-	Usage           *store.Usage `json:"usage,omitempty"`
+	Status           string       `json:"status"`
+	Attempts         int          `json:"attempts,omitempty"`
+	SessionID        string       `json:"session_id,omitempty"`
+	Resumed          bool         `json:"resumed,omitempty"`
+	ExitCode         int          `json:"exit_code,omitempty"`
+	ErrorCode        string       `json:"error_code,omitempty"`
+	Error            string       `json:"error,omitempty"`
+	Feedback         string       `json:"feedback,omitempty"`
+	DiagnosticOutput string       `json:"diagnostic_output,omitempty"`
+	OutputTruncated  bool         `json:"output_truncated,omitempty"`
+	Usage            *store.Usage `json:"usage,omitempty"`
 }
 
 var safeCaseID = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -98,6 +105,10 @@ func Run(ctx context.Context, opts RunOptions) (*SuiteReport, error) {
 	if len(cases) == 0 {
 		return nil, fmt.Errorf("evaluation cases directory %s contains no .md files", paths.CasesDir)
 	}
+	caseIDs, err := resolveCaseIDs(cases)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(paths.OutputDir, 0o755); err != nil {
 		return nil, err
 	}
@@ -108,7 +119,7 @@ func Run(ctx context.Context, opts RunOptions) (*SuiteReport, error) {
 		Summary: Summary{ByStatus: map[string]int{}},
 	}
 	for _, casePath := range cases {
-		caseID := sanitizeCaseID(strings.TrimSuffix(filepath.Base(casePath), filepath.Ext(casePath)))
+		caseID := caseIDs[casePath]
 		for repeat := 1; repeat <= opts.Repeat; repeat++ {
 			workspace := filepath.Join(paths.OutputDir, "workspaces", fmt.Sprintf("%s-%03d", caseID, repeat))
 			record, runErr := runOne(ctx, paths, opts, casePath, caseID, repeat, workspace)
@@ -152,9 +163,66 @@ func resolveOptions(opts RunOptions) (resolvedOptions, error) {
 		if err != nil {
 			return out, err
 		}
-		*resolved[i] = abs
+		canonical, err := canonicalPath(abs)
+		if err != nil {
+			return out, fmt.Errorf("resolve %s path: %w", item.name, err)
+		}
+		*resolved[i] = canonical
+	}
+	if pathsOverlap(out.WorkspaceTemplate, out.OutputDir) {
+		return out, fmt.Errorf("workspace template and output directories must not overlap: template=%s output=%s", out.WorkspaceTemplate, out.OutputDir)
 	}
 	return out, nil
+}
+
+func resolveCaseIDs(paths []string) (map[string]string, error) {
+	ids := make(map[string]string, len(paths))
+	owners := make(map[string]string, len(paths))
+	for _, path := range paths {
+		id := sanitizeCaseID(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+		if previous, exists := owners[id]; exists {
+			return nil, fmt.Errorf("evaluation case id collision %q after normalization: %s and %s", id, filepath.Base(previous), filepath.Base(path))
+		}
+		owners[id] = path
+		ids[path] = id
+	}
+	return ids, nil
+}
+
+func canonicalPath(path string) (string, error) {
+	path = filepath.Clean(path)
+	current := path
+	var suffix []string
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return path, nil
+		}
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
+}
+
+func pathsOverlap(first, second string) bool {
+	return pathContains(first, second) || pathContains(second, first)
+}
+
+func pathContains(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 func listCases(dir string) ([]string, error) {
@@ -250,14 +318,18 @@ func recordFromState(caseID string, repeat int, workspace string, state *store.R
 		if node.OutputTruncated {
 			record.Truncated++
 		}
+		if node.Resumed {
+			record.Resumed++
+		}
 		if node.Usage != nil {
 			record.InputTokens += node.Usage.InputTokens
 			record.OutputTokens += node.Usage.OutputTokens
 			record.Cost += node.Usage.Cost
 		}
 		record.Nodes[id] = NodeRecord{
-			Status: node.Status, Attempts: node.Attempts, SessionID: node.SessionID,
-			ErrorCode: node.ErrorCode, OutputTruncated: node.OutputTruncated, Usage: node.Usage,
+			Status: node.Status, Attempts: node.Attempts, SessionID: node.SessionID, Resumed: node.Resumed,
+			ExitCode: node.ExitCode, ErrorCode: node.ErrorCode, Error: node.Error, Feedback: node.Feedback,
+			DiagnosticOutput: node.Output, OutputTruncated: node.OutputTruncated, Usage: node.Usage,
 		}
 	}
 	return record
@@ -273,6 +345,7 @@ func addSummary(summary *Summary, record RunRecord) {
 	summary.DurationMS += record.DurationMS
 	summary.Answers += record.Answers
 	summary.Truncated += record.Truncated
+	summary.Resumed += record.Resumed
 }
 
 func writeReport(outputDir string, report *SuiteReport) error {

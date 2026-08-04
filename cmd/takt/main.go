@@ -53,7 +53,7 @@ func run(args []string) error {
 	case "eval":
 		return evalCmd(args[1:])
 	case "version":
-		fmt.Println("takt v0.1.12-alpha")
+		fmt.Println("takt v0.1.13-alpha")
 		return nil
 	default:
 		return usage()

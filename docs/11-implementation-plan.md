@@ -69,7 +69,7 @@
 - retry `resume` продолжает предыдущую либо возвращает явную ошибку;
 - timeout работает.
 
-## 5. Этап D. Route DSL end-to-end и evaluation — базовый контур реализован в v0.1.11–v0.1.12-alpha
+## 5. Этап D. Route DSL end-to-end и evaluation — базовый контур реализован в v0.1.11–v0.1.13-alpha
 
 ```text
 prepare input
@@ -89,7 +89,8 @@ prepare input
 - `route.yaml` и validation report сохраняются как artifacts;
 - approval/resume проходит через CLI;
 - `takt eval run/report` прогоняет каталог заданий в изолированных workspace;
-- `NodeState` и evaluation report сохраняют attempts, duration, usage, approvals и errors;
+- `NodeState` и evaluation report сохраняют attempts, duration, usage, resume, feedback, diagnostic output, approvals и errors;
+- preflight отклоняет коллизии нормализованных `case_id` и пересечение workspace template/output;
 - добавлен стартовый набор из десяти синтетических Route DSL заданий.
 
 ### Остаётся

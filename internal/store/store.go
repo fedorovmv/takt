@@ -47,6 +47,7 @@ type NodeState struct {
 	Attempts        int                  `json:"attempts,omitempty"`
 	Feedback        string               `json:"feedback,omitempty"`
 	SessionID       string               `json:"session_id,omitempty"`
+	Resumed         bool                 `json:"resumed,omitempty"`
 	ErrorCode       string               `json:"error_code,omitempty"`
 	Error           string               `json:"error,omitempty"`
 	LoopPrevious    map[string]NodeState `json:"loop_previous,omitempty"`

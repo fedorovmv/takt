@@ -32,3 +32,9 @@ takt eval run ../route-dsl-e2e/workflow.yaml \
 ```bash
 takt eval report .takt/evals/qwen-resume --json
 ```
+
+## Ограничения путей и идентификаторов
+
+- имена Markdown-файлов после нормализации должны давать уникальные `case_id`; например, `a b.md` и `a+b.md` конфликтуют и отклоняются до запуска;
+- `--workspace-template` и `--output` должны находиться в непересекающихся каталогах;
+- `report.json` содержит `resumed`, `feedback`, `error` и `diagnostic_output` для каждого узла.

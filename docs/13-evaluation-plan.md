@@ -1,6 +1,6 @@
 # План оценки агентных стратегий
 
-Статус: базовый runner реализован в `v0.1.12-alpha` командами `takt eval run/report`.
+Статус: базовый runner реализован в `v0.1.13-alpha` командами `takt eval run/report`.
 
 ## 1. Цель
 
@@ -89,4 +89,4 @@ takt eval run <workflow> \
   --json
 ```
 
-Runner сохраняет `report.json`. Tokens и cost берутся из aggregate `NodeState.usage`; успех по-прежнему определяет предметный валидатор внутри workflow.
+Runner до создания output проверяет уникальность нормализованных `case_id` и отсутствие пересечения `workspace-template`/`output`. `report.json` сохраняет resume, feedback, ошибки и diagnostic output каждого узла. Tokens и cost берутся из aggregate `NodeState.usage`; успех по-прежнему определяет предметный валидатор внутри workflow.

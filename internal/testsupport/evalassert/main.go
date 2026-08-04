@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 )
 
 type envelope struct {
@@ -31,13 +32,18 @@ type runRecord struct {
 	OutputTokens int                   `json:"output_tokens"`
 	Cost         float64               `json:"cost"`
 	Answers      int                   `json:"answers"`
+	Resumed      int                   `json:"resumed_nodes"`
 	Nodes        map[string]nodeRecord `json:"nodes"`
 }
 
 type nodeRecord struct {
-	Status   string `json:"status"`
-	Attempts int    `json:"attempts"`
-	Usage    *usage `json:"usage"`
+	Status           string `json:"status"`
+	Attempts         int    `json:"attempts"`
+	Resumed          bool   `json:"resumed"`
+	Feedback         string `json:"feedback"`
+	Error            string `json:"error"`
+	DiagnosticOutput string `json:"diagnostic_output"`
+	Usage            *usage `json:"usage"`
 }
 
 type usage struct {
@@ -62,12 +68,19 @@ func main() {
 		fail("unexpected run summary: %+v", value.Result.Summary)
 	}
 	for _, run := range value.Result.Runs {
-		if run.Status != "completed" || run.Answers != 1 {
+		if run.Status != "completed" || run.Answers != 1 || run.Resumed != 1 {
 			fail("unexpected run: %+v", run)
 		}
 		node := run.Nodes["implement"]
-		if node.Status != "completed" || node.Attempts != 2 || node.Usage == nil {
+		if node.Status != "completed" || node.Attempts != 2 || !node.Resumed || node.Usage == nil {
 			fail("unexpected implement node: %+v", node)
+		}
+		if !strings.Contains(node.Feedback, "ROUTE_INVALID") || node.DiagnosticOutput == "" {
+			fail("resume diagnostics were not preserved: %+v", node)
+		}
+		validation := run.Nodes["full-validation"]
+		if !strings.Contains(validation.DiagnosticOutput, `"valid":true`) {
+			fail("validator diagnostic output was not preserved: %+v", validation)
 		}
 		if node.Usage.InputTokens != 222 || node.Usage.OutputTokens != 44 || math.Abs(node.Usage.Cost-0.025) > 1e-9 {
 			fail("unexpected usage: %+v", node.Usage)

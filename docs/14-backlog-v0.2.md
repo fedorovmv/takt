@@ -1,6 +1,6 @@
 # Backlog Takt v0.2
 
-Статус обновлён после интеграционных Pi overflow-регрессий и первого Route DSL end-to-end в `v0.1.12-alpha`.
+Статус обновлён после усиления изоляции и диагностического отчёта evaluation в `v0.1.13-alpha`.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 
@@ -106,7 +106,7 @@
 
 **Приёмка:** fresh, resume success и resume failure реализованы для process protocol; подтверждены на Pi adapter; OpenCode получит тот же контракт при реализации.
 
-## Завершено в v0.1.11–v0.1.12-alpha
+## Завершено в v0.1.11–v0.1.13-alpha
 
 ### TAKT-011. Route DSL end-to-end — контрактный срез выполнен
 
@@ -118,7 +118,7 @@
 
 ### TAKT-011B. Производственная проверка Route DSL — выполняется
 
-В `v0.1.12-alpha` реализованы evaluation runner, изолированные workspace, aggregate usage, JSON-report и стартовый набор из десяти синтетических заданий.
+В `v0.1.12-alpha` реализован evaluation runner; в `v0.1.13-alpha` закрыты коллизии `case_id`, пересечение путей и потеря resume/feedback/diagnostics в отчёте.
 
 Остаётся:
 

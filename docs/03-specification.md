@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.12-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.13-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -355,7 +355,7 @@ takt eval report <evaluation-output-dir>
 
 Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status`, `command run` и `eval` используют JSON по умолчанию.
 
-`eval run` копирует workspace template для каждого Markdown-задания, выполняет workflow и сохраняет `report.json` с attempts, duration, usage, approval answers, statuses и errors. Workflow и внешний валидатор остаются источником критерия успеха; evaluation runner только запускает процесс и агрегирует состояние.
+`eval run` выполняет preflight до создания output: нормализованные `case_id` должны быть уникальны, а `workspace-template` и `output` не могут совпадать или быть вложены друг в друга, включая пути через символические ссылки. Затем runner копирует template для каждого Markdown-задания, выполняет workflow и сохраняет `report.json` с attempts, duration, usage, approval answers, statuses, resume-фактом, feedback, ошибками узлов и диагностическим выводом. Workflow и внешний валидатор остаются источником критерия успеха; evaluation runner только запускает процесс и агрегирует состояние.
 
 ## 13. Ограничения
 

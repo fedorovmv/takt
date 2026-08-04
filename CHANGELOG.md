@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.13-alpha
+
+- evaluation preflight отклоняет коллизии нормализованных `case_id` до создания output;
+- `workspace-template` и `output` не могут совпадать или быть вложены друг в друга, включая разрешение символических ссылок;
+- `NodeState` сохраняет подтверждённый факт resume;
+- `report.json` содержит `resumed`, `feedback`, ошибку и диагностический вывод каждого узла;
+- Route DSL eval suite проверяет retry/resume и сохранение validator diagnostics;
+- добавлены ADR-025 и отчёт `docs/27-evaluation-isolation-report-v0.1.13.md`.
+
 ## v0.1.12-alpha
 
 - Route DSL E2E больше не зависит от команды `python`; JSON-проверки выполняются Go helper-ом;
