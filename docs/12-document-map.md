@@ -7,15 +7,16 @@
 1. `README.md`;
 2. `docs/01-project.md`;
 3. `docs/05-implementation-status.md`;
-4. `docs/22-pi-adapter-v0.1.8.md`;
-5. `docs/21-protocol-hardening-v0.1.7.md`;
-6. `docs/20-fake-assistant-contract-v0.1.6.md`;
-7. `docs/19-document-recovery-v0.1.5.md`;
-8. `docs/18-audit-remediation-v0.1.4.md`;
-9. `docs/17-audit-remediation-v0.1.3.md`;
-10. `docs/16-audit-remediation-v0.1.2.md`;
-11. `docs/08-target-v0.2.md`;
-12. `docs/11-implementation-plan.md`.
+4. `docs/23-pi-rpc-alignment-v0.1.9.md`;
+5. `docs/22-pi-adapter-v0.1.8.md`;
+6. `docs/21-protocol-hardening-v0.1.7.md`;
+7. `docs/20-fake-assistant-contract-v0.1.6.md`;
+8. `docs/19-document-recovery-v0.1.5.md`;
+9. `docs/18-audit-remediation-v0.1.4.md`;
+10. `docs/17-audit-remediation-v0.1.3.md`;
+11. `docs/16-audit-remediation-v0.1.2.md`;
+12. `docs/08-target-v0.2.md`;
+13. `docs/11-implementation-plan.md`.
 
 Для изменения runtime:
 
@@ -28,13 +29,14 @@
 Для реализации исполнителя:
 
 1. `docs/10-assistant-adapter-spec.md`;
-2. `docs/22-pi-adapter-v0.1.8.md`;
-3. `docs/21-protocol-hardening-v0.1.7.md`;
-4. `docs/20-fake-assistant-contract-v0.1.6.md`;
-5. `docs/14-backlog-v0.2.md`, задачи TAKT-009 и TAKT-011;
-6. `internal/assistant` и `internal/execution`;
-7. `schemas/assistant-protocol.schema.json`;
-8. contract tests.
+2. `docs/23-pi-rpc-alignment-v0.1.9.md`;
+3. `docs/22-pi-adapter-v0.1.8.md`;
+4. `docs/21-protocol-hardening-v0.1.7.md`;
+5. `docs/20-fake-assistant-contract-v0.1.6.md`;
+6. `docs/14-backlog-v0.2.md`, задачи TAKT-009 и TAKT-011;
+7. `internal/assistant` и `internal/execution`;
+8. `schemas/assistant-protocol.schema.json`;
+9. contract tests.
 
 ## 2. Источники истины
 
@@ -47,7 +49,7 @@
 | Исправления последнего аудита | `16–18-audit-remediation-*.md` | фактический |
 | Fake-assistant protocol suite | `20-fake-assistant-contract-v0.1.6.md` | фактический |
 | Строгая OS/envelope семантика | `21-protocol-hardening-v0.1.7.md` | фактический |
-| Pi RPC adapter | `22-pi-adapter-v0.1.8.md` | фактический |
+| Pi RPC adapter | `22-pi-adapter-v0.1.8.md`, `23-pi-rpc-alignment-v0.1.9.md` | фактический |
 | Восстановление документации релиза | `19-document-recovery-v0.1.5.md` | фактический |
 | Граница безопасности | `../SECURITY.md` | действующий |
 | Ближайшее целевое состояние | `08-target-v0.2.md` | целевой |

@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.8-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.9-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -79,7 +79,7 @@ assistants:
 
 ### Pi assistant
 
-`type: pi` использует официальный RPC-режим Pi. Takt запускает отдельный процесс на попытку узла, запрашивает состояние сессии, отправляет prompt через JSONL RPC, ждёт `agent_end`, читает итоговый текст, статистику и Session ID, затем закрывает stdin для штатного завершения процесса.
+`type: pi` использует официальный RPC-режим Pi. Takt запускает отдельный процесс на попытку узла, запрашивает состояние сессии и накопленную статистику, отправляет prompt через JSONL RPC и ждёт финальное событие `agent_settled`. Событие `agent_end` считается границей одного низкоуровневого запуска и не завершает попытку, если Pi выполняет автоматический retry, compaction retry или queued continuation. После `agent_settled` adapter читает итоговый текст, сообщения, повторную статистику и Session ID, затем закрывает stdin для штатного завершения процесса.
 
 Поля конфигурации:
 
@@ -96,9 +96,12 @@ Takt сам задаёт `--mode rpc`, `--provider`, `--model`, `--thinking`, `-
 
 При `session: resume` adapter передаёт `--session <id>` и проверяет через `get_state`, что Pi действительно открыл тот же Session ID. Тихий переход на fresh запрещён. В режиме `fresh` сохранённый ID не передаётся.
 
+
+Статистика `get_session_stats` является накопленной по всей сессии. Adapter снимает её до prompt и после `agent_settled`, а в `Result.Usage` записывает неотрицательную дельту текущей попытки. Уменьшение накопленных значений классифицируется как `protocol`. Полные снимки сохраняются в structured result как `stats_before` и `stats_after`.
+
 `metadata` остаётся необязательным полем внутреннего Request. Текущий workflow runtime его не формирует, однако Pi adapter прозрачно передаёт заполненное значение через `TAKT_METADATA_JSON`. `native_hooks` передаются через `TAKT_NATIVE_HOOKS_JSON`; автоматического преобразования в Pi extensions в `v1alpha1` нет.
 
-Интерактивные запросы Pi extension UI (`confirm`, `select`, `input`, `editor`) отклоняются как `protocol`: Takt approval должен быть отдельным сохраняемым узлом workflow. Не требующие ответа уведомления допускаются.
+Интерактивные запросы Pi extension UI (`confirm`, `select`, `input`, `editor`) отклоняются как `protocol`: Takt approval должен быть отдельным сохраняемым узлом workflow. Fire-and-forget события `notify`, `setStatus`, `setWidget`, `setTitle` и `set_editor_text` допускаются и не требуют ответа.
 
 ## 4. Markdown-команды
 

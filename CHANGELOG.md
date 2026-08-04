@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.9-alpha
+
+- Pi adapter завершает попытку только после `agent_settled`, а не первого `agent_end`;
+- fake Pi моделирует automatic retry и проверяет, что Takt не возвращает частичный результат;
+- расширен deny-list session/mode CLI-флагов Pi, включая короткие aliases;
+- fire-and-forget `set_editor_text` допускается без ответа;
+- usage Pi вычисляется как дельта накопленной статистики до/после prompt;
+- добавлены регрессии для fresh/resume usage delta и уменьшения cumulative stats;
+- добавлен ADR-021 и отчёт `docs/23-pi-rpc-alignment-v0.1.9.md`.
+
 ## v0.1.8-alpha
 
 - добавлен специализированный `type: pi` через официальный `pi --mode rpc`;

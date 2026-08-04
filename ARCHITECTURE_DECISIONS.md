@@ -81,3 +81,7 @@ State и event одного перехода получают одинакову
 ## ADR-020. Pi интегрируется через официальный RPC mode
 
 Специализированный `type: pi` запускает отдельный `pi --mode rpc` на каждую попытку узла. Prompt передаётся JSONL-командой, Session ID и модель проверяются через `get_state`, итог читается через `get_last_assistant_text` и `get_session_stats`, а закрытие stdin завершает процесс. Takt не парсит TUI и не реализует внутренний tool loop Pi. Resume считается успешным только при совпадении фактического Session ID; интерактивный extension UI не подменяет сохраняемые approval nodes Takt.
+
+## ADR-021. Pi attempt завершается только на `agent_settled`
+
+`agent_end` завершает один низкоуровневый запуск Pi и может сопровождаться `willRetry: true`, автоматическим retry, compaction retry или queued continuation. Takt считает агентную попытку завершённой только после `agent_settled`. `get_session_stats` трактуется как накопленная статистика сессии: adapter снимает значения до prompt и после settlement и возвращает дельту текущей попытки. Session/mode CLI-флаги полностью принадлежат adapter и запрещены в пользовательских `args`; fire-and-forget `set_editor_text` допускается наряду с другими UI-уведомлениями без ответа.

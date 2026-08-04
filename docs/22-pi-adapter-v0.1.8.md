@@ -27,9 +27,10 @@ Adapter сам формирует зарезервированные парам�
 2. Запускается RPC-процесс в workspace узла.
 3. `get_state` фиксирует Session ID и модель.
 4. `prompt` получает полное задание через stdin JSONL.
-5. Adapter ждёт `agent_end`.
-6. Итоговый текст, статистика и финальное состояние читаются отдельными RPC-командами.
-7. Stdin закрывается, после чего Pi штатно завершает RPC mode.
+5. Начиная с `v0.1.9-alpha`, adapter ждёт `agent_settled`; `agent_end` отражает только один low-level run и может предшествовать retry или compaction.
+6. Накопленная статистика снимается до prompt и после settlement; наружу возвращается дельта текущей попытки.
+7. Итоговые сообщения, текст и финальное состояние читаются отдельными RPC-командами.
+8. Stdin закрывается, после чего Pi штатно завершает RPC mode.
 
 ## Сессии
 
@@ -46,7 +47,7 @@ Adapter сам формирует зарезервированные парам�
 - deadline — `timed_out`;
 - внешний cancel — `cancelled`;
 - malformed JSONL, потеря Session ID, превышение output limit и интерактивный extension UI — `protocol`;
-- notifications и UI-события без ответа допускаются;
+- notifications и UI-события без ответа, включая `set_editor_text`, допускаются;
 - model params кроме thinking не переводятся в CLI-флаги, но доступны extensions через `TAKT_MODEL_PARAMS_JSON`;
 - workflow runtime пока не формирует `Request.Metadata`; при заполненном поле adapter передаёт его через `TAKT_METADATA_JSON`.
 
@@ -55,7 +56,7 @@ Adapter сам формирует зарезервированные парам�
 Добавлены:
 
 - `cmd/takt-fake-pi`;
-- `TestPiAdapterContract`;
+- `TestPiAdapterContract`, включая `agent_settled`, automatic retry и usage delta;
 - race-проверка concurrent stdout/stderr;
 - start/exit/timeout/cancel/output-limit/malformed cases;
 - provider/model/thinking/env/native hooks mapping;

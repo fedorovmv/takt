@@ -3,6 +3,7 @@ package assistant
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"os"
 	"os/exec"
 	"strings"
@@ -52,23 +53,29 @@ func TestPiAdapterContract(t *testing.T) {
 		if result.ResolvedModel == nil || result.ResolvedModel.Provider != "openai" || result.ResolvedModel.ID != "gpt-test" {
 			t.Fatalf("resolved model missing: %+v", result.ResolvedModel)
 		}
-		if result.Usage == nil || result.Usage.InputTokens != 111 || result.Usage.OutputTokens != 22 || result.Usage.Cost != 0.0125 {
+		if result.Usage == nil || result.Usage.InputTokens != 111 || result.Usage.OutputTokens != 22 || math.Abs(result.Usage.Cost-0.0125) > 1e-9 {
 			t.Fatalf("usage missing: %+v", result.Usage)
 		}
 		var structured struct {
-			Adapter   string `json:"adapter"`
-			PiVersion string `json:"pi_version"`
-			Stats     struct {
+			Adapter          string `json:"adapter"`
+			PiVersion        string `json:"pi_version"`
+			UsageSemantics   string `json:"usage_semantics"`
+			LowLevelRuns     int    `json:"low_level_runs"`
+			AutomaticRetries int    `json:"automatic_retries"`
+			StatsAfter       struct {
 				Observed map[string]any `json:"observed"`
-			} `json:"stats"`
+			} `json:"stats_after"`
 		}
 		if err := json.Unmarshal(result.Structured, &structured); err != nil {
 			t.Fatal(err)
 		}
-		if structured.Adapter != "pi" || !strings.Contains(structured.PiVersion, "0.83.0") {
+		if structured.Adapter != "pi" || !strings.Contains(structured.PiVersion, "0.83.0") || structured.UsageSemantics != "attempt_delta" {
 			t.Fatalf("unexpected structured metadata: %+v", structured)
 		}
-		observed := structured.Stats.Observed
+		if structured.LowLevelRuns != 1 || structured.AutomaticRetries != 0 {
+			t.Fatalf("unexpected run counters: %+v", structured)
+		}
+		observed := structured.StatsAfter.Observed
 		if observed["provider"] != "openai" || observed["model"] != "gpt-test" || observed["thinking"] != "high" {
 			t.Fatalf("model arguments not mapped: %#v", observed)
 		}
@@ -80,6 +87,30 @@ func TestPiAdapterContract(t *testing.T) {
 		}
 		if !strings.Contains(observed["metadata"].(string), "pi-contract") || !strings.Contains(observed["native_hooks"].(string), "post_tool_use") {
 			t.Fatalf("metadata/native hooks not transported: %#v", observed)
+		}
+	})
+
+	t.Run("waits for agent settled across automatic retry", func(t *testing.T) {
+		started := time.Now()
+		result, err := fakePi("retry-before-settled").Run(context.Background(), fakePiRequest(t.TempDir()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if elapsed := time.Since(started); elapsed < 100*time.Millisecond {
+			t.Fatalf("adapter returned before agent_settled: %s", elapsed)
+		}
+		if result.Output != "fake Pi completed" {
+			t.Fatalf("adapter returned partial output: %q", result.Output)
+		}
+		var structured struct {
+			LowLevelRuns     int `json:"low_level_runs"`
+			AutomaticRetries int `json:"automatic_retries"`
+		}
+		if err := json.Unmarshal(result.Structured, &structured); err != nil {
+			t.Fatal(err)
+		}
+		if structured.LowLevelRuns != 2 || structured.AutomaticRetries != 1 {
+			t.Fatalf("unexpected retry counters: %+v", structured)
 		}
 	})
 
@@ -107,6 +138,9 @@ func TestPiAdapterContract(t *testing.T) {
 		if result.SessionID != "session-123" || !result.Resumed {
 			t.Fatalf("unexpected resume result: %+v", result)
 		}
+		if result.Usage == nil || result.Usage.InputTokens != 111 || result.Usage.OutputTokens != 22 || math.Abs(result.Usage.Cost-0.0125) > 1e-9 {
+			t.Fatalf("resume usage must be per-attempt delta: %+v", result.Usage)
+		}
 	})
 
 	t.Run("resume mismatch", func(t *testing.T) {
@@ -114,6 +148,16 @@ func TestPiAdapterContract(t *testing.T) {
 		req.SessionMode = "resume"
 		req.SessionID = "session-123"
 		_, err := fakePi("resume-mismatch").Run(context.Background(), req)
+		if execution.KindOf(err) != execution.KindProtocol {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+	})
+
+	t.Run("decreasing cumulative stats are protocol error", func(t *testing.T) {
+		req := fakePiRequest(t.TempDir())
+		req.SessionMode = "resume"
+		req.SessionID = "session-123"
+		_, err := fakePi("stats-decrease").Run(context.Background(), req)
 		if execution.KindOf(err) != execution.KindProtocol {
 			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
 		}
@@ -180,6 +224,16 @@ func TestPiAdapterContract(t *testing.T) {
 		}
 	})
 
+	t.Run("fire-and-forget set_editor_text", func(t *testing.T) {
+		result, err := fakePi("extension-ui-set-editor-text").Run(context.Background(), fakePiRequest(t.TempDir()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Output != "fake Pi completed" {
+			t.Fatalf("unexpected output: %q", result.Output)
+		}
+	})
+
 	for _, tc := range []struct {
 		name     string
 		caseName string
@@ -199,14 +253,20 @@ func TestPiAdapterContract(t *testing.T) {
 		})
 	}
 
-	t.Run("reserved arguments", func(t *testing.T) {
-		adapter := fakePi("success")
-		adapter.spec.Args = []string{"--mode", "json"}
-		_, err := adapter.Run(context.Background(), fakePiRequest(t.TempDir()))
-		if execution.KindOf(err) != execution.KindProtocol {
-			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
-		}
-	})
+	for _, flag := range []string{
+		"--mode", "--provider", "--model", "--thinking", "--session", "--session-id", "--session-id=forced",
+		"--session-dir", "--no-session", "--continue", "-c", "--resume", "-r", "--fork",
+		"--print", "-p", "--version", "-v", "--help", "-h", "--approve", "-a", "--no-approve", "-na",
+	} {
+		t.Run("reserved argument "+strings.ReplaceAll(flag, "/", "_"), func(t *testing.T) {
+			adapter := fakePi("success")
+			adapter.spec.Args = []string{flag}
+			_, err := adapter.Run(context.Background(), fakePiRequest(t.TempDir()))
+			if execution.KindOf(err) != execution.KindProtocol {
+				t.Fatalf("unexpected kind for %s: %s (%v)", flag, execution.KindOf(err), err)
+			}
+		})
+	}
 }
 
 func TestPiAdapterOptInSmoke(t *testing.T) {

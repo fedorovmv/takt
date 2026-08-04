@@ -1,6 +1,6 @@
 # Backlog Takt v0.2
 
-Статус обновлён после реализации Pi RPC adapter в `v0.1.8-alpha`.
+Статус обновлён после согласования Pi RPC adapter с официальной settlement/usage семантикой в `v0.1.9-alpha`.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 
@@ -88,7 +88,7 @@
 
 **Приёмка:** process adapter проходит contract cases success, exit, start, timeout, cancel, concurrent output, malformed result, fresh, resume и resume rejection. Suite включён в `scripts/verify.sh`; будущий specialized adapter обязан переиспользовать эти контракты.
 
-## Завершено в v0.1.8-alpha
+## Завершено в v0.1.8–v0.1.9-alpha
 
 ### TAKT-009. Specialized Pi adapter — выполнено
 
@@ -96,7 +96,7 @@
 
 **Результат:** `type: pi` через официальный RPC mode, fake-Pi suite и opt-in real smoke.
 
-**Приёмка:** provider/model/thinking, fresh/resume, timeout/cancel, output limit и runtime retry покрыты тестами. Реальный smoke остаётся opt-in, так как требует установленного Pi, авторизации и модели.
+**Приёмка:** provider/model/thinking, fresh/resume, timeout/cancel, output limit, `agent_settled`, автоматический retry, полный deny-list зарезервированных флагов, fire-and-forget UI и per-attempt usage delta покрыты тестами. Реальный smoke остаётся opt-in, так как требует установленного Pi, авторизации и модели.
 
 ### TAKT-010. Session resume — выполнено для process и Pi
 

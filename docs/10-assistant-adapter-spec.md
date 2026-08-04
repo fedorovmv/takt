@@ -1,6 +1,6 @@
 # Спецификация адаптеров исполнителей
 
-Статус: process-протокол и fake contract suite реализованы в `v0.1.7-alpha`; специализированный Pi RPC adapter реализован в `v0.1.8-alpha`. OpenCode adapter, capability discovery и потоковый EventSink остаются целевыми возможностями v0.2.
+Статус: process-протокол и fake contract suite реализованы в `v0.1.7-alpha`; специализированный Pi RPC adapter реализован в `v0.1.8-alpha` и согласован с финальной RPC-семантикой Pi в `v0.1.9-alpha`. OpenCode adapter, capability discovery и потоковый EventSink остаются целевыми возможностями v0.2.
 
 ## 1. Назначение
 
@@ -244,9 +244,11 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 2. запускается RPC-процесс в workspace узла;
 3. `get_state` возвращает фактический Session ID и модель;
 4. `prompt` принимает полное задание через JSONL stdin;
-5. adapter ждёт `agent_end`;
-6. `get_last_assistant_text`, `get_session_stats` и повторный `get_state` нормализуют результат;
-7. закрытие stdin штатно завершает RPC-процесс.
+5. перед prompt снимается накопленная статистика `get_session_stats`;
+6. adapter ждёт `agent_settled`; события `agent_end` учитываются как отдельные низкоуровневые запуски и могут иметь `willRetry: true`;
+7. после settlement читаются `get_messages`, `get_last_assistant_text`, повторный `get_session_stats` и `get_state`;
+8. usage вычисляется как дельта накопленной статистики до/после попытки;
+9. закрытие stdin штатно завершает RPC-процесс.
 
 Поддержано:
 
@@ -254,11 +256,11 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 - `fresh` и проверенный `resume` через `--session`;
 - timeout/cancellation вместе с process group;
 - общий race-safe лимит stdout/stderr;
-- Session ID, resolved model и usage;
+- Session ID, resolved model и per-attempt usage delta;
 - дополнительные env и нерезервированные Pi flags;
 - opt-in smoke test с реальным бинарником.
 
-Интерактивный extension UI не проксируется в рамках попытки: запросы, требующие ответа, считаются protocol error. Project-local Pi resources управляются явным `project_trust`.
+Интерактивный extension UI не проксируется в рамках попытки: запросы, требующие ответа, считаются protocol error. Fire-and-forget методы `notify`, `setStatus`, `setWidget`, `setTitle` и `set_editor_text` допускаются. Project-local Pi resources управляются явным `project_trust`.
 
 `Request.Metadata` является optional. Workflow runtime пока не строит mapping из workflow/node metadata; adapter обязан транспортировать поле, когда вызывающая сторона его заполнила. Pi adapter делает это через `TAKT_METADATA_JSON`.
 
@@ -293,6 +295,10 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 15. agent-level failure;
 16. неподдерживаемый интерактивный extension UI;
 17. runtime `fresh → retry → resume`;
-18. opt-in smoke test с реальным бинарником.
+18. ожидание `agent_settled` после одного или нескольких `agent_end`;
+19. запрет всех session/mode CLI-флагов, которыми adapter управляет самостоятельно;
+20. per-attempt delta для fresh и resume;
+21. fire-and-forget `set_editor_text`;
+22. opt-in smoke test с реальным бинарником.
 
 Для CI используются `cmd/takt-fake-assistant`, `cmd/takt-fake-pi`, `scripts/test-fake-assistant.sh` и `scripts/test-pi-adapter.sh`. Реальный Pi smoke test включается только через `TAKT_PI_SMOKE=1` и не блокирует обычный unit test suite.

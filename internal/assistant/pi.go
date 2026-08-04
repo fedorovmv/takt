@@ -129,6 +129,11 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		cancel()
 		return finish(Result{ExitCode: -1}, protocolPiError("decode initial state", err))
 	}
+	statsBeforeRaw, err := client.call(ctx, "stats-before", map[string]any{"type": "get_session_stats"})
+	if err != nil {
+		cancel()
+		return finish(Result{SessionID: stateBefore.SessionID, ExitCode: -1}, err)
+	}
 	mode, requestedSessionID := effectiveSession(req.SessionMode, req.SessionID)
 	if mode == "resume" && stateBefore.SessionID != requestedSessionID {
 		cancel()
@@ -143,13 +148,20 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		cancel()
 		return finish(Result{SessionID: stateBefore.SessionID, ExitCode: 1}, err)
 	}
-	agentEnd, err := client.waitEvent(ctx, "agent_end")
+	settled, err := client.waitAgentSettled(ctx)
 	if err != nil {
 		cancel()
 		return finish(Result{SessionID: stateBefore.SessionID, ExitCode: -1}, err)
 	}
-	if failure := piAgentFailure(agentEnd.Raw); failure != "" {
-		return finish(Result{SessionID: stateBefore.SessionID, ExitCode: 1, Output: failure}, &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "pi agent", Err: errors.New(failure)})
+
+	messagesRaw, err := client.call(ctx, "messages-after", map[string]any{"type": "get_messages"})
+	if err != nil {
+		cancel()
+		return finish(Result{SessionID: stateBefore.SessionID, ExitCode: -1}, err)
+	}
+	failure := piAgentFailure(messagesRaw)
+	if failure == "" && len(settled.LastAgentEnd.Raw) > 0 {
+		failure = piAgentFailure(settled.LastAgentEnd.Raw)
 	}
 
 	textRaw, err := client.call(ctx, "last-text", map[string]any{"type": "get_last_assistant_text"})
@@ -162,10 +174,15 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		cancel()
 		return finish(Result{SessionID: stateBefore.SessionID, ExitCode: -1}, protocolPiError("decode assistant text", err))
 	}
-	statsRaw, err := client.call(ctx, "stats", map[string]any{"type": "get_session_stats"})
+	statsAfterRaw, err := client.call(ctx, "stats-after", map[string]any{"type": "get_session_stats"})
 	if err != nil {
 		cancel()
 		return finish(Result{SessionID: stateBefore.SessionID, ExitCode: -1}, err)
+	}
+	usage, err := deltaPiUsage(statsBeforeRaw, statsAfterRaw)
+	if err != nil {
+		cancel()
+		return finish(Result{SessionID: stateBefore.SessionID, ExitCode: -1}, protocolPiError("calculate attempt usage", err))
 	}
 	stateAfterRaw, err := client.call(ctx, "state-after", map[string]any{"type": "get_state"})
 	if err != nil {
@@ -186,11 +203,15 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 	}
 
 	structured, _ := json.Marshal(map[string]any{
-		"adapter":        "pi",
-		"pi_version":     version,
-		"session_file":   stateAfter.SessionFile,
-		"thinking_level": stateAfter.ThinkingLevel,
-		"stats":          json.RawMessage(statsRaw),
+		"adapter":           "pi",
+		"pi_version":        version,
+		"session_file":      stateAfter.SessionFile,
+		"thinking_level":    stateAfter.ThinkingLevel,
+		"usage_semantics":   "attempt_delta",
+		"stats_before":      json.RawMessage(statsBeforeRaw),
+		"stats_after":       json.RawMessage(statsAfterRaw),
+		"low_level_runs":    settled.LowLevelRuns,
+		"automatic_retries": settled.AutomaticRetries,
 	})
 	result := Result{
 		Output:     text,
@@ -198,10 +219,17 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		SessionID:  stateAfter.SessionID,
 		Resumed:    mode == "resume",
 		ExitCode:   0,
-		Usage:      decodePiUsage(statsRaw),
+		Usage:      usage,
 	}
 	if stateAfter.Model != nil {
 		result.ResolvedModel = &ProtocolModel{Name: req.ModelName, Provider: stateAfter.Model.Provider, ID: stateAfter.Model.ID}
+	}
+	if failure != "" {
+		result.ExitCode = 1
+		if result.Output == "" {
+			result.Output = failure
+		}
+		return finish(result, &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "pi agent", Err: errors.New(failure)})
 	}
 	return finish(result, nil)
 }
@@ -236,7 +264,9 @@ func piArgs(s spec.AssistantSpec, req Request) []string {
 
 func validatePiArgs(args []string) error {
 	reserved := map[string]struct{}{
-		"--mode": {}, "--provider": {}, "--model": {}, "--thinking": {}, "--session": {}, "--session-dir": {},
+		"--mode": {}, "--provider": {}, "--model": {}, "--thinking": {}, "--session": {}, "--session-id": {}, "--session-dir": {},
+		"--no-session": {}, "--continue": {}, "-c": {}, "--resume": {}, "-r": {}, "--fork": {},
+		"--print": {}, "-p": {}, "--version": {}, "-v": {}, "--help": {}, "-h": {},
 		"--approve": {}, "-a": {}, "--no-approve": {}, "-na": {},
 	}
 	for _, arg := range args {
@@ -427,6 +457,29 @@ func (c *piRPCClient) waitEvent(ctx context.Context, eventType string) (piRPCRec
 	return c.next(ctx, func(r piRPCRecord) bool { return r.Type == eventType })
 }
 
+type piSettledResult struct {
+	LastAgentEnd     piRPCRecord
+	LowLevelRuns     int
+	AutomaticRetries int
+}
+
+func (c *piRPCClient) waitAgentSettled(ctx context.Context) (piSettledResult, error) {
+	if _, err := c.waitEvent(ctx, "agent_settled"); err != nil {
+		return piSettledResult{}, err
+	}
+	var result piSettledResult
+	for _, record := range c.backlog {
+		switch record.Type {
+		case "agent_end":
+			result.LastAgentEnd = record
+			result.LowLevelRuns++
+		case "auto_retry_start":
+			result.AutomaticRetries++
+		}
+	}
+	return result, nil
+}
+
 func (c *piRPCClient) next(ctx context.Context, match func(piRPCRecord) bool) (piRPCRecord, error) {
 	for i, record := range c.backlog {
 		if match(record) {
@@ -484,7 +537,10 @@ func (c *piRPCClient) next(ctx context.Context, match func(piRPCRecord) bool) (p
 					Method string `json:"method"`
 				}
 				_ = json.Unmarshal(record.Raw, &ui)
-				if ui.Method != "notify" && ui.Method != "setStatus" && ui.Method != "setWidget" && ui.Method != "setTitle" {
+				allowed := map[string]struct{}{
+					"notify": {}, "setStatus": {}, "setWidget": {}, "setTitle": {}, "set_editor_text": {},
+				}
+				if _, ok := allowed[ui.Method]; !ok {
 					return piRPCRecord{}, protocolPiError("extension UI", fmt.Errorf("interactive Pi extension request %q is unsupported", ui.Method))
 				}
 			}
@@ -597,6 +653,28 @@ func decodePiUsage(raw json.RawMessage) *ProtocolUsage {
 		return nil
 	}
 	return &ProtocolUsage{InputTokens: int(input), OutputTokens: int(output), Cost: cost}
+}
+
+func deltaPiUsage(beforeRaw, afterRaw json.RawMessage) (*ProtocolUsage, error) {
+	before := decodePiUsage(beforeRaw)
+	after := decodePiUsage(afterRaw)
+	if after == nil {
+		return nil, nil
+	}
+	if before == nil {
+		before = &ProtocolUsage{}
+	}
+	input := after.InputTokens - before.InputTokens
+	output := after.OutputTokens - before.OutputTokens
+	cost := after.Cost - before.Cost
+	const epsilon = 1e-9
+	if input < 0 || output < 0 || cost < -epsilon {
+		return nil, fmt.Errorf("Pi session statistics decreased: before=%+v after=%+v", *before, *after)
+	}
+	if cost < 0 {
+		cost = 0
+	}
+	return &ProtocolUsage{InputTokens: input, OutputTokens: output, Cost: cost}, nil
 }
 
 func findJSONNumber(value any, keys ...string) (float64, bool) {

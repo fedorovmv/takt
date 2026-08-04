@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.8-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.9-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -36,7 +36,7 @@
 - адаптеры `mock`, универсальный `process` и специализированный `pi`;
 - JSON-протокол `takt-assistant/v1alpha1` для внешних process assistants;
 - fake-assistant contract suite: success, exit, start, timeout, cancel, concurrent output, malformed/strict protocol cases, fresh и resume;
-- Pi RPC adapter и fake-Pi contract suite, включая model/thinking mapping, fresh/resume, timeout/cancel, output limit и отказ интерактивного extension UI;
+- Pi RPC adapter и fake-Pi contract suite, включая model/thinking mapping, fresh/resume, ожидание `agent_settled`, автоматический retry, per-attempt usage delta, timeout/cancel, output limit и границу extension UI;
 - полное совпадение OS exit code и envelope `exit_code`, включая ноль;
 - единый JSON envelope CLI для успеха и ошибок;
 - строгий YAML subset с сохранением пустых строк в block scalar;
@@ -88,6 +88,7 @@ make check
 - [Fake-assistant contract suite v0.1.6](docs/20-fake-assistant-contract-v0.1.6.md)
 - [Усиление protocol contract v0.1.7](docs/21-protocol-hardening-v0.1.7.md)
 - [Pi RPC adapter v0.1.8](docs/22-pi-adapter-v0.1.8.md)
+- [Согласование Pi RPC-контракта v0.1.9](docs/23-pi-rpc-alignment-v0.1.9.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -114,6 +115,7 @@ make check
 - [Fake-assistant contract suite v0.1.6](docs/20-fake-assistant-contract-v0.1.6.md)
 - [Усиление protocol contract v0.1.7](docs/21-protocol-hardening-v0.1.7.md)
 - [Pi RPC adapter v0.1.8](docs/22-pi-adapter-v0.1.8.md)
+- [Согласование Pi RPC-контракта v0.1.9](docs/23-pi-rpc-alignment-v0.1.9.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 
