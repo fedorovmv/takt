@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.20-alpha
+
+- OpenCode сохраняет сообщения о provider retry и connection failure при timeout/cancellation;
+- raw stdout/stderr и краткая диагностика попадают в NodeState и per-attempt execution record без изменения execution kind;
+- scheduler сохраняет специализированную context-ошибку adapter вместо общего `node attempt`;
+- authoring skill обновлён до v0.2.1, а его README и поддерживаемая версия Takt проверяются автоматически;
+- добавлены ADR-031 и `docs/34-opencode-provider-diagnostics-v0.1.20.md`.
+
 ## v0.1.19-alpha
 
 - добавлен специализированный `type: opencode` через `opencode run --format json`;

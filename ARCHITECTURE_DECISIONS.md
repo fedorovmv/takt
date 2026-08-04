@@ -133,3 +133,7 @@ Bash-узел сохраняет stdout и stderr раздельно. Совме
 `type: opencode` запускает отдельный `opencode run --format json` на каждую попытку. Prompt передаётся через stdin, stdout читается как NDJSON event stream, stderr сохраняется как диагностика. Takt не парсит TUI и не реализует внутренний tool loop OpenCode.
 
 Resume считается успешным только при совпадении Session ID. Usage и cost одной попытки суммируются по уникальным `step_finish`; event `error` является отказом агента даже при нулевом OS exit code. Если event stream не сообщает иную модель, `resolved_model` фиксирует явно переданный `provider/id` и помечает источник как `requested_cli_model`. Флаг `--auto` доступен только через явное `auto_approve` в trusted workspace.
+
+## ADR-031. Provider diagnostics дополняют context classification OpenCode
+
+Timeout и cancellation остаются authoritative execution kind. При этом OpenCode adapter обязан сохранить доступные сообщения о provider retry и connection failure из stderr и JSON `error` events. Эти данные записываются в raw stdout/stderr, logical output и текст context-ошибки. Scheduler не заменяет специализированную ошибку adapter общим `node attempt`, если execution kind уже совпадает с завершившимся parent context.

@@ -18,6 +18,8 @@ Adapter:
 - сохраняет requested/resolved model и assistant version;
 - применяет общий stdout/stderr limit и сохраняет приоритет timeout/cancel над overflow.
 
+Начиная с v0.1.20 adapter также сохраняет доступные provider diagnostics при timeout/cancellation. Сообщения о retry из stderr и ошибки соединения из JSON `error` events попадают в raw streams, logical output и текст ошибки узла, но execution kind остаётся `timed_out` или `cancelled`.
+
 ## Конфигурация
 
 ```yaml
@@ -34,6 +36,6 @@ assistants:
 
 ## Проверки
 
-`scripts/test-opencode-adapter.sh` покрывает request mapping, fresh/resume, mismatch, warning stderr, malformed events, error event с OS exit 0, process exit, missing/negative usage, timeout, cancellation, output overflow, context priority и reserved flags. Runtime test подтверждает retry с продолжением Session ID и накоплением usage без потери per-attempt execution records.
+`scripts/test-opencode-adapter.sh` покрывает request mapping, fresh/resume, mismatch, warning stderr, malformed events, error event с OS exit 0, process exit, missing/negative usage, timeout, provider diagnostics при timeout, cancellation, output overflow, context priority и reserved flags. Runtime test подтверждает retry с продолжением Session ID, накоплением usage и сохранением provider diagnostics без потери per-attempt execution records.
 
 Опциональная проверка реального CLI включается через `TAKT_OPENCODE_SMOKE=1` вместе с `TAKT_OPENCODE_SMOKE_PROVIDER` и `TAKT_OPENCODE_SMOKE_MODEL`.

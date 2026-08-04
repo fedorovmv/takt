@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.2.0" \
+  "skills/takt/VERSION|0.2.1" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -66,7 +66,9 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-028" \
   "ARCHITECTURE_DECISIONS.md|ADR-029" \
   "ARCHITECTURE_DECISIONS.md|ADR-030" \
+  "ARCHITECTURE_DECISIONS.md|ADR-031" \
   "docs/33-opencode-adapter-v0.1.19.md|opencode run --format json" \
+  "docs/34-opencode-provider-diagnostics-v0.1.20.md|OpenCode diagnostics" \
   "docs/10-assistant-adapter-spec.md|OpenCode adapter реализован" \
   "docs/03-specification.md|### OpenCode assistant" \
   "skills/takt/references/configuration.md|Assistant opencode" \
@@ -98,6 +100,7 @@ for check in \
   "docs/12-document-map.md|31-quality-stdout-separation-v0.1.17.md" \
   "docs/12-document-map.md|32-takt-authoring-skill-v0.1.18.md" \
   "docs/12-document-map.md|33-opencode-adapter-v0.1.19.md" \
+  "docs/12-document-map.md|34-opencode-provider-diagnostics-v0.1.20.md" \
   "docs/14-backlog-v0.2.md|TAKT-008. Fake assistant protocol suite — выполнено" \
   "docs/14-backlog-v0.2.md|TAKT-009. Specialized Pi adapter — выполнено" \
   "docs/15-coding-agent-start.md|takt-assistant/v1alpha1" \

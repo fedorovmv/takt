@@ -44,7 +44,7 @@
 - приоритет timeout/cancellation над совпавшим output overflow в Pi adapter;
 - fake-Pi contract suite и opt-in smoke test с реальным CLI;
 - интеграционные overflow+timeout/cancel проверки через `Pi.Run` и `OpenCode.Run` с корректными parent contexts и сохранение `OutputTruncated` в `NodeState`;
-- OpenCode `run --format json`: version probe, model/agent/variant mapping, verified resume, NDJSON events, per-step usage, error events и opt-in smoke;
+- OpenCode `run --format json`: version probe, model/agent/variant mapping, verified resume, NDJSON events, per-step usage, error events, сохранение provider diagnostics при timeout/cancellation и opt-in smoke;
 - воспроизводимый Route DSL end-to-end с двумя попытками, feedback, resume, обязательной проверкой, артефактами и approval;
 - накопление usage по всем агентным попыткам в `NodeState`;
 - отдельные execution records для каждой попытки с assistant/version/requested/resolved model и usage;

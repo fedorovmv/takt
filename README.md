@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.18-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.20-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -37,7 +37,7 @@
 - JSON-протокол `takt-assistant/v1alpha1` для внешних process assistants;
 - fake-assistant contract suite: success, exit, start, timeout, cancel, concurrent output, malformed/strict protocol cases, fresh и resume;
 - Pi RPC adapter и fake-Pi contract suite, включая model/thinking mapping, fresh/resume, ожидание `agent_settled`, автоматический retry, per-attempt usage delta, timeout/cancel, output limit и границу extension UI;
-- OpenCode CLI adapter через `opencode run --format json`, с model/agent/variant mapping, проверенным resume, per-step usage, stderr diagnostics и contract suite;
+- OpenCode CLI adapter через `opencode run --format json`, с model/agent/variant mapping, проверенным resume, per-step usage, сохранением provider diagnostics при timeout/cancellation и contract suite;
 - полное совпадение OS exit code и envelope `exit_code`, включая ноль;
 - единый JSON envelope CLI для успеха и ошибок;
 - строгий YAML subset с сохранением пустых строк в block scalar;
@@ -131,6 +131,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Согласование Pi RPC-контракта v0.1.9](docs/23-pi-rpc-alignment-v0.1.9.md)
 - [Усиление context/usage Pi v0.1.10](docs/24-pi-context-usage-hardening-v0.1.10.md)
 - [OpenCode adapter v0.1.19](docs/33-opencode-adapter-v0.1.19.md)
+- [Диагностика provider-сбоев OpenCode v0.1.20](docs/34-opencode-provider-diagnostics-v0.1.20.md)
 - [Route DSL end-to-end v0.1.11](docs/25-route-dsl-e2e-v0.1.11.md)
 - [Evaluation runner v0.1.12](docs/26-evaluation-runner-v0.1.12.md)
 - [Изоляция и диагностика evaluation v0.1.13](docs/27-evaluation-isolation-report-v0.1.13.md)

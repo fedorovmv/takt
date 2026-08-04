@@ -306,7 +306,15 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		// classification before allow_failure or generic error handling can
 		// turn it into an ordinary exit failure.
 		if contextErr := attemptContextError(attemptCtx, "node attempt"); contextErr != nil {
-			execErr = contextErr
+			// Specialized adapters may already have classified the same parent
+			// timeout/cancellation and attached provider diagnostics. Preserve
+			// that richer error instead of replacing it with the generic node
+			// attempt message. Derived exit/protocol errors are still overridden
+			// by the authoritative parent context classification.
+			kind := execution.KindOf(execErr)
+			if execErr == nil || (kind != execution.KindTimedOut && kind != execution.KindCancelled) {
+				execErr = contextErr
+			}
 		}
 		recordExecution(ns, result, execErr)
 		applyExecResult(ns, result)
@@ -518,7 +526,7 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		prompt = renderTemplate(prompt, state, local, feedback, artifacts)
 		result, err := adapter.Run(ctx, assistant.Request{RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts, Prompt: prompt, Workspace: r.Workspace, ModelName: modelName, Model: model, SessionMode: sessionMode, SessionID: sessionID, NativeHooks: node.NativeHooks})
 		execResult := execResult{
-			Output: result.Output, Stdout: result.Output, ExitCode: result.ExitCode, SessionID: result.SessionID,
+			Output: result.Output, Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, SessionID: result.SessionID,
 			Resumed: result.Resumed, Truncated: result.Truncated, Usage: result.Usage,
 			Assistant:        assistantName,
 			AssistantVersion: result.AssistantVersion,

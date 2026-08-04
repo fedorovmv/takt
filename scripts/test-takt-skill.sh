@@ -6,12 +6,16 @@ cd "$root"
 
 skill="skills/takt/SKILL.md"
 profile="skills/takt/assets/validated-agent-profile"
+skill_version="$(tr -d '[:space:]' < skills/takt/VERSION)"
+takt_version="$(tr -d '[:space:]' < VERSION)"
 
 [[ -f "$skill" ]] || { echo "missing $skill" >&2; exit 1; }
 grep -Fq 'name: takt' "$skill"
 grep -Fq 'takt validate' "$skill"
 grep -Fq 'references/patterns.md' "$skill"
 grep -Fq 'opencode' "$skill"
+grep -Fq "Версия скилла — \`$skill_version\`." skills/takt/README.md
+grep -Fq "Takt \`v$takt_version\`" skills/takt/README.md
 
 for file in \
   README.md \

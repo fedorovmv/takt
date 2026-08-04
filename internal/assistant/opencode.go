@@ -83,6 +83,7 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 
 	runErr := cmd.Run()
 	rawStdout, rawStderr := stdout.String(), stderr.String()
+	diagnostic := openCodeDiagnostics(rawStdout, rawStderr)
 	result := Result{
 		ExitCode:         0,
 		Stdout:           rawStdout,
@@ -90,8 +91,11 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 		AssistantVersion: version,
 		Truncated:        stdout.Truncated() || stderr.Truncated(),
 	}
+	if diagnostic != "" {
+		result.Output = diagnostic
+	}
 
-	if priorityErr := openCodePriorityError(ctx, result.Truncated); priorityErr != nil {
+	if priorityErr := openCodePriorityError(ctx, result.Truncated, diagnostic); priorityErr != nil {
 		result.ExitCode = -1
 		return result, priorityErr
 	}
@@ -144,18 +148,79 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 	return result, nil
 }
 
-func openCodePriorityError(ctx context.Context, truncated bool) error {
+func openCodePriorityError(ctx context.Context, truncated bool, diagnostic string) error {
 	if ctx != nil && ctx.Err() != nil {
 		kind := execution.KindCancelled
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			kind = execution.KindTimedOut
 		}
-		return &execution.Error{Kind: kind, ExitCode: -1, Op: "opencode run", Err: ctx.Err()}
+		return &execution.Error{Kind: kind, ExitCode: -1, Op: "opencode run", Err: withOpenCodeDiagnostic(ctx.Err(), diagnostic)}
 	}
 	if truncated {
-		return &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "opencode run", Err: fmt.Errorf("opencode output exceeded max_output_bytes")}
+		return &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "opencode run", Err: withOpenCodeDiagnostic(fmt.Errorf("opencode output exceeded max_output_bytes"), diagnostic)}
 	}
 	return nil
+}
+
+func withOpenCodeDiagnostic(base error, diagnostic string) error {
+	diagnostic = strings.TrimSpace(diagnostic)
+	if diagnostic == "" {
+		return base
+	}
+	return fmt.Errorf("%w; OpenCode diagnostics: %s", base, diagnostic)
+}
+
+// openCodeDiagnostics extracts the most useful provider/transport messages
+// available before a timeout or cancellation. OpenCode may report retries on
+// stderr and structured provider errors as JSON events on stdout. The raw
+// streams remain available separately in Result.Stdout and Result.Stderr.
+func openCodeDiagnostics(rawStdout, rawStderr string) string {
+	messages := make([]string, 0, 8)
+	seen := make(map[string]struct{})
+	appendMessage := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if len(value) > 2048 {
+			value = value[:2048] + "…"
+		}
+		if _, found := seen[value]; found {
+			return
+		}
+		seen[value] = struct{}{}
+		messages = append(messages, value)
+	}
+
+	// Structured provider errors are more valuable than generic retry logs,
+	// so reserve space for them even when stderr is noisy.
+	scanner := bufio.NewScanner(strings.NewReader(rawStdout))
+	maxLine := len(rawStdout) + 1
+	if maxLine < 64*1024 {
+		maxLine = 64 * 1024
+	}
+	scanner.Buffer(make([]byte, 64*1024), maxLine)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var event openCodeEvent
+		if json.Unmarshal(line, &event) != nil || event.Type != "error" {
+			continue
+		}
+		appendMessage(openCodeErrorMessage(event.Error))
+		if len(messages) >= 4 {
+			break
+		}
+	}
+	for _, line := range strings.Split(rawStderr, "\n") {
+		appendMessage(line)
+		if len(messages) >= 8 {
+			break
+		}
+	}
+	return strings.Join(messages, "; ")
 }
 
 func openCodeArgs(s spec.AssistantSpec, req Request) []string {

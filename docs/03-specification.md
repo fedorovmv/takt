@@ -109,6 +109,8 @@ Takt сам задаёт `--mode rpc`, `--provider`, `--model`, `--thinking`, `-
 
 Takt передаёт выбранную модель как `<provider>/<id>`, `params.variant` как `--variant`, prompt через stdin, а сохранённый Session ID — через `--session`. При resume возвращённый event stream обязан содержать тот же Session ID. Stdout содержит NDJSON events; stderr остаётся диагностическим. Usage одной попытки является суммой уникальных `step_finish`; event `error` является отказом агента независимо от OS exit code.
 
+При timeout/cancellation итоговая классификация остаётся `timed_out`/`cancelled`. Доступные сообщения о provider retry, соединении и error events сохраняются в raw stdout/stderr, logical output и тексте ошибки узла. Общая проверка attempt context не заменяет более содержательную context-ошибку OpenCode на общее сообщение.
+
 `auto_approve: true` включает OpenCode `--auto` и предназначен только для доверенной рабочей директории.
 
 ## 4. Markdown-команды

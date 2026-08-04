@@ -275,12 +275,15 @@ opencode run --format json --dir <workspace> --model <provider>/<id> [--agent ..
 
 Prompt передаётся через stdin. Stdout трактуется как NDJSON event stream, stderr сохраняется только как диагностика. Takt собирает итоговый текст из `text`, usage и cost — как сумму уникальных `step_finish`, а события `error` классифицирует как отказ агента даже при нулевом OS exit code.
 
+Если parent context завершился, adapter сохраняет raw stdout/stderr и извлекает краткие сообщения из stderr и доступных `error` events. Итоговый execution kind остаётся `timed_out` или `cancelled`, а provider-диагностика добавляется к ошибке и logical output. Scheduler обязан сохранять такую специализированную context-ошибку, а не заменять её общим сообщением `node attempt`.
+
 Поддержано:
 
 - выбор model alias на уровне workflow, команды или узла;
 - `agent` и model `variant`; строковый `reasoning_effort` используется как fallback variant;
 - `fresh` и проверенный `resume` через `--session`;
 - version probe, timeout/cancellation, общий stdout/stderr limit;
+- provider retry/connection diagnostics при timeout/cancellation без изменения execution kind;
 - per-attempt usage и cost;
 - opt-in smoke test с реальным OpenCode CLI.
 

@@ -208,6 +208,29 @@ func TestOpenCodeAdapterContract(t *testing.T) {
 		}
 	})
 
+	t.Run("provider diagnostics survive timeout", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+		result, err := fakeOpenCode("provider-timeout").Run(ctx, fakeOpenCodeRequest(t.TempDir()))
+		if execution.KindOf(err) != execution.KindTimedOut {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+		for _, fragment := range []string{"retrying request 2/3", "connection refused"} {
+			if !strings.Contains(result.Output, fragment) {
+				t.Fatalf("diagnostic %q missing from output: %+v", fragment, result)
+			}
+			if !strings.Contains(err.Error(), fragment) {
+				t.Fatalf("diagnostic %q missing from error: %v", fragment, err)
+			}
+		}
+		if !strings.Contains(result.Stderr, "provider endpoint unavailable") {
+			t.Fatalf("stderr diagnostic was lost: %+v", result)
+		}
+		if !strings.Contains(result.Stdout, `"type":"error"`) {
+			t.Fatalf("structured provider error was lost: %+v", result)
+		}
+	})
+
 	t.Run("cancel", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		time.AfterFunc(50*time.Millisecond, cancel)

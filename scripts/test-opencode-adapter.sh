@@ -6,7 +6,7 @@ cd "$root"
 
 go test ./internal/assistant -run '^TestOpenCode(AdapterContract|RunPreservesContextPriorityWithRealOverflow)$' -count=1
 go test -race ./internal/assistant -run '^TestOpenCode(AdapterContract|RunPreservesContextPriorityWithRealOverflow)$' -count=1
-go test ./internal/runtime -run '^TestOpenCodeAssistantResumesSessionAcrossRetry$' -count=1
+go test ./internal/runtime -run '^TestOpenCode(AssistantResumesSessionAcrossRetry|TimeoutPreservesProviderDiagnostics)$' -count=1
 
 if [[ "${TAKT_OPENCODE_SMOKE:-0}" == "1" ]]; then
   go test ./internal/assistant -run '^TestOpenCodeAdapterOptInSmoke$' -count=1

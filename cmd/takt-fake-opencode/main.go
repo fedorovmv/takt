@@ -61,6 +61,14 @@ func main() {
 	case "timeout", "cancel":
 		time.Sleep(5 * time.Second)
 		return
+	case "provider-timeout":
+		fmt.Fprintln(os.Stderr, "provider endpoint unavailable; retrying request 2/3")
+		emit(session, "error", map[string]any{"error": map[string]any{
+			"name": "APIConnectionError",
+			"data": map[string]any{"message": "dial tcp provider.example:443: connection refused"},
+		}})
+		time.Sleep(5 * time.Second)
+		return
 	case "exit":
 		fmt.Fprintln(os.Stderr, "fake opencode exited")
 		os.Exit(7)

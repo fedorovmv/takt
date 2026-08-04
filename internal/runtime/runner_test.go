@@ -715,6 +715,63 @@ func TestOpenCodeAssistantResumesSessionAcrossRetry(t *testing.T) {
 	}
 }
 
+func TestOpenCodeTimeoutPreservesProviderDiagnostics(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "takt-fake-opencode")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", binary, "./cmd/takt-fake-opencode")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fake OpenCode: %v: %s", err, output)
+	}
+
+	dir := t.TempDir()
+	wf := &spec.Workflow{
+		APIVersion: "takt/v1alpha1",
+		Kind:       "Workflow",
+		Metadata:   spec.Metadata{Name: "opencode-provider-timeout"},
+		Defaults:   spec.Defaults{Assistant: "opencode", Model: "m"},
+		Nodes: []spec.Node{{
+			ID: "agent", Prompt: "hello", Timeout: "100ms",
+		}},
+	}
+	cfg := &spec.Config{
+		Models: map[string]spec.ModelSpec{"m": {Provider: "openai", ID: "fake-model"}},
+		Assistants: map[string]spec.AssistantSpec{"opencode": {
+			Type: "opencode", Binary: binary, Args: []string{"--fake-case", "provider-timeout"}, MaxOutputBytes: 64 * 1024,
+		}},
+	}
+	r := New(wf, cfg, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	var runErr *RunFailedError
+	if !errors.As(err, &runErr) {
+		t.Fatalf("expected RunFailedError, got %v", err)
+	}
+	node := state.Nodes["agent"]
+	if node.Status != store.NodeTimedOut || node.ErrorCode != string(execution.KindTimedOut) {
+		t.Fatalf("timeout classification changed: %+v", node)
+	}
+	for _, fragment := range []string{"retrying request 2/3", "connection refused"} {
+		if !strings.Contains(node.Error, fragment) {
+			t.Fatalf("diagnostic %q missing from node error: %+v", fragment, node)
+		}
+		if !strings.Contains(node.Output, fragment) {
+			t.Fatalf("diagnostic %q missing from node output: %+v", fragment, node)
+		}
+	}
+	if !strings.Contains(node.Stderr, "provider endpoint unavailable") || !strings.Contains(node.Stdout, `"type":"error"`) {
+		t.Fatalf("raw OpenCode streams were not preserved: %+v", node)
+	}
+	if len(node.Executions) != 1 || node.Executions[0].Status != store.NodeTimedOut || !strings.Contains(node.Executions[0].Error, "connection refused") {
+		t.Fatalf("execution diagnostic was not preserved: %+v", node.Executions)
+	}
+}
+
 func TestRetryPreservesPerExecutionModelIdentityAndUsage(t *testing.T) {
 	dir := t.TempDir()
 	wf := &spec.Workflow{
