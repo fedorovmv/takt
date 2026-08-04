@@ -68,6 +68,8 @@ type ExecutionState struct {
 type NodeState struct {
 	Status           string               `json:"status"`
 	Output           string               `json:"output,omitempty"`
+	Stdout           string               `json:"stdout,omitempty"`
+	Stderr           string               `json:"stderr,omitempty"`
 	OutputTruncated  bool                 `json:"output_truncated,omitempty"`
 	Usage            *Usage               `json:"usage,omitempty"`
 	Assistant        string               `json:"assistant,omitempty"`

@@ -124,3 +124,6 @@ Exit code и terminal status quality-node описывают выполнени�
 
 Корректный `valid: false` с ненулевым exit code является предметным результатом, а не потерей измерения. `valid: true` из failed, errored, timed_out или cancelled узла сохраняется для аудита, но не считается успехом. Malformed envelope при любом статусе является ошибкой измерительного контура.
 
+## ADR-029. Структурный validation envelope читается только из stdout
+
+Bash-узел сохраняет stdout и stderr раздельно. Совместимое поле `output` объединяет оба потока и используется для шаблонов, feedback и диагностики, но не является источником структурного результата. Evaluation декодирует `takt-validation/v1alpha1` только из stdout quality-node. Предупреждения и служебные сообщения в stderr не могут повредить корректный envelope; они сохраняются отдельно и остаются видимыми в diagnostic output.

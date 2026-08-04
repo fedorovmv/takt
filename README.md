@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.16-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.17-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -120,10 +120,13 @@ Evaluation runner фиксирует идентичность стратегии
 - [Изоляция и диагностика evaluation v0.1.13](docs/27-evaluation-isolation-report-v0.1.13.md)
 - [Идентичность benchmark и качество v0.1.14](docs/28-benchmark-identity-quality-v0.1.14.md)
 - [Семантика метрик и execution identity v0.1.15](docs/29-benchmark-metric-semantics-v0.1.15.md)
+- [Семантика validation envelope v0.1.16](docs/30-quality-envelope-semantics-v0.1.16.md)
+- [Разделение stdout/stderr quality-node v0.1.17](docs/31-quality-stdout-separation-v0.1.17.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
 
+- [Краткие правила для кодовых агентов](AGENTS.md)
 - [Описание проекта](docs/01-project.md)
 - [Подход к решению](docs/02-approach.md)
 - [Текущая спецификация `takt/v1alpha1`](docs/03-specification.md)
@@ -153,6 +156,8 @@ Evaluation runner фиксирует идентичность стратегии
 - [Изоляция и диагностика evaluation v0.1.13](docs/27-evaluation-isolation-report-v0.1.13.md)
 - [Идентичность benchmark и качество v0.1.14](docs/28-benchmark-identity-quality-v0.1.14.md)
 - [Семантика метрик и execution identity v0.1.15](docs/29-benchmark-metric-semantics-v0.1.15.md)
+- [Семантика validation envelope v0.1.16](docs/30-quality-envelope-semantics-v0.1.16.md)
+- [Разделение stdout/stderr quality-node v0.1.17](docs/31-quality-stdout-separation-v0.1.17.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

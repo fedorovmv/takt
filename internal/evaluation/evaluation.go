@@ -175,6 +175,8 @@ type NodeRecord struct {
 	Error            string            `json:"error,omitempty"`
 	Feedback         string            `json:"feedback,omitempty"`
 	DiagnosticOutput string            `json:"diagnostic_output,omitempty"`
+	Stdout           string            `json:"stdout,omitempty"`
+	Stderr           string            `json:"stderr,omitempty"`
 	OutputTruncated  bool              `json:"output_truncated"`
 	Usage            *store.Usage      `json:"usage,omitempty"`
 	MixedIdentity    bool              `json:"mixed_execution_identity"`
@@ -560,9 +562,9 @@ func applyQuality(record *RunRecord, state *store.RunState, qualityNode, generat
 	}
 	record.QualityNodeStatus = string(node.Status)
 
-	output := strings.TrimSpace(node.Output)
-	if output != "" {
-		result, err := validation.Decode([]byte(node.Output))
+	stdout := strings.TrimSpace(node.Stdout)
+	if stdout != "" {
+		result, err := validation.Decode([]byte(node.Stdout))
 		if err != nil {
 			return fmt.Errorf("quality node %q: %w", qualityNode, err)
 		}
@@ -636,7 +638,8 @@ func recordFromState(caseID string, repeat int, workspacePath string, state *sto
 			RequestedModel: node.RequestedModel, ResolvedModel: node.ResolvedModel,
 			SessionID: node.SessionID, Resumed: node.Resumed,
 			ExitCode: node.ExitCode, ErrorCode: node.ErrorCode, Error: node.Error, Feedback: node.Feedback,
-			DiagnosticOutput: node.Output, OutputTruncated: node.OutputTruncated, Usage: node.Usage,
+			DiagnosticOutput: node.Output, Stdout: node.Stdout, Stderr: node.Stderr,
+			OutputTruncated: node.OutputTruncated, Usage: node.Usage,
 			MixedIdentity: mixedIdentity, Executions: executions,
 		}
 	}

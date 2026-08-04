@@ -1,6 +1,6 @@
 # План оценки агентных стратегий
 
-Статус: benchmark-контур реализован в `v0.1.16-alpha` командами `takt eval run/report`. Инфраструктурный набор с fake Pi отделён от реального Route DSL benchmark.
+Статус: benchmark-контур реализован в `v0.1.17-alpha` командами `takt eval run/report`. Инфраструктурный набор с fake Pi отделён от реального Route DSL benchmark.
 
 ## 1. Цель
 

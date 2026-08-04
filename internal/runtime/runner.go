@@ -426,6 +426,8 @@ func attemptContextError(ctx context.Context, op string) error {
 
 type execResult struct {
 	Output           string
+	Stdout           string
+	Stderr           string
 	ExitCode         int
 	SessionID        string
 	Resumed          bool
@@ -453,7 +455,7 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			if node.Approval.CaptureResponse {
 				output = answer
 			}
-			return execResult{Output: output, ExitCode: 0}, nil
+			return execResult{Output: output, Stdout: output, ExitCode: 0}, nil
 		}
 		message := renderTemplate(node.Approval.Message, state, local, feedback, artifacts)
 		state.Status = store.RunWaiting
@@ -516,7 +518,7 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		prompt = renderTemplate(prompt, state, local, feedback, artifacts)
 		result, err := adapter.Run(ctx, assistant.Request{RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts, Prompt: prompt, Workspace: r.Workspace, ModelName: modelName, Model: model, SessionMode: sessionMode, SessionID: sessionID, NativeHooks: node.NativeHooks})
 		execResult := execResult{
-			Output: result.Output, ExitCode: result.ExitCode, SessionID: result.SessionID,
+			Output: result.Output, Stdout: result.Output, ExitCode: result.ExitCode, SessionID: result.SessionID,
 			Resumed: result.Resumed, Truncated: result.Truncated, Usage: result.Usage,
 			Assistant:        assistantName,
 			AssistantVersion: result.AssistantVersion,
@@ -575,7 +577,7 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 			return execResult{}, err
 		}
 		if untilSatisfied(parent.LoopGroup.Until, check) {
-			return execResult{Output: check.Output, ExitCode: check.ExitCode, SessionID: check.SessionID, Truncated: check.OutputTruncated}, nil
+			return execResult{Output: check.Output, Stdout: check.Stdout, Stderr: check.Stderr, ExitCode: check.ExitCode, SessionID: check.SessionID, Truncated: check.OutputTruncated}, nil
 		}
 		previous = local
 	}
@@ -627,6 +629,8 @@ func applyExecResult(node *store.NodeState, result execResult) {
 		return
 	}
 	node.Output = result.Output
+	node.Stdout = result.Stdout
+	node.Stderr = result.Stderr
 	node.ExitCode = result.ExitCode
 	node.SessionID = result.SessionID
 	node.Resumed = result.Resumed

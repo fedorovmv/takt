@@ -51,6 +51,7 @@
 - раздельная атрибуция usage по execution identity и явная отметка mixed identity;
 - явные нулевые quality-метрики и `null` для недоступных средних значений;
 - сохранение validation envelope при любом terminal status quality-node и success gate `completed && valid=true`;
+- раздельное хранение stdout/stderr bash-узла и декодирование quality envelope только из stdout;
 - строгие схемы `takt-validation/v1alpha1` и `takt-evaluation/v1alpha1`;
 - стартовый Route DSL eval-набор из десяти синтетических заданий.
 

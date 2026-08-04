@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.17-alpha
+
+- добавлен корневой `AGENTS.md` с краткими правилами работы кодовых агентов;
+- bash runtime сохраняет stdout и stderr отдельно, сохраняя объединённый `output` для feedback и диагностики;
+- evaluation декодирует `takt-validation/v1alpha1` только из stdout quality-node;
+- stderr валидатора больше не повреждает корректный validation envelope и сохраняется в отчёте отдельно;
+- добавлены регрессии `valid:false + stderr + exit 1`, схема состояния и схема evaluation report;
+- добавлены ADR-029 и документ `docs/31-quality-stdout-separation-v0.1.17.md`.
+
 ## v0.1.16-alpha
 
 - quality envelope декодируется и сохраняется независимо от exit code и terminal status quality-node;

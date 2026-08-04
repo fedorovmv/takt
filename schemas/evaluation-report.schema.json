@@ -275,6 +275,12 @@
         "diagnostic_output": {
           "type": "string"
         },
+        "stdout": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
         "output_truncated": {
           "type": "boolean"
         },

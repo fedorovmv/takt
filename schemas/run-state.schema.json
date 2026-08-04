@@ -127,6 +127,12 @@
         "output": {
           "type": "string"
         },
+        "stdout": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
         "exit_code": {
           "type": "integer"
         },

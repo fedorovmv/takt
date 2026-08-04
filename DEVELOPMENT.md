@@ -12,14 +12,18 @@ go build -o bin/takt ./cmd/takt
 
 ## Что прочитать перед изменением ядра
 
-1. `docs/12-document-map.md`;
-2. `docs/05-implementation-status.md`;
-3. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
-4. `docs/28-benchmark-identity-quality-v0.1.14.md`;
-5. `docs/13-evaluation-plan.md`;
-6. `docs/09-runtime-semantics.md`;
-7. `docs/10-assistant-adapter-spec.md`;
-8. `ARCHITECTURE_DECISIONS.md`.
+1. `AGENTS.md`;
+2. `docs/12-document-map.md`;
+3. `docs/05-implementation-status.md`;
+4. `docs/31-quality-stdout-separation-v0.1.17.md`;
+5. `docs/30-quality-envelope-semantics-v0.1.16.md`;
+6. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
+7. `docs/28-benchmark-identity-quality-v0.1.14.md`;
+8. `docs/13-evaluation-plan.md`;
+9. `docs/09-runtime-semantics.md`;
+10. `docs/10-assistant-adapter-spec.md`;
+11. `ARCHITECTURE_DECISIONS.md`.
+
 
 ## С чего продолжать реализацию
 
@@ -62,6 +66,7 @@ make route-benchmark
 - сохранять per-attempt execution identity при любом retry;
 - не трактовать амортизированную длительность benchmark как time-to-valid;
 - декодировать доступный validation envelope независимо от exit code; считать успехом только `completed && valid=true`.
+- декодировать validation envelope только из stdout quality-node; stderr сохранять как отдельную диагностику.
 
 ## Тесты
 

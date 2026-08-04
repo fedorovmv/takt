@@ -1,6 +1,7 @@
 # Backlog Takt v0.2
 
-Статус обновлён после уточнения семантики benchmark-метрик и per-attempt execution identity в `v0.1.16-alpha`.
+Статус обновлён после уточнения семантики benchmark-метрик и per-attempt execution identity в `v0.1.17-alpha`.
+В `v0.1.17-alpha` добавлен корневой `AGENTS.md`; порядок продуктовых задач не изменён.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 

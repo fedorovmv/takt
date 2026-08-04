@@ -16,7 +16,13 @@ func runBash(ctx context.Context, workspace, script string) (execResult, error) 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
-	result := execResult{Output: combineBashOutput(stdout.String(), stderr.String()), ExitCode: 0}
+	stdoutText, stderrText := stdout.String(), stderr.String()
+	result := execResult{
+		Output:   combineBashOutput(stdoutText, stderrText),
+		Stdout:   stdoutText,
+		Stderr:   stderrText,
+		ExitCode: 0,
+	}
 	if err == nil {
 		return result, nil
 	}

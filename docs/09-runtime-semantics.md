@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity уже реализована в `v0.1.16-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity уже реализована в `v0.1.17-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -152,7 +152,7 @@ node.started
 
 `allow_failure: true` разрешает только `exit`. Он не скрывает `start`, timeout, cancellation, protocol или internal error.
 
-Output, exit code, session ID и признак truncation сохраняются даже при неуспешном результате, если они доступны. Для агентного узла также сохраняются assistant, версия assistant, requested model и resolved model. Pi adapter использует `responseModel` последнего assistant message и только при его отсутствии берёт модель из `get_state`.
+Output, exit code, session ID и признак truncation сохраняются даже при неуспешном результате, если они доступны. Для `bash` stdout и stderr сохраняются раздельно; совместимое поле `output` остаётся объединённым представлением для шаблонов, feedback и диагностики. Структурные протоколы поверх bash, включая `takt-validation/v1alpha1`, декодируются только из stdout. Для агентного узла также сохраняются assistant, версия assistant, requested model и resolved model. Pi adapter использует `responseModel` последнего assistant message и только при его отсутствии берёт модель из `get_state`.
 
 Usage каждой агентной попытки добавляется к aggregate `NodeState.usage`, а сама попытка записывается в `NodeState.executions`. Поэтому retry после внешней проверки не теряет стоимость и не приписывает usage предыдущих попыток последней модели. Различающиеся assistant/version/requested/resolved model образуют mixed execution identity.
 

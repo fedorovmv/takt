@@ -756,3 +756,64 @@ func TestUsageIsAttributedPerExecutionIdentity(t *testing.T) {
 		t.Fatalf("per-identity usage does not match aggregate usage: %+v", summary.UsageByExecutionIdentity)
 	}
 }
+
+func TestFailedQualityNodeDecodesStdoutAndKeepsStderrDiagnostic(t *testing.T) {
+	root := t.TempDir()
+	workflowPath := filepath.Join(root, "workflow.yaml")
+	configPath := filepath.Join(root, "config.yaml")
+	casesDir := filepath.Join(root, "cases")
+	templateDir := filepath.Join(root, "template")
+	outputDir := filepath.Join(root, "output")
+	for _, dir := range []string{casesDir, templateDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: stderr-quality
+nodes:
+  - id: implement
+    bash: |
+      true
+  - id: quality
+    depends_on: [implement]
+    bash: |
+      exec /bin/sh -c 'printf "%s\n" "$1"; printf "%s\n" "validator cache is cold" >&2; exit 1' sh '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":false,"score":37,"diagnostics":[{"code":"ROUTE_WARNING","severity":"warning","path":"route.yaml","message":"route is incomplete"}]}'
+`, 0o644)
+	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
+	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
+
+	report, err := Run(context.Background(), RunOptions{
+		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
+		WorkspaceTemplate: templateDir, OutputDir: outputDir,
+		QualityNode: "quality", GenerationNode: "implement",
+	})
+	if err != nil {
+		t.Fatalf("stderr must not corrupt a valid stdout envelope: %v", err)
+	}
+	run := report.Runs[0]
+	if run.Quality == nil || run.Quality.Valid || run.Quality.Score == nil || *run.Quality.Score != 37 {
+		t.Fatalf("stdout validation envelope was not decoded: %+v", run)
+	}
+	node := run.Nodes["quality"]
+	if !strings.Contains(node.Stdout, `"protocol_version":"takt-validation/v1alpha1"`) {
+		t.Fatalf("quality stdout was not preserved: %+v", node)
+	}
+	if strings.Contains(node.Stdout, "validator cache is cold") {
+		t.Fatalf("stderr leaked into stdout: %+v", node)
+	}
+	if !strings.Contains(node.Stderr, "validator cache is cold") {
+		t.Fatalf("quality stderr was not preserved: %+v", node)
+	}
+	if !strings.Contains(node.DiagnosticOutput, "ROUTE_WARNING") || !strings.Contains(node.DiagnosticOutput, "validator cache is cold") {
+		t.Fatalf("combined diagnostic output lost one of the streams: %+v", node)
+	}
+	if report.Summary.DiagnosticsByCode["ROUTE_WARNING"] != 1 || report.Summary.DiagnosticsBySeverity["warning"] != 1 {
+		t.Fatalf("quality diagnostics were not aggregated: %+v", report.Summary)
+	}
+	if report.Summary.Valid != 0 || report.Summary.Invalid != 1 || floatValue(report.Summary.AverageScore) != 37 {
+		t.Fatalf("invalid quality outcome was aggregated incorrectly: %+v", report.Summary)
+	}
+}
