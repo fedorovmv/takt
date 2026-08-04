@@ -63,3 +63,13 @@ make check
 ## Границы изменений
 
 Сохраняйте Takt компактным orchestration runtime. Собственный coding-agent tool loop, общий plugin framework, Web UI, сервер, БД, параллельный scheduler и поддержка недоверенных workflow не входят в текущий scope.
+
+### OpenCode adapter
+
+- Use only `opencode run --format json`; never parse the TUI.
+- Treat stdout as NDJSON events and stderr as diagnostics.
+- A resumed attempt must return the requested Session ID.
+- Sum per-attempt usage only from unique `step_finish` events.
+- Treat an OpenCode `error` event as failure even when the process exits with code 0.
+- Do not claim provider-side model routing is observable when the event stream exposes only the requested CLI model.
+- Keep `auto_approve` explicit and limited to trusted workspaces.

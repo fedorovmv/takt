@@ -59,6 +59,8 @@ func (f Factory) Resolve(name string) (Adapter, error) {
 		return Process{spec: s}, nil
 	case "pi":
 		return NewPi(s), nil
+	case "opencode":
+		return NewOpenCode(s), nil
 	default:
 		return nil, &UnknownAssistantError{Name: name}
 	}

@@ -11,6 +11,7 @@ profile="skills/takt/assets/validated-agent-profile"
 grep -Fq 'name: takt' "$skill"
 grep -Fq 'takt validate' "$skill"
 grep -Fq 'references/patterns.md' "$skill"
+grep -Fq 'opencode' "$skill"
 
 for file in \
   README.md \
@@ -22,6 +23,7 @@ for file in \
   assets/validated-agent-profile/.takt/config.yaml \
   assets/validated-agent-profile/.takt/workflows/basic.yaml \
   assets/validated-agent-profile/.takt/workflows/validated.yaml \
+  assets/validated-agent-profile/.takt/workflows/opencode.yaml \
   assets/validated-agent-profile/.takt/commands/implement.md \
   assets/validated-agent-profile/.takt/tools/validate-result
  do
@@ -37,6 +39,11 @@ binary="${TAKT_BIN:-$root/bin/takt}"
   --json >/dev/null
 
 "$binary" validate "$profile/.takt/workflows/validated.yaml" \
+  --config "$profile/.takt/config.yaml" \
+  --workspace "$profile" \
+  --json >/dev/null
+
+"$binary" validate "$profile/.takt/workflows/opencode.yaml" \
   --config "$profile/.takt/config.yaml" \
   --workspace "$profile" \
   --json >/dev/null

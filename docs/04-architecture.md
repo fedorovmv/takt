@@ -26,7 +26,7 @@ Runner / Shared DAG Scheduler
 - `internal/config` — модели и исполнители;
 - `internal/command` — Markdown-команды;
 - `internal/execution` — классы ошибок и управление process group;
-- `internal/assistant` — адаптеры `mock`, универсальный `process` и специализированный `pi`;
+- `internal/assistant` — адаптеры `mock`, универсальный `process` и специализированные `pi` и `opencode`;
 - `internal/definition` — fingerprints workflow/config/commands;
 - `internal/workflow` — загрузка и статическая проверка DAG;
 - `internal/runtime` — общий scheduler, hooks, loops, approval и итог Run;
@@ -62,6 +62,10 @@ TAKT_NATIVE_HOOKS_JSON
 ## Pi assistant
 
 Специализированный `pi` adapter запускает `pi --mode rpc`, передаёт prompt по JSONL и получает Session ID, итоговый текст, статистику и сообщения через RPC-команды. Версия Pi сохраняется из version probe, а фактическая модель определяется по `responseModel` последнего assistant message с fallback на выбранную модель сессии. `fresh` создаёт новую сессию, `resume` передаёт сохранённый ID через `--session` и проверяет его по `get_state`. Инструменты, файлы, shell, skills и история остаются внутри Pi.
+
+## OpenCode assistant
+
+Специализированный `opencode` adapter запускает `opencode run --format json` в workspace узла. Prompt передаётся через stdin, stdout читается как NDJSON event stream, stderr остаётся диагностикой. Takt нормализует итоговый текст, Session ID, version, requested/resolved model и usage, но не вмешивается во внутренний tool loop, agents, MCP и работу с файлами OpenCode.
 
 ## Состояние
 

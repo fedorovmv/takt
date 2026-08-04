@@ -103,6 +103,14 @@ Takt сам задаёт `--mode rpc`, `--provider`, `--model`, `--thinking`, `-
 
 Интерактивные запросы Pi extension UI (`confirm`, `select`, `input`, `editor`) отклоняются как `protocol`: Takt approval должен быть отдельным сохраняемым узлом workflow. Fire-and-forget события `notify`, `setStatus`, `setWidget`, `setTitle` и `set_editor_text` допускаются и не требуют ответа.
 
+### OpenCode assistant
+
+`type: opencode` запускает `opencode run --format json` в workspace узла. `binary`, `args`, `agent`, `auto_approve`, `env` и `max_output_bytes` задаются в config. `argv`, `protocol`, `session_dir` и `project_trust` для этого типа запрещены.
+
+Takt передаёт выбранную модель как `<provider>/<id>`, `params.variant` как `--variant`, prompt через stdin, а сохранённый Session ID — через `--session`. При resume возвращённый event stream обязан содержать тот же Session ID. Stdout содержит NDJSON events; stderr остаётся диагностическим. Usage одной попытки является суммой уникальных `step_finish`; event `error` является отказом агента независимо от OS exit code.
+
+`auto_approve: true` включает OpenCode `--auto` и предназначен только для доверенной рабочей директории.
+
 ## 4. Markdown-команды
 
 ```markdown
@@ -375,5 +383,5 @@ takt eval report <evaluation-output-dir>
 - нет `takt cancel`;
 - нет sandbox, server, MCP и Web UI;
 - stale lock требует ручного удаления после аварийного завершения процесса;
-- специализированный Pi adapter реализован; OpenCode adapter пока не реализован;
-- `takt-assistant/v1alpha1` реализован для универсального `process`; специализированный `pi` использует внутренний Go Request/Result и официальный Pi RPC JSONL; потоковые события пока не публикуются в EventSink.
+- специализированные Pi и OpenCode adapters реализованы;
+- `takt-assistant/v1alpha1` реализован для универсального `process`; специализированный `pi` использует официальный Pi RPC JSONL, а `opencode` — официальный `run --format json` event stream; потоковые события пока не публикуются в EventSink.

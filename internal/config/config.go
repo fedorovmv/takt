@@ -26,7 +26,7 @@ func Load(path string) (*spec.Config, error) {
 		}
 	}
 	for name, assistant := range cfg.Assistants {
-		if assistant.Type != "mock" && assistant.Type != "process" && assistant.Type != "pi" {
+		if assistant.Type != "mock" && assistant.Type != "process" && assistant.Type != "pi" && assistant.Type != "opencode" {
 			return nil, fmt.Errorf("assistant %q has unsupported type %q", name, assistant.Type)
 		}
 		if assistant.Type == "process" && len(assistant.Argv) == 0 {
@@ -39,6 +39,17 @@ func Load(path string) (*spec.Config, error) {
 			if assistant.ProjectTrust != "" && assistant.ProjectTrust != "default" && assistant.ProjectTrust != "approve" && assistant.ProjectTrust != "deny" {
 				return nil, fmt.Errorf("pi assistant %q project_trust must be default, approve, or deny", name)
 			}
+			if assistant.Agent != "" || assistant.AutoApprove {
+				return nil, fmt.Errorf("pi assistant %q does not support agent/auto_approve", name)
+			}
+		}
+		if assistant.Type == "opencode" {
+			if len(assistant.Argv) != 0 {
+				return nil, fmt.Errorf("opencode assistant %q uses binary/args instead of argv", name)
+			}
+			if assistant.SessionDir != "" || assistant.ProjectTrust != "" {
+				return nil, fmt.Errorf("opencode assistant %q does not support session_dir/project_trust", name)
+			}
 		}
 		if assistant.Protocol != "" && assistant.Protocol != "takt-assistant/v1alpha1" {
 			return nil, fmt.Errorf("assistant %q has unsupported protocol %q", name, assistant.Protocol)
@@ -46,8 +57,8 @@ func Load(path string) (*spec.Config, error) {
 		if assistant.Type != "process" && assistant.Protocol != "" {
 			return nil, fmt.Errorf("assistant %q protocol is supported only for type process", name)
 		}
-		if assistant.Type != "pi" && (assistant.Binary != "" || len(assistant.Args) != 0 || assistant.SessionDir != "" || assistant.ProjectTrust != "") {
-			return nil, fmt.Errorf("assistant %q binary/args/session_dir/project_trust are supported only for type pi", name)
+		if assistant.Type != "pi" && assistant.Type != "opencode" && (assistant.Binary != "" || len(assistant.Args) != 0 || assistant.Agent != "" || assistant.AutoApprove || assistant.SessionDir != "" || assistant.ProjectTrust != "") {
+			return nil, fmt.Errorf("assistant %q specialized fields are supported only for type pi or opencode", name)
 		}
 		if assistant.MaxOutputBytes < 0 {
 			return nil, fmt.Errorf("assistant %q max_output_bytes cannot be negative", name)

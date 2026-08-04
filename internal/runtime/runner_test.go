@@ -642,6 +642,79 @@ func TestPiAssistantResumesSessionAcrossRetry(t *testing.T) {
 	}
 }
 
+func TestOpenCodeAssistantResumesSessionAcrossRetry(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "takt-fake-opencode")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", binary, "./cmd/takt-fake-opencode")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fake OpenCode: %v: %s", err, output)
+	}
+
+	dir := t.TempDir()
+	wf := &spec.Workflow{
+		APIVersion: "takt/v1alpha1",
+		Kind:       "Workflow",
+		Metadata:   spec.Metadata{Name: "opencode-session"},
+		Defaults:   spec.Defaults{Assistant: "opencode", Model: "m", Session: "resume"},
+		Nodes: []spec.Node{{
+			ID:       "agent",
+			Prompt:   "hello",
+			Attempts: spec.AttemptsSpec{Max: 2},
+			Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
+				ID:        "retry-once",
+				Bash:      `test -f retried || { touch retried; echo retry; exit 1; }`,
+				OnFailure: spec.HookDecision{Action: "retry"},
+			}}},
+		}},
+	}
+	cfg := &spec.Config{
+		Models: map[string]spec.ModelSpec{"m": {Provider: "openai", ID: "fake-model", Params: map[string]any{"variant": "high"}}},
+		Assistants: map[string]spec.AssistantSpec{"opencode": {
+			Type:           "opencode",
+			Binary:         binary,
+			Args:           []string{"--fake-case", "success"},
+			Agent:          "build",
+			MaxOutputBytes: 64 * 1024,
+		}},
+	}
+	r := New(wf, cfg, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := state.Nodes["agent"]
+	if node.Status != store.NodeCompleted || node.Attempts != 2 || node.SessionID != "ses-opencode-1" || !node.Resumed {
+		t.Fatalf("unexpected OpenCode node state: %+v", node)
+	}
+	if node.Usage == nil || node.Usage.InputTokens != 202 || node.Usage.OutputTokens != 34 || math.Abs(node.Usage.Cost-0.0084) > 1e-9 {
+		t.Fatalf("attempt usage was not accumulated: %+v", node.Usage)
+	}
+	if node.Assistant != "opencode" || node.RequestedModel == nil || node.RequestedModel.Name != "m" || node.RequestedModel.Provider != "openai" || node.RequestedModel.ID != "fake-model" {
+		t.Fatalf("requested execution identity was not preserved: %+v", node)
+	}
+	if node.ResolvedModel == nil || node.ResolvedModel.Provider != "openai" || node.ResolvedModel.ID != "fake-model" {
+		t.Fatalf("resolved execution identity was not preserved: %+v", node.ResolvedModel)
+	}
+	if !strings.Contains(node.AssistantVersion, "1.2.3-test") {
+		t.Fatalf("assistant version was not preserved: %q", node.AssistantVersion)
+	}
+	if len(node.Executions) != 2 {
+		t.Fatalf("per-attempt executions were not preserved: %+v", node.Executions)
+	}
+	for index, executionRecord := range node.Executions {
+		if executionRecord.Attempt != index+1 || executionRecord.Status != store.NodeCompleted || executionRecord.Usage == nil || executionRecord.Usage.InputTokens != 101 || executionRecord.Usage.OutputTokens != 17 {
+			t.Fatalf("unexpected execution record %d: %+v", index, executionRecord)
+		}
+	}
+}
+
 func TestRetryPreservesPerExecutionModelIdentityAndUsage(t *testing.T) {
 	dir := t.TempDir()
 	wf := &spec.Workflow{

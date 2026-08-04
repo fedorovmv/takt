@@ -20,6 +20,7 @@ import (
 var (
 	fakeAssistantBinary string
 	fakePiBinary        string
+	fakeOpenCodeBinary  string
 )
 
 func TestMain(m *testing.M) {
@@ -48,6 +49,15 @@ func TestMain(m *testing.M) {
 	cmd.Dir = root
 	if output, err := cmd.CombinedOutput(); err != nil {
 		panic("build fake Pi: " + err.Error() + ": " + string(output))
+	}
+	fakeOpenCodeBinary = filepath.Join(dir, "takt-fake-opencode")
+	if runtime.GOOS == "windows" {
+		fakeOpenCodeBinary += ".exe"
+	}
+	cmd = exec.Command("go", "build", "-o", fakeOpenCodeBinary, "./cmd/takt-fake-opencode")
+	cmd.Dir = root
+	if output, err := cmd.CombinedOutput(); err != nil {
+		panic("build fake OpenCode: " + err.Error() + ": " + string(output))
 	}
 	code := m.Run()
 	_ = os.RemoveAll(dir)

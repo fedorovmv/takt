@@ -116,3 +116,31 @@ assistants:
 3. `workflow.defaults.assistant` / `workflow.defaults.model`.
 
 `session` задаётся в узле или `workflow.defaults`; значение по умолчанию — `fresh`.
+
+## Assistant opencode
+
+```yaml
+assistants:
+  opencode:
+    type: opencode
+    binary: opencode
+    agent: build
+    auto_approve: false
+    env:
+      EXAMPLE: value
+    max_output_bytes: 10485760
+```
+
+- `binary` — путь к OpenCode, по умолчанию `opencode`;
+- `args` — дополнительные нерезервированные параметры `opencode run`;
+- `agent` — имя OpenCode agent, передаваемое через `--agent`;
+- `auto_approve` — включает `--auto`; используй только в доверенном workspace;
+- `env` — переменные окружения OpenCode;
+- `max_output_bytes` — общий лимит JSON stdout и диагностического stderr.
+
+Takt запускает `opencode run --format json --dir <workspace> --model <provider>/<id>`.
+Параметр модели `variant` передаётся через `--variant`; если `variant` отсутствует, используется строковый `reasoning_effort`.
+При `session: resume` Takt передаёт сохранённый Session ID через `--session` и проверяет, что OpenCode вернул тот же идентификатор.
+
+Не добавляй в `args` управляемые adapter флаги: `run`, `--format`, `--model`, `--agent`, `--session`, `--dir`, `--variant`, `--auto` и их короткие варианты.
+JSON events читаются из stdout, stderr остаётся диагностическим. Usage одной попытки — сумма событий `step_finish`.

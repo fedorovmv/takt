@@ -134,3 +134,54 @@ func TestLoadRejectsInvalidPiOptions(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadOpenCodeAssistant(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `apiVersion: takt/v1alpha1
+kind: Config
+assistants:
+  opencode:
+    type: opencode
+    binary: /usr/local/bin/opencode
+    args: [--fake-case, success]
+    agent: build
+    auto_approve: true
+    max_output_bytes: 1048576
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.Assistants["opencode"]
+	if got.Type != "opencode" || got.Binary != "/usr/local/bin/opencode" || got.Agent != "build" || !got.AutoApprove || len(got.Args) != 2 {
+		t.Fatalf("unexpected OpenCode config: %+v", got)
+	}
+}
+
+func TestLoadRejectsInvalidOpenCodeOptions(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{name: "argv", body: "type: opencode\n    argv: [opencode]"},
+		{name: "protocol", body: "type: opencode\n    protocol: takt-assistant/v1alpha1"},
+		{name: "session dir", body: "type: opencode\n    session_dir: .sessions"},
+		{name: "project trust", body: "type: opencode\n    project_trust: approve"},
+		{name: "OpenCode fields on Pi", body: "type: pi\n    agent: build"},
+		{name: "OpenCode fields on process", body: "type: process\n    argv: [echo]\n    auto_approve: true"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			content := "apiVersion: takt/v1alpha1\nkind: Config\nassistants:\n  bad:\n    " + tc.body + "\n"
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(path); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}

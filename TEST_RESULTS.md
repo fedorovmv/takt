@@ -1,62 +1,55 @@
-# Результаты проверки v0.1.18-alpha
+# Результаты проверок v0.1.19-alpha
 
-## Takt authoring skill
+## Реализованный срез
 
-Проверено:
+- специализированный OpenCode adapter через `opencode run --format json`;
+- model, agent, variant и auto mapping;
+- fresh/resume с проверкой Session ID;
+- assistant version, requested/resolved model и per-attempt usage/cost;
+- OpenCode error events, stderr diagnostics, timeout/cancel и output limit;
+- fake OpenCode contract suite и opt-in real smoke;
+- OpenCode-профиль в Takt authoring skill v0.2.0.
 
-- canonical skill находится в `skills/takt/SKILL.md`;
-- frontmatter содержит имя и назначение скилла;
-- основной файл фиксирует порядок работы, источники истины и ограничения `takt/v1alpha1`;
-- отдельные references описывают config, workflow, рабочие композиции и диагностику;
-- скилл различает inline `prompt` и Markdown-команду;
-- документирован приоритет model/assistant: узел → frontmatter → defaults;
-- запрещено предлагать неподдерживаемые `system_prompt`, nested `loop_group`, approval внутри loop и тихий resume fallback;
-- стартовый профиль содержит две модели, явную модель узла, retry/feedback, resume, artifacts и approval;
-- `scripts/test-takt-skill.sh` включён в `make check` и `scripts/verify.sh`.
+## Полный рабочий прогон
 
-## Проверка шаблонов
-
-Реальным бинарником `takt v0.1.18-alpha` успешно проверены:
+Успешно выполнены:
 
 ```text
-skills/takt/assets/validated-agent-profile/.takt/workflows/basic.yaml
-skills/takt/assets/validated-agent-profile/.takt/workflows/validated.yaml
-```
-
-Оба workflow прошли `takt validate --json` с приложенным config и workspace. Значения provider/model `replace-me` предназначены только для структурной проверки и должны быть заменены перед реальным запуском.
-
-## Регрессии
-
-Повторно проверено:
-
-- unit tests и race detector;
-- process и Pi contract suites;
-- timeout/cancel/output overflow;
-- Pi `agent_settled`, fresh/resume и usage delta;
-- Route DSL feedback, retry/resume, artifacts и approval;
-- evaluation isolation, fingerprints и предметные метрики;
-- validation envelope только из stdout и отдельный stderr;
-- схемы и защита документации от отката.
-
-## Команды
-
-```text
-gofmt -w cmd internal
+go vet ./...
 go test ./... -count=1
 go test -race ./... -count=1
-go vet ./...
-go build ./cmd/takt
-go build ./cmd/takt-fake-assistant
-go build ./cmd/takt-fake-pi
+make check
+./scripts/verify.sh
 ./scripts/test-fake-assistant.sh
 ./scripts/test-pi-adapter.sh
+./scripts/test-opencode-adapter.sh
 ./scripts/test-route-dsl-e2e.sh
 ./scripts/test-route-dsl-eval.sh
 ./scripts/test-takt-skill.sh
 ./scripts/check-docs.sh
-./scripts/verify.sh
+takt validate examples/opencode-smoke/workflow.yaml
 ```
 
-`make check` и `scripts/verify.sh` прошли на рабочем дереве. `MANIFEST.sha256` и полный `scripts/verify.sh` также прошли из чистой распаковки релизного архива.
+Проверены все JSON Schema. `examples/opencode-smoke/config.yaml` и config стартового skill-профиля проходят Draft 2020-12 schema validation.
 
-Реальный Pi smoke и предметный Route DSL запуск для `v0.1.18-alpha` в среде сборки не выполнялись: отсутствуют Pi, пользовательская авторизация, модель и штатный валидатор.
+## OpenCode contract suite
+
+Покрыты:
+
+- prompt/workspace/model/agent/variant/auto/env mapping;
+- version probe;
+- fresh и подтверждённый resume;
+- resume mismatch;
+- текст, tool events, per-step usage и cost;
+- предупреждения в stderr;
+- OpenCode error event при OS exit 0;
+- ненулевой OS exit;
+- malformed JSON, missing и negative usage;
+- timeout, cancellation и общий output overflow;
+- приоритет parent timeout/cancel над overflow;
+- запрет переопределения управляемых CLI flags;
+- runtime retry с сохранением Session ID и отдельными execution records.
+
+## Внешние проверки
+
+Реальный OpenCode smoke в среде сборки не запускался: бинарник OpenCode не установлен. Он остаётся opt-in через `TAKT_OPENCODE_SMOKE=1`, `TAKT_OPENCODE_SMOKE_PROVIDER` и `TAKT_OPENCODE_SMOKE_MODEL`.

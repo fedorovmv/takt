@@ -21,3 +21,10 @@ assistants:
     session_dir: .takt/pi-sessions
     project_trust: deny
     max_output_bytes: 10485760
+
+  opencode:
+    type: opencode
+    binary: opencode
+    agent: build
+    auto_approve: false
+    max_output_bytes: 10485760

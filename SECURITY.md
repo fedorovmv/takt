@@ -2,14 +2,14 @@
 
 ## Supported trust model
 
-Takt `v0.1.12-alpha` is a local, single-user, trusted runtime.
+Takt `v0.1.19-alpha` is a local, single-user, trusted runtime.
 
 Trusted inputs:
 
 - workflow and config files;
 - Markdown commands;
 - shell scripts and hook commands;
-- assistant argv/env/binary configuration;
+- assistant argv/env/binary configuration, including OpenCode `agent` and `auto_approve`;
 - workspace contents;
 - Run ID received from the local CLI after validation.
 
@@ -26,6 +26,10 @@ The current version must not be exposed as a service that accepts these values f
 - revision consistency between state and event log.
 
 These controls improve reliability but do not form a sandbox.
+
+## OpenCode approval mode
+
+`assistants.*.auto_approve: true` passes OpenCode `--auto`. It removes an external safety boundary and must be enabled only for a trusted workspace, trusted workflow and explicitly reviewed OpenCode agent configuration. Takt approval nodes remain the durable workflow-level confirmation mechanism and are independent of OpenCode tool permissions.
 
 ## Unsupported scenarios
 

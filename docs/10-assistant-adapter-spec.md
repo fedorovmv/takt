@@ -1,6 +1,6 @@
 # Спецификация адаптеров исполнителей
 
-Статус: process-протокол и fake contract suite реализованы в `v0.1.7-alpha`; специализированный Pi RPC adapter реализован в `v0.1.8-alpha` и согласован с финальной RPC-семантикой Pi в `v0.1.9-alpha` и усилен по приоритету context/usage snapshots и интеграционному coverage в `v0.1.12-alpha`. OpenCode adapter, capability discovery и потоковый EventSink остаются целевыми возможностями v0.2.
+Статус: process-протокол, Pi RPC adapter и OpenCode CLI adapter реализованы и покрыты контрактными наборами. Capability discovery и потоковый EventSink остаются целевыми возможностями v0.2.
 
 ## 1. Назначение
 
@@ -267,13 +267,24 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 
 ## 10. OpenCode adapter
 
-После Pi либо вместо него:
+OpenCode adapter реализован как `type: opencode` поверх официального неинтерактивного JSON-режима:
 
-- запуск через стабильный server/API предпочтительнее парсинга TUI;
-- agent name и model задаются отдельно;
-- base URL и authentication находятся в config/environment;
-- session ID нормализуется в общий контракт;
-- capabilities отражают фактические возможности используемой версии OpenCode.
+```text
+opencode run --format json --dir <workspace> --model <provider>/<id> [--agent ...] [--variant ...] [--session ...]
+```
+
+Prompt передаётся через stdin. Stdout трактуется как NDJSON event stream, stderr сохраняется только как диагностика. Takt собирает итоговый текст из `text`, usage и cost — как сумму уникальных `step_finish`, а события `error` классифицирует как отказ агента даже при нулевом OS exit code.
+
+Поддержано:
+
+- выбор model alias на уровне workflow, команды или узла;
+- `agent` и model `variant`; строковый `reasoning_effort` используется как fallback variant;
+- `fresh` и проверенный `resume` через `--session`;
+- version probe, timeout/cancellation, общий stdout/stderr limit;
+- per-attempt usage и cost;
+- opt-in smoke test с реальным OpenCode CLI.
+
+JSON stream текущего CLI не гарантирует отдельное событие о фактическом provider-side routing. Поэтому `resolved_model` равен явно переданному `provider/id`, если event stream не предоставил другую модель; источник фиксируется в structured metadata. `auto_approve: true` передаёт `--auto` и допускается только для доверенного workspace. Takt не парсит TUI и не реализует внутренний tool loop OpenCode.
 
 ## 11. Тестирование адаптера
 
@@ -302,4 +313,4 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 21. fire-and-forget `set_editor_text`;
 22. opt-in smoke test с реальным бинарником.
 
-Для CI используются `cmd/takt-fake-assistant`, `cmd/takt-fake-pi`, `scripts/test-fake-assistant.sh` и `scripts/test-pi-adapter.sh`. Реальный Pi smoke test включается только через `TAKT_PI_SMOKE=1` и не блокирует обычный unit test suite.
+Для CI используются `cmd/takt-fake-assistant`, `cmd/takt-fake-pi`, `cmd/takt-fake-opencode` и соответствующие contract scripts. Реальный Pi smoke test включается только через `TAKT_PI_SMOKE=1` и не блокирует обычный unit test suite.

@@ -51,7 +51,7 @@
 
 ## 4. Этап C. Первый реальный adapter — Pi реализован в v0.1.8-alpha и стабилизирован в v0.1.9–v0.1.12-alpha
 
-Выбран Pi. Adapter использует официальный RPC mode, contract tests с fake Pi и отдельный opt-in smoke test. OpenCode остаётся альтернативным исполнителем после проверки Route DSL.
+Выбран Pi. Adapter использует официальный RPC mode, contract tests с fake Pi и отдельный opt-in smoke test. OpenCode также реализован через официальный JSON CLI mode и покрыт отдельным contract suite.
 
 ### Задачи
 
@@ -153,7 +153,7 @@ agent draft
 
 1. Opt-in smoke test с установленным Pi и целевой моделью.
 2. Route DSL end-to-end.
-3. OpenCode adapter при необходимости сравнения исполнителей.
+3. Поддержка Pi/OpenCode adapters и capability discovery.
 4. Go workflow.
 5. Document workflow.
 6. Strict templates и structured outputs.

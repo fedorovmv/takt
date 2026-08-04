@@ -8,8 +8,10 @@ go test -race ./...
 go build -o bin/takt ./cmd/takt
 go build -o bin/takt-fake-assistant ./cmd/takt-fake-assistant
 go build -o bin/takt-fake-pi ./cmd/takt-fake-pi
+go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
 ./scripts/test-fake-assistant.sh
 ./scripts/test-pi-adapter.sh
+./scripts/test-opencode-adapter.sh
 ./scripts/test-route-dsl-e2e.sh
 ./scripts/test-route-dsl-eval.sh
 ./scripts/test-takt-skill.sh
@@ -27,6 +29,11 @@ go build -o bin/takt-fake-pi ./cmd/takt-fake-pi
 
 ./bin/takt validate examples/pi-smoke/workflow.yaml \
   --config examples/pi-smoke/config.yaml \
+  --workspace . \
+  --json >/dev/null
+
+./bin/takt validate examples/opencode-smoke/workflow.yaml \
+  --config examples/opencode-smoke/config.yaml \
   --workspace . \
   --json >/dev/null
 

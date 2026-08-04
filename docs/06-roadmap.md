@@ -13,7 +13,7 @@
 ## Этап 2. Исполнители
 
 - поддерживать Pi adapter по официальному RPC contract;
-- стабилизировать OpenCode adapter;
+- поддерживать OpenCode adapter по официальному JSON CLI contract;
 - добавить Codex/Claude Code adapters;
 - ввести capability negotiation;
 - поддержать session resume там, где он доступен.

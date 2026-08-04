@@ -9,7 +9,8 @@
 3. `docs/01-project.md`;
 4. `docs/05-implementation-status.md`;
 5. `skills/takt/SKILL.md`;
-6. `docs/32-takt-authoring-skill-v0.1.18.md`;
+6. `docs/33-opencode-adapter-v0.1.19.md`;
+7. `docs/32-takt-authoring-skill-v0.1.18.md`;
 7. `docs/31-quality-stdout-separation-v0.1.17.md`;
 8. `docs/30-quality-envelope-semantics-v0.1.16.md`;
 9. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
@@ -66,13 +67,14 @@
 | Fake-assistant protocol suite | `20-fake-assistant-contract-v0.1.6.md` | фактический |
 | Строгая OS/envelope семантика | `21-protocol-hardening-v0.1.7.md` | фактический |
 | Pi RPC adapter | `22-pi-adapter-v0.1.8.md`, `23-pi-rpc-alignment-v0.1.9.md`, `24-pi-context-usage-hardening-v0.1.10.md` | фактический |
+| OpenCode adapter | `33-opencode-adapter-v0.1.19.md`, `../examples/opencode-smoke/` | фактический |
 | Route DSL end-to-end | `25-route-dsl-e2e-v0.1.11.md`, `../examples/route-dsl-e2e/` | контрактный срез реализован |
 | Evaluation runner и метрики | `26-evaluation-runner-v0.1.12.md`, `27-evaluation-isolation-report-v0.1.13.md`, `28-benchmark-identity-quality-v0.1.14.md`, `29-benchmark-metric-semantics-v0.1.15.md`, `30-quality-envelope-semantics-v0.1.16.md`, `31-quality-stdout-separation-v0.1.17.md`, `../examples/route-dsl-eval/`, `../examples/route-dsl-benchmark/` | идентичность, per-attempt usage и предметные метрики реализованы; реальный baseline требует штатного валидатора |
 | Восстановление документации релиза | `19-document-recovery-v0.1.5.md` | фактический |
 | Граница безопасности | `../SECURITY.md` | действующий |
 | Ближайшее целевое состояние | `08-target-v0.2.md` | целевой |
 | Семантика runtime | `09-runtime-semantics.md` | реализовано частично/цель v0.2 |
-| Контракт исполнителя | `10-assistant-adapter-spec.md` | process protocol и Pi adapter реализованы; OpenCode/capability discovery — цель v0.2 |
+| Контракт исполнителя | `10-assistant-adapter-spec.md` | process protocol, Pi и OpenCode adapters реализованы; capability discovery — цель v0.2 |
 | Очередность работ | `11-implementation-plan.md` | рабочий план |
 | Задачи | `14-backlog-v0.2.md` | рабочий backlog |
 | Старт кодового агента | `15-coding-agent-start.md` | готовая инструкция |

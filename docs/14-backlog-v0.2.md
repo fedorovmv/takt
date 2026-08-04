@@ -99,13 +99,13 @@
 
 **Приёмка:** provider/model/thinking, fresh/resume, timeout/cancel, output limit, приоритет context над совпавшим overflow, `agent_settled`, автоматический retry, полный deny-list зарезервированных флагов, fire-and-forget UI и строгая per-attempt usage delta покрыты тестами. Реальный smoke остаётся opt-in, так как требует установленного Pi, авторизации и модели.
 
-### TAKT-010. Session resume — выполнено для process и Pi
+### TAKT-010. Session resume — выполнено для process, Pi и OpenCode
 
 **Цель:** сравнивать fresh и продолженную сессию.
 
 **Результат:** сохранение Session ID; явное поле `resumed`; ошибка при неуспешном resume без тихого fallback.
 
-**Приёмка:** fresh, resume success и resume failure реализованы для process protocol; подтверждены на Pi adapter; OpenCode получит тот же контракт при реализации.
+**Приёмка:** fresh, resume success и resume failure реализованы для process protocol; подтверждены на Pi и OpenCode adapters.
 
 ## Завершено в v0.1.11–v0.1.16-alpha
 
@@ -175,3 +175,8 @@ Draft → approval comment → revise → artifact без изменения run
 - remote workers;
 - untrusted/server mode;
 - sandbox и многопользовательская авторизация.
+
+
+### TAKT-009B. Specialized OpenCode adapter — выполнено
+
+Реализован `type: opencode` через `opencode run --format json`: model/agent/variant mapping, fresh/resume, version, usage/cost, output limit, context priority, fake contract suite и opt-in smoke.

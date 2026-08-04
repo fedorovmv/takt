@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.19-alpha
+
+- добавлен специализированный `type: opencode` через `opencode run --format json`;
+- поддержаны model/agent/variant, fresh/resume, version probe, per-step usage/cost и error events;
+- добавлены fake OpenCode binary, contract suite, runtime retry/resume test и opt-in real smoke;
+- OpenCode включён в config schema, примеры и Takt authoring skill v0.2.0;
+- добавлены ADR-030 и `docs/33-opencode-adapter-v0.1.19.md`.
+
 ## v0.1.18-alpha
 
 - добавлен canonical skill `skills/takt/SKILL.md` для создания, изменения, проверки и запуска Takt-профилей;

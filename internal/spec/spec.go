@@ -100,6 +100,8 @@ type AssistantSpec struct {
 	Argv           []string          `json:"argv,omitempty"`
 	Binary         string            `json:"binary,omitempty"`
 	Args           []string          `json:"args,omitempty"`
+	Agent          string            `json:"agent,omitempty"`
+	AutoApprove    bool              `json:"auto_approve,omitempty"`
 	SessionDir     string            `json:"session_dir,omitempty"`
 	ProjectTrust   string            `json:"project_trust,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`

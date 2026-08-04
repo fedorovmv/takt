@@ -127,3 +127,9 @@ Exit code и terminal status quality-node описывают выполнени�
 ## ADR-029. Структурный validation envelope читается только из stdout
 
 Bash-узел сохраняет stdout и stderr раздельно. Совместимое поле `output` объединяет оба потока и используется для шаблонов, feedback и диагностики, но не является источником структурного результата. Evaluation декодирует `takt-validation/v1alpha1` только из stdout quality-node. Предупреждения и служебные сообщения в stderr не могут повредить корректный envelope; они сохраняются отдельно и остаются видимыми в diagnostic output.
+
+## ADR-030. OpenCode интегрируется через официальный JSON CLI mode
+
+`type: opencode` запускает отдельный `opencode run --format json` на каждую попытку. Prompt передаётся через stdin, stdout читается как NDJSON event stream, stderr сохраняется как диагностика. Takt не парсит TUI и не реализует внутренний tool loop OpenCode.
+
+Resume считается успешным только при совпадении Session ID. Usage и cost одной попытки суммируются по уникальным `step_finish`; event `error` является отказом агента даже при нулевом OS exit code. Если event stream не сообщает иную модель, `resolved_model` фиксирует явно переданный `provider/id` и помечает источник как `requested_cli_model`. Флаг `--auto` доступен только через явное `auto_approve` в trusted workspace.

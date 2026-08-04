@@ -37,6 +37,7 @@
 - JSON-протокол `takt-assistant/v1alpha1` для внешних process assistants;
 - fake-assistant contract suite: success, exit, start, timeout, cancel, concurrent output, malformed/strict protocol cases, fresh и resume;
 - Pi RPC adapter и fake-Pi contract suite, включая model/thinking mapping, fresh/resume, ожидание `agent_settled`, автоматический retry, per-attempt usage delta, timeout/cancel, output limit и границу extension UI;
+- OpenCode CLI adapter через `opencode run --format json`, с model/agent/variant mapping, проверенным resume, per-step usage, stderr diagnostics и contract suite;
 - полное совпадение OS exit code и envelope `exit_code`, включая ноль;
 - единый JSON envelope CLI для успеха и ошибок;
 - строгий YAML subset с сохранением пустых строк в block scalar;
@@ -115,7 +116,7 @@ make check
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Следующий вертикальный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter нужен после этого сравнения либо при явной необходимости сопоставить исполнителей.
+Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Следующий вертикальный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 
 Подробности:
 
@@ -129,6 +130,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Pi RPC adapter v0.1.8](docs/22-pi-adapter-v0.1.8.md)
 - [Согласование Pi RPC-контракта v0.1.9](docs/23-pi-rpc-alignment-v0.1.9.md)
 - [Усиление context/usage Pi v0.1.10](docs/24-pi-context-usage-hardening-v0.1.10.md)
+- [OpenCode adapter v0.1.19](docs/33-opencode-adapter-v0.1.19.md)
 - [Route DSL end-to-end v0.1.11](docs/25-route-dsl-e2e-v0.1.11.md)
 - [Evaluation runner v0.1.12](docs/26-evaluation-runner-v0.1.12.md)
 - [Изоляция и диагностика evaluation v0.1.13](docs/27-evaluation-isolation-report-v0.1.13.md)

@@ -1,0 +1,13 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: opencode-smoke
+defaults:
+  assistant: opencode
+  model: smoke
+  session: resume
+nodes:
+  - id: smoke
+    prompt: |
+      Reply with exactly: TAKT_OPENCODE_SMOKE_OK
+    timeout: 5m

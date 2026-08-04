@@ -1,0 +1,15 @@
+apiVersion: takt/v1alpha1
+kind: Config
+models:
+  smoke:
+    provider: openai
+    id: replace-with-opencode-model
+    params:
+      variant: high
+assistants:
+  opencode:
+    type: opencode
+    binary: opencode
+    agent: build
+    auto_approve: false
+    max_output_bytes: 2097152

@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов. Используй, когда нужно настроить Takt, выбрать модель или assistant для узлов, собрать DAG, retry/feedback, hooks, approval, loop_group, диагностировать workflow либо подготовить готовый .takt-профиль.
+description: Создаёт, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant для узлов, собрать DAG, retry/feedback, hooks, approval, loop_group, диагностировать workflow либо подготовить готовый .takt-профиль.
 ---
 
 # Работа с Takt
@@ -11,17 +11,18 @@ description: Создаёт, изменяет, проверяет и запус�
 
 1. Найди рабочую директорию и существующие файлы `.takt/`, workflow, config и Markdown-команды.
 2. Если работа идёт в репозитории Takt, прочитай `AGENTS.md`, `docs/03-specification.md` и подходящий пример из `examples/`.
-3. Определи минимальную форму решения:
+3. Выбери внешний coding assistant по существующей среде проекта: `pi` или `opencode`. Не меняй assistant без причины.
+4. Определи минимальную форму решения:
    - `prompt` — короткая инструкция прямо в узле;
    - `command` — длинный или переиспользуемый prompt в Markdown;
    - `bash` — детерминированная команда;
    - hook с `retry` — проверка и исправление результата;
    - `approval` — отдельное сохраняемое решение пользователя;
    - `loop_group` — только когда нужен повтор вложенного DAG, а обычных attempts недостаточно.
-4. Сначала используй существующие model aliases и assistants из config. Новые добавляй только при необходимости.
-5. Внеси минимальные изменения и проверь их командой `takt validate`.
-6. Если пользователь просит рабочий запуск и среда готова, выполни `takt run`; при `waiting` покажи запрос approval и продолжи через `takt answer` только после ответа пользователя.
-7. В ответе перечисли изменённые файлы, фактически выбранные assistant/model и выполненные проверки.
+5. Сначала используй существующие model aliases и assistants из config. Новые добавляй только при необходимости.
+6. Внеси минимальные изменения и проверь их командой `takt validate`.
+7. Если пользователь просит рабочий запуск и среда готова, выполни `takt run`; при `waiting` покажи запрос approval и продолжи через `takt answer` только после ответа пользователя.
+8. В ответе перечисли изменённые файлы, фактически выбранные assistant/model и выполненные проверки.
 
 ## Источники истины
 
@@ -29,7 +30,7 @@ description: Создаёт, изменяет, проверяет и запус�
 
 1. `schemas/*.json` и `docs/03-specification.md` — внешний контракт;
 2. `docs/09-runtime-semantics.md` — статусы, retry, hooks, loops и resume;
-3. `docs/10-assistant-adapter-spec.md` — assistants и Pi;
+3. `docs/10-assistant-adapter-spec.md` — assistants, Pi и OpenCode;
 4. `examples/` — рабочие композиции;
 5. `takt validate ... --json` — окончательная проверка конкретного профиля.
 
@@ -41,6 +42,8 @@ description: Создаёт, изменяет, проверяет и запус�
 - Приоритет assistant/model: узел → frontmatter Markdown-команды → `workflow.defaults`.
 - Имена моделей в workflow ссылаются на aliases из `config.models`, а не напрямую на provider ID.
 - `session: resume` требует реального сохранения Session ID; не подменяй неуспешный resume на fresh.
+- OpenCode запускается через `opencode run --format json`; не парси TUI и не подменяй его собственный агентный цикл логикой Takt.
+- `auto_approve: true` для OpenCode используй только в доверенной рабочей директории.
 - Для исправления результата используй детерминированную проверку в hook и `on_failure.action: retry`.
 - `${feedback}` содержит вывод неуспешных hooks предыдущей попытки.
 - Текст агента и наличие файла сами по себе не подтверждают успех; нужен bash-валидатор или другой детерминированный gate.
@@ -90,6 +93,30 @@ ${input}
 ${feedback}
 ```
 
+## Выбор Pi или OpenCode
+
+Используй уже установленный assistant. Для OpenCode конфигурация выглядит так:
+
+```yaml
+assistants:
+  opencode:
+    type: opencode
+    binary: opencode
+    agent: build
+    auto_approve: false
+```
+
+В workflow меняется только ссылка:
+
+```yaml
+defaults:
+  assistant: opencode
+  model: main
+  session: resume
+```
+
+Модель передаётся OpenCode как `provider/id`, параметр `variant` — как вариант модели.
+
 ## Проверка результата
 
 Минимальная проверка:
@@ -117,7 +144,7 @@ takt run .takt/workflows/main.yaml \
   --json
 ```
 
-Не заявляй, что профиль готов, пока `takt validate` не прошёл. Если запуск невозможен из-за отсутствия Pi, credentials, модели или предметного инструмента, явно отдели проверенную структуру от непроверенной внешней интеграции.
+Не заявляй, что профиль готов, пока `takt validate` не прошёл. Если запуск невозможен из-за отсутствия Pi/OpenCode, credentials, модели или предметного инструмента, явно отдели проверенную структуру от непроверенной внешней интеграции.
 
 ## Дополнительные материалы
 

@@ -39,13 +39,13 @@ go build ./cmd/takt
 Требования:
 
 - используй `examples/route-dsl-e2e` как базовый контракт;
-- выполни opt-in Pi smoke при доступных credentials;
+- выполни opt-in Pi/OpenCode smoke при доступных credentials;
 - используй `examples/route-dsl-eval` только как инфраструктурный contract suite;
 - для сравнения моделей используй `examples/route-dsl-benchmark`, `--strategy-id`, `--benchmark-id`, fingerprints валидатора и `takt-validation/v1alpha1`;
 - замени минимальный `route-tool` штатным валидатором и сохрани передачу diagnostics в retry;
 - замени синтетические задания реальными обезличенными примерами;
 - не меняй timeout, output limit, fresh/resume и error classification без обновления спецификации и ADR;
-- сохраняй контракт `takt-assistant/v1alpha1` для универсальных process adapters; Pi использует отдельный RPC adapter;
+- сохраняй контракт `takt-assistant/v1alpha1` для универсальных process adapters; Pi использует RPC adapter, OpenCode — JSON CLI adapter;
 - не допускай тихого fallback с resume на fresh;
 - сохрани границу: внутренний tool loop остаётся внутри Pi/OpenCode.
 
@@ -71,3 +71,6 @@ go build ./cmd/takt
 
 
 Перед изменением Pi adapter прочитайте `docs/23-pi-rpc-alignment-v0.1.9.md`: `agent_settled` является финальной границей попытки, а usage возвращается как дельта накопленной статистики.
+
+
+Перед изменением OpenCode adapter прочитайте `docs/33-opencode-adapter-v0.1.19.md`: stdout является NDJSON event stream, stderr — диагностикой, resume требует совпадения Session ID, usage суммируется по уникальным `step_finish`.

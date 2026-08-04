@@ -102,3 +102,20 @@ go build ./cmd/takt-fake-pi
 - unit/contract tests;
 - сквозной пример;
 - обновление спецификации, схем и status.
+
+## OpenCode adapter
+
+Run the deterministic contract suite with:
+
+```bash
+make opencode-contracts
+```
+
+A real smoke test is opt-in:
+
+```bash
+TAKT_OPENCODE_SMOKE=1 \
+TAKT_OPENCODE_SMOKE_PROVIDER=<provider> \
+TAKT_OPENCODE_SMOKE_MODEL=<model> \
+make opencode-contracts
+```
