@@ -39,12 +39,13 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-021" \
   "ARCHITECTURE_DECISIONS.md|ADR-022" \
   "ARCHITECTURE_DECISIONS.md|ADR-023" \
+  "ARCHITECTURE_DECISIONS.md|ADR-024" \
   "docs/03-specification.md|allow_failure" \
   "docs/03-specification.md|родительский \`loop_group\`" \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.11-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.12-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \
@@ -56,6 +57,7 @@ for check in \
   "docs/12-document-map.md|23-pi-rpc-alignment-v0.1.9.md" \
   "docs/12-document-map.md|24-pi-context-usage-hardening-v0.1.10.md" \
   "docs/12-document-map.md|25-route-dsl-e2e-v0.1.11.md" \
+  "docs/12-document-map.md|26-evaluation-runner-v0.1.12.md" \
   "docs/14-backlog-v0.2.md|TAKT-008. Fake assistant protocol suite — выполнено" \
   "docs/14-backlog-v0.2.md|TAKT-009. Specialized Pi adapter — выполнено" \
   "docs/15-coding-agent-start.md|takt-assistant/v1alpha1" \
@@ -68,8 +70,12 @@ for check in \
   "docs/24-pi-context-usage-hardening-v0.1.10.md|исчез после \`agent_settled\`" \
   "docs/25-route-dsl-e2e-v0.1.11.md|Pi → validator → feedback → retry/resume" \
   "docs/25-route-dsl-e2e-v0.1.11.md|Result.Truncated = true" \
+  "docs/26-evaluation-runner-v0.1.12.md|takt eval run" \
+  "docs/26-evaluation-runner-v0.1.12.md|context.WithTimeout" \
+  "examples/route-dsl-eval/README.md|takt eval run" \
   "examples/route-dsl-e2e/workflow.yaml|validate-generated-route" \
-  "scripts/test-route-dsl-e2e.sh|Route DSL end-to-end: PASS"
+  "scripts/test-route-dsl-e2e.sh|Route DSL end-to-end: PASS" \
+  "scripts/test-route-dsl-eval.sh|takt eval run"
 do
   file="${check%%|*}"
   text="${check#*|}"

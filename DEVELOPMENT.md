@@ -56,6 +56,7 @@ go build ./cmd/takt
 go build ./cmd/takt-fake-pi
 ./scripts/test-pi-adapter.sh
 ./scripts/test-route-dsl-e2e.sh
+./scripts/test-route-dsl-eval.sh
 ./scripts/verify.sh
 ```
 

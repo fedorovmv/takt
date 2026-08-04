@@ -7,6 +7,7 @@ cd "$root"
 mkdir -p bin
 go build -o bin/takt ./cmd/takt
 go build -o bin/takt-fake-pi ./cmd/takt-fake-pi
+go build -o bin/takt-route-e2e-assert ./internal/testsupport/routee2eassert
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -43,20 +44,7 @@ run_json="$(./bin/takt run "$tmp/workflow.yaml" \
   --json)"
 printf '%s' "$run_json" > "$tmp/run.json"
 
-run_id="$(python - "$tmp/run.json" <<'PY'
-import json, sys
-s=json.load(open(sys.argv[1]))['result']
-assert s['status']=='waiting', s
-assert s['waiting']['node_id']=='approve-result', s
-n=s['nodes']['implement']
-assert n['status']=='completed', n
-assert n['attempts']==2, n
-assert n['session_id']=='fake-pi-session-1', n
-assert 'ROUTE_INVALID' in n['feedback'], n
-assert s['nodes']['full-validation']['status']=='completed', s['nodes']['full-validation']
-print(s['id'])
-PY
-)"
+run_id="$(./bin/takt-route-e2e-assert run "$tmp/run.json")"
 
 [[ -f "$tmp/route.yaml" ]]
 grep -q '^valid: true$' "$tmp/route.yaml"
@@ -71,12 +59,6 @@ answer_json="$(./bin/takt answer "$run_id" approve-result \
   --value approved \
   --json)"
 printf '%s' "$answer_json" > "$tmp/answer.json"
-python - "$tmp/answer.json" <<'PY'
-import json, sys
-s=json.load(open(sys.argv[1]))['result']
-assert s['status']=='completed', s
-assert s['nodes']['approve-result']['status']=='completed', s['nodes']['approve-result']
-assert s['nodes']['approve-result']['output']=='approved', s['nodes']['approve-result']
-PY
+./bin/takt-route-e2e-assert answer "$tmp/answer.json"
 
 echo 'Route DSL end-to-end: PASS'

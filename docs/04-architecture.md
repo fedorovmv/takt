@@ -30,7 +30,8 @@ Runner / Shared DAG Scheduler
 - `internal/definition` — fingerprints workflow/config/commands;
 - `internal/workflow` — загрузка и статическая проверка DAG;
 - `internal/runtime` — общий scheduler, hooks, loops, approval и итог Run;
-- `internal/store` — revisioned state/event store и lock Run.
+- `internal/store` — revisioned state/event store, aggregate usage и lock Run;
+- `internal/evaluation` — изолированный запуск наборов заданий и агрегация метрик из RunState.
 
 ## Граница с кодовым агентом
 
@@ -64,7 +65,11 @@ TAKT_NATIVE_HOOKS_JSON
 
 ## Состояние
 
-Каждый transition записывается через `Store.Commit`. State и event получают одну revision. `Load` обнаруживает рассогласование. `answer` и `resume` получают lock и проверяют fingerprints определений.
+Каждый transition записывается через `Store.Commit`. State и event получают одну revision. `Load` обнаруживает рассогласование. `answer` и `resume` получают lock и проверяют fingerprints определений. Usage всех агентных попыток накапливается в состоянии узла и используется evaluation report.
+
+## Evaluation
+
+`takt eval run` выполняет каждый Markdown-case в отдельной копии workspace template. Предметный validator остаётся частью workflow и определяет успех; evaluation только управляет серией Run и агрегирует attempts, duration, usage, approvals, errors и truncation.
 
 ## Scope безопасности
 

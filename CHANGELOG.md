@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.12-alpha
+
+- Route DSL E2E больше не зависит от команды `python`; JSON-проверки выполняются Go helper-ом;
+- интеграционные timeout/cancel + overflow тесты используют корректные `context.WithTimeout` и `context.WithCancel`;
+- runtime scheduler проверяет сохранение `output_truncated` в итоговом `NodeState`;
+- `NodeState.usage` накапливает tokens и cost всех агентных попыток;
+- добавлены `takt eval run` и `takt eval report` для изолированного прогона каталогов заданий;
+- evaluation report содержит статусы, attempts, duration, usage, approvals и truncation;
+- добавлен стартовый набор из десяти Route DSL заданий и контрактный eval-тест;
+- добавлен отчёт `docs/26-evaluation-runner-v0.1.12.md`.
+
 ## v0.1.11-alpha
 
 - добавлены fake-Pi overflow-сценарии, проходящие через реальный `Pi.Run`;

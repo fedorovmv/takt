@@ -1,31 +1,33 @@
-# Результаты проверки v0.1.11-alpha
+# Результаты проверки v0.1.12-alpha
 
-## Pi overflow coverage
+## Исправления аудита
 
-Проверены два уровня контракта:
+Проверено:
 
-- fake Pi создаёт реальный concurrent output overflow внутри `Pi.Run`;
-- timeout сохраняет `KindTimedOut` и `Result.Truncated=true`;
-- cancellation сохраняет `KindCancelled` и `Result.Truncated=true`;
-- runtime переносит эти результаты в `NodeState` со статусами `timed_out`/`cancelled` и `output_truncated=true`;
-- прежние protocol-only overflow и cumulative usage сценарии продолжают проходить.
+- `scripts/test-route-dsl-e2e.sh` не вызывает `python` или `python3`;
+- JSON-ответы Route E2E проверяются Go helper-ом;
+- timeout + overflow проходит через fake Pi и `Pi.Run` с обычным `context.WithTimeout`;
+- cancel + overflow проходит через fake Pi и `Pi.Run` с обычным `context.WithCancel`;
+- в обоих случаях parent context имеет согласованные `Done()` и `Err()`;
+- `Result.Truncated=true` сохраняется вместе с `timed_out`/`cancelled`;
+- runtime scheduler переносит статус и `output_truncated=true` в итоговый `NodeState`.
 
-## Route DSL end-to-end
+## Usage и evaluation
 
-`scripts/test-route-dsl-e2e.sh` проверяет:
+Проверено:
 
-- запуск Pi assistant через RPC adapter;
-- намеренно невалидный `route.yaml` на первой попытке;
-- diagnostics валидатора в `${feedback}`;
-- вторую попытку с тем же Session ID;
-- успешную обязательную проверку только после исправления;
-- сохранение `route.yaml` и `validation.json` в artifacts;
-- остановку на approval;
-- продолжение через `takt answer` до статуса `completed`.
+- usage двух Pi-попыток суммируется в `NodeState.usage`;
+- `takt eval run` создаёт отдельную рабочую область для каждого задания;
+- два Route DSL задания проходят обязательный validator retry/resume;
+- evaluation автоматически отвечает approval только при заданном `--answer`;
+- `report.json` содержит status, attempts, duration, tokens, cost, approvals и node details;
+- `takt eval report` повторно читает сохранённый отчёт;
+- `make check` и `scripts/verify.sh` включают Route DSL eval suite.
 
 ## Команды
 
 ```text
+gofmt -w cmd internal
 go test ./... -count=1
 go test -race ./... -count=1
 go vet ./...
@@ -35,8 +37,9 @@ go build ./cmd/takt-fake-pi
 ./scripts/test-fake-assistant.sh
 ./scripts/test-pi-adapter.sh
 ./scripts/test-route-dsl-e2e.sh
+./scripts/test-route-dsl-eval.sh
 ./scripts/check-docs.sh
 ./scripts/verify.sh
 ```
 
-Реальный Pi smoke с `aihub/Qwen/Qwen3.6-27B` был подтверждён внешним аудитом предыдущего релиза. В среде сборки v0.1.11-alpha он повторно не запускался, поскольку доступ к пользовательской авторизации и модели отсутствует.
+Реальный Pi smoke с `aihub/Qwen/Qwen3.6-27B` был подтверждён внешним аудитом `v0.1.11-alpha`. В среде сборки `v0.1.12-alpha` он повторно не запускался, поскольку пользовательская авторизация и модель недоступны.

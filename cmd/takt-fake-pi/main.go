@@ -11,16 +11,14 @@ import (
 )
 
 type options struct {
-	caseName      string
-	mode          string
-	provider      string
-	model         string
-	thinking      string
-	session       string
-	sessionDir    string
-	projectTrust  string
-	marker        string
-	overflowDelay time.Duration
+	caseName     string
+	mode         string
+	provider     string
+	model        string
+	thinking     string
+	session      string
+	sessionDir   string
+	projectTrust string
 }
 
 type fakeState struct {
@@ -154,12 +152,9 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 			time.Sleep(time.Hour)
 		}
 	case "timeout-overflow", "cancel-overflow":
-		if opts.overflowDelay > 0 {
-			time.Sleep(opts.overflowDelay)
-		}
-		if optsMarker := os.Getenv("TAKT_FAKE_PI_MARKER"); optsMarker != "" {
-			_ = os.WriteFile(optsMarker, []byte("overflow-started"), 0o644)
-		}
+		// Let the prompt response drain before overflowing stderr so the test
+		// synchronizes parent context completion with the actual limit event.
+		time.Sleep(100 * time.Millisecond)
 		_, _ = os.Stderr.WriteString(strings.Repeat("overflow", 64*1024))
 		for {
 			time.Sleep(time.Hour)
@@ -349,17 +344,6 @@ func parseArgs(args []string) (options, error) {
 		case "--fake-case":
 			value, err = next()
 			opts.caseName = value
-		case "--fake-marker":
-			value, err = next()
-			opts.marker = value
-			if err == nil {
-				_ = os.Setenv("TAKT_FAKE_PI_MARKER", value)
-			}
-		case "--fake-overflow-delay":
-			value, err = next()
-			if err == nil {
-				opts.overflowDelay, err = time.ParseDuration(value)
-			}
 		case "--fake-delay":
 			value, err = next()
 			if err == nil {

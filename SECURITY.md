@@ -2,7 +2,7 @@
 
 ## Supported trust model
 
-Takt `v0.1.11-alpha` is a local, single-user, trusted runtime.
+Takt `v0.1.12-alpha` is a local, single-user, trusted runtime.
 
 Trusted inputs:
 
@@ -62,3 +62,8 @@ A future server or untrusted mode requires at minimum:
 - quotas and resource limits;
 - audit retention policy;
 - recovery from stale locks and interrupted commits.
+
+
+## Evaluation
+
+`takt eval run` копирует и выполняет workspace template для каждого задания. Template, workflow, config, cases, assistant binaries и внешний validator входят в trusted input. Evaluation runner не создаёт sandbox и не должен использоваться для запуска недоверенных наборов заданий или шаблонов.

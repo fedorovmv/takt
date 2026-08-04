@@ -1,4 +1,4 @@
-.PHONY: build test race vet fmt docs contracts pi-contracts route-e2e check demo
+.PHONY: build test race vet fmt docs contracts pi-contracts route-e2e route-eval check demo
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -27,7 +27,10 @@ pi-contracts:
 route-e2e: build
 	./scripts/test-route-dsl-e2e.sh
 
-check: fmt vet test race build contracts pi-contracts route-e2e docs
+route-eval: build
+	./scripts/test-route-dsl-eval.sh
+
+check: fmt vet test race build contracts pi-contracts route-e2e route-eval docs
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml

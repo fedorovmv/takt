@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +15,7 @@ import (
 )
 
 func fakePi(caseName string) Pi {
-	return Pi{spec: spec.AssistantSpec{
+	return NewPi(spec.AssistantSpec{
 		Type:           "pi",
 		Binary:         fakePiBinary,
 		Args:           []string{"--fake-case", caseName},
@@ -24,7 +23,7 @@ func fakePi(caseName string) Pi {
 		ProjectTrust:   "approve",
 		MaxOutputBytes: 64 * 1024,
 		Env:            map[string]string{"TAKT_PI_TEST_ENV": "{{run.id}}/{{node.id}}", "TAKT_RUN_ID": "spoofed"},
-	}}
+	})
 }
 
 func fakePiRequest(workspace string) Request {
@@ -40,24 +39,6 @@ func fakePiRequest(workspace string) Request {
 		NativeHooks: json.RawMessage(`{"post_tool_use":[{"matcher":"Write"}]}`),
 		Metadata:    map[string]string{"suite": "pi-contract"},
 	}
-}
-
-// markerPriorityContext is a deterministic test seam. The fake Pi creates the
-// marker immediately before overflowing the real shared stdout/stderr budget;
-// Err then makes the caller context authoritative at finish without relying on
-// wall-clock races between SIGKILL and a timer.
-type markerPriorityContext struct {
-	context.Context
-	marker string
-	err    error
-}
-
-func (c markerPriorityContext) Done() <-chan struct{} { return nil }
-func (c markerPriorityContext) Err() error {
-	if _, statErr := os.Stat(c.marker); statErr == nil {
-		return c.err
-	}
-	return nil
 }
 
 func TestPiPriorityError(t *testing.T) {
@@ -85,25 +66,46 @@ func TestPiRunPreservesContextPriorityWithRealOverflow(t *testing.T) {
 	tests := []struct {
 		name     string
 		caseName string
-		ctxErr   error
 		wantKind execution.Kind
+		context  func(*Pi) (context.Context, context.CancelFunc)
 	}{
-		{name: "timeout plus overflow", caseName: "timeout-overflow", ctxErr: context.DeadlineExceeded, wantKind: execution.KindTimedOut},
-		{name: "cancel plus overflow", caseName: "cancel-overflow", ctxErr: context.Canceled, wantKind: execution.KindCancelled},
+		{
+			name:     "timeout plus overflow",
+			caseName: "timeout-overflow",
+			wantKind: execution.KindTimedOut,
+			context: func(adapter *Pi) (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				adapter.onOutputTruncated = func() { <-ctx.Done() }
+				return ctx, cancel
+			},
+		},
+		{
+			name:     "cancel plus overflow",
+			caseName: "cancel-overflow",
+			wantKind: execution.KindCancelled,
+			context: func(adapter *Pi) (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(context.Background())
+				adapter.onOutputTruncated = cancel
+				return ctx, cancel
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			marker := filepath.Join(t.TempDir(), "overflow.marker")
 			adapter := fakePi(tt.caseName)
-			adapter.spec.Args = append(adapter.spec.Args, "--fake-marker", marker)
 			adapter.spec.MaxOutputBytes = 1024
-			ctx := markerPriorityContext{Context: context.Background(), marker: marker, err: tt.ctxErr}
+			ctx, cancel := tt.context(&adapter)
+			defer cancel()
+
 			result, err := adapter.Run(ctx, fakePiRequest(t.TempDir()))
 			if execution.KindOf(err) != tt.wantKind {
 				t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
 			}
 			if !result.Truncated {
 				t.Fatalf("overflow diagnostic was lost: %+v", result)
+			}
+			if ctx.Err() == nil || ctx.Done() == nil {
+				t.Fatalf("parent context did not complete correctly: err=%v done=%v", ctx.Err(), ctx.Done())
 			}
 		})
 	}
@@ -252,7 +254,7 @@ func TestPiAdapterContract(t *testing.T) {
 	})
 
 	t.Run("start", func(t *testing.T) {
-		adapter := Pi{spec: spec.AssistantSpec{Type: "pi", Binary: "definitely-missing-pi-binary"}}
+		adapter := NewPi(spec.AssistantSpec{Type: "pi", Binary: "definitely-missing-pi-binary"})
 		_, err := adapter.Run(context.Background(), fakePiRequest(t.TempDir()))
 		if execution.KindOf(err) != execution.KindStart {
 			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
@@ -373,7 +375,7 @@ func TestPiAdapterOptInSmoke(t *testing.T) {
 	if _, err := exec.LookPath(binary); err != nil {
 		t.Fatal(err)
 	}
-	adapter := Pi{spec: spec.AssistantSpec{Type: "pi", Binary: binary, ProjectTrust: "deny", MaxOutputBytes: 2 * 1024 * 1024}}
+	adapter := NewPi(spec.AssistantSpec{Type: "pi", Binary: binary, ProjectTrust: "deny", MaxOutputBytes: 2 * 1024 * 1024})
 	req := Request{
 		RunID: "pi-smoke", NodeID: "smoke", Attempt: 1,
 		Prompt:    "Reply with exactly: TAKT_PI_SMOKE_OK",

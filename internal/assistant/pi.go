@@ -24,7 +24,23 @@ import (
 // The adapter owns one short-lived Pi RPC process per Takt node attempt. Pi
 // remains responsible for its internal tool loop, files, shell, skills, and
 // session persistence; Takt only supplies the prompt and normalizes the result.
-type Pi struct{ spec spec.AssistantSpec }
+type Pi struct {
+	spec              spec.AssistantSpec
+	onOutputTruncated func()
+}
+
+func NewPi(assistantSpec spec.AssistantSpec) Pi {
+	return Pi{spec: assistantSpec}
+}
+
+// WithOutputTruncatedObserver returns a copy that invokes observer when the
+// shared stdout/stderr budget is exceeded. The callback does not replace the
+// adapter's cancellation behavior and is primarily useful for integration
+// instrumentation and deterministic contract tests.
+func (p Pi) WithOutputTruncatedObserver(observer func()) Pi {
+	p.onOutputTruncated = observer
+	return p
+}
 
 const defaultPiOutputLimit = 10 * 1024 * 1024
 
@@ -69,7 +85,12 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		limit = defaultPiOutputLimit
 	}
 	var limitOnce sync.Once
-	budget := &outputBudget{limit: limit, onTruncate: func() { limitOnce.Do(cancel) }}
+	budget := &outputBudget{limit: limit, onTruncate: func() {
+		if p.onOutputTruncated != nil {
+			p.onOutputTruncated()
+		}
+		limitOnce.Do(cancel)
+	}}
 	stdout := newLimitedBuffer(budget)
 	stderr := newLimitedBuffer(budget)
 

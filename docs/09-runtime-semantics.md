@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints и persistence уже реализована в `v0.1.11-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, DAG, `loop_group`, approval, fingerprints и persistence уже реализована в `v0.1.12-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -148,7 +148,7 @@ node.started
 
 `allow_failure: true` разрешает только `exit`. Он не скрывает `start`, timeout, cancellation, protocol или internal error.
 
-Output, exit code, session ID и признак truncation сохраняются даже при неуспешном результате, если они доступны.
+Output, exit code, session ID и признак truncation сохраняются даже при неуспешном результате, если они доступны. Usage каждой агентной попытки добавляется к aggregate `NodeState.usage`; retry после внешней проверки не теряет стоимость уже выполненной попытки.
 
 Для process assistant с `takt-assistant/v1alpha1` OS exit code и envelope `exit_code` обязаны совпадать всегда. Расхождение классифицируется как `protocol` до применения `allow_failure`. Runtime также отклоняет дополнительный JSON, неизвестные поля, несовместимые status/exit, отрицательный usage и неподтверждённый resume.
 

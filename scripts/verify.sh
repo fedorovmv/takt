@@ -11,6 +11,7 @@ go build -o bin/takt-fake-pi ./cmd/takt-fake-pi
 ./scripts/test-fake-assistant.sh
 ./scripts/test-pi-adapter.sh
 ./scripts/test-route-dsl-e2e.sh
+./scripts/test-route-dsl-eval.sh
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \

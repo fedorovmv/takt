@@ -14,6 +14,7 @@ import (
 	"takt/internal/command"
 	cfgpkg "takt/internal/config"
 	"takt/internal/definition"
+	"takt/internal/evaluation"
 	"takt/internal/runtime"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -49,8 +50,10 @@ func run(args []string) error {
 		return statusCmd(args[1:])
 	case "command":
 		return commandCmd(args[1:])
+	case "eval":
+		return evalCmd(args[1:])
 	case "version":
-		fmt.Println("takt v0.1.11-alpha")
+		fmt.Println("takt v0.1.12-alpha")
 		return nil
 	default:
 		return usage()
@@ -333,6 +336,59 @@ func commandCmd(args []string) error {
 	return printResult(*jsonOut, state)
 }
 
+func evalCmd(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: takt eval <run|report> [flags]")
+	}
+	switch args[0] {
+	case "run":
+		fs := newFlagSet("eval run")
+		configPath := fs.String("config", ".takt/config.yaml", "config path")
+		casesDir := fs.String("cases", "", "directory containing Markdown cases")
+		templateDir := fs.String("workspace-template", "", "workspace template directory")
+		outputDir := fs.String("output", ".takt/evals/latest", "evaluation output directory")
+		repeat := fs.Int("repeat", 1, "number of repetitions per case")
+		answer := fs.String("answer", "", "automatic approval answer")
+		replace := fs.Bool("replace", false, "replace existing case workspaces")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		values := map[string]bool{
+			"--config": true, "--cases": true, "--workspace-template": true, "--output": true,
+			"--repeat": true, "--answer": true, "--replace": false, "--json": false,
+		}
+		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt eval run <workflow> --config path --cases dir --workspace-template dir [flags]")
+		}
+		report, err := evaluation.Run(context.Background(), evaluation.RunOptions{
+			WorkflowPath: fs.Arg(0), ConfigPath: *configPath, CasesDir: *casesDir,
+			WorkspaceTemplate: *templateDir, OutputDir: *outputDir, Repeat: *repeat,
+			ApprovalAnswer: *answer, Replace: *replace,
+		})
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, report)
+	case "report":
+		fs := newFlagSet("eval report")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt eval report <evaluation-output-dir>")
+		}
+		report, err := evaluation.LoadReport(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, report)
+	default:
+		return fmt.Errorf("usage: takt eval <run|report> [flags]")
+	}
+}
+
 func newFlagSet(name string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -425,7 +481,7 @@ func wantsJSON(args []string) bool {
 	value := false
 	if len(args) > 0 {
 		switch args[0] {
-		case "run", "answer", "resume", "status":
+		case "run", "answer", "resume", "status", "eval":
 			value = true
 		case "command":
 			value = len(args) > 1 && args[1] == "run"
@@ -477,5 +533,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <validate|run|answer|resume|status|command|version>")
+	return fmt.Errorf("usage: takt <validate|run|answer|resume|status|command|eval|version>")
 }

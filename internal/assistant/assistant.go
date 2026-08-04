@@ -38,6 +38,10 @@ type Adapter interface {
 	Run(context.Context, Request) (Result, error)
 }
 
+type Resolver interface {
+	Resolve(string) (Adapter, error)
+}
+
 type Factory struct {
 	Config *spec.Config
 }
@@ -53,7 +57,7 @@ func (f Factory) Resolve(name string) (Adapter, error) {
 	case "process":
 		return Process{spec: s}, nil
 	case "pi":
-		return Pi{spec: s}, nil
+		return NewPi(s), nil
 	default:
 		return nil, &UnknownAssistantError{Name: name}
 	}

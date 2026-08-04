@@ -1,6 +1,6 @@
 # Backlog Takt v0.2
 
-Статус обновлён после интеграционных Pi overflow-регрессий и первого Route DSL end-to-end в `v0.1.11-alpha`.
+Статус обновлён после интеграционных Pi overflow-регрессий и первого Route DSL end-to-end в `v0.1.12-alpha`.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 
@@ -106,7 +106,7 @@
 
 **Приёмка:** fresh, resume success и resume failure реализованы для process protocol; подтверждены на Pi adapter; OpenCode получит тот же контракт при реализации.
 
-## Завершено в v0.1.11-alpha
+## Завершено в v0.1.11–v0.1.12-alpha
 
 ### TAKT-011. Route DSL end-to-end — контрактный срез выполнен
 
@@ -116,12 +116,16 @@
 
 **Приёмка:** сквозной CLI-тест требует двух попыток; вторая попытка использует сохранённый Session ID и диагностику первой проверки; success определяется только валидатором; Run завершается после отдельного `takt answer`.
 
-### TAKT-011B. Производственная проверка Route DSL — следующий этап
+### TAKT-011B. Производственная проверка Route DSL — выполняется
+
+В `v0.1.12-alpha` реализованы evaluation runner, изолированные workspace, aggregate usage, JSON-report и стартовый набор из десяти синтетических заданий.
+
+Остаётся:
 
 - подключить штатный `route-tool`;
-- прогнать минимум 10 реальных технических заданий;
+- заменить синтетические задания реальными обезличенными техническими заданиями;
 - нормализовать diagnostics;
-- собирать iterations, usage, duration и manual corrections.
+- учитывать manual corrections результата.
 
 ## Далее
 
@@ -157,9 +161,9 @@ Issue/fix → coding agent → `go test` → feedback → approval без изм
 
 Draft → approval comment → revise → artifact без изменения runtime.
 
-### TAKT-020. Eval metrics
+### TAKT-020. Eval metrics — базовый сбор реализован
 
-Сравнение fresh/resume, моделей и workflow-стратегий на фиксированном наборе задач.
+`takt eval run/report` собирает status, attempts, duration, usage, approvals, errors и truncation. Остаются сравнение стратегий, агрегаты по нескольким повторениям, экспорт таблиц и метрика manual corrections.
 
 ## Вне v0.2
 

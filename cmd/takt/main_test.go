@@ -89,4 +89,7 @@ func TestJSONModeDefaults(t *testing.T) {
 	if wantsJSON([]string{"validate", "workflow.yaml"}) {
 		t.Fatal("validate should default to text")
 	}
+	if !wantsJSON([]string{"eval", "report", ".takt/evals/latest"}) {
+		t.Fatal("eval should default to JSON")
+	}
 }

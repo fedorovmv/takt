@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,18 @@ import (
 	"takt/internal/spec"
 	"takt/internal/store"
 )
+
+type adapterFunc func(context.Context, assistant.Request) (assistant.Result, error)
+
+func (f adapterFunc) Run(ctx context.Context, req assistant.Request) (assistant.Result, error) {
+	return f(ctx, req)
+}
+
+type resolverFunc func(string) (assistant.Adapter, error)
+
+func (f resolverFunc) Resolve(name string) (assistant.Adapter, error) {
+	return f(name)
+}
 
 func TestApprovalResume(t *testing.T) {
 	dir := t.TempDir()
@@ -472,30 +485,85 @@ func TestProtocolAssistantResumesSessionAcrossRetry(t *testing.T) {
 	}
 }
 
-func TestNodeStatePreservesTruncatedForContextErrors(t *testing.T) {
+func TestPiOverflowContextStateIntegration(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "takt-fake-pi")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", binary, "./cmd/takt-fake-pi")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fake Pi: %v: %s", err, output)
+	}
+
 	tests := []struct {
 		name       string
-		kind       execution.Kind
+		caseName   string
 		wantStatus string
+		wantKind   execution.Kind
+		context    func() (context.Context, context.CancelFunc, func())
 	}{
-		{name: "timeout", kind: execution.KindTimedOut, wantStatus: store.NodeTimedOut},
-		{name: "cancellation", kind: execution.KindCancelled, wantStatus: store.NodeCancelled},
+		{
+			name:       "timeout plus overflow",
+			caseName:   "timeout-overflow",
+			wantStatus: store.NodeTimedOut,
+			wantKind:   execution.KindTimedOut,
+			context: func() (context.Context, context.CancelFunc, func()) {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				return ctx, cancel, func() { <-ctx.Done() }
+			},
+		},
+		{
+			name:       "cancel plus overflow",
+			caseName:   "cancel-overflow",
+			wantStatus: store.NodeCancelled,
+			wantKind:   execution.KindCancelled,
+			context: func() (context.Context, context.CancelFunc, func()) {
+				ctx, cancel := context.WithCancel(context.Background())
+				return ctx, cancel, cancel
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel, onTruncate := tt.context()
+			defer cancel()
 			dir := t.TempDir()
-			r := New(&spec.Workflow{}, &spec.Config{}, "<workflow>", "<config>", dir)
-			state := &store.RunState{ID: "context-overflow", Status: store.RunRunning, Workspace: dir, Nodes: map[string]*store.NodeState{"agent": {Status: store.NodeRunning}}, Approvals: map[string]string{}}
-			err := &execution.Error{Kind: tt.kind, ExitCode: -1, Op: "pi rpc", Err: context.Canceled}
-			if tt.kind == execution.KindTimedOut {
-				err.Err = context.DeadlineExceeded
+			wf := &spec.Workflow{
+				APIVersion: "takt/v1alpha1",
+				Kind:       "Workflow",
+				Metadata:   spec.Metadata{Name: "pi-context-overflow"},
+				Defaults:   spec.Defaults{Assistant: "pi", Model: "m"},
+				Nodes:      []spec.Node{{ID: "agent", Prompt: "run"}},
 			}
-			if commitErr := r.finishNodeExecutionError(state, "agent", tt.kind, err, execResult{ExitCode: -1, Truncated: true}); commitErr != nil {
-				t.Fatal(commitErr)
+			cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "openai", ID: "fake-model"}}}
+			adapter := assistant.NewPi(spec.AssistantSpec{
+				Type: "pi", Binary: binary, Args: []string{"--fake-case", tt.caseName},
+				ProjectTrust: "approve", MaxOutputBytes: 1024,
+			}).WithOutputTruncatedObserver(onTruncate)
+			r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+			r.Assistants = resolverFunc(func(name string) (assistant.Adapter, error) {
+				if name != "pi" {
+					return nil, fmt.Errorf("unexpected assistant %q", name)
+				}
+				return adapter, nil
+			})
+
+			state, runErr := r.Start(ctx, "")
+			var failed *RunFailedError
+			if !errors.Is(runErr, ctx.Err()) && !(errors.As(runErr, &failed) && failed.Code == string(tt.wantKind)) {
+				t.Fatalf("unexpected run error: err=%v", runErr)
 			}
 			node := state.Nodes["agent"]
-			if node.Status != tt.wantStatus || node.ErrorCode != string(tt.kind) || !node.OutputTruncated {
+			if node.Status != tt.wantStatus || node.ErrorCode != string(tt.wantKind) || !node.OutputTruncated {
 				t.Fatalf("unexpected node state: %+v", node)
+			}
+			if ctx.Done() == nil || ctx.Err() == nil {
+				t.Fatalf("parent context did not complete correctly: done=%v err=%v", ctx.Done(), ctx.Err())
 			}
 		})
 	}
@@ -551,5 +619,8 @@ func TestPiAssistantResumesSessionAcrossRetry(t *testing.T) {
 	node := state.Nodes["agent"]
 	if node.Status != store.NodeCompleted || node.Attempts != 2 || node.SessionID != "fake-pi-session-1" {
 		t.Fatalf("unexpected Pi node state: %+v", node)
+	}
+	if node.Usage == nil || node.Usage.InputTokens != 222 || node.Usage.OutputTokens != 44 || math.Abs(node.Usage.Cost-0.025) > 1e-9 {
+		t.Fatalf("attempt usage was not accumulated: %+v", node.Usage)
 	}
 }

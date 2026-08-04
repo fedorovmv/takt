@@ -32,13 +32,15 @@ go build ./cmd/takt
 
 ## Первая рекомендуемая задача
 
-Начни с `TAKT-011B`: производственная проверка уже реализованного Route DSL end-to-end.
+Начни с завершения `TAKT-011B`: evaluation runner уже реализован, требуется производственный прогон Route DSL.
 
 Требования:
 
 - используй `examples/route-dsl-e2e` как базовый контракт;
 - выполни opt-in Pi smoke при доступных credentials;
+- используй `takt eval run` и `examples/route-dsl-eval` как базовый контур;
 - замени минимальный `route-tool` штатным валидатором и сохрани передачу diagnostics в retry;
+- замени синтетические задания реальными обезличенными примерами;
 - не меняй timeout, output limit, fresh/resume и error classification без обновления спецификации и ADR;
 - сохраняй контракт `takt-assistant/v1alpha1` для универсальных process adapters; Pi использует отдельный RPC adapter;
 - не допускай тихого fallback с resume на fresh;

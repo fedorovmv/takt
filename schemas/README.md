@@ -8,3 +8,5 @@
 - `assistant-protocol.schema.json` — реализованный JSON-протокол `takt-assistant/v1alpha1` со строгими status/exit и неотрицательным usage.
 
 Go-loader остаётся главным валидатором текущей реализации: кроме структуры он проверяет DAG, ссылки на модели/исполнителей, duration и ограничения `loop_group`. JSON Schema предназначены для редакторов, внешних инструментов и подготовки стабильной схемы.
+
+`run-state.schema.json` включает необязательный aggregate usage узла: input/output tokens и cost всех выполненных агентных попыток.

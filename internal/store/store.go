@@ -32,10 +32,17 @@ const (
 	RunCancelled = "cancelled"
 )
 
+type Usage struct {
+	InputTokens  int     `json:"input_tokens,omitempty"`
+	OutputTokens int     `json:"output_tokens,omitempty"`
+	Cost         float64 `json:"cost,omitempty"`
+}
+
 type NodeState struct {
 	Status          string               `json:"status"`
 	Output          string               `json:"output,omitempty"`
 	OutputTruncated bool                 `json:"output_truncated,omitempty"`
+	Usage           *Usage               `json:"usage,omitempty"`
 	ExitCode        int                  `json:"exit_code,omitempty"`
 	Attempts        int                  `json:"attempts,omitempty"`
 	Feedback        string               `json:"feedback,omitempty"`

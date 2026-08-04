@@ -43,8 +43,11 @@
 - Pi RPC: version probe, provider/model/thinking mapping, verified Session ID, ожидание `agent_settled`, per-attempt usage delta, строгая последовательность usage snapshots и resolved model;
 - приоритет timeout/cancellation над совпавшим output overflow в Pi adapter;
 - fake-Pi contract suite и opt-in smoke test с реальным CLI;
-- интеграционные overflow+timeout/cancel проверки через `Pi.Run` и сохранение `OutputTruncated` в `NodeState`;
-- воспроизводимый Route DSL end-to-end с двумя попытками, feedback, resume, обязательной проверкой, артефактами и approval.
+- интеграционные overflow+timeout/cancel проверки через `Pi.Run` с корректными parent contexts и сохранение `OutputTruncated` в `NodeState`;
+- воспроизводимый Route DSL end-to-end с двумя попытками, feedback, resume, обязательной проверкой, артефактами и approval;
+- накопление usage по всем агентным попыткам в `NodeState`;
+- `takt eval run/report`, изолированные workspace и JSON-отчёт с attempts, duration, usage, approvals и errors;
+- стартовый Route DSL eval-набор из десяти синтетических заданий.
 
 ### CLI
 
@@ -70,7 +73,7 @@
 ## Не реализовано
 
 - специализированный OpenCode adapter;
-- подключение штатного Route DSL validator и реального набора заданий;
+- подключение штатного Route DSL validator и реального обезличенного набора заданий;
 - capability negotiation по фактическим возможностям adapter;
 - MCP-интерфейс Takt;
 - параллельный scheduler;
@@ -80,4 +83,4 @@
 
 ## Ближайший целевой срез
 
-Контрактный Route DSL end-to-end реализован на fake Pi и минимальном валидаторе. Следующий срез — заменить тестовый валидатор штатным `route-tool`, прогнать реальный набор технических заданий и собирать iterations, duration, usage, diagnostics и manual corrections. OpenCode adapter остаётся сменным исполнителем и не блокирует эту проверку.
+Evaluation runner, базовый набор и сбор attempts/duration/usage реализованы. Следующий срез — заменить тестовый валидатор штатным `route-tool`, прогнать реальные обезличенные задания и добавить нормализованные diagnostics и учёт ручных исправлений результата. OpenCode adapter остаётся сменным исполнителем и не блокирует эту проверку.
