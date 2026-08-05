@@ -258,6 +258,24 @@ takt cancel <run-id> --reason "stop"
 
 `subworkflow` выбирай для structural composition в одном Run; `workflow` — для отдельного lifecycle.
 
+Для runtime-списка добавь `fan_out` внутрь `workflow`:
+
+```yaml
+- id: reviews
+  depends_on: [classify]
+  workflow:
+    path: workflows/review.yaml
+    input: "${reviewer}"
+    isolation: inherit
+    fan_out:
+      items_from: nodes.classify.output.reviewers
+      as: reviewer
+      max_parallel: 5
+      join: all_success
+```
+
+Источник должен быть JSON-массивом в output upstream-узла. Доступны `${fanout.item}`, `${fanout.index}`, `${fanout.total}` и алиас `as`. Каждый элемент получает отдельный child Run; resume сохраняет completed-элементы, output агрегируется в исходном порядке. `join` принимает `all_success`, `all_done`, `one_success`; `allow_empty: true` разрешает пустой список.
+
 ## Foreach
 
 ```yaml

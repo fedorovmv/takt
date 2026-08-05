@@ -1,6 +1,6 @@
 # Профиль совместимости с Archon
 
-Takt не заявляет бинарную или YAML-совместимость с Archon. Цель — перенести полезные процессы и сохранить знакомую модель DAG без второго runtime. В `v0.1.27-alpha` встроенный профиль `code` содержит 19 процессов, соответствующих стандартному каталогу Archon, и умный роутер с no-tool policy как корневой Run и выбранный процесс как governed child Run.
+Takt не заявляет бинарную или YAML-совместимость с Archon. Цель — перенести полезные процессы и сохранить знакомую модель DAG без второго runtime. В `v0.1.28-alpha` встроенный профиль `code` 0.7.0 содержит 19 процессов, соответствующих стандартному каталогу Archon, и умный роутер с no-tool policy как корневой Run и выбранный процесс как governed child Run.
 
 ## Перенесённые конструкции
 
@@ -12,9 +12,10 @@ Takt не заявляет бинарную или YAML-совместимост
 | `command` / `prompt` / `bash` | те же типы узлов |
 | DAG `nodes`, `depends_on`, `when` | DAG Takt с JSON-путями в output |
 | параллельные независимые узлы | параллельные scheduler-волны |
-| adaptive review fan-out | структурированный classifier + условные review-ветви + `one_success` |
+| adaptive review fan-out | структурированный classifier + `workflow.fan_out` с отдельным governed child Run на перспективу |
 | `loop` / human-in-the-loop | `loop_group` + сохраняемый `approval` в каждой итерации |
-| fan-out по списку | `foreach.parallel` с детерминированной агрегацией |
+| compile-time fan-out по списку | `foreach.parallel` с детерминированной агрегацией |
+| runtime fan-out | `workflow.fan_out` из структурированного output, `max_parallel`, join и resume |
 | reusable include | compile-time `subworkflow` |
 | governed workflow / child sub-run | отдельный узел `workflow` с parent/child lifecycle |
 | cancellation tree | `takt cancel` и durable marker |
@@ -29,8 +30,9 @@ Takt не заявляет бинарную или YAML-совместимост
 - собственная `apiVersion` и другой реестр model/assistant;
 - `subworkflow` компилируется в тот же Run; отдельный `workflow` создаёт governed child Run;
 - managed worktree isolation и автоматическое создание ветки реализованы; выбранный child Run применяет собственную политику или `isolation` родительского узла;
-- отсутствуют per-node `allowed_tools`, `denied_tools`, skills, MCP-конфигурация и sandbox policy;
-- отсутствуют script nodes, `output_type`, динамический runtime fan-out и параллельная волна governed children; Web UI, сервер, БД, адаптеры сообщений и уведомления остаются proposal для нелокального режима;
+- script nodes и семантический `output_type` пока отсутствуют;
+- `one_success` fan-out пока ждёт всю группу вместо досрочного завершения;
+- Web UI, сервер, БД, адаптеры сообщений и уведомления остаются proposal для нелокального режима;
 - native hooks передаются адаптеру, portable hooks выполняются runtime;
 - state хранится локально.
 

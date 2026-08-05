@@ -230,6 +230,8 @@ assistant.usage
 
 ## 9. Pi adapter
 
+Pi принимает только существующие path skills: каждое значение проверяется через файловую систему до запуска. Именованный skill без локального пути для Pi не поддерживается. OpenCode поддерживает и path skills, и именованные skills; path skill внедряется в prompt, именованный ограничивается permissions.
+
 Pi adapter реализован как `type: pi` и использует официальный subprocess RPC-режим:
 
 ```text

@@ -2,7 +2,7 @@
 
 Скилл помогает создавать и проверять `takt/v1alpha1` workflow, config, Markdown-команды и профили. Он охватывает параллельный DAG, `output_format`, JSON-пути, retry/feedback, approval внутри циклов, subworkflow, последовательный/параллельный foreach и именованные каталоги workflow с роутером и managed Git worktree isolation.
 
-Версия скилла — `0.9.0`. Он рассчитан на Takt `v0.1.27-alpha` и контракт `takt/v1alpha1`.
+Версия скилла — `0.10.0`. Он рассчитан на Takt `v0.1.28-alpha` и контракт `takt/v1alpha1`.
 
 Проверка:
 

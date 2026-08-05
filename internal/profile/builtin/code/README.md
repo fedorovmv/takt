@@ -1,4 +1,4 @@
-# Takt code profile 0.6.0
+# Takt code profile 0.7.0
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 

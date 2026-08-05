@@ -72,7 +72,7 @@ Definitions and bundled Markdown commands remain authoritative from the control 
 
 ## Deliberate boundaries
 
-Per-node tool policies, MCP/skills and assistant-enforced sandbox were added in `v0.1.27-alpha`; script nodes, dynamic child fan-out and parallel governed children remain active implementation gaps. Governed child Runs and cancellation were added in `v0.1.26-alpha`.
+Per-node tool policies, MCP/skills and assistant-enforced sandbox were added in `v0.1.27-alpha`; dynamic child fan-out and parallel governed children were added in `v0.1.28-alpha`; script nodes remain the active implementation gap. Governed child Runs and cancellation were added in `v0.1.26-alpha`.
 
 Server, Web UI, database storage, remote workers, and message adapters remain proposal-level extensions. They become relevant only if Takt moves beyond local trusted execution; that move requires a separate threat model, authentication, secret handling, and multi-user persistence contract.
 

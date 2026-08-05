@@ -21,6 +21,9 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 	if definition == nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "child workflow", Err: fmt.Errorf("node %q has no workflow definition", node.ID)}
 	}
+	if definition.FanOut != nil {
+		return r.runChildWorkflowFanOut(ctx, state, node, local, feedback, artifacts)
+	}
 	childPath := definition.Path
 	if !filepath.IsAbs(childPath) {
 		childPath = filepath.Join(filepath.Dir(r.WorkflowPath), childPath)

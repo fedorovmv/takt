@@ -2,7 +2,7 @@ apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
   name: code-review-block
-  description: Run five independent review perspectives, synthesize findings, repair them, and validate.
+  description: Run five independent governed review Runs in parallel, synthesize findings, repair them, and validate.
 defaults:
   assistant: opencode
   model: review
@@ -13,18 +13,27 @@ nodes:
 
   - id: perspectives
     depends_on: [scope]
-    foreach:
-      items: [code, errors, tests, docs, simplicity]
-      as: perspective
-      parallel: true
-      subworkflow:
-        path: review-perspective.yaml
-        inputs:
-          perspective: ${perspective}
-          scope: ${nodes.scope.output}
+    bash: printf '["code","errors","tests","docs","simplicity"]'
+
+  - id: reviews
+    depends_on: [scope, perspectives]
+    workflow:
+      path: review-perspective.yaml
+      input: |
+        Perspective: ${perspective}
+
+        Scoped change:
+        ${nodes.scope.output}
+      isolation: inherit
+      output_node: review
+      fan_out:
+        items_from: nodes.perspectives.output
+        as: perspective
+        max_parallel: 5
+        join: all_success
 
   - id: synthesize
-    depends_on: [perspectives]
+    depends_on: [reviews]
     command: synthesize-review
 
   - id: fixes

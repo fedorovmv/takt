@@ -79,11 +79,24 @@ type ForeachItemsSource struct {
 // WorkflowRunSpec starts another workflow as a separately persisted child Run.
 // Unlike subworkflow, it is not expanded into the parent DAG.
 type WorkflowRunSpec struct {
-	Path       string      `json:"path"`
-	Input      string      `json:"input,omitempty"`
-	OutputNode string      `json:"output_node,omitempty"`
-	Isolation  string      `json:"isolation,omitempty"`
-	Policy     *PolicySpec `json:"policy,omitempty"`
+	Path       string              `json:"path"`
+	Input      string              `json:"input,omitempty"`
+	OutputNode string              `json:"output_node,omitempty"`
+	Isolation  string              `json:"isolation,omitempty"`
+	Policy     *PolicySpec         `json:"policy,omitempty"`
+	FanOut     *WorkflowFanOutSpec `json:"fan_out,omitempty"`
+}
+
+// WorkflowFanOutSpec starts one governed child Run per item resolved from a
+// structured upstream node output. Child links are persisted before execution,
+// so a partially completed group can be resumed without recreating finished
+// children.
+type WorkflowFanOutSpec struct {
+	ItemsFrom   string `json:"items_from"`
+	As          string `json:"as,omitempty"`
+	MaxParallel int    `json:"max_parallel,omitempty"`
+	Join        string `json:"join,omitempty"`
+	AllowEmpty  bool   `json:"allow_empty,omitempty"`
 }
 
 type PolicySpec struct {

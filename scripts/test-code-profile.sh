@@ -13,7 +13,7 @@ PLAN
 "$ROOT/bin/takt" init code --dir "$TMP/project" --json >/dev/null
 "$ROOT/bin/takt" validate code --workspace "$TMP/project" --json >/dev/null
 [ -f "$TMP/project/.takt/profiles/code/profile.yaml" ]
-[ "$(tr -d '[:space:]' < "$TMP/project/.takt/profiles/code/VERSION")" = "0.6.0" ]
+[ "$(tr -d '[:space:]' < "$TMP/project/.takt/profiles/code/VERSION")" = "0.7.0" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/review-block.yaml" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/smart-review-block.yaml" ]
 [ "$(find "$TMP/project/.takt/profiles/code/workflows" -maxdepth 1 -name '*.yaml' | wc -l | tr -d '[:space:]')" = "22" ]
@@ -28,7 +28,9 @@ grep -q '^    workflow:' "$TMP/project/.takt/profiles/code/workflow.yaml"
 ! grep -q '^    subworkflow:' "$TMP/project/.takt/profiles/code/workflow.yaml"
 ! grep -q '^worktree:' "$TMP/project/.takt/profiles/code/workflow.yaml"
 grep -q 'retry_on: \[protocol\]' "$TMP/project/.takt/profiles/code/workflow.yaml"
-grep -q 'parallel: true' "$TMP/project/.takt/profiles/code/workflows/review-block.yaml"
+grep -q 'fan_out:' "$TMP/project/.takt/profiles/code/workflows/review-block.yaml"
+grep -q 'max_parallel: 5' "$TMP/project/.takt/profiles/code/workflows/review-block.yaml"
+grep -q 'items_from: nodes.classify.output.reviewers' "$TMP/project/.takt/profiles/code/workflows/smart-review-block.yaml"
 grep -q '^    workflow:' "$TMP/project/.takt/profiles/code/workflows/plan-to-pr.yaml"
 grep -q 'isolation: inherit' "$TMP/project/.takt/profiles/code/workflows/plan-to-pr.yaml"
 grep -q '^worktree:' "$TMP/project/.takt/profiles/code/workflows/feature-development.yaml"

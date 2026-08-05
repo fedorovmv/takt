@@ -72,15 +72,15 @@ Runtime проверяет их до вызова adapter. При отсутст
 ### Pi
 
 - tools переводятся в `--tools` или `--no-tools`;
-- skills — в `--skill` и `--no-skills`;
+- только существующие path skills — в `--skill`; именованные skills без локального пути Pi не поддерживает; пустой список — `--no-skills`;
 - `read_only` исключает bash/edit/write;
 - MCP и network deny отклоняются как неподдерживаемые.
 
 ### OpenCode
 
-- tool/skill permissions и MCP объединяются с `OPENCODE_CONFIG_CONTENT`;
+- tool/skill permissions и MCP рекурсивно объединяются с `OPENCODE_CONFIG_CONTENT`;
 - path skills читаются Takt и внедряются в prompt как обязательные инструкции;
-- `read_only` запрещает edit/bash/task;
+- `read_only` запрещает write/edit/bash/task, включая явно разрешённый `write`;
 - network deny отклоняется как неподдерживаемый.
 
 ## Граница безопасности

@@ -42,14 +42,16 @@
 - режимы `isolation: inherit|worktree|none` и собственная worktree policy ребёнка;
 - retry родительского `workflow`-узла создаёт новый child Run, сохраняя прошлые child attempts;
 - рекурсивный fingerprint статически подключённых детей, запрет рекурсии и предел глубины 16;
-- contract suite `scripts/test-child-runs.sh`.
+- contract suite `scripts/test-child-runs.sh`;
+- динамический fan-out из JSON-массива upstream-узла: устойчивые Run ID, `max_parallel`, resume, ordered aggregation, `all_success|all_done|one_success`, выборочная и каскадная отмена;
+- contract suite `scripts/test-child-fanout.sh`.
 
-### Профиль code 0.6.0
+### Профиль code 0.7.0
 
 - 19 процессов разработки: assist, issue/PR flows, PIV, Ralph, idea/plan-to-PR, reviews, architecture, safe refactoring, PRD, workflow builder, Remotion и conflict resolution;
 - умный роутер как корневой Run с отдельным governed child Run выбранного процесса;
 - структурированный выбор маршрута с enum всех 19 процессов;
-- параллельные многоаспектные PR-review ветви, включая `foreach.parallel` по пяти перспективам;
+- smart review динамически выбирает перспективы, а comprehensive review запускает пять governed child Runs через `workflow.fan_out`;
 - интерактивные PIV и PRD-циклы;
 - reusable `review-block` и `smart-review-block` как отдельные child Runs с `isolation: inherit`;
 - отдельный запуск любого процесса через `code:<workflow>`.
@@ -74,9 +76,8 @@
 
 ## Осознанно ограничено
 
-- параллельная волна пока не включает `workflow`-узлы, узлы с portable hooks или `attempts.max > 1`;
-- динамический fan-out child Runs из output предыдущего узла отсутствует;
-- нет отдельного лимита конкурентных детей и fan-out join policy;
+- обычная DAG-волна не исполняет одиночные `workflow`-узлы конкурентно; конкурентность governed children задаётся через `workflow.fan_out.max_parallel`;
+- `one_success` ожидает завершения всей группы и пока не отменяет остальные элементы досрочно;
 - `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` structural-группы задаются внутри дочернего workflow;
 - вложенные `loop_group` запрещены до path-based namespace;
 - `items_from` является статическим compile-time источником, а не output предыдущего узла;
@@ -89,7 +90,6 @@
 Все 19 пользовательских процессов, роутер, managed worktree и governed child Run lifecycle перенесены. На уровне инфраструктуры пока отсутствуют:
 
 - script nodes и semantic artifact `output_type`;
-- динамический fan-out и параллельные governed children;
 - server/Web UI, БД, message adapters, notifications и проверка подключённой GitHub identity — proposal для будущего нелокального режима.
 
 Tool/skills/MCP policy теперь является контрактом ядра и adapters. Filesystem/network policy остаётся assistant-enforced и не заменяет OS sandbox.
@@ -100,4 +100,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Следующий крупный системный приоритет — динамический fan-out governed children с ограничением конкурентности и ordered join. Затем — script nodes и типизированные артефакты. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.
+Следующий крупный системный приоритет — script nodes и типизированные артефакты: исполняемые файлы с fingerprint, runtime contract, семантические типы output и передача артефактов между parent/child Run. Затем — локальный MCP-интерфейс Takt. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.

@@ -68,6 +68,13 @@
         },
         "child_run_id": {
           "type": "string"
+        },
+        "child_run_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
         }
       }
     },
@@ -253,6 +260,19 @@
         },
         "policy": {
           "$ref": "#/$defs/policyState"
+        },
+        "child_runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/childRunItemState"
+          }
+        },
+        "fan_out_attempt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fan_out_fingerprint": {
+          "type": "string"
         }
       }
     },
@@ -492,6 +512,52 @@
             "type": "string"
           },
           "uniqueItems": true
+        }
+      }
+    },
+    "childRunItemState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt",
+        "index",
+        "item",
+        "item_fingerprint",
+        "run_id",
+        "status"
+      ],
+      "properties": {
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "item": {},
+        "item_fingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "error_code": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
         }
       }
     }

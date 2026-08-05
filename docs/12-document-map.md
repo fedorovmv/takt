@@ -9,9 +9,10 @@
 3. `docs/01-project.md`;
 4. `docs/05-implementation-status.md`;
 5. `skills/takt/SKILL.md`;
-6. `docs/41-node-capability-policies-v0.1.27.md`;
-7. `docs/40-governed-child-runs-v0.1.26.md`;
-7. `docs/39-git-worktree-isolation-v0.1.25.md`;
+6. `docs/42-governed-child-fanout-v0.1.28.md`;
+7. `docs/41-node-capability-policies-v0.1.27.md`;
+8. `docs/40-governed-child-runs-v0.1.26.md`;
+9. `docs/39-git-worktree-isolation-v0.1.25.md`;
 8. `docs/38-archon-workflow-catalog-v0.1.24.md`;
 9. `docs/37-composition-hardening-v0.1.23.md`;
 10. `docs/34-opencode-provider-diagnostics-v0.1.20.md`;
@@ -64,10 +65,11 @@
 | Вопрос | Основной документ | Статус |
 |---|---|---|
 | Правила работы кодовых агентов | `../AGENTS.md` | действующий |
-| Создание и настройка workflow | `../skills/takt/SKILL.md`, `41-node-capability-policies-v0.1.27.md`, `40-governed-child-runs-v0.1.26.md`, `39-git-worktree-isolation-v0.1.25.md`, `38-archon-workflow-catalog-v0.1.24.md`, `36-workflow-composition-v0.1.22.md`, `37-composition-hardening-v0.1.23.md` | действующий скилл, каталог, роутер и композиция |
+| Создание и настройка workflow | `../skills/takt/SKILL.md`, `42-governed-child-fanout-v0.1.28.md`, `41-node-capability-policies-v0.1.27.md`, `40-governed-child-runs-v0.1.26.md`, `39-git-worktree-isolation-v0.1.25.md`, `38-archon-workflow-catalog-v0.1.24.md`, `36-workflow-composition-v0.1.22.md`, `37-composition-hardening-v0.1.23.md` | действующий скилл, каталог, роутер и композиция |
 | Зачем нужен Takt | `01-project.md` | действующий |
 | Архитектурный подход | `02-approach.md`, ADR | действующий |
 | Текущий внешний контракт | `03-specification.md` | реализованный `v1alpha1` |
+| Динамический fan-out governed children | `42-governed-child-fanout-v0.1.28.md` | фактический |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
 | Исправления последнего аудита | `16–18-audit-remediation-*.md` | фактический |
 | Fake-assistant protocol suite | `20-fake-assistant-contract-v0.1.6.md` | фактический |
@@ -80,7 +82,7 @@
 | Граница безопасности | `../SECURITY.md` | действующий |
 | Ближайшее целевое состояние | `08-target-v0.2.md` | целевой |
 | Семантика runtime | `09-runtime-semantics.md` | реализовано частично/цель v0.2 |
-| Контракт исполнителя | `10-assistant-adapter-spec.md` | process protocol, Pi и OpenCode adapters реализованы; capability discovery — цель v0.2 |
+| Контракт исполнителя | `10-assistant-adapter-spec.md` | process protocol, Pi и OpenCode adapters реализованы; capability discovery и policy mapping реализованы |
 | Очередность работ | `11-implementation-plan.md` | рабочий план |
 | Задачи | `14-backlog-v0.2.md` | рабочий backlog |
 | Старт кодового агента | `15-coding-agent-start.md` | готовая инструкция |

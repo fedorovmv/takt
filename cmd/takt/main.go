@@ -402,7 +402,14 @@ func resolveApprovalTarget(st store.FS, runID, requestedNodeID string) (*store.R
 		if node := state.Nodes[state.Waiting.NodeID]; node != nil && node.PublicParent != "" {
 			allowed[node.PublicParent] = true
 		}
-		state, err = st.Load(state.Waiting.ChildRunID)
+		childIDs := append([]string(nil), state.Waiting.ChildRunIDs...)
+		if len(childIDs) == 0 && state.Waiting.ChildRunID != "" {
+			childIDs = []string{state.Waiting.ChildRunID}
+		}
+		if len(childIDs) != 1 {
+			return nil, "", fmt.Errorf("run %s has %d child runs waiting; answer one child run directly: %s", state.ID, len(childIDs), strings.Join(childIDs, ", "))
+		}
+		state, err = st.Load(childIDs[0])
 		if err != nil {
 			return nil, "", err
 		}
@@ -548,6 +555,19 @@ func childrenCmd(args []string) error {
 	if err != nil {
 		return err
 	}
+	fanOutMeta := map[string]map[string]any{}
+	for nodeID, node := range parent.Nodes {
+		if node == nil {
+			continue
+		}
+		for _, item := range node.ChildRuns {
+			var decoded any
+			if err := json.Unmarshal(item.Item, &decoded); err != nil {
+				decoded = string(item.Item)
+			}
+			fanOutMeta[item.RunID] = map[string]any{"node_id": nodeID, "attempt": item.Attempt, "index": item.Index, "item": decoded}
+		}
+	}
 	children := make([]map[string]any, 0, len(parent.ChildRunIDs))
 	for _, id := range parent.ChildRunIDs {
 		child, loadErr := st.Load(id)
@@ -555,11 +575,15 @@ func childrenCmd(args []string) error {
 			children = append(children, map[string]any{"id": id, "error": loadErr.Error()})
 			continue
 		}
-		children = append(children, map[string]any{
+		value := map[string]any{
 			"id": child.ID, "status": child.Status, "workflow_path": child.WorkflowPath,
 			"parent_node_id": child.ParentNodeID, "execution_workspace": child.ExecutionWorkspace,
 			"usage": child.Usage,
-		})
+		}
+		if meta := fanOutMeta[id]; meta != nil {
+			value["fan_out"] = meta
+		}
+		children = append(children, value)
 	}
 	return printResult(*jsonOut, map[string]any{"run_id": parent.ID, "children": children})
 }

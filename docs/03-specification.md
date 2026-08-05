@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.27-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.28-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -317,6 +317,25 @@ until:
 - `none` — control workspace без worktree.
 
 Approval ребёнка переводит родителя в `waiting` с `kind: child_run`. `takt answer` можно вызвать по корневому Run ID и публичному ID родительского `workflow`-узла; CLI продолжит фактический approval и затем всю parent chain. `takt cancel` распространяет отмену по дереву. Статические child definitions входят в fingerprint родителя; рекурсия отклоняется, глубина ограничена 16.
+
+Для динамического набора детей используется `workflow.fan_out`:
+
+```yaml
+- id: reviews
+  depends_on: [classify]
+  workflow:
+    path: workflows/review.yaml
+    input: "${reviewer}"
+    isolation: inherit
+    fan_out:
+      items_from: nodes.classify.output.reviewers
+      as: reviewer
+      max_parallel: 5
+      join: all_success
+      allow_empty: false
+```
+
+`items_from` должен указывать на JSON-массив в структурированном output upstream-узла. `max_parallel` по умолчанию равен 1 и ограничен 64. `join` принимает `all_success`, `all_done` или `one_success`. Каждый элемент получает отдельный child Run и устойчивую запись в состоянии; completed-дети переиспользуются при resume, а изменение массива внутри попытки отклоняется. В `input` доступны `${fanout.item}`, `${fanout.index}`, `${fanout.total}` и алиас из `as`. Output родительского узла — упорядоченный JSON-массив статусов, outputs, usage и Run ID детей.
 
 ### `foreach`
 

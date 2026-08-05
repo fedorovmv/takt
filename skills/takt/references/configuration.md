@@ -148,3 +148,10 @@ JSON events читаются из stdout, stderr остаётся диагнос
 ## Возможности adapter
 
 Стандартные names: `tool_policy`, `skills`, `mcp`, `sandbox_filesystem`, `sandbox_network`. Pi/OpenCode публикуют встроенные возможности автоматически и не могут через config приписать себе неподдерживаемую зарезервированную capability. `process` объявляет возможности явно, потому что получает policy через протокол и `TAKT_POLICY_JSON`. Дополнительные пользовательские names применяются вместе с `requires`.
+
+
+## Skills в Pi и OpenCode
+
+Pi принимает только существующие path skills: Takt проверяет путь до запуска и передаёт его через `--skill`. Именованный skill без файла для Pi завершится ошибкой конфигурации. OpenCode поддерживает path skills и именованные skills: содержимое path skill добавляется в prompt, именованный skill ограничивается через permissions.
+
+При `sandbox.filesystem: read_only` OpenCode принудительно запрещает `write`, `edit`, `bash` и `task`, даже если инструмент указан в `allowed_tools`.

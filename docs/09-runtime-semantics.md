@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.27-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.28-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -304,8 +304,6 @@ Flag parser не печатает дополнительный текст в std
 - строгие неизвестные template variables;
 - normalized assistant protocol;
 - session resume без тихого fallback;
-- capabilities и per-node ограничения инструментов;
-- динамический fan-out и параллельные governed child Runs;
 - расширение `output_format` до более полного JSON Schema;
 - schema version, attempt и correlation ID как отдельные поля event.
 
@@ -340,7 +338,15 @@ Fingerprint workflow включает исходный родительский 
 
 Изоляция ребёнка определяется `workflow.isolation`: собственная policy, `inherit`, `worktree` или `none`. `inherit` разделяет execution workspace с родителем, но state/events/artifacts остаются раздельными.
 
-Несколько governed nodes пока не входят в параллельную волну. Fan-out детей и join policies остаются следующим расширением scheduler.
+Одиночные governed nodes не входят в обычную параллельную DAG-волну. Для управляемой конкурентности нескольких детей используется `workflow.fan_out`; он задаёт явную границу группы и join policy.
+
+### Dynamic governed child fan-out
+
+`workflow.fan_out` разрешает массив из `nodes.<id>.output...` после успешного upstream-узла. До запуска родитель фиксирует fingerprint списка, индекс, канонический item и Run ID каждого ребёнка. При resume terminal-дети переиспользуются, waiting-дети продолжаются, а изменение списка блокирует запуск.
+
+`max_parallel` ограничивает число одновременно исполняемых детей. Join формируется после terminal-состояния группы и поддерживает `all_success`, `all_done`, `one_success`. Output агрегируется в исходном порядке; usage детей входит в usage родительского узла. `WaitingState.ChildRunIDs` хранит множественное ожидание. Ответ через родителя разрешён только при одном waiting-ребёнке; при нескольких CLI требует выбрать child Run.
+
+Retry родительского узла создаёт новую группу с новыми Run ID и сохраняет предыдущие попытки. Отмена отдельного ребёнка отражается в агрегате, отмена родителя каскадируется всей группе.
 
 ## Managed Git worktree
 

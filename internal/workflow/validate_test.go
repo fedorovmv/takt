@@ -141,3 +141,22 @@ nodes:
 		t.Fatalf("explicit empty skills was lost: %#v", node.Skills)
 	}
 }
+
+func TestValidateGovernedFanOutRequiresUpstreamArraySource(t *testing.T) {
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "fanout"}, Nodes: []spec.Node{
+		{ID: "discover", Bash: "printf '[]'"},
+		{ID: "run", DependsOn: []string{"discover"}, WorkflowRun: &spec.WorkflowRunSpec{Path: "/tmp/child.yaml", FanOut: &spec.WorkflowFanOutSpec{ItemsFrom: "nodes.discover.output.items", MaxParallel: 4, Join: "all_done"}}},
+	}}
+	if err := Validate(wf); err != nil {
+		t.Fatal(err)
+	}
+	wf.Nodes[1].DependsOn = nil
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "must be an upstream dependency") {
+		t.Fatalf("expected upstream dependency error, got %v", err)
+	}
+	wf.Nodes[1].DependsOn = []string{"discover"}
+	wf.Nodes[1].WorkflowRun.FanOut.ItemsFrom = "discover.items"
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "items_from") {
+		t.Fatalf("expected items_from path error, got %v", err)
+	}
+}

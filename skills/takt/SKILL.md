@@ -120,7 +120,7 @@ takt run code --workspace . --input docs/plan.md --json
     isolation: inherit
 ```
 
-Ребёнок получает отдельные Run ID, state, events, artifacts и usage. `isolation` принимает `inherit`, `worktree`, `none` или пустое значение для собственной policy ребёнка. `takt children` показывает детей, `takt cancel` каскадирует отмену, а `takt answer` по корневому Run проходит к approval ребёнка. Retry узла создаёт новый child Run.
+Ребёнок получает отдельные Run ID, state, events, artifacts и usage. `isolation` принимает `inherit`, `worktree`, `none` или пустое значение для собственной policy ребёнка. `takt children` показывает детей, `takt cancel` каскадирует отмену, а `takt answer` по корневому Run проходит к approval ребёнка. Retry узла создаёт новый child Run. Для динамического массива из upstream JSON используй `workflow.fan_out`: один governed child Run на элемент, `max_parallel`, ordered aggregation и устойчивый resume.
 
 ## Структурированный вывод и умный роутер
 

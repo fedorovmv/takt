@@ -79,32 +79,48 @@ type ExecutionState struct {
 	Usage            *Usage    `json:"usage,omitempty"`
 }
 
+type ChildRunItemState struct {
+	Attempt         int             `json:"attempt"`
+	Index           int             `json:"index"`
+	Item            json.RawMessage `json:"item"`
+	ItemFingerprint string          `json:"item_fingerprint"`
+	RunID           string          `json:"run_id"`
+	Status          string          `json:"status"`
+	Output          string          `json:"output,omitempty"`
+	ErrorCode       string          `json:"error_code,omitempty"`
+	Error           string          `json:"error,omitempty"`
+	Usage           *Usage          `json:"usage,omitempty"`
+}
+
 type NodeState struct {
-	Status           string               `json:"status"`
-	Output           string               `json:"output,omitempty"`
-	Stdout           string               `json:"stdout,omitempty"`
-	Stderr           string               `json:"stderr,omitempty"`
-	OutputTruncated  bool                 `json:"output_truncated,omitempty"`
-	Usage            *Usage               `json:"usage,omitempty"`
-	Assistant        string               `json:"assistant,omitempty"`
-	AssistantVersion string               `json:"assistant_version,omitempty"`
-	RequestedModel   *ModelRef            `json:"requested_model,omitempty"`
-	ResolvedModel    *ModelRef            `json:"resolved_model,omitempty"`
-	ExitCode         int                  `json:"exit_code,omitempty"`
-	Attempts         int                  `json:"attempts,omitempty"`
-	Feedback         string               `json:"feedback,omitempty"`
-	SessionID        string               `json:"session_id,omitempty"`
-	Resumed          bool                 `json:"resumed,omitempty"`
-	ErrorCode        string               `json:"error_code,omitempty"`
-	Error            string               `json:"error,omitempty"`
-	Executions       []ExecutionState     `json:"executions,omitempty"`
-	LoopPrevious     map[string]NodeState `json:"loop_previous,omitempty"`
-	LoopIteration    int                  `json:"loop_iteration,omitempty"`
-	Hidden           bool                 `json:"internal,omitempty"`
-	PublicParent     string               `json:"public_parent,omitempty"`
-	ChildRunID       string               `json:"child_run_id,omitempty"`
-	ChildRunIDs      []string             `json:"child_run_ids,omitempty"`
-	Policy           *NodePolicyState     `json:"policy,omitempty"`
+	Status            string               `json:"status"`
+	Output            string               `json:"output,omitempty"`
+	Stdout            string               `json:"stdout,omitempty"`
+	Stderr            string               `json:"stderr,omitempty"`
+	OutputTruncated   bool                 `json:"output_truncated,omitempty"`
+	Usage             *Usage               `json:"usage,omitempty"`
+	Assistant         string               `json:"assistant,omitempty"`
+	AssistantVersion  string               `json:"assistant_version,omitempty"`
+	RequestedModel    *ModelRef            `json:"requested_model,omitempty"`
+	ResolvedModel     *ModelRef            `json:"resolved_model,omitempty"`
+	ExitCode          int                  `json:"exit_code,omitempty"`
+	Attempts          int                  `json:"attempts,omitempty"`
+	Feedback          string               `json:"feedback,omitempty"`
+	SessionID         string               `json:"session_id,omitempty"`
+	Resumed           bool                 `json:"resumed,omitempty"`
+	ErrorCode         string               `json:"error_code,omitempty"`
+	Error             string               `json:"error,omitempty"`
+	Executions        []ExecutionState     `json:"executions,omitempty"`
+	LoopPrevious      map[string]NodeState `json:"loop_previous,omitempty"`
+	LoopIteration     int                  `json:"loop_iteration,omitempty"`
+	Hidden            bool                 `json:"internal,omitempty"`
+	PublicParent      string               `json:"public_parent,omitempty"`
+	ChildRunID        string               `json:"child_run_id,omitempty"`
+	ChildRunIDs       []string             `json:"child_run_ids,omitempty"`
+	ChildRuns         []ChildRunItemState  `json:"child_runs,omitempty"`
+	FanOutAttempt     int                  `json:"fan_out_attempt,omitempty"`
+	FanOutFingerprint string               `json:"fan_out_fingerprint,omitempty"`
+	Policy            *NodePolicyState     `json:"policy,omitempty"`
 }
 
 func (n NodeState) Terminal() bool {
@@ -186,10 +202,11 @@ type RunState struct {
 }
 
 type WaitingState struct {
-	NodeID     string `json:"node_id"`
-	Message    string `json:"message"`
-	Kind       string `json:"kind,omitempty"`
-	ChildRunID string `json:"child_run_id,omitempty"`
+	NodeID      string   `json:"node_id"`
+	Message     string   `json:"message"`
+	Kind        string   `json:"kind,omitempty"`
+	ChildRunID  string   `json:"child_run_id,omitempty"`
+	ChildRunIDs []string `json:"child_run_ids,omitempty"`
 }
 
 func (s *RunState) PublicView() *RunState {

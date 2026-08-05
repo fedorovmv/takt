@@ -27,7 +27,10 @@ YAML
 git -C "$REPO" add workflow.yaml config.yaml
 git -C "$REPO" commit -q -m definitions
 result="$($ROOT/bin/takt run "$REPO/workflow.yaml" --config "$REPO/config.yaml" --workspace "$REPO" --json)"
-readarray -t fields < <(python3 - "$result" <<'PY'
+fields=()
+while IFS= read -r line; do
+  fields+=("$line")
+done < <(python3 - "$result" <<'PY'
 import json,sys
 v=json.loads(sys.argv[1])['result']
 print(v['id'])

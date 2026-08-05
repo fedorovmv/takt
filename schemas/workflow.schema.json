@@ -983,6 +983,9 @@
         },
         "policy": {
           "$ref": "#/$defs/policy"
+        },
+        "fan_out": {
+          "$ref": "#/$defs/workflowFanOut"
         }
       }
     },
@@ -1032,6 +1035,38 @@
         }
       },
       "minProperties": 1
+    },
+    "workflowFanOut": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items_from"
+      ],
+      "properties": {
+        "items_from": {
+          "type": "string",
+          "pattern": "^nodes\\.[A-Za-z0-9_-]+\\.output(?:\\.[A-Za-z0-9_.-]+)?$"
+        },
+        "as": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+        },
+        "max_parallel": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "join": {
+          "enum": [
+            "all_success",
+            "all_done",
+            "one_success"
+          ]
+        },
+        "allow_empty": {
+          "type": "boolean"
+        }
+      }
     }
   }
 }

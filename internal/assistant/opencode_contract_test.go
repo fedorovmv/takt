@@ -331,7 +331,7 @@ func TestOpenCodePolicyConfig(t *testing.T) {
 		t.Fatalf("existing inline config was lost: %#v", config)
 	}
 	permission, ok := config["permission"].(map[string]any)
-	if !ok || permission["*"] != "deny" || permission["read"] != "allow" || permission["bash"] != "deny" || permission["edit"] != "deny" {
+	if !ok || permission["*"] != "deny" || permission["read"] != "allow" || permission["bash"] != "deny" || permission["edit"] != "deny" || permission["write"] != "deny" {
 		t.Fatalf("OpenCode permissions are wrong: %#v", config["permission"])
 	}
 	if _, ok := config["mcp"].(map[string]any); !ok {
@@ -339,6 +339,17 @@ func TestOpenCodePolicyConfig(t *testing.T) {
 	}
 	if values["TAKT_POLICY_JSON"] == "" {
 		t.Fatal("policy audit environment is missing")
+	}
+}
+
+func TestOpenCodeReadOnlyOverridesExplicitWriteAllow(t *testing.T) {
+	config, err := openCodePolicyConfig(Policy{AllowedTools: []string{"read", "write"}, ToolsRestricted: true, Filesystem: "read_only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	permission := config["permission"].(map[string]any)
+	if permission["read"] != "allow" || permission["write"] != "deny" {
+		t.Fatalf("read_only did not override explicit write allow: %#v", permission)
 	}
 }
 

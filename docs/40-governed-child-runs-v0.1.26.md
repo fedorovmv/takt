@@ -125,7 +125,7 @@ Unit-тесты дополнительно проверяют failure propagatio
 ## Оставшиеся ограничения
 
 - несколько `workflow`-узлов пока не образуют параллельную scheduler-волну;
-- динамический fan-out дочерних Run из output предыдущего узла ещё не реализован;
+- динамический fan-out дочерних Run из output предыдущего узла добавлен в `v0.1.28-alpha`;
 - нет отдельной политики лимита числа детей и конкурентности;
-- per-node policy inheritance implemented in `v0.1.27-alpha`; dynamic child fan-out remains unavailable;
+- per-node policy inheritance implemented in `v0.1.27-alpha`; dynamic child fan-out was added in `v0.1.28-alpha`;
 - server, Web UI и БД остаются proposal для возможного нелокального режима и не входят в локальный runtime.

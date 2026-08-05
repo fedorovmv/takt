@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.28-alpha
+
+- Добавлен динамический `workflow.fan_out` из структурированного output upstream-узла.
+- Каждый элемент получает отдельный governed child Run, устойчивый ID, состояние, события, артефакты и usage.
+- Реализованы `max_parallel`, `all_success|all_done|one_success`, ordered aggregation, частичный resume и fingerprints списка.
+- Добавлены множественное ожидание approval, выборочная отмена ребёнка и CLI metadata в `takt children`.
+- Smart/comprehensive review профиля `code` 0.7.0 переведены на runtime fan-out.
+- `scripts/test-worktree.sh` совместим со штатным Bash 3.2 macOS.
+- OpenCode `read_only` теперь всегда запрещает `write`; merge `OPENCODE_CONFIG_CONTENT` стал рекурсивным.
+- Зафиксировано различие skills: Pi поддерживает существующие path skills, OpenCode — path и named skills.
+
 ## v0.1.27-alpha
 
 - Добавлены per-node `allowed_tools`, `denied_tools`, `skills`, `mcp`, assistant-enforced `sandbox` и `requires`.

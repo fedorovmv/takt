@@ -389,6 +389,7 @@ func openCodePolicyConfig(policy Policy) (map[string]any, error) {
 			}
 		}
 		permission["edit"] = "deny"
+		permission["write"] = "deny"
 		permission["bash"] = "deny"
 		permission["task"] = "deny"
 	}
@@ -426,13 +427,11 @@ func openCodeSkillName(value string) string {
 
 func mergeOpenCodeConfig(base, overlay map[string]any) {
 	for key, value := range overlay {
-		if current, ok := base[key].(map[string]any); ok {
-			if next, ok := value.(map[string]any); ok {
-				for childKey, childValue := range next {
-					current[childKey] = childValue
-				}
-				continue
-			}
+		current, currentOK := base[key].(map[string]any)
+		next, nextOK := value.(map[string]any)
+		if currentOK && nextOK {
+			mergeOpenCodeConfig(current, next)
+			continue
 		}
 		base[key] = value
 	}

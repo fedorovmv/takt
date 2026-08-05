@@ -2,7 +2,7 @@ apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
   name: code-smart-review-block
-  description: Classify review scope, run relevant independent reviewers, synthesize and repair findings.
+  description: Classify review scope, dynamically fan out governed reviewers, synthesize and repair findings.
 defaults:
   assistant: opencode
   model: review
@@ -21,53 +21,37 @@ nodes:
       type: object
       additionalProperties: false
       properties:
-        run_error_review:
-          type: boolean
-        run_test_review:
-          type: boolean
-        run_docs_review:
-          type: boolean
-        run_simplicity_review:
-          type: boolean
+        reviewers:
+          type: array
+          items:
+            type: string
+            enum: [code, errors, tests, docs, simplicity]
         complexity:
           type: string
           enum: [trivial, small, medium, large]
         reason:
           type: string
-      required: [run_error_review, run_test_review, run_docs_review, run_simplicity_review, complexity, reason]
+      required: [reviewers, complexity, reason]
 
-  - id: code
+  - id: reviews
     depends_on: [scope, classify]
-    command: review-code
-    denied_tools: [edit, write]
+    workflow:
+      path: review-perspective.yaml
+      input: |
+        Perspective: ${reviewer}
 
-  - id: errors
-    depends_on: [scope, classify]
-    when: nodes.classify.output.run_error_review == "true"
-    command: review-errors
-    denied_tools: [edit, write]
-
-  - id: tests
-    depends_on: [scope, classify]
-    when: nodes.classify.output.run_test_review == "true"
-    command: review-tests
-    denied_tools: [edit, write]
-
-  - id: docs
-    depends_on: [scope, classify]
-    when: nodes.classify.output.run_docs_review == "true"
-    command: review-docs
-    denied_tools: [edit, write]
-
-  - id: simplicity
-    depends_on: [scope, classify]
-    when: nodes.classify.output.run_simplicity_review == "true"
-    command: review-simplicity
-    denied_tools: [edit, write]
+        Scoped change:
+        ${nodes.scope.output}
+      isolation: inherit
+      output_node: review
+      fan_out:
+        items_from: nodes.classify.output.reviewers
+        as: reviewer
+        max_parallel: 5
+        join: all_success
 
   - id: synthesize
-    depends_on: [code, errors, tests, docs, simplicity]
-    trigger_rule: one_success
+    depends_on: [reviews]
     command: synthesize-review
 
   - id: fixes

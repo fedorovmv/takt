@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -100,6 +101,22 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			case "", "inherit", "worktree", "none":
 			default:
 				return fmt.Errorf("node %q workflow.isolation must be inherit, worktree, or none", n.ID)
+			}
+			if fanOut := n.WorkflowRun.FanOut; fanOut != nil {
+				if _, err := fanOutSourceNode(fanOut.ItemsFrom); err != nil {
+					return fmt.Errorf("node %q workflow.fan_out.items_from: %w", n.ID, err)
+				}
+				if fanOut.As != "" && !fanOutNameRE.MatchString(fanOut.As) {
+					return fmt.Errorf("node %q workflow.fan_out.as must be an identifier", n.ID)
+				}
+				if fanOut.MaxParallel < 0 || fanOut.MaxParallel > 64 {
+					return fmt.Errorf("node %q workflow.fan_out.max_parallel must be 0 (default 1) or between 1 and 64", n.ID)
+				}
+				switch fanOut.Join {
+				case "", "all_success", "all_done", "one_success":
+				default:
+					return fmt.Errorf("node %q workflow.fan_out.join must be all_success, all_done, or one_success", n.ID)
+				}
 			}
 		}
 		if n.Internal != nil && n.Internal.Mode != "noop" && n.Internal.Mode != "result" && n.Internal.Mode != "collect" && n.Internal.Mode != "worktree" {
@@ -240,6 +257,22 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			return fmt.Errorf("node %q has unsupported trigger_rule %q", n.ID, n.TriggerRule)
 		}
 	}
+	for _, n := range nodes {
+		if n.WorkflowRun == nil || n.WorkflowRun.FanOut == nil {
+			continue
+		}
+		sourceID, err := fanOutSourceNode(n.WorkflowRun.FanOut.ItemsFrom)
+		if err != nil {
+			return fmt.Errorf("node %q workflow.fan_out.items_from: %w", n.ID, err)
+		}
+		if _, ok := byID[sourceID]; !ok {
+			return fmt.Errorf("node %q workflow.fan_out references unknown source node %q", n.ID, sourceID)
+		}
+		if sourceID == n.ID || !nodeDependsOn(n.ID, sourceID, byID, map[string]bool{}) {
+			return fmt.Errorf("node %q workflow.fan_out source %q must be an upstream dependency", n.ID, sourceID)
+		}
+	}
+
 	visiting := map[string]bool{}
 	visited := map[string]bool{}
 	var visit func(string) error
@@ -266,6 +299,34 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		}
 	}
 	return nil
+}
+
+var fanOutNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
+var fanOutSourceRE = regexp.MustCompile(`^nodes\.([A-Za-z0-9_-]+)\.output(?:\.[A-Za-z0-9_.-]+)?$`)
+
+func fanOutSourceNode(path string) (string, error) {
+	match := fanOutSourceRE.FindStringSubmatch(strings.TrimSpace(path))
+	if len(match) != 2 {
+		return "", fmt.Errorf("must be nodes.<id>.output or a nested output path")
+	}
+	return match[1], nil
+}
+
+func nodeDependsOn(nodeID, target string, byID map[string]spec.Node, seen map[string]bool) bool {
+	if seen[nodeID] {
+		return false
+	}
+	seen[nodeID] = true
+	node, ok := byID[nodeID]
+	if !ok {
+		return false
+	}
+	for _, dep := range node.DependsOn {
+		if dep == target || nodeDependsOn(dep, target, byID, seen) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateOutputFormat(format spec.OutputFormat, path string) error {
