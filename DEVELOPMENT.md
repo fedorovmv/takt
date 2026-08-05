@@ -84,6 +84,7 @@ go build ./cmd/takt-fake-pi
 ./scripts/test-route-dsl-e2e.sh
 ./scripts/test-route-dsl-eval.sh
 ./scripts/test-takt-skill.sh
+./scripts/test-script-artifacts.sh
 ./scripts/check-docs.sh
 ./scripts/verify.sh
 ```

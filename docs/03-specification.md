@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.28-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.29-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -186,7 +186,7 @@ nodes:
 
 Передаёт assistant встроенный prompt.
 
-Для `command` и `prompt` можно задать проверяемый JSON-контракт `output_format`. Runtime принимает ровно одно JSON-значение, проверяет типы, обязательные поля, `enum`, массивы и запрет дополнительных свойств, затем сохраняет канонический компактный JSON. Нарушение контракта завершает узел ошибкой `protocol`.
+Для `command`, `prompt` и `script` можно задать проверяемый JSON-контракт `output_format`. Runtime принимает ровно одно JSON-значение, проверяет типы, обязательные поля, `enum`, массивы и запрет дополнительных свойств, затем сохраняет канонический компактный JSON. Нарушение контракта завершает узел ошибкой `protocol`.
 
 ```yaml
 - id: classify
@@ -241,6 +241,55 @@ nodes:
 Выполняет команду через `bash -lc`. Runtime сохраняет stdout и stderr раздельно в `stdout`/`stderr`, а также формирует объединённый `output` для шаблонов, feedback и диагностики.
 
 `allow_failure: true` разрешает только штатный ненулевой exit code. Ошибка запуска, timeout, cancellation или ошибка runtime остаются ошибкой узла.
+
+
+### `script`
+
+Запускает детерминированный скрипт без assistant:
+
+```yaml
+- id: index
+  script:
+    runtime: command
+    path: tools/build-index
+    args: [--json]
+    env:
+      MODE: strict
+    dependencies: [schemas/index.schema.json]
+  output_format:
+    type: object
+    properties:
+      files:
+        type: array
+        items: {type: string}
+    required: [files]
+  output_type: index
+  output_mime: application/json
+```
+
+`runtime` принимает `command`, `python` или `node`. `command` требует `path`; `python` и `node` принимают ровно одно из `path` и `inline`. Дополнительно доступны `args`, `env`, `working_directory` и `dependencies`. Пути вычисляются относительно workflow и отображаются в execution workspace при managed worktree. Runtime передаёт `TAKT_RUN_ID`, `TAKT_NODE_ID`, `TAKT_ATTEMPT`, `TAKT_WORKSPACE` и `TAKT_ARTIFACTS_DIR`.
+
+Stdout/stderr сохраняются раздельно. `output_format` нормализует только `Output`, не затирая raw stdout. Исходник script и файлы `dependencies` входят в fingerprint.
+
+### Типизированные артефакты
+
+`command`, `prompt`, `bash` и `script` могут объявить `output_type`, `output_mime` и `output_path`. Если `output_path` отсутствует, сохраняется нормализованный `Output`; если указан, файл копируется из execution workspace либо `$TAKT_ARTIFACTS_DIR` в хранилище Run. Ссылка содержит type, MIME, SHA-256, size, producer Run/Node, attempt и timestamp.
+
+```yaml
+- id: plan
+  command: create-plan
+  output_type: plan
+  output_mime: text/markdown
+  output_path: $ARTIFACTS_DIR/plan.md
+
+- id: implement
+  depends_on: [plan]
+  prompt: |
+    Реализуй план из файла:
+    ${nodes.plan.artifacts.plan.path}
+```
+
+Доступны `${nodes.<id>.artifacts.<type>.path}`, `.sha256`, `.mime`, `.size`, producer metadata и обращение по числовому индексу. Governed child Run и fan-out поднимают ссылки родителю, сохраняя producer provenance.
 
 ### `approval`
 
@@ -546,7 +595,7 @@ takt eval run <workflow> --config <config> --cases <dir> --workspace-template <d
 takt eval report <evaluation-output-dir>
 ```
 
-Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status`, `children`, `cancel`, `command run` и `eval` используют JSON по умолчанию.
+Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status`, `children`, `artifacts`, `cancel`, `command run` и `eval` используют JSON по умолчанию.
 
 `eval run` выполняет preflight до создания output: нормализованные `case_id` должны быть уникальны, а `workspace-template` и `output` не могут совпадать или быть вложены друг в друга, включая пути через символические ссылки. До запуска вычисляются fingerprints workflow, config, Markdown-команд, упорядоченного набора заданий, копируемого workspace template и указанного валидатора.
 
@@ -564,8 +613,7 @@ takt eval report <evaluation-output-dir>
 - вложенный `loop_group` внутри `loop_group` запрещён;
 - `native_hooks` передаются адаптеру, но не исполняются runtime;
 - несколько `workflow`-узлов пока не выполняются одной параллельной волной;
-- нет динамического fan-out child Runs из output предыдущего узла;
-- нет sandbox и runtime-managed MCP/tool policy; server, Web UI и БД остаются proposal вне локального режима;
+- нет OS sandbox для недоверенного кода; filesystem/network policy остаётся assistant-enforced, а server, Web UI и БД — proposal вне локального режима;
 - stale lock требует ручного удаления после аварийного завершения процесса;
 - специализированные Pi и OpenCode adapters реализованы;
 - `takt-assistant/v1alpha1` реализован для универсального `process`; специализированный `pi` использует официальный Pi RPC JSONL, а `opencode` — официальный `run --format json` event stream; потоковые события пока не публикуются в EventSink.

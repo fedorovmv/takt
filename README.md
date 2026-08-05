@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.28-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.29-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -17,7 +17,7 @@
 - workflow в YAML или JSON;
 - DAG с параллельным выполнением независимых узлов, `depends_on`, `when` и `trigger_rule`;
 - единая семантика корневого DAG и дочернего DAG `loop_group`;
-- узлы `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow`, `foreach`, `workflow`;
+- узлы `command`, `prompt`, `bash`, `script`, `approval`, `loop_group`, `subworkflow`, `foreach`, `workflow`;
 - reusable `subworkflow` компилируется в тот же DAG, а `workflow` запускает отдельный governed child Run;
 - последовательный и параллельный `foreach` для inline-списков и внешних YAML/JSON-массивов без преобразования Markdown в task AST;
 - `subworkflow` и `foreach` внутри `loop_group`;
@@ -48,10 +48,12 @@
 - строгий YAML subset с сохранением пустых строк в block scalar;
 - проверяемый `output_format` для JSON-решений и обращение к вложенным полям результата в `when` и шаблонах;
 - именованные workflow профиля, `workflow list/describe` и селектор `profile:name`;
-- профиль `code` 0.7.0 с 19 процессами разработки, умным роутером и отдельным child Run для выбранного процесса;
+- профиль `code` 0.8.0 с 19 процессами разработки, умным роутером и отдельным child Run для выбранного процесса;
 - управляемые Git worktree: политика workflow, отдельная ветка, безопасное удержание/очистка и `takt worktree list/remove/prune`;
 - parent/child lifecycle с отдельными state/events/artifacts/usage, `takt children`, каскадным `takt cancel` и approval через корневой Run;
 - динамический fan-out governed child Runs из структурированного output: устойчивые child ID, `max_parallel`, resume, ordered aggregation и join policies;
+- script runtime `command|python|node|go` с fingerprints исходника и зависимостей;
+- типизированные артефакты с MIME, SHA-256, producer metadata, CLI `takt artifacts` и передачей parent/child/fan-out;
 - aggregate usage по узлам и отдельные execution records по каждой фактической попытке;
 - `takt eval run/report` для воспроизводимой оценки каталогов заданий с fingerprints стратегии, benchmark, workspace и валидатора, версией assistant, requested/resolved model и предметными метриками качества;
 - атрибуция tokens/cost по execution identity; смена assistant, его версии или resolved model между retry помечается как mixed;
@@ -187,6 +189,34 @@ Approval внутри ребёнка можно подтвердить чере�
 
 Каждый элемент получает отдельный Run ID. Завершённые дети переиспользуются при resume, результат агрегируется в исходном порядке, а изменение массива блокирует небезопасное продолжение. Подробности: [Динамический fan-out v0.1.28](docs/42-governed-child-fanout-v0.1.28.md).
 
+## Script-узлы и типизированные артефакты
+
+```yaml
+- id: build-index
+  script:
+    runtime: command
+    path: tools/build-index
+    dependencies: [schemas/index.schema.json]
+  output_format:
+    type: object
+    properties:
+      files:
+        type: array
+        items: {type: string}
+    required: [files]
+  output_type: plan-index
+  output_mime: application/json
+```
+
+Поддерживаются `command`, `python`, `node` и `go`, file/inline source, args, env и working directory. Исходник и dependencies входят в fingerprint. `output_type` сохраняет Output либо `output_path` как снимок с checksum и producer metadata. Downstream-узлы используют `${nodes.build-index.artifacts.plan-index.path}`.
+
+```bash
+takt artifacts <run-id>
+takt artifacts <run-id> --type plan --recursive
+```
+
+Артефакты governed children поднимаются родителю без потери producer Run. Подробности: [Script-узлы и типизированные артефакты v0.1.29](docs/43-script-nodes-typed-artifacts-v0.1.29.md).
+
 ## Скилл для настройки Takt
 
 Каталог [`skills/takt/`](skills/takt/) содержит переносимый скилл для кодовых агентов. Он помогает:
@@ -204,7 +234,7 @@ Approval внутри ребёнка можно подтвердить чере�
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.7.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Следующие крупные системные срезы — script nodes с типизированными артефактами и локальная интеграция Takt через MCP. Server, Web UI и БД остаются proposal-направлением для возможного выхода за локальный trusted runtime.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.8.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Следующий крупный системный срез — локальная интеграция Takt через MCP. Server, Web UI и БД остаются proposal-направлением для возможного выхода за локальный trusted runtime.
 
 Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Отдельный предметный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 
@@ -237,6 +267,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Governed child Runs v0.1.26](docs/40-governed-child-runs-v0.1.26.md)
 - [Политики возможностей узлов v0.1.27](docs/41-node-capability-policies-v0.1.27.md)
 - [Динамический fan-out governed child Runs v0.1.28](docs/42-governed-child-fanout-v0.1.28.md)
+- [Script-узлы и типизированные артефакты v0.1.29](docs/43-script-nodes-typed-artifacts-v0.1.29.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -282,6 +313,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Governed child Runs v0.1.26](docs/40-governed-child-runs-v0.1.26.md)
 - [Политики возможностей узлов v0.1.27](docs/41-node-capability-policies-v0.1.27.md)
 - [Динамический fan-out governed child Runs v0.1.28](docs/42-governed-child-fanout-v0.1.28.md)
+- [Script-узлы и типизированные артефакты v0.1.29](docs/43-script-nodes-typed-artifacts-v0.1.29.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

@@ -614,6 +614,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		}
 		recordExecution(ns, result, execErr)
 		applyExecResult(ns, result)
+		mergeRunArtifacts(state, result.Artifacts)
 		accumulateUsage(ns, result.Usage)
 		if execErr != nil && node.AllowFailure && execution.IsExit(execErr) {
 			execErr = nil
@@ -701,12 +702,16 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 			cancel()
 			return r.finishAttemptExecutionError(state, node.ID, err, result)
 		}
+		if err := r.captureDeclaredArtifact(state, node, loopPrevious); err != nil {
+			cancel()
+			return r.finishNodeError(state, node.ID, "artifact", fmt.Errorf("persist typed artifact: %w", err), result)
+		}
 
 		cancel()
 		ns.Status = store.NodeCompleted
 		state.CurrentNode = ""
 		state.CurrentNodes = nil
-		if err := r.commit(state, "node.completed", node.ID, map[string]any{"attempts": ns.Attempts, "exit_code": ns.ExitCode, "output_truncated": ns.OutputTruncated, "usage": ns.Usage}); err != nil {
+		if err := r.commit(state, "node.completed", node.ID, map[string]any{"attempts": ns.Attempts, "exit_code": ns.ExitCode, "output_truncated": ns.OutputTruncated, "usage": ns.Usage, "artifacts": ns.Artifacts}); err != nil {
 			return err
 		}
 		return nil
@@ -753,6 +758,7 @@ type execResult struct {
 	AssistantVersion string
 	RequestedModel   *store.ModelRef
 	ResolvedModel    *store.ModelRef
+	Artifacts        []store.ArtifactRef
 }
 
 func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.Node, loopPrevious map[string]store.NodeState) (execResult, error) {
@@ -765,6 +771,16 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 	switch {
 	case node.Bash != "":
 		return runBash(ctx, r.Workspace, renderTemplate(node.Bash, state, local, feedback, artifacts))
+	case node.Script != nil:
+		result, err := r.runScript(ctx, state, node, local, feedback, artifacts)
+		if err == nil && node.OutputFormat != nil {
+			normalized, validationErr := validateAndNormalizeOutput(result.Output, node.OutputFormat)
+			if validationErr != nil {
+				return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "validate structured output", Err: validationErr}
+			}
+			result.Output = normalized
+		}
+		return result, err
 	case node.Approval != nil:
 		if answer, ok := state.Approvals[node.ID]; ok {
 			output := ""
@@ -1051,6 +1067,15 @@ func applyExecResult(node *store.NodeState, result execResult) {
 		copy.Params = cloneParams(result.ResolvedModel.Params)
 		node.ResolvedModel = &copy
 	}
+	if len(result.Artifacts) > 0 {
+		node.Artifacts = cloneArtifacts(result.Artifacts)
+	}
+}
+
+func mergeRunArtifacts(state *store.RunState, artifacts []store.ArtifactRef) {
+	for _, artifact := range artifacts {
+		state.Artifacts = appendArtifactUnique(state.Artifacts, artifact)
+	}
 }
 
 func cloneParams(values map[string]any) map[string]any {
@@ -1146,6 +1171,7 @@ func (r *Runner) finishNodeExecutionError(state *store.RunState, nodeID string, 
 	ns.ErrorCode = string(kind)
 	ns.Error = err.Error()
 	applyExecResult(ns, result)
+	mergeRunArtifacts(state, result.Artifacts)
 
 	state.CurrentNode = ""
 	state.CurrentNodes = nil
@@ -1158,6 +1184,7 @@ func (r *Runner) finishNodeError(state *store.RunState, nodeID, code string, err
 	ns.ErrorCode = code
 	ns.Error = err.Error()
 	applyExecResult(ns, result)
+	mergeRunArtifacts(state, result.Artifacts)
 
 	state.CurrentNode = ""
 	state.CurrentNodes = nil
@@ -1170,6 +1197,7 @@ func (r *Runner) finishNodeFailure(state *store.RunState, nodeID, code string, e
 	ns.ErrorCode = code
 	ns.Error = err.Error()
 	applyExecResult(ns, result)
+	mergeRunArtifacts(state, result.Artifacts)
 
 	state.CurrentNode = ""
 	state.CurrentNodes = nil

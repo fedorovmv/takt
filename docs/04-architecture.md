@@ -77,6 +77,10 @@ TAKT_NATIVE_HOOKS_JSON
 
 Workflow definitions, config, commands, Run state, events, locks и artifacts принадлежат control workspace. При `worktree.enabled` node actions получают отдельный execution workspace. Умный router остаётся в control workspace и запускает выбранный процесс отдельным governed child Run; ребёнок применяет собственную worktree policy или явный `isolation`. Это защищает исходный checkout от изменений, но не является sandbox.
 
+## Script runtime и артефакты
+
+`script`-узел исполняется тем же scheduler и execution context, что `bash`, но запускает явный command/Python/Node/Go source без assistant. Source и dependencies входят в definition fingerprint. После успешного действия `output_type` фиксирует Output либо файл как снимок в Run store с SHA-256 и producer metadata. Ссылки governed children агрегируются родителем, но физический файл остаётся у producer Run.
+
 ## Состояние
 
 Каждый transition записывается через `Store.Commit`. State и event получают одну revision. `Load` обнаруживает рассогласование. `answer` и `resume` получают lock и проверяют fingerprints определений. Usage всех агентных попыток накапливается в состоянии узла и используется evaluation report. Каждый governed child имеет собственный state/events/artifacts и связывается с родителем через явные IDs; approval/resume/cancel проходят по этой связи без объединения файлов состояния.

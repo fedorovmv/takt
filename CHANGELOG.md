@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.29-alpha
+
+- Добавлены `script`-узлы с runtime `command`, `python`, `node` и `go`, file/inline source, args, env, working directory и зависимостями.
+- Исходники скриптов и явно объявленные зависимости входят в workflow fingerprint и блокируют небезопасный resume.
+- `command`, `prompt`, `bash` и `script` поддерживают `output_type`, `output_mime` и `output_path`.
+- Артефакты сохраняются как локальные снимки с SHA-256, размером, producer Run/Node и номером попытки.
+- Добавлены шаблоны `${nodes.<id>.artifacts.<type>.<field>}` и CLI `takt artifacts`.
+- Governed child Run и fan-out передают ссылки на типизированные артефакты родителю без потери provenance.
+- Профиль `code` 0.8.0 использует script-узел для review perspectives и регистрирует plan/PRD артефакты.
+- Authoring skill обновлён до 0.11.0; добавлен контракт `scripts/test-script-artifacts.sh`.
+
 ## v0.1.28-alpha
 
 - Добавлен динамический `workflow.fan_out` из структурированного output upstream-узла.

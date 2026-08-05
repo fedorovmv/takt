@@ -20,6 +20,9 @@ nodes:
     depends_on: [investigate]
     command: plan-change
     model: review
+    output_type: plan
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/plan.md
 
   - id: approve-plan
     depends_on: [plan]

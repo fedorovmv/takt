@@ -297,6 +297,28 @@ takt cancel <run-id> --reason "stop"
 
 `subworkflow` и `foreach` внутри `loop_group` используют ту же компиляцию в DAG.
 
+## Script и типизированные артефакты
+
+```yaml
+- id: collect
+  script:
+    runtime: python
+    path: tools/collect.py
+    args: [--json]
+    dependencies: [schemas/result.schema.json]
+  output_format:
+    type: object
+    properties:
+      entries: {type: array}
+    required: [entries]
+  output_type: collected-data
+  output_mime: application/json
+```
+
+`runtime` принимает `command`, `python`, `node`. У Python/Node можно заменить `path` на `inline`. `working_directory` вычисляется относительно workflow. Script source и `dependencies` входят в fingerprint и блокируют resume после изменения.
+
+Для сохранения файла после успешного узла добавь `output_type`, MIME и `output_path`. Без `output_path` сохраняется Output узла. Используй `${nodes.collect.artifacts.collected-data.path}` и другие metadata-поля (`sha256`, `mime`, `size`, producer IDs). Governed children и fan-out передают ссылки родителю. CLI: `takt artifacts <run-id> [--node ...] [--type ...] [--recursive]`.
+
 ## Именованные workflow профиля
 
 ```yaml

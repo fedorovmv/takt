@@ -337,6 +337,21 @@
         },
         "requires": {
           "$ref": "#/$defs/stringSet"
+        },
+        "script": {
+          "$ref": "#/$defs/script"
+        },
+        "output_type": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "output_mime": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]+/[^\\r\\n]+$"
+        },
+        "output_path": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "oneOf": [
@@ -353,6 +368,11 @@
         {
           "required": [
             "bash"
+          ]
+        },
+        {
+          "required": [
+            "script"
           ]
         },
         {
@@ -611,6 +631,21 @@
         },
         "requires": {
           "$ref": "#/$defs/stringSet"
+        },
+        "script": {
+          "$ref": "#/$defs/script"
+        },
+        "output_type": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "output_mime": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]+/[^\\r\\n]+$"
+        },
+        "output_path": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "oneOf": [
@@ -627,6 +662,11 @@
         {
           "required": [
             "bash"
+          ]
+        },
+        {
+          "required": [
+            "script"
           ]
         },
         {
@@ -1067,6 +1107,106 @@
           "type": "boolean"
         }
       }
+    },
+    "script": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime"
+      ],
+      "properties": {
+        "runtime": {
+          "enum": [
+            "command",
+            "python",
+            "node",
+            "go"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inline": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "working_directory": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "runtime": {
+                "enum": [
+                  "command",
+                  "go"
+                ]
+              }
+            },
+            "required": [
+              "runtime"
+            ]
+          },
+          "then": {
+            "required": [
+              "path"
+            ],
+            "not": {
+              "required": [
+                "inline"
+              ]
+            }
+          },
+          "else": {
+            "oneOf": [
+              {
+                "required": [
+                  "path"
+                ],
+                "not": {
+                  "required": [
+                    "inline"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "inline"
+                ],
+                "not": {
+                  "required": [
+                    "path"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
     }
   }
 }

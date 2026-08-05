@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль.
+description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, script-узлы, типизированные артефакты, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль.
 ---
 
 # Работа с Takt
@@ -15,13 +15,15 @@ description: Создаёт, устанавливает, изменяет, пр�
 4. Определи минимальную форму решения:
    - `prompt` — короткая инструкция прямо в узле;
    - `command` — длинный или переиспользуемый prompt в Markdown;
-   - `bash` — детерминированная команда;
+   - `bash` — короткая детерминированная shell-команда;
+   - `script` — версионируемый command/Python/Node/Go-скрипт с fingerprint исходника и зависимостей;
    - hook с `retry` — проверка и исправление результата;
    - `approval` — отдельное сохраняемое решение пользователя;
    - `loop_group` — только когда нужен повтор вложенного DAG, а обычных attempts недостаточно;
    - `subworkflow` — когда блок должен компилироваться в общий DAG и общий Run;
    - `workflow` — когда этапу нужен отдельный Run ID, state/events/artifacts/usage, cancellation или собственная worktree-политика;
-   - `foreach` — для явно заданного inline-списка или внешнего YAML/JSON-массива, без скрытого разбора Markdown.
+   - `foreach` — для явно заданного inline-списка или внешнего YAML/JSON-массива, без скрытого разбора Markdown;
+   - `output_type`/`output_mime`/`output_path` — для результата, который должен стать проверяемым артефактом и передаваться между Run.
    - `allowed_tools`/`denied_tools`, `skills`, `mcp`, `sandbox`, `requires` — для проверяемых ограничений AI-узла; явный `allowed_tools: []` означает отсутствие инструментов.
 5. Сначала используй существующие model aliases и assistants из config. Новые добавляй только при необходимости.
 6. Внеси минимальные изменения и проверь их командой `takt validate`.
@@ -55,7 +57,7 @@ takt run code --workspace . --input docs/plan.md --json
 
 ## Критичные правила
 
-- Узел определяет ровно одно действие: `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow`, `foreach` или `workflow`.
+- Узел определяет ровно одно действие: `command`, `prompt`, `bash`, `script`, `approval`, `loop_group`, `subworkflow`, `foreach` или `workflow`.
 - Приоритет assistant/model: узел → frontmatter Markdown-команды → `workflow.defaults`.
 - Имена моделей в workflow ссылаются на aliases из `config.models`, а не напрямую на provider ID.
 - `session: resume` требует реального сохранения Session ID; не подменяй неуспешный resume на fresh.
@@ -67,12 +69,13 @@ takt run code --workspace . --input docs/plan.md --json
 - Approval оформляй отдельным узлом. Внутри `loop_group` он сохраняет активную итерацию и после `takt answer` продолжает её.
 - Вложенные `loop_group` в `takt/v1alpha1` не поддерживаются. `subworkflow`, `foreach`, governed `workflow` и approval внутри `loop_group` разрешены.
 - `allow_failure: true` разрешает только штатный ненулевой exit code, но не timeout, cancellation или ошибку запуска.
-- Bash stdout/stderr сохраняются отдельно, а `${nodes.<id>.output}` содержит объединённый вывод.
+- Bash stdout/stderr сохраняются отдельно, а `${nodes.<id>.output}` содержит объединённый вывод. Script stdout/stderr также сохраняются раздельно; `output_format` меняет только нормализованный Output.
 - Validation envelope `takt-validation/v1alpha1` выводится только в stdout; логи валидатора идут в stderr.
 - Takt поддерживает ограниченный YAML subset. Для многострочного prompt или bash используй block scalar `|`.
 - Markdown-план не преобразуй в task AST ради `foreach`: используй явный `foreach.items` или `foreach.items_from.path` к YAML/JSON-массиву.
 - Неподдерживаемая capability должна завершать узел до вызова модели; не описывай ограничения только в prompt.
 - Filesystem/network policy текущей версии является assistant-enforced и не заменяет OS sandbox.
+- Значимые файлы публикуй через `output_type` и `output_path`; downstream использует `${nodes.<id>.artifacts.<type>.path}`, а не временный путь producer.
 - Не добавляй `system_prompt`, `user_prompt`, автоматический model fallback или иные поля, которых нет в текущем контракте.
 
 ## Переиспользование workflow
@@ -121,6 +124,39 @@ takt run code --workspace . --input docs/plan.md --json
 ```
 
 Ребёнок получает отдельные Run ID, state, events, artifacts и usage. `isolation` принимает `inherit`, `worktree`, `none` или пустое значение для собственной policy ребёнка. `takt children` показывает детей, `takt cancel` каскадирует отмену, а `takt answer` по корневому Run проходит к approval ребёнка. Retry узла создаёт новый child Run. Для динамического массива из upstream JSON используй `workflow.fan_out`: один governed child Run на элемент, `max_parallel`, ordered aggregation и устойчивый resume.
+
+## Script-узлы и артефакты
+
+Используй `script`, когда детерминированная логика длиннее простой shell-команды, должна тестироваться отдельно или имеет явные зависимости:
+
+```yaml
+- id: prepare
+  script:
+    runtime: command
+    path: tools/prepare
+    dependencies: [schemas/input.schema.json]
+  output_format:
+    type: object
+    properties:
+      files:
+        type: array
+        items: {type: string}
+    required: [files]
+  output_type: prepared-input
+  output_mime: application/json
+```
+
+Runtime: `command`, `python`, `node`, `go`. Для Python/Node допустим `inline`; для command/Go нужен исполняемый `path`. Исходник и `dependencies` входят в fingerprint. Takt не устанавливает зависимости runtime автоматически.
+
+Для файла, созданного AI-узлом или script, укажи:
+
+```yaml
+output_type: plan
+output_mime: text/markdown
+output_path: $ARTIFACTS_DIR/plan.md
+```
+
+Проверь результат через `takt artifacts <run-id> --recursive`. Ссылки child Run поднимаются родителю, но producer metadata сохраняет фактический Run и Node.
 
 ## Структурированный вывод и умный роутер
 

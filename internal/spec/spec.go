@@ -38,6 +38,7 @@ type Node struct {
 	Command      string            `json:"command,omitempty"`
 	Prompt       string            `json:"prompt,omitempty"`
 	Bash         string            `json:"bash,omitempty"`
+	Script       *ScriptSpec       `json:"script,omitempty"`
 	Approval     *ApprovalSpec     `json:"approval,omitempty"`
 	LoopGroup    *LoopGroupSpec    `json:"loop_group,omitempty"`
 	Subworkflow  *SubworkflowSpec  `json:"subworkflow,omitempty"`
@@ -56,6 +57,22 @@ type Node struct {
 	Sandbox      *SandboxSpec      `json:"sandbox,omitempty"`
 	Requires     []string          `json:"requires,omitempty"`
 	OutputFormat *OutputFormat     `json:"output_format,omitempty"`
+	OutputType   string            `json:"output_type,omitempty"`
+	OutputMIME   string            `json:"output_mime,omitempty"`
+	OutputPath   string            `json:"output_path,omitempty"`
+}
+
+// ScriptSpec runs deterministic project code without an assistant. Path and
+// dependencies are resolved relative to the workflow definition and mapped to
+// the execution worktree when they belong to the control checkout.
+type ScriptSpec struct {
+	Runtime      string            `json:"runtime"`
+	Path         string            `json:"path,omitempty"`
+	Inline       string            `json:"inline,omitempty"`
+	Args         []string          `json:"args,omitempty"`
+	Env          map[string]string `json:"env,omitempty"`
+	WorkingDir   string            `json:"working_directory,omitempty"`
+	Dependencies []string          `json:"dependencies,omitempty"`
 }
 
 type SubworkflowSpec struct {

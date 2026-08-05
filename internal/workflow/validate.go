@@ -64,6 +64,9 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		if n.Bash != "" {
 			kinds++
 		}
+		if n.Script != nil {
+			kinds++
+		}
 		if n.Approval != nil {
 			kinds++
 		}
@@ -130,6 +133,11 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		}
 		if n.Internal != nil && n.Internal.Mode == "worktree" && (n.Internal.Worktree == nil || !n.Internal.Worktree.Enabled) {
 			return fmt.Errorf("node %q internal worktree action requires an enabled policy", n.ID)
+		}
+		if n.Script != nil {
+			if err := validateScript(*n.Script, "node "+n.ID+".script"); err != nil {
+				return err
+			}
 		}
 		if n.Attempts.Max < 0 {
 			return fmt.Errorf("node %q attempts.max cannot be negative", n.ID)
@@ -204,11 +212,25 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			}
 		}
 		if n.OutputFormat != nil {
-			if n.Command == "" && n.Prompt == "" {
-				return fmt.Errorf("node %q output_format is supported only for command or prompt nodes", n.ID)
+			if n.Command == "" && n.Prompt == "" && n.Script == nil {
+				return fmt.Errorf("node %q output_format is supported only for command, prompt, or script nodes", n.ID)
 			}
 			if err := validateOutputFormat(*n.OutputFormat, "node "+n.ID+".output_format"); err != nil {
 				return err
+			}
+		}
+		if n.OutputType != "" || n.OutputMIME != "" || n.OutputPath != "" {
+			if n.Command == "" && n.Prompt == "" && n.Bash == "" && n.Script == nil {
+				return fmt.Errorf("node %q typed artifacts are supported only for command, prompt, bash, or script nodes", n.ID)
+			}
+			if !artifactTypeRE.MatchString(n.OutputType) {
+				return fmt.Errorf("node %q output_type must match %s", n.ID, artifactTypeRE.String())
+			}
+			if strings.ContainsAny(n.OutputMIME, "\r\n") {
+				return fmt.Errorf("node %q output_mime must be a single line", n.ID)
+			}
+			if n.OutputMIME != "" && !strings.Contains(n.OutputMIME, "/") {
+				return fmt.Errorf("node %q output_mime must be a media type", n.ID)
 			}
 		}
 		if n.Approval != nil && strings.TrimSpace(n.Approval.Message) == "" {
@@ -303,6 +325,40 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 
 var fanOutNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 var fanOutSourceRE = regexp.MustCompile(`^nodes\.([A-Za-z0-9_-]+)\.output(?:\.[A-Za-z0-9_.-]+)?$`)
+var artifactTypeRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+var envNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+func validateScript(script spec.ScriptSpec, scope string) error {
+	switch script.Runtime {
+	case "command", "python", "node", "go":
+	default:
+		return fmt.Errorf("%s.runtime must be command, python, node, or go", scope)
+	}
+	hasPath := strings.TrimSpace(script.Path) != ""
+	hasInline := strings.TrimSpace(script.Inline) != ""
+	if hasPath == hasInline {
+		return fmt.Errorf("%s must define exactly one of path or inline", scope)
+	}
+	if (script.Runtime == "command" || script.Runtime == "go") && hasInline {
+		return fmt.Errorf("%s runtime command/go requires path", scope)
+	}
+	for key := range script.Env {
+		if !envNameRE.MatchString(key) {
+			return fmt.Errorf("%s.env contains invalid variable name %q", scope, key)
+		}
+	}
+	seen := map[string]bool{}
+	for _, dependency := range script.Dependencies {
+		if strings.TrimSpace(dependency) == "" {
+			return fmt.Errorf("%s.dependencies contains an empty path", scope)
+		}
+		if seen[dependency] {
+			return fmt.Errorf("%s.dependencies contains duplicate path %q", scope, dependency)
+		}
+		seen[dependency] = true
+	}
+	return nil
+}
 
 func fanOutSourceNode(path string) (string, error) {
 	match := fanOutSourceRE.FindStringSubmatch(strings.TrimSpace(path))

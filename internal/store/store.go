@@ -90,6 +90,23 @@ type ChildRunItemState struct {
 	ErrorCode       string          `json:"error_code,omitempty"`
 	Error           string          `json:"error,omitempty"`
 	Usage           *Usage          `json:"usage,omitempty"`
+	Artifacts       []ArtifactRef   `json:"artifacts,omitempty"`
+}
+
+// ArtifactRef is immutable metadata for a file copied into a Run artifact
+// store. Path is absolute for direct local consumption; producer fields retain
+// provenance when a child artifact is exposed by a parent node.
+type ArtifactRef struct {
+	ID             string    `json:"id"`
+	Type           string    `json:"type"`
+	MIME           string    `json:"mime"`
+	Path           string    `json:"path"`
+	SHA256         string    `json:"sha256"`
+	Size           int64     `json:"size"`
+	ProducerRunID  string    `json:"producer_run_id"`
+	ProducerNodeID string    `json:"producer_node_id"`
+	Attempt        int       `json:"attempt"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type NodeState struct {
@@ -121,6 +138,7 @@ type NodeState struct {
 	FanOutAttempt     int                  `json:"fan_out_attempt,omitempty"`
 	FanOutFingerprint string               `json:"fan_out_fingerprint,omitempty"`
 	Policy            *NodePolicyState     `json:"policy,omitempty"`
+	Artifacts         []ArtifactRef        `json:"artifacts,omitempty"`
 }
 
 func (n NodeState) Terminal() bool {
@@ -185,6 +203,7 @@ type RunState struct {
 	Input               string                `json:"input"`
 	Output              string                `json:"output,omitempty"`
 	Usage               *Usage                `json:"usage,omitempty"`
+	Artifacts           []ArtifactRef         `json:"artifacts,omitempty"`
 	CancelRequested     bool                  `json:"cancel_requested,omitempty"`
 	CurrentNode         string                `json:"current_node,omitempty"`
 	CurrentNodes        []string              `json:"current_nodes,omitempty"`

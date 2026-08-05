@@ -160,3 +160,35 @@ func TestValidateGovernedFanOutRequiresUpstreamArraySource(t *testing.T) {
 		t.Fatalf("expected items_from path error, got %v", err)
 	}
 }
+
+func TestValidateScriptAndTypedArtifactContracts(t *testing.T) {
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "script"}, Nodes: []spec.Node{{
+		ID: "run", Script: &spec.ScriptSpec{Runtime: "python", Inline: "print('ok')"}, OutputType: "result", OutputMIME: "text/plain",
+	}}}
+	if err := Validate(wf); err != nil {
+		t.Fatal(err)
+	}
+	wf.Nodes[0].Script.Runtime = "ruby"
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "runtime") {
+		t.Fatalf("unsupported script runtime was accepted: %v", err)
+	}
+	wf.Nodes[0].Script.Runtime = "python"
+	wf.Nodes[0].Script.Path = "script.py"
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("path+inline script was accepted: %v", err)
+	}
+	wf.Nodes[0].Script.Path = ""
+	wf.Nodes[0].OutputType = "bad/type"
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "output_type") {
+		t.Fatalf("invalid artifact type was accepted: %v", err)
+	}
+}
+
+func TestValidateAllowsOutputFormatForScript(t *testing.T) {
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "script-json"}, Nodes: []spec.Node{{
+		ID: "run", Script: &spec.ScriptSpec{Runtime: "python", Inline: "print('{}')"}, OutputFormat: &spec.OutputFormat{Type: "object"},
+	}}}
+	if err := Validate(wf); err != nil {
+		t.Fatal(err)
+	}
+}

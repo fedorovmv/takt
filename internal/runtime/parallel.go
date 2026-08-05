@@ -17,7 +17,7 @@ type parallelNodeResult struct {
 }
 
 func parallelEligible(node spec.Node) bool {
-	if node.Command == "" && node.Prompt == "" && node.Bash == "" {
+	if node.Command == "" && node.Prompt == "" && node.Bash == "" && node.Script == nil {
 		return false
 	}
 	if node.Attempts.Max > 1 {
@@ -83,6 +83,7 @@ func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nod
 		ns := state.Nodes[node.ID]
 		recordExecution(ns, item.result, item.err)
 		applyExecResult(ns, item.result)
+		mergeRunArtifacts(state, item.result.Artifacts)
 		accumulateUsage(ns, item.result.Usage)
 		if item.err != nil && node.AllowFailure && execution.IsExit(item.err) {
 			item.err = nil
@@ -100,8 +101,14 @@ func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nod
 			}
 			continue
 		}
+		if err := r.captureDeclaredArtifact(state, node, previous); err != nil {
+			if finishErr := r.finishNodeError(state, node.ID, "artifact", err, item.result); finishErr != nil {
+				return finishErr
+			}
+			continue
+		}
 		ns.Status = store.NodeCompleted
-		if err := r.commit(state, "node.completed", node.ID, map[string]any{"attempts": ns.Attempts, "exit_code": ns.ExitCode, "output_truncated": ns.OutputTruncated, "usage": ns.Usage, "parallel": true}); err != nil {
+		if err := r.commit(state, "node.completed", node.ID, map[string]any{"attempts": ns.Attempts, "exit_code": ns.ExitCode, "output_truncated": ns.OutputTruncated, "usage": ns.Usage, "artifacts": ns.Artifacts, "parallel": true}); err != nil {
 			return err
 		}
 	}

@@ -1,4 +1,4 @@
-# Takt code profile 0.7.0
+# Takt code profile 0.8.0
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -62,3 +62,7 @@ Mutating workflows create a `takt/<workflow>/<run-id>` branch and execute in `.t
 ## Node policies
 
 Routing and decision nodes use explicit empty tool/skill allowlists. Review agents deny edit/write tools while fix nodes retain mutation access. The policies are checked against adapter capabilities before invocation and are persisted in Run state.
+## Script and artifact usage
+
+The review perspective list is produced by the deterministic `tools/review-perspectives` script and stored as the `review-perspectives` JSON artifact. PIV, idea-to-PR and interactive PRD workflows register their accepted plan/PRD files as typed artifacts. Inspect them with `takt artifacts <run-id> --recursive`; downstream governed runs receive artifact references while provenance remains attached to the producing child Run.
+

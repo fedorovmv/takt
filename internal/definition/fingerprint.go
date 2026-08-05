@@ -104,7 +104,7 @@ func workflowDefinitionBytesSeen(path string, wf *spec.Workflow, stack map[strin
 	out = append(out, 0)
 	out = append(out, canonical...)
 
-	resources, err := collectPolicyResourcePaths(path, wf.Nodes)
+	resources, err := collectDefinitionResourcePaths(path, wf.Nodes)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +236,7 @@ func optionalStringCount(value *[]string) int {
 	return len(optionalStringValues(value))
 }
 
-func collectPolicyResourcePaths(workflowPath string, nodes []spec.Node) ([]string, error) {
+func collectDefinitionResourcePaths(workflowPath string, nodes []spec.Node) ([]string, error) {
 	set := map[string]bool{}
 	base := filepath.Dir(workflowPath)
 	type resourceRef struct {
@@ -246,7 +246,15 @@ func collectPolicyResourcePaths(workflowPath string, nodes []spec.Node) ([]strin
 	var visit func([]spec.Node) error
 	visit = func(items []spec.Node) error {
 		for _, node := range items {
-			refs := make([]resourceRef, 0, optionalStringCount(node.Skills)+2)
+			refs := make([]resourceRef, 0, optionalStringCount(node.Skills)+4)
+			if node.Script != nil {
+				if node.Script.Path != "" {
+					refs = append(refs, resourceRef{value: node.Script.Path, mandatory: true})
+				}
+				for _, dependency := range node.Script.Dependencies {
+					refs = append(refs, resourceRef{value: dependency, mandatory: true})
+				}
+			}
 			for _, skill := range optionalStringValues(node.Skills) {
 				refs = append(refs, resourceRef{value: skill})
 			}

@@ -153,7 +153,7 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 		return execResult{}, ErrWaiting
 	}
 
-	result := execResult{Output: output, Stdout: output, ExitCode: 0, Usage: usage}
+	result := execResult{Output: output, Stdout: output, ExitCode: 0, Usage: usage, Artifacts: fanOutArtifacts(nodeState.ChildRuns, attempt)}
 	completed, failed := fanOutTerminalCounts(nodeState.ChildRuns, attempt)
 	join := normalizedFanOutJoin(fanOut.Join)
 	var joinErr error
@@ -357,6 +357,7 @@ func updateFanOutRecord(record *store.ChildRunItemState, childWorkflow *spec.Wor
 		record.ErrorCode = child.ErrorCode
 		record.Error = child.Error
 		record.Usage = child.Usage
+		record.Artifacts = cloneArtifacts(child.Artifacts)
 		return
 	}
 	if runErr != nil {
@@ -364,6 +365,19 @@ func updateFanOutRecord(record *store.ChildRunItemState, childWorkflow *spec.Wor
 		record.ErrorCode = string(execution.KindOf(runErr))
 		record.Error = runErr.Error()
 	}
+}
+
+func fanOutArtifacts(records []store.ChildRunItemState, attempt int) []store.ArtifactRef {
+	var artifacts []store.ArtifactRef
+	for _, record := range records {
+		if record.Attempt != attempt {
+			continue
+		}
+		for _, artifact := range record.Artifacts {
+			artifacts = appendArtifactUnique(artifacts, artifact)
+		}
+	}
+	return artifacts
 }
 
 func fanOutAggregate(records []store.ChildRunItemState, attempt int) (string, *assistant.ProtocolUsage, error) {

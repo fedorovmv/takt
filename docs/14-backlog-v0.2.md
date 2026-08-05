@@ -246,6 +246,20 @@ Draft → approval comment → revise → artifact без изменения run
 - smart router и review blocks переведены на governed children;
 - contract suite включён в `make check`.
 
+## Завершено в v0.1.27–v0.1.29-alpha
+
+### TAKT-025. Политики возможностей узлов — выполнено
+
+Per-node tool allow/deny, skills, MCP, assistant-enforced sandbox policy, capability negotiation, persistence, fingerprints и child inheritance.
+
+### TAKT-026. Dynamic governed fan-out — выполнено
+
+Runtime list from structured output, child Run per item, max_parallel, resume, ordered aggregation, join policies and cancellation.
+
+### TAKT-027. Script nodes и typed artifacts — выполнено
+
+Runtime `command|python|node|go`, source/dependency fingerprints, structured output, `output_type`/MIME/SHA-256/producer metadata, CLI и parent/child propagation.
+
 ### Следующий крупный срез
 
-Per-node tool allow/deny, skills, MCP, sandbox policy and capability negotiation. Then dynamic fan-out governed children and script/artifact contracts. Server/Web UI/database remain proposals and are not prerequisites for local execution.
+Локальный MCP-интерфейс Takt и skills для вызова orchestration из кодовых агентов. Server/Web UI/database remain proposals and are not prerequisites for local execution.

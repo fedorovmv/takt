@@ -157,6 +157,12 @@
     },
     "inherited_policy": {
       "$ref": "#/$defs/policyState"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifactRef"
+      }
     }
   },
   "$defs": {
@@ -273,6 +279,12 @@
         },
         "fan_out_fingerprint": {
           "type": "string"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactRef"
+          }
         }
       }
     },
@@ -558,6 +570,64 @@
         },
         "usage": {
           "$ref": "#/$defs/usage"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactRef"
+          }
+        }
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "mime",
+        "path",
+        "sha256",
+        "size",
+        "producer_run_id",
+        "producer_node_id",
+        "attempt",
+        "created_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "mime": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "producer_run_id": {
+          "type": "string"
+        },
+        "producer_node_id": {
+          "type": "string"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     }

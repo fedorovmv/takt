@@ -59,6 +59,9 @@ nodes:
   - id: draft
     depends_on: [discovery]
     command: create-prd
+    output_type: prd
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/prd.md
 
   - id: review
     depends_on: [draft]

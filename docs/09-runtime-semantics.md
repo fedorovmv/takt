@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.28-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.29-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -347,6 +347,16 @@ Fingerprint workflow включает исходный родительский 
 `max_parallel` ограничивает число одновременно исполняемых детей. Join формируется после terminal-состояния группы и поддерживает `all_success`, `all_done`, `one_success`. Output агрегируется в исходном порядке; usage детей входит в usage родительского узла. `WaitingState.ChildRunIDs` хранит множественное ожидание. Ответ через родителя разрешён только при одном waiting-ребёнке; при нескольких CLI требует выбрать child Run.
 
 Retry родительского узла создаёт новую группу с новыми Run ID и сохраняет предыдущие попытки. Отмена отдельного ребёнка отражается в агрегате, отмена родителя каскадируется всей группе.
+
+## Script execution и typed artifact lifecycle
+
+`script` является обычным детерминированным действием scheduler. Execution context, timeout, cancellation, worktree mapping и сохранение stdout/stderr совпадают с `bash`, но процесс запускается без `bash -lc`: `command` — напрямую, `python` — через `python3`, `node` — через `node`. Structured output проверяется до фиксации terminal-состояния.
+
+После успешного действия и hooks runtime обрабатывает `output_type`. Источником является нормализованный Output либо файл `output_path`. Файл копируется в `.takt/runs/<run>/artifacts/nodes/<node>/<attempt>/`, после чего вычисляются SHA-256 и размер. Только сохранённый снимок считается артефактом; временный producer path не является контрактом downstream-узлов. Ошибка capture завершает узел как `artifact`, поэтому completed-узел всегда содержит валидные ссылки.
+
+`node.completed` включает metadata артефактов. `RunState.Artifacts` агрегирует ссылки без потери hidden structural nodes. Governed child Run возвращает свои ссылки как часть execution result родительского узла, а fan-out сохраняет их в каждом item state. Сам файл остаётся в store фактического producer Run.
+
+Renderer разрешает `nodes.<id>.artifacts.<type|index>.<field>`. Resume использует сохранённый path/checksum, а изменение script source или dependency блокируется definition fingerprint до исполнения.
 
 ## Managed Git worktree
 

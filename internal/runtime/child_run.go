@@ -160,7 +160,7 @@ func childExecResult(wf *spec.Workflow, state *store.RunState, outputNode string
 	if state == nil {
 		return execResult{ExitCode: 1}
 	}
-	result := execResult{Output: state.Output, Stdout: state.Output, ExitCode: 0}
+	result := execResult{Output: state.Output, Stdout: state.Output, ExitCode: 0, Artifacts: cloneArtifacts(state.Artifacts)}
 	if strings.TrimSpace(outputNode) != "" {
 		if node := state.Nodes[outputNode]; node != nil {
 			result.Output = node.Output

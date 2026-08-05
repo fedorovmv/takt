@@ -59,6 +59,8 @@ func run(args []string) error {
 		return statusCmd(args[1:])
 	case "children":
 		return childrenCmd(args[1:])
+	case "artifacts":
+		return artifactsCmd(args[1:])
 	case "cancel":
 		return cancelCmd(args[1:])
 	case "worktree":
@@ -586,6 +588,77 @@ func childrenCmd(args []string) error {
 		children = append(children, value)
 	}
 	return printResult(*jsonOut, map[string]any{"run_id": parent.ID, "children": children})
+}
+
+func artifactsCmd(args []string) error {
+	fs := newFlagSet("artifacts")
+	workspace := fs.String("workspace", ".", "workspace")
+	nodeID := fs.String("node", "", "filter by producer node id")
+	artifactType := fs.String("type", "", "filter by semantic artifact type")
+	recursive := fs.Bool("recursive", false, "include artifacts from all descendant Runs")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--node": true, "--type": true, "--recursive": false, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt artifacts <run-id> [--node id] [--type type] [--recursive]")
+	}
+	abs, err := filepath.Abs(*workspace)
+	if err != nil {
+		return err
+	}
+	st := store.FS{Workspace: abs}
+	root, err := st.Load(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	runs := []*store.RunState{root}
+	if *recursive {
+		queue := append([]string(nil), root.ChildRunIDs...)
+		seen := map[string]bool{root.ID: true}
+		for len(queue) > 0 {
+			id := queue[0]
+			queue = queue[1:]
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			child, loadErr := st.Load(id)
+			if loadErr != nil {
+				return loadErr
+			}
+			runs = append(runs, child)
+			queue = append(queue, child.ChildRunIDs...)
+		}
+	}
+	artifacts := make([]store.ArtifactRef, 0)
+	seenArtifacts := map[string]bool{}
+	for _, run := range runs {
+		for _, artifact := range run.Artifacts {
+			if *nodeID != "" && artifact.ProducerNodeID != *nodeID {
+				continue
+			}
+			if *artifactType != "" && artifact.Type != *artifactType {
+				continue
+			}
+			key := artifact.ProducerRunID + "\x00" + artifact.ID
+			if seenArtifacts[key] {
+				continue
+			}
+			seenArtifacts[key] = true
+			artifacts = append(artifacts, artifact)
+		}
+	}
+	sort.Slice(artifacts, func(i, j int) bool {
+		if artifacts[i].ProducerRunID != artifacts[j].ProducerRunID {
+			return artifacts[i].ProducerRunID < artifacts[j].ProducerRunID
+		}
+		if artifacts[i].ProducerNodeID != artifacts[j].ProducerNodeID {
+			return artifacts[i].ProducerNodeID < artifacts[j].ProducerNodeID
+		}
+		return artifacts[i].Type < artifacts[j].Type
+	})
+	return printResult(*jsonOut, map[string]any{"run_id": root.ID, "artifacts": artifacts})
 }
 
 func cancelCmd(args []string) error {
@@ -1163,7 +1236,7 @@ func wantsJSON(args []string) bool {
 	value := false
 	if len(args) > 0 {
 		switch args[0] {
-		case "run", "answer", "resume", "status", "worktree", "eval":
+		case "run", "answer", "resume", "status", "children", "artifacts", "worktree", "eval":
 			value = true
 		case "command":
 			value = len(args) > 1 && args[1] == "run"
@@ -1215,5 +1288,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|run|workflow|answer|resume|status|children|cancel|worktree|command|eval|version>")
+	return fmt.Errorf("usage: takt <init|validate|run|workflow|answer|resume|status|children|artifacts|cancel|worktree|command|eval|version>")
 }

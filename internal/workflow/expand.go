@@ -368,6 +368,18 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 	node.When = rewriteWhenNodeRefs(replaceVars(node.When, vars), prefix, siblings)
 	node.Prompt = rewriteTemplate(node.Prompt)
 	node.Bash = rewriteTemplate(node.Bash)
+	if node.Script != nil {
+		node.Script.Inline = rewriteTemplate(node.Script.Inline)
+		node.Script.Path = rewriteTemplate(node.Script.Path)
+		node.Script.WorkingDir = rewriteTemplate(node.Script.WorkingDir)
+		for index := range node.Script.Args {
+			node.Script.Args[index] = rewriteTemplate(node.Script.Args[index])
+		}
+		for key, value := range node.Script.Env {
+			node.Script.Env[key] = rewriteTemplate(value)
+		}
+	}
+	node.OutputPath = rewriteTemplate(node.OutputPath)
 	if node.Approval != nil {
 		node.Approval.Message = rewriteTemplate(node.Approval.Message)
 	}
@@ -411,7 +423,14 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 }
 
 func unresolvedInput(node *spec.Node) string {
-	values := []string{node.Prompt, node.Bash, node.When}
+	values := []string{node.Prompt, node.Bash, node.When, node.OutputPath}
+	if node.Script != nil {
+		values = append(values, node.Script.Path, node.Script.Inline, node.Script.WorkingDir)
+		values = append(values, node.Script.Args...)
+		for _, value := range node.Script.Env {
+			values = append(values, value)
+		}
+	}
 	if node.WorkflowRun != nil {
 		values = append(values, node.WorkflowRun.Input)
 	}
@@ -515,6 +534,9 @@ func sourceKinds(node spec.Node) int {
 	if node.Bash != "" {
 		count++
 	}
+	if node.Script != nil {
+		count++
+	}
 	if node.Approval != nil {
 		count++
 	}
@@ -537,8 +559,8 @@ func sourceKinds(node spec.Node) int {
 }
 
 func validateContainerFields(node spec.Node) error {
-	if node.Attempts.Max != 0 || len(node.Attempts.RetryOn) != 0 || node.Attempts.RetrySession != "" || node.AllowFailure || node.Timeout != "" || !hookSetEmpty(node.Hooks) || len(node.NativeHooks) != 0 || node.OutputFormat != nil || node.AllowedTools != nil || len(node.DeniedTools) != 0 || node.Skills != nil || node.MCP != "" || node.Sandbox != nil || len(node.Requires) != 0 {
-		return fmt.Errorf("container node %q supports assistant/model/session defaults, but attempts, timeout, hooks, native_hooks, policies, output_format and allow_failure must be defined inside the child workflow", node.ID)
+	if node.Attempts.Max != 0 || len(node.Attempts.RetryOn) != 0 || node.Attempts.RetrySession != "" || node.AllowFailure || node.Timeout != "" || !hookSetEmpty(node.Hooks) || len(node.NativeHooks) != 0 || node.OutputFormat != nil || node.OutputType != "" || node.OutputMIME != "" || node.OutputPath != "" || node.AllowedTools != nil || len(node.DeniedTools) != 0 || node.Skills != nil || node.MCP != "" || node.Sandbox != nil || len(node.Requires) != 0 {
+		return fmt.Errorf("container node %q supports assistant/model/session defaults, but attempts, timeout, hooks, native_hooks, policies, output contracts and allow_failure must be defined inside the child workflow", node.ID)
 	}
 	return nil
 }

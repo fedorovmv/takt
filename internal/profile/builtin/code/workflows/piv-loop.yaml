@@ -68,6 +68,9 @@ nodes:
     depends_on: [explore]
     command: plan-change
     model: review
+    output_type: plan
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/plan.md
 
   - id: plan-review
     depends_on: [create-plan]

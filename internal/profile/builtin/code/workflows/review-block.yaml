@@ -13,7 +13,16 @@ nodes:
 
   - id: perspectives
     depends_on: [scope]
-    bash: printf '["code","errors","tests","docs","simplicity"]'
+    script:
+      runtime: command
+      path: ../tools/review-perspectives
+    output_format:
+      type: array
+      items:
+        type: string
+        enum: [code, errors, tests, docs, simplicity]
+    output_type: review-perspectives
+    output_mime: application/json
 
   - id: reviews
     depends_on: [scope, perspectives]

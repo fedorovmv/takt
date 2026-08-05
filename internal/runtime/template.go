@@ -48,11 +48,64 @@ func nodePath(n store.NodeState, parts []string) string {
 	if len(parts) == 0 {
 		return ""
 	}
+	if parts[0] == "artifacts" {
+		return artifactPathString(n.Artifacts, parts[1:])
+	}
 	value := nodeField(n, parts[0])
 	if len(parts) == 1 || parts[0] != "output" {
 		return value
 	}
 	return jsonPathString(value, parts[1:])
+}
+
+func artifactPathString(artifacts []store.ArtifactRef, parts []string) string {
+	if len(parts) == 0 {
+		raw, _ := json.Marshal(artifacts)
+		return string(raw)
+	}
+	var artifact *store.ArtifactRef
+	if index, err := strconv.Atoi(parts[0]); err == nil {
+		if index < 0 || index >= len(artifacts) {
+			return ""
+		}
+		artifact = &artifacts[index]
+	} else {
+		for index := range artifacts {
+			if artifacts[index].Type == parts[0] {
+				artifact = &artifacts[index]
+				break
+			}
+		}
+	}
+	if artifact == nil {
+		return ""
+	}
+	if len(parts) == 1 {
+		raw, _ := json.Marshal(artifact)
+		return string(raw)
+	}
+	switch parts[1] {
+	case "id":
+		return artifact.ID
+	case "type":
+		return artifact.Type
+	case "mime":
+		return artifact.MIME
+	case "path":
+		return artifact.Path
+	case "sha256":
+		return artifact.SHA256
+	case "size":
+		return strconv.FormatInt(artifact.Size, 10)
+	case "producer_run_id":
+		return artifact.ProducerRunID
+	case "producer_node_id":
+		return artifact.ProducerNodeID
+	case "attempt":
+		return strconv.Itoa(artifact.Attempt)
+	default:
+		return ""
+	}
 }
 
 func jsonPathString(raw string, path []string) string {

@@ -13,12 +13,13 @@ PLAN
 "$ROOT/bin/takt" init code --dir "$TMP/project" --json >/dev/null
 "$ROOT/bin/takt" validate code --workspace "$TMP/project" --json >/dev/null
 [ -f "$TMP/project/.takt/profiles/code/profile.yaml" ]
-[ "$(tr -d '[:space:]' < "$TMP/project/.takt/profiles/code/VERSION")" = "0.7.0" ]
+[ "$(tr -d '[:space:]' < "$TMP/project/.takt/profiles/code/VERSION")" = "0.8.0" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/review-block.yaml" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/smart-review-block.yaml" ]
 [ "$(find "$TMP/project/.takt/profiles/code/workflows" -maxdepth 1 -name '*.yaml' | wc -l | tr -d '[:space:]')" = "22" ]
 [ "$(find "$TMP/project/.takt/profiles/code/commands" -maxdepth 1 -name '*.md' | wc -l | tr -d '[:space:]')" = "32" ]
 [ -f "$TMP/project/.takt/config.yaml" ]
+[ -x "$TMP/project/.takt/profiles/code/tools/review-perspectives" ]
 grep -q 'format: markdown' "$TMP/project/.takt/profiles/code/profile.yaml"
 grep -q 'preserve_path: true' "$TMP/project/.takt/profiles/code/profile.yaml"
 grep -q 'name: code-router' "$TMP/project/.takt/profiles/code/workflow.yaml"
@@ -28,6 +29,10 @@ grep -q '^    workflow:' "$TMP/project/.takt/profiles/code/workflow.yaml"
 ! grep -q '^    subworkflow:' "$TMP/project/.takt/profiles/code/workflow.yaml"
 ! grep -q '^worktree:' "$TMP/project/.takt/profiles/code/workflow.yaml"
 grep -q 'retry_on: \[protocol\]' "$TMP/project/.takt/profiles/code/workflow.yaml"
+grep -q '^    script:' "$TMP/project/.takt/profiles/code/workflows/review-block.yaml"
+grep -q 'output_type: review-perspectives' "$TMP/project/.takt/profiles/code/workflows/review-block.yaml"
+grep -q 'output_type: plan' "$TMP/project/.takt/profiles/code/workflows/idea-to-pr.yaml"
+grep -q 'output_type: prd' "$TMP/project/.takt/profiles/code/workflows/interactive-prd.yaml"
 grep -q 'fan_out:' "$TMP/project/.takt/profiles/code/workflows/review-block.yaml"
 grep -q 'max_parallel: 5' "$TMP/project/.takt/profiles/code/workflows/review-block.yaml"
 grep -q 'items_from: nodes.classify.output.reviewers' "$TMP/project/.takt/profiles/code/workflows/smart-review-block.yaml"

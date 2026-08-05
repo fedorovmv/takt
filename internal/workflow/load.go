@@ -88,6 +88,21 @@ func validateWorkflowResources(path string, wf *spec.Workflow) error {
 	var visit func([]spec.Node) error
 	visit = func(nodes []spec.Node) error {
 		for _, node := range nodes {
+			if node.Script != nil {
+				paths := append([]string(nil), node.Script.Dependencies...)
+				if node.Script.Path != "" {
+					paths = append([]string{node.Script.Path}, paths...)
+				}
+				for _, resource := range paths {
+					resolved := resource
+					if !filepath.IsAbs(resolved) {
+						resolved = filepath.Join(base, resolved)
+					}
+					if _, err := os.Stat(resolved); err != nil {
+						return fmt.Errorf("node %q script resource %s: %w", node.ID, resolved, err)
+					}
+				}
+			}
 			resources := []string{}
 			if node.MCP != "" {
 				resources = append(resources, node.MCP)
