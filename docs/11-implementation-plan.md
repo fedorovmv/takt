@@ -111,7 +111,7 @@ prepare input
 - итоговый успех определяется валидатором;
 - Run воспроизводится с теми же fingerprints.
 
-## 6. Этап E. Пакеты профилей и композиция — реализовано в v0.1.21–v0.1.25-alpha
+## 6. Этап E. Пакеты профилей, композиция и governed lifecycle — реализовано в v0.1.21–v0.1.26-alpha
 
 - пакеты профилей и `takt init/validate/run <profile>`;
 - именованные workflow, селектор `profile:workflow`, `workflow list/describe`;
@@ -122,7 +122,8 @@ prepare input
 - 19 процессов разработки и умный роутер;
 - проверяемый `output_format`, JSON-пути и approval внутри `loop_group`;
 - параллельные DAG-волны простых независимых узлов;
-- следующий шаг — governed child Run и ограничения инструментов/MCP/skills/sandbox.
+- governed child Run, parent/child approval-resume, cancellation tree и worktree isolation;
+- следующий шаг — ограничения инструментов/MCP/skills/sandbox.
 
 ## 7. Проверка универсальности
 
@@ -168,11 +169,12 @@ agent draft
 
 1. Запуск Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями.
 2. Git worktree isolation и транзакция задачи — реализовано в v0.1.25-alpha.
-3. Governed child Run с отдельными artifacts/usage.
-4. Per-node tool, skills и MCP policy.
-5. Динамический fan-out из output предыдущего узла.
-6. Расширение параллельности на hooks/retries.
-7. Strict templates, полный JSON Schema и v1beta1 design.
+3. Governed child Run, cancel и parent/child lifecycle — реализовано в v0.1.26-alpha.
+4. Per-node tool, skills, MCP и sandbox policy.
+5. Динамический fan-out child Runs из output предыдущего узла.
+6. Script nodes и типизированные артефакты.
+7. Расширение параллельности на hooks/retries/governed nodes.
+8. Strict templates, полный JSON Schema и v1beta1 design.
 
 ## 11. Пока не начинать
 

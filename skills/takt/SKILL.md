@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, диагностировать workflow либо подготовить готовый .takt-профиль.
+description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, диагностировать workflow либо подготовить готовый .takt-профиль.
 ---
 
 # Работа с Takt
@@ -19,7 +19,8 @@ description: Создаёт, устанавливает, изменяет, пр�
    - hook с `retry` — проверка и исправление результата;
    - `approval` — отдельное сохраняемое решение пользователя;
    - `loop_group` — только когда нужен повтор вложенного DAG, а обычных attempts недостаточно;
-   - `subworkflow` — когда блок процесса должен переиспользоваться как отдельный Workflow;
+   - `subworkflow` — когда блок должен компилироваться в общий DAG и общий Run;
+   - `workflow` — когда этапу нужен отдельный Run ID, state/events/artifacts/usage, cancellation или собственная worktree-политика;
    - `foreach` — для явно заданного inline-списка или внешнего YAML/JSON-массива, без скрытого разбора Markdown.
 5. Сначала используй существующие model aliases и assistants из config. Новые добавляй только при необходимости.
 6. Внеси минимальные изменения и проверь их командой `takt validate`.
@@ -53,7 +54,7 @@ takt run code --workspace . --input docs/plan.md --json
 
 ## Критичные правила
 
-- Узел определяет ровно одно действие: `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow` или `foreach`.
+- Узел определяет ровно одно действие: `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow`, `foreach` или `workflow`.
 - Приоритет assistant/model: узел → frontmatter Markdown-команды → `workflow.defaults`.
 - Имена моделей в workflow ссылаются на aliases из `config.models`, а не напрямую на provider ID.
 - `session: resume` требует реального сохранения Session ID; не подменяй неуспешный resume на fresh.
@@ -63,7 +64,7 @@ takt run code --workspace . --input docs/plan.md --json
 - `${feedback}` содержит вывод неуспешных hooks предыдущей попытки.
 - Текст агента и наличие файла сами по себе не подтверждают успех; нужен bash-валидатор или другой детерминированный gate.
 - Approval оформляй отдельным узлом. Внутри `loop_group` он сохраняет активную итерацию и после `takt answer` продолжает её.
-- Вложенные `loop_group` в `takt/v1alpha1` не поддерживаются. `subworkflow`, `foreach` и approval внутри `loop_group` разрешены.
+- Вложенные `loop_group` в `takt/v1alpha1` не поддерживаются. `subworkflow`, `foreach`, governed `workflow` и approval внутри `loop_group` разрешены.
 - `allow_failure: true` разрешает только штатный ненулевой exit code, но не timeout, cancellation или ошибку запуска.
 - Bash stdout/stderr сохраняются отдельно, а `${nodes.<id>.output}` содержит объединённый вывод.
 - Validation envelope `takt-validation/v1alpha1` выводится только в stdout; логи валидатора идут в stderr.
@@ -105,6 +106,19 @@ takt run code --workspace . --input docs/plan.md --json
 
 На контейнере можно задать `assistant`, `model` и `session` как defaults дочернего вызова. `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` задавай внутри дочернего workflow. Глубина композиции ограничена 16; рекурсивные ссылки отклоняются.
 
+Используй governed `workflow`, когда дочерний процесс должен быть отдельной управляемой единицей:
+
+```yaml
+- id: implementation
+  workflow:
+    path: workflows/feature-development.yaml
+    input: ${input}
+    output_node: summary
+    isolation: inherit
+```
+
+Ребёнок получает отдельные Run ID, state, events, artifacts и usage. `isolation` принимает `inherit`, `worktree`, `none` или пустое значение для собственной policy ребёнка. `takt children` показывает детей, `takt cancel` каскадирует отмену, а `takt answer` по корневому Run проходит к approval ребёнка. Retry узла создаёт новый child Run.
+
 ## Структурированный вывод и умный роутер
 
 Для классификации, маршрутизации и других машинных решений задавай `output_format`. Он поддерживает небольшой JSON-Schema-подобный subset: `object`, `array`, `string`, `boolean`, `number`, `integer`, `properties`, `required`, `enum`, `items`, `additionalProperties`.
@@ -126,8 +140,9 @@ takt run code --workspace . --input docs/plan.md --json
 - id: fix
   depends_on: [route]
   when: nodes.route.output.workflow == "fix-github-issue"
-  subworkflow:
+  workflow:
     path: workflows/fix-github-issue.yaml
+    input: ${input}
 ```
 
 Runtime принимает ровно одно JSON-значение и завершает узел `protocol`-ошибкой при нарушении схемы. В шаблонах и `when` доступны вложенные пути `${nodes.route.output.workflow}` и `nodes.route.output.workflow`.

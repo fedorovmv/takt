@@ -9,8 +9,9 @@ defaults:
   session: fresh
 nodes:
   - id: review
-    subworkflow:
+    workflow:
       path: smart-review-block.yaml
+      isolation: inherit
 
   - id: summary
     depends_on: [review]

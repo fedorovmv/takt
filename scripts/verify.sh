@@ -18,6 +18,7 @@ go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
 ./scripts/test-takt-skill.sh
 ./scripts/test-code-profile.sh
 ./scripts/test-worktree.sh
+./scripts/test-child-runs.sh
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \

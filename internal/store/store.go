@@ -89,6 +89,8 @@ type NodeState struct {
 	LoopIteration    int                  `json:"loop_iteration,omitempty"`
 	Hidden           bool                 `json:"internal,omitempty"`
 	PublicParent     string               `json:"public_parent,omitempty"`
+	ChildRunID       string               `json:"child_run_id,omitempty"`
+	ChildRunIDs      []string             `json:"child_run_ids,omitempty"`
 }
 
 func (n NodeState) Terminal() bool {
@@ -138,6 +140,9 @@ type RunOptionsState struct {
 type RunState struct {
 	ID                  string                `json:"id"`
 	Status              string                `json:"status"`
+	ParentRunID         string                `json:"parent_run_id,omitempty"`
+	ParentNodeID        string                `json:"parent_node_id,omitempty"`
+	ChildRunIDs         []string              `json:"child_run_ids,omitempty"`
 	WorkflowPath        string                `json:"workflow_path"`
 	ConfigPath          string                `json:"config_path"`
 	Workspace           string                `json:"workspace"`
@@ -145,6 +150,9 @@ type RunState struct {
 	Worktree            *WorktreeState        `json:"worktree,omitempty"`
 	RunOptions          RunOptionsState       `json:"run_options,omitempty"`
 	Input               string                `json:"input"`
+	Output              string                `json:"output,omitempty"`
+	Usage               *Usage                `json:"usage,omitempty"`
+	CancelRequested     bool                  `json:"cancel_requested,omitempty"`
 	CurrentNode         string                `json:"current_node,omitempty"`
 	CurrentNodes        []string              `json:"current_nodes,omitempty"`
 	Waiting             *WaitingState         `json:"waiting,omitempty"`
@@ -161,8 +169,10 @@ type RunState struct {
 }
 
 type WaitingState struct {
-	NodeID  string `json:"node_id"`
-	Message string `json:"message"`
+	NodeID     string `json:"node_id"`
+	Message    string `json:"message"`
+	Kind       string `json:"kind,omitempty"`
+	ChildRunID string `json:"child_run_id,omitempty"`
 }
 
 func (s *RunState) PublicView() *RunState {
@@ -427,6 +437,45 @@ func (f FS) AcquireLock(id string) (func() error, error) {
 		return nil, err
 	}
 	return func() error { return os.Remove(path) }, nil
+}
+
+// RequestCancel writes an out-of-band cancellation marker. A running process
+// polls this marker, so cancellation does not depend on rewriting state.json
+// concurrently with the executor.
+func (f FS) RequestCancel(id string) error {
+	if err := ValidateRunID(id); err != nil {
+		return err
+	}
+	dir := f.RunDir(id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return writeFileSync(filepath.Join(dir, "cancel.requested"), []byte("cancel\n"), 0o644)
+}
+
+func (f FS) CancelRequested(id string) (bool, error) {
+	if err := ValidateRunID(id); err != nil {
+		return false, err
+	}
+	_, err := os.Stat(filepath.Join(f.RunDir(id), "cancel.requested"))
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func (f FS) ClearCancel(id string) error {
+	if err := ValidateRunID(id); err != nil {
+		return err
+	}
+	err := os.Remove(filepath.Join(f.RunDir(id), "cancel.requested"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 type InconsistentError struct {

@@ -2,7 +2,7 @@ apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
   name: code-router
-  description: Smart router for the complete code workflow catalog; classifies the request and executes exactly one specialized workflow in the same auditable Run.
+  description: Smart router for the complete code workflow catalog; classifies the request and executes exactly one specialized workflow as a separately governed child Run.
 defaults:
   assistant: opencode
   model: implementation
@@ -29,113 +29,132 @@ nodes:
   - id: assist
     depends_on: [route]
     when: nodes.route.output.workflow == "assist"
-    subworkflow:
+    workflow:
       path: workflows/assist.yaml
+      input: ${input}
 
   - id: fix-github-issue
     depends_on: [route]
     when: nodes.route.output.workflow == "fix-github-issue"
-    subworkflow:
+    workflow:
       path: workflows/fix-github-issue.yaml
+      input: ${input}
 
   - id: create-issue
     depends_on: [route]
     when: nodes.route.output.workflow == "create-issue"
-    subworkflow:
+    workflow:
       path: workflows/create-issue.yaml
+      input: ${input}
 
   - id: issue-review-full
     depends_on: [route]
     when: nodes.route.output.workflow == "issue-review-full"
-    subworkflow:
+    workflow:
       path: workflows/issue-review-full.yaml
+      input: ${input}
 
   - id: piv-loop
     depends_on: [route]
     when: nodes.route.output.workflow == "piv-loop"
-    subworkflow:
+    workflow:
       path: workflows/piv-loop.yaml
+      input: ${input}
 
   - id: idea-to-pr
     depends_on: [route]
     when: nodes.route.output.workflow == "idea-to-pr"
-    subworkflow:
+    workflow:
       path: workflows/idea-to-pr.yaml
+      input: ${input}
 
   - id: plan-to-pr
     depends_on: [route]
     when: nodes.route.output.workflow == "plan-to-pr"
-    subworkflow:
+    workflow:
       path: workflows/plan-to-pr.yaml
+      input: ${input}
 
   - id: feature-development
     depends_on: [route]
     when: nodes.route.output.workflow == "feature-development"
-    subworkflow:
+    workflow:
       path: workflows/feature-development.yaml
+      input: ${input}
 
   - id: adversarial-dev
     depends_on: [route]
     when: nodes.route.output.workflow == "adversarial-dev"
-    subworkflow:
+    workflow:
       path: workflows/adversarial-dev.yaml
+      input: ${input}
 
   - id: smart-pr-review
     depends_on: [route]
     when: nodes.route.output.workflow == "smart-pr-review"
-    subworkflow:
+    workflow:
       path: workflows/smart-pr-review.yaml
+      input: ${input}
 
   - id: comprehensive-pr-review
     depends_on: [route]
     when: nodes.route.output.workflow == "comprehensive-pr-review"
-    subworkflow:
+    workflow:
       path: workflows/comprehensive-pr-review.yaml
+      input: ${input}
 
   - id: validate-pr
     depends_on: [route]
     when: nodes.route.output.workflow == "validate-pr"
-    subworkflow:
+    workflow:
       path: workflows/validate-pr.yaml
+      input: ${input}
 
   - id: architect
     depends_on: [route]
     when: nodes.route.output.workflow == "architect"
-    subworkflow:
+    workflow:
       path: workflows/architect.yaml
+      input: ${input}
 
   - id: refactor-safely
     depends_on: [route]
     when: nodes.route.output.workflow == "refactor-safely"
-    subworkflow:
+    workflow:
       path: workflows/refactor-safely.yaml
+      input: ${input}
 
   - id: interactive-prd
     depends_on: [route]
     when: nodes.route.output.workflow == "interactive-prd"
-    subworkflow:
+    workflow:
       path: workflows/interactive-prd.yaml
+      input: ${input}
 
   - id: ralph-dag
     depends_on: [route]
     when: nodes.route.output.workflow == "ralph-dag"
-    subworkflow:
+    workflow:
       path: workflows/ralph-dag.yaml
+      input: ${input}
 
   - id: workflow-builder
     depends_on: [route]
     when: nodes.route.output.workflow == "workflow-builder"
-    subworkflow:
+    workflow:
       path: workflows/workflow-builder.yaml
+      input: ${input}
 
   - id: remotion-generate
     depends_on: [route]
     when: nodes.route.output.workflow == "remotion-generate"
-    subworkflow:
+    workflow:
       path: workflows/remotion-generate.yaml
+      input: ${input}
 
   - id: resolve-conflicts
     depends_on: [route]
     when: nodes.route.output.workflow == "resolve-conflicts"
-    subworkflow:
+    workflow:
       path: workflows/resolve-conflicts.yaml
+      input: ${input}

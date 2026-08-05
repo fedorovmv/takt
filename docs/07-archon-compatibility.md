@@ -1,6 +1,6 @@
 # Профиль совместимости с Archon
 
-Takt не заявляет бинарную или YAML-совместимость с Archon. Цель — перенести полезные процессы и сохранить знакомую модель DAG без второго runtime. В `v0.1.25-alpha` встроенный профиль `code` содержит 19 процессов, соответствующих стандартному каталогу Archon, и умный роутер внутри обычного Run.
+Takt не заявляет бинарную или YAML-совместимость с Archon. Цель — перенести полезные процессы и сохранить знакомую модель DAG без второго runtime. В `v0.1.26-alpha` встроенный профиль `code` содержит 19 процессов, соответствующих стандартному каталогу Archon, и умный роутер как корневой Run и выбранный процесс как governed child Run.
 
 ## Перенесённые конструкции
 
@@ -8,7 +8,7 @@ Takt не заявляет бинарную или YAML-совместимост
 |---|---|
 | `.archon/commands/*.md` | `.takt/profiles/code/commands/*.md` |
 | каталог default workflows | `profile.workflows` и селектор `code:<workflow>` |
-| workflow router | `code/workflow.yaml` с проверяемым `output_format` и условными `subworkflow` |
+| workflow router | `code/workflow.yaml` с проверяемым `output_format` и условными governed `workflow` |
 | `command` / `prompt` / `bash` | те же типы узлов |
 | DAG `nodes`, `depends_on`, `when` | DAG Takt с JSON-путями в output |
 | параллельные независимые узлы | параллельные scheduler-волны |
@@ -16,6 +16,8 @@ Takt не заявляет бинарную или YAML-совместимост
 | `loop` / human-in-the-loop | `loop_group` + сохраняемый `approval` в каждой итерации |
 | fan-out по списку | `foreach.parallel` с детерминированной агрегацией |
 | reusable include | compile-time `subworkflow` |
+| governed workflow / child sub-run | отдельный узел `workflow` с parent/child lifecycle |
+| cancellation tree | `takt cancel` и durable marker |
 | structured output | `output_format`, проверяемый runtime |
 | provider/model | assistant/model |
 | retry | attempts + portable hooks |
@@ -25,10 +27,10 @@ Takt не заявляет бинарную или YAML-совместимост
 ## Отличия платформенного уровня
 
 - собственная `apiVersion` и другой реестр model/assistant;
-- `subworkflow` компилируется в тот же Run, а не создаёт управляемый дочерний Run;
-- managed worktree isolation и автоматическое создание ветки реализованы; router включает её по политике выбранного дочернего workflow;
+- `subworkflow` компилируется в тот же Run; отдельный `workflow` создаёт governed child Run;
+- managed worktree isolation и автоматическое создание ветки реализованы; выбранный child Run применяет собственную политику или `isolation` родительского узла;
 - отсутствуют per-node `allowed_tools`, `denied_tools`, skills, MCP-конфигурация и sandbox policy;
-- отсутствуют governed child Runs, script nodes, `output_type`, `cancel` и runtime fan-out из результата узла; Web UI, сервер, БД, адаптеры сообщений и уведомления остаются proposal для нелокального режима;
+- отсутствуют script nodes, `output_type`, динамический runtime fan-out и параллельная волна governed children; Web UI, сервер, БД, адаптеры сообщений и уведомления остаются proposal для нелокального режима;
 - native hooks передаются адаптеру, portable hooks выполняются runtime;
 - state хранится локально.
 
@@ -42,6 +44,8 @@ takt workflow list code
 takt workflow describe code:piv-loop
 takt run code --input request.md --workspace . --json
 takt run code:smart-pr-review --input request.md --workspace . --json
+takt children <root-run-id> --workspace . --json
+takt cancel <root-run-id> --workspace . --json
 ```
 
-Запуск `code` использует роутер; явный селектор обходит классификацию и запускает выбранный процесс.
+Запуск `code` использует роутер и создаёт отдельный child Run выбранного процесса; явный селектор обходит классификацию и запускает этот процесс как корневой Run.

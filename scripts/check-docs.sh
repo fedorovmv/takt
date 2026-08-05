@@ -41,11 +41,11 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.7.0" \
+  "skills/takt/VERSION|0.8.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
-  "skills/takt/references/workflows.md|Approval, \`subworkflow\` и \`foreach\`" \
+  "skills/takt/references/workflows.md|Approval, \`subworkflow\`, \`foreach\` и governed \`workflow\`" \
   "skills/takt/references/patterns.md|валидатор → feedback → retry" \
   "skills/takt/references/troubleshooting.md|Workflow валиден, но не запускается" \
   "skills/takt/assets/validated-agent-profile/.takt/workflows/basic.yaml|model: deep" \
@@ -77,8 +77,15 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-034" \
   "ARCHITECTURE_DECISIONS.md|ADR-035" \
   "ARCHITECTURE_DECISIONS.md|ADR-037" \
+  "ARCHITECTURE_DECISIONS.md|ADR-038" \
   "docs/39-git-worktree-isolation-v0.1.25.md|Router-aware isolation" \
+  "docs/40-governed-child-runs-v0.1.26.md|Governed child Runs" \
+  "docs/40-governed-child-runs-v0.1.26.md|takt children" \
   "scripts/test-worktree.sh|git worktree contract: PASS" \
+  "scripts/test-child-runs.sh|governed child run contract: PASS" \
+  "README.md|takt children <run-id>" \
+  "docs/03-specification.md|governed child Run" \
+  "schemas/run-state.schema.json|parent_run_id" \
   "README.md|takt worktree list/remove/prune" \
   "docs/38-archon-workflow-catalog-v0.1.24.md|19 типовых процессов" \
   "docs/03-specification.md|output_format" \
@@ -106,7 +113,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.25-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.26-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \

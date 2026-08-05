@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.26-alpha
+
+- добавлен узел `workflow`, запускающий подключённый workflow как отдельный governed child Run со своим ID, state, events, artifacts, output и usage;
+- RunState хранит `parent_run_id`, `parent_node_id`, `child_run_ids`, aggregate usage и durable cancellation state; узел хранит текущего ребёнка и историю child attempts;
+- approval внутри дочернего Run можно отвечать через корневой Run; CLI продолжает ребёнка и каскадно возобновляет всю parent chain;
+- добавлены `takt children` и `takt cancel`, включая durable marker, остановку активного процесса и каскадную отмену дерева;
+- реализованы режимы изоляции ребёнка `inherit`, `worktree`, `none` и собственная policy дочернего workflow;
+- retry узла `workflow` создаёт новый дочерний Run, сохраняя предыдущие попытки для аудита;
+- fingerprint родителя рекурсивно включает definitions governed children; рекурсия и глубина 16 проверяются до запуска;
+- умный router и reusable review-блоки профиля `code` переведены на отдельные child Runs;
+- профиль `code` обновлён до 0.5.0, authoring skill — до 0.8.0;
+- добавлены ADR-038, governed child run contract suite и `docs/40-governed-child-runs-v0.1.26.md`.
+
 ## v0.1.25-alpha
 
 - добавлена управляемая Git worktree isolation: политика workflow, CLI-переопределения, отдельная ветка/каталог выполнения, сохранение состояния и безопасная очистка;

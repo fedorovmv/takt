@@ -42,6 +42,7 @@ type Node struct {
 	LoopGroup    *LoopGroupSpec    `json:"loop_group,omitempty"`
 	Subworkflow  *SubworkflowSpec  `json:"subworkflow,omitempty"`
 	Foreach      *ForeachSpec      `json:"foreach,omitempty"`
+	WorkflowRun  *WorkflowRunSpec  `json:"workflow,omitempty"`
 	Internal     *InternalNodeSpec `json:"-"`
 	Attempts     AttemptsSpec      `json:"attempts,omitempty"`
 	AllowFailure bool              `json:"allow_failure,omitempty"`
@@ -67,6 +68,15 @@ type ForeachSpec struct {
 
 type ForeachItemsSource struct {
 	Path string `json:"path"`
+}
+
+// WorkflowRunSpec starts another workflow as a separately persisted child Run.
+// Unlike subworkflow, it is not expanded into the parent DAG.
+type WorkflowRunSpec struct {
+	Path       string `json:"path"`
+	Input      string `json:"input,omitempty"`
+	OutputNode string `json:"output_node,omitempty"`
+	Isolation  string `json:"isolation,omitempty"`
 }
 
 // InternalNodeSpec is produced by workflow expansion and is never accepted

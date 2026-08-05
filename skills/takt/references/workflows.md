@@ -54,7 +54,7 @@ worktree:
   cleanup: on_success
 ```
 
-Изоляция применяется ко всему workflow. У подключённого subworkflow policy активируется на его gate до запуска дочерних узлов. Состояние и artifacts остаются в control workspace. Runtime автоматически удаляет только чистый успешный worktree; грязный или неуспешный сохраняется. Это не sandbox.
+Изоляция применяется ко всему workflow. У structural subworkflow policy активируется на его gate. Governed child Run по умолчанию применяет собственную policy либо режим `workflow.isolation`. Состояние и artifacts остаются в control workspace. Runtime автоматически удаляет только чистый успешный worktree; грязный или неуспешный сохраняется. Это не sandbox.
 
 ## Планирование
 
@@ -120,7 +120,7 @@ worktree:
       exit_code: 0
 ```
 
-Approval, `subworkflow` и `foreach` разрешены внутри `loop_group`; `until.node` использует публичный ID контейнера. Approval сохраняет активную итерацию и после ответа продолжает её. Вложенный `loop_group` остаётся запрещён.
+Approval, `subworkflow`, `foreach` и governed `workflow` разрешены внутри `loop_group`; `until.node` использует публичный ID контейнера. Approval сохраняет активную итерацию и после ответа продолжает её. Вложенный `loop_group` остаётся запрещён.
 
 ## Проверяемый JSON output
 
@@ -208,6 +208,33 @@ hooks:
 Контейнер поддерживает `id`, `depends_on`, `when`, `trigger_rule`, `assistant`, `model` и `session`. Последние три поля задают defaults дочернего вызова. Положительный `attempts.max`, непустые timeout/hooks/native_hooks и `allow_failure: true` задаются внутри подключённого workflow.
 
 Глубина композиции ограничена 16. Рекурсивные ссылки отклоняются при загрузке. Локальная команда ищется рядом с дочерним workflow и далее вверх до корня композиции.
+
+## Governed child workflow
+
+`workflow` запускает подключённое определение как отдельный Run:
+
+```yaml
+- id: implement
+  workflow:
+    path: workflows/implement.yaml
+    input: ${input}
+    output_node: result
+    isolation: inherit
+```
+
+Используй его, когда нужны отдельные state/events/artifacts/usage, самостоятельная worktree policy, каскадная отмена или наблюдаемая граница этапа. Пустой `isolation` применяет policy ребёнка; `inherit` использует execution workspace родителя; `worktree` создаёт отдельный managed worktree; `none` использует control workspace.
+
+Родитель хранит `child_run_ids`, ребёнок — `parent_run_id` и `parent_node_id`. При approval родитель ждёт с `kind: child_run`; ответ можно передать через корневой Run. Команды:
+
+```bash
+takt children <run-id>
+takt status <child-run-id>
+takt cancel <run-id> --reason "stop"
+```
+
+Если у ребёнка один terminal-узел, `output_node` необязателен. При нескольких terminal-узлах он обязателен. Retry родительского узла создаёт новый child Run и сохраняет предыдущие попытки.
+
+`subworkflow` выбирай для structural composition в одном Run; `workflow` — для отдельного lifecycle.
 
 ## Foreach
 

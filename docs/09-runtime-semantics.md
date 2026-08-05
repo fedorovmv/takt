@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.25-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.26-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -11,6 +11,10 @@
 ### Run
 
 Один запуск workflow с неизменяемыми входами, fingerprints определений и собственной историей событий.
+
+### Governed child Run
+
+Отдельный Run, созданный узлом `workflow`. Он имеет собственные state/events/artifacts/usage и связан с родителем через `parent_run_id` и `parent_node_id`. Это lifecycle boundary, а не внутренний DAG `loop_group` и не security sandbox.
 
 ### Node
 
@@ -182,7 +186,9 @@ Usage каждой агентной попытки добавляется к agg
 - downstream `all_done` может выполниться;
 - итоговый Run становится `failed`.
 
-При отмене родительского context Node и Run становятся `cancelled`. Причина context имеет приоритет над одновременно обнаруженным output overflow: Node сохраняет `timed_out` или `cancelled`, а `output_truncated` остаётся дополнительным полем результата. Команда `takt cancel` остаётся задачей v0.2.
+При отмене родительского context Node и Run становятся `cancelled`. Причина context имеет приоритет над одновременно обнаруженным output overflow: Node сохраняет `timed_out` или `cancelled`, а `output_truncated` остаётся дополнительным полем результата.
+
+`takt cancel` создаёт durable marker в каталоге Run. Ожидающий Run переводится в `cancelled` сразу; активная попытка проверяет marker и отменяет context вместе с process group. Запрос каскадируется по известным `child_run_ids`. Terminal children не изменяются.
 
 ## 9. Hooks
 
@@ -249,6 +255,8 @@ Approval внутри `loop_group` сохраняет `loop_iteration` и доч
 
 При изменении определений ответ не потребляется. `takt resume` позволяет повторить продолжение после временной ошибки.
 
+Если корневой Run ждёт `kind: child_run`, `takt answer` проходит по waiting-ссылкам до фактического approval. После ответа сначала продолжается ребёнок, затем каждый родитель до корня. Отдельные locks берутся последовательно на конкретные Run; state разных Run не сливается.
+
 ## 12. Структурированный вывод и JSON-пути
 
 Если AI-узел объявляет `output_format`, успешный сырой output сначала декодируется как ровно одно JSON-значение, затем проверяется по schema subset и канонизируется. Ошибка декодирования, лишнее значение или нарушение схемы классифицируются как `protocol`; такой output не становится успешным результатом узла.
@@ -273,9 +281,10 @@ Run хранит SHA-256:
 
 - workflow;
 - config;
-- содержимого разрешённых Markdown-команд.
+- содержимого разрешённых Markdown-команд;
+- статически подключённых governed child definitions в fingerprint родителя.
 
-`answer` и `resume` блокируются при изменении любого определения.
+Каждый ребёнок дополнительно хранит собственные fingerprints. `answer` и `resume` блокируются при изменении любого определения. Рекурсивные `workflow`-ссылки отклоняются, глубина ограничена 16.
 
 ## 15. YAML
 
@@ -293,10 +302,10 @@ Flag parser не печатает дополнительный текст в std
 ## 17. Оставшаяся семантика v0.2
 
 - строгие неизвестные template variables;
-- `takt cancel`;
 - normalized assistant protocol;
 - session resume без тихого fallback;
 - capabilities и per-node ограничения инструментов;
+- динамический fan-out и параллельные governed child Runs;
 - расширение `output_format` до более полного JSON Schema;
 - schema version, attempt и correlation ID как отдельные поля event.
 
@@ -316,8 +325,25 @@ Fingerprint workflow включает исходный родительский 
 Рекурсивные ссылки отклоняются по стеку абсолютных путей. Глубина одновременно активной композиции ограничена 16 workflow.
 
 
+## Governed child Run lifecycle
+
+Узел `workflow` не компилируется в DAG родителя. При первой попытке родитель создаёт Child Run ID, сохраняет link event и запускает отдельный Runner поверх того же file store.
+
+Состояние дерева:
+
+- ребёнок: `parent_run_id`, `parent_node_id`;
+- родитель: direct `child_run_ids`;
+- узел: current `child_run_id` и история child attempts;
+- ожидание: `kind: child_run`, `child_run_id` и публичный parent node ID.
+
+Результат terminal child Run становится execution result родительского узла. Usage ребёнка агрегируется как usage этой попытки. Failure и cancellation не маскируются. Если parent attempts повторяют узел, terminal ребёнок не переиспользуется: создаётся новый child Run, а предыдущий сохраняется.
+
+Изоляция ребёнка определяется `workflow.isolation`: собственная policy, `inherit`, `worktree` или `none`. `inherit` разделяет execution workspace с родителем, но state/events/artifacts остаются раздельными.
+
+Несколько governed nodes пока не входят в параллельную волну. Fan-out детей и join policies остаются следующим расширением scheduler.
+
 ## Managed Git worktree
 
-Workflow-level `worktree.enabled` creates a branch and worktree before actions start. For an expanded subworkflow, its hidden gate creates the worktree before child nodes, allowing the smart router to choose policy per branch. CLI overrides are persisted in Run state.
+Workflow-level `worktree.enabled` creates a branch and worktree before actions start. For structural subworkflow, a hidden gate can activate its policy before child nodes. The smart router now starts the selected process as a governed child Run; by default that child applies its own workflow policy. CLI overrides are persisted in Run state.
 
 Only a clean successful `on_success` worktree is removed automatically; its branch is preserved. Dirty, failed, cancelled, waiting, manual, or cleanup-error worktrees remain. The runtime never deletes uncommitted changes automatically. This boundary isolates local code changes but is not a sandbox.

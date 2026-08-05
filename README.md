@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.25-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.26-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -17,8 +17,8 @@
 - workflow в YAML или JSON;
 - DAG с параллельным выполнением независимых узлов, `depends_on`, `when` и `trigger_rule`;
 - единая семантика корневого DAG и дочернего DAG `loop_group`;
-- узлы `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow`, `foreach`;
-- reusable `subworkflow` компилируется в тот же DAG;
+- узлы `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow`, `foreach`, `workflow`;
+- reusable `subworkflow` компилируется в тот же DAG, а `workflow` запускает отдельный governed child Run;
 - последовательный и параллельный `foreach` для inline-списков и внешних YAML/JSON-массивов без преобразования Markdown в task AST;
 - `subworkflow` и `foreach` внутри `loop_group`;
 - JSON-массив результатов всех итераций `foreach`;
@@ -48,8 +48,9 @@
 - строгий YAML subset с сохранением пустых строк в block scalar;
 - проверяемый `output_format` для JSON-решений и обращение к вложенным полям результата в `when` и шаблонах;
 - именованные workflow профиля, `workflow list/describe` и селектор `profile:name`;
-- профиль `code` 0.4.0 с 19 процессами разработки и умным роутером внутри общего Run;
+- профиль `code` 0.5.0 с 19 процессами разработки, умным роутером и отдельным child Run для выбранного процесса;
 - управляемые Git worktree: политика workflow, отдельная ветка, безопасное удержание/очистка и `takt worktree list/remove/prune`;
+- parent/child lifecycle с отдельными state/events/artifacts/usage, `takt children`, каскадным `takt cancel` и approval через корневой Run;
 - aggregate usage по узлам и отдельные execution records по каждой фактической попытке;
 - `takt eval run/report` для воспроизводимой оценки каталогов заданий с fingerprints стратегии, benchmark, workspace и валидатора, версией assistant, requested/resolved model и предметными метриками качества;
 - атрибуция tokens/cost по execution identity; смена assistant, его версии или resolved model между retry помечается как mixed;
@@ -120,7 +121,7 @@ takt run code --input "Исправь issue #123 и создай PR"
 takt run code:comprehensive-pr-review --input "Проверь текущий PR"
 ```
 
-Запуск `code` без суффикса выполняет schema-validated router node и открывает ровно одну ветку в том же Run. Каталог включает assist, GitHub issue/PR процессы, PIV, PRD, Ralph, архитектурный анализ, безопасный рефакторинг, adversarial development, Remotion и разрешение конфликтов. Подробности: [Каталог процессов v0.1.24](docs/38-archon-workflow-catalog-v0.1.24.md).
+Запуск `code` без суффикса выполняет schema-validated router node в корневом Run и запускает выбранный процесс как отдельный governed child Run. Каталог включает assist, GitHub issue/PR процессы, PIV, PRD, Ralph, архитектурный анализ, безопасный рефакторинг, adversarial development, Remotion и разрешение конфликтов. Подробности: [Каталог процессов v0.1.24](docs/38-archon-workflow-catalog-v0.1.24.md).
 
 ## Композиция workflow
 
@@ -147,13 +148,33 @@ nodes:
 
 Рабочий пример: [`examples/composition/`](examples/composition/). Изменяющие процессы профиля `code` запускаются в управляемом Git worktree; состояние и артефакты остаются в исходном checkout.
 
+Для отдельного жизненного цикла используется `workflow`:
+
+```yaml
+- id: feature
+  workflow:
+    path: workflows/feature-development.yaml
+    input: ${input}
+    output_node: summary
+```
+
+Ребёнок получает собственный Run ID, state/events/artifacts и usage. Управление деревом:
+
+```bash
+takt children <run-id>
+takt status <child-run-id>
+takt cancel <run-id> --reason "остановлено пользователем"
+```
+
+Approval внутри ребёнка можно подтвердить через ID корневого Run и публичный ID `workflow`-узла. Подробности: [Governed child Runs v0.1.26](docs/40-governed-child-runs-v0.1.26.md).
+
 ## Скилл для настройки Takt
 
 Каталог [`skills/takt/`](skills/takt/) содержит переносимый скилл для кодовых агентов. Он помогает:
 
 - собирать `.takt/config.yaml`, workflow и Markdown-команды;
 - выбирать assistant и model на уровне defaults, команды или узла;
-- проектировать retry/feedback, hooks, approval, `loop_group`, `subworkflow` и `foreach`;
+- проектировать retry/feedback, hooks, approval, `loop_group`, `subworkflow`, `foreach` и governed `workflow`;
 - использовать inline `prompt` и внешние команды;
 - проверять профиль через `takt validate` и диагностировать ошибки;
 - начинать с проверенного шаблона `skills/takt/assets/validated-agent-profile/`.
@@ -164,7 +185,7 @@ nodes:
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.4.0 содержит 19 процессов разработки и умный роутер. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Следующие крупные системные срезы — управляемые дочерние Run и per-node ограничения инструментов/MCP/skills/sandbox. Server, Web UI и БД остаются proposal-направлением для возможного выхода за локальный trusted runtime.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.5.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Следующие крупные системные срезы — per-node ограничения инструментов/MCP/skills/sandbox, динамический fan-out дочерних Run и script nodes с типизированными артефактами. Server, Web UI и БД остаются proposal-направлением для возможного выхода за локальный trusted runtime.
 
 Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Отдельный предметный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 

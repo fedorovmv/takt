@@ -1,4 +1,4 @@
-# Takt code profile 0.4.0
+# Takt code profile 0.5.0
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -10,7 +10,7 @@ takt run code --input "Fix GitHub issue #123 and open a PR"
 takt run code:comprehensive-pr-review --input "Review the current PR"
 ```
 
-The router is an ordinary first node in the same Run. Mutating selected workflows activate a managed Git worktree at their subworkflow gate; routing itself stays in the control checkout. It returns schema-validated JSON and the selected branch executes in the same expanded DAG, so routing, cost, events, approvals, and results remain auditable.
+The router is an ordinary root Run in the control checkout. It returns schema-validated JSON and starts exactly one selected workflow as a governed child Run. The child has its own state, events, artifacts, usage and worktree policy, while the parent preserves the routing decision and link. Use `takt children <run-id>` to inspect the selected process and `takt cancel <run-id>` to cancel the tree.
 
 ## Included workflows
 

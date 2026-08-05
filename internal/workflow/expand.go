@@ -114,7 +114,7 @@ func (c *compiler) compileNode(node spec.Node, workflowPath, prefix string, defa
 	publicID := qualify(prefix, node.ID)
 	kinds := sourceKinds(node)
 	if kinds != 1 {
-		return compiledGroup{}, fmt.Errorf("node %q must define exactly one of command, prompt, bash, approval, loop_group, subworkflow, foreach", node.ID)
+		return compiledGroup{}, fmt.Errorf("node %q must define exactly one of command, prompt, bash, approval, loop_group, subworkflow, foreach, workflow", node.ID)
 	}
 
 	switch {
@@ -371,6 +371,12 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 	if node.Approval != nil {
 		node.Approval.Message = rewriteTemplate(node.Approval.Message)
 	}
+	if node.WorkflowRun != nil {
+		node.WorkflowRun.Input = rewriteTemplate(node.WorkflowRun.Input)
+		if !filepath.IsAbs(node.WorkflowRun.Path) {
+			node.WorkflowRun.Path = filepath.Clean(filepath.Join(filepath.Dir(workflowPath), node.WorkflowRun.Path))
+		}
+	}
 	rewriteHooks(&node.Hooks, rewriteTemplate)
 
 	if node.LoopGroup != nil {
@@ -406,6 +412,9 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 
 func unresolvedInput(node *spec.Node) string {
 	values := []string{node.Prompt, node.Bash, node.When}
+	if node.WorkflowRun != nil {
+		values = append(values, node.WorkflowRun.Input)
+	}
 	if node.Approval != nil {
 		values = append(values, node.Approval.Message)
 	}
@@ -516,6 +525,9 @@ func sourceKinds(node spec.Node) int {
 		count++
 	}
 	if node.Foreach != nil {
+		count++
+	}
+	if node.WorkflowRun != nil {
 		count++
 	}
 	if node.Internal != nil {

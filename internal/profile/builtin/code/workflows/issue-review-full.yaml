@@ -63,8 +63,9 @@ nodes:
 
   - id: review
     depends_on: [create-pr]
-    subworkflow:
+    workflow:
       path: review-block.yaml
+      isolation: inherit
 
   - id: summary
     depends_on: [review]

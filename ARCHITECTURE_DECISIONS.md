@@ -178,16 +178,23 @@ Scheduler собирает готовые независимые `command`, `pro
 
 ## ADR-036. Каталог и умный роутер являются обычными workflow
 
-**Статус:** принято.
+**Статус:** принято; execution boundary уточнена ADR-038.
 
-Profile может публиковать карту именованных workflow. Default workflow профиля `code` является аудируемым роутером: агент возвращает решение по проверяемому `output_format`, после чего `when` по JSON-полю открывает ровно одну ветку `subworkflow`. Решение роутера, модель, usage и ошибки остаются частью того же Run и event log.
+Profile может публиковать карту именованных workflow. Default workflow профиля `code` является аудируемым роутером: агент возвращает решение по проверяемому `output_format`, после чего `when` по JSON-полю открывает ровно одну ветку. В `v0.1.24` ветвь была structural `subworkflow`; с `v0.1.26` она запускается как governed child Run. Решение роутера, модель, usage и ошибки остаются в root Run, а выбранный процесс имеет отдельный event log.
 
 Прямой селектор `profile:workflow` обходит роутер и нужен для воспроизводимых запусков, тестов и ручного выбора. Каталог из 19 процессов является содержимым профиля, а не захардкоженной логикой Go. Добавление процесса требует изменения `profile.yaml`, workflow и команд, но не нового типа runtime.
 
 ## ADR-037. Control workspace and execution worktree are separate Run contexts
 
-Run state, events, locks, artifacts, workflow definitions, config, and Markdown-command fingerprints belong to the control workspace. A workflow may move node execution into a managed Git worktree with its own branch. The router may activate this boundary at a selected subworkflow gate, before the first child action.
+Run state, events, locks, artifacts, workflow definitions, config, and Markdown-command fingerprints belong to the control workspace. A workflow may move node execution into a managed Git worktree with its own branch. The router remains in the control workspace; since ADR-038 the selected governed child applies its own worktree policy before its first action. Structural subworkflow gates still support local policy activation when used directly.
 
 Takt removes only a clean successful worktree whose policy is `on_success`; the branch remains. Dirty, failed, cancelled, waiting, manually retained, or uninspectable worktrees are preserved for inspection. A dirty control checkout is rejected by default. Explicit `allow_dirty` starts from a committed base and never pretends to copy uncommitted changes.
 
 This is a local trusted-runtime isolation boundary, not a security sandbox. Server, Web UI, database, remote execution, and multi-user authorization require a separate architecture and threat model.
+
+## ADR-038. Structural composition and governed child Runs are different contracts
+
+`subworkflow` and `foreach` remain compile-time structural composition inside one Run and one scheduler. The new `workflow` node starts a separately persisted governed child Run with its own identity, state, events, artifacts, usage and worktree policy. Parent and child are linked explicitly; approval, resume and cancellation traverse that link without merging storage.
+
+A child uses its own workflow policy by default. `isolation: inherit` shares the parent's execution workspace while preserving a separate lifecycle; `worktree` forces a separate managed worktree; `none` uses the control workspace. Retrying a governed node creates a new child Run rather than mutating the terminal child attempt. Static child definitions participate in the parent fingerprint, recursion is rejected, and depth is limited to 16. Server, Web UI and database are not required for this local file-backed lifecycle.
+

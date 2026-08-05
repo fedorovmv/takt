@@ -86,3 +86,21 @@ func TestRunStateSchemaContainsExecutionIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestCancellationMarkerLifecycle(t *testing.T) {
+	fs := FS{Workspace: t.TempDir()}
+	if err := fs.RequestCancel("run-1"); err != nil {
+		t.Fatal(err)
+	}
+	requested, err := fs.CancelRequested("run-1")
+	if err != nil || !requested {
+		t.Fatalf("expected cancellation marker: requested=%v err=%v", requested, err)
+	}
+	if err := fs.ClearCancel("run-1"); err != nil {
+		t.Fatal(err)
+	}
+	requested, err = fs.CancelRequested("run-1")
+	if err != nil || requested {
+		t.Fatalf("marker was not cleared: requested=%v err=%v", requested, err)
+	}
+}

@@ -15,6 +15,8 @@ Runner / Shared DAG Scheduler
  ├── Bash Node
  ├── Approval Node
  ├── Loop Group ── тот же DAG Scheduler
+ ├── Structural Subworkflow/Foreach ── скомпилированный DAG
+ ├── Governed Workflow Node ── Child Runner / отдельный Run Store entry
  └── Hook Runtime
  │
  ├── Definition Fingerprints
@@ -33,8 +35,8 @@ Runner / Shared DAG Scheduler
 - `internal/assistant` — адаптеры `mock`, универсальный `process` и специализированные `pi` и `opencode`;
 - `internal/definition` — fingerprints workflow/config/commands;
 - `internal/workflow` — загрузка и статическая проверка DAG;
-- `internal/runtime` — общий scheduler, hooks, loops, approval и итог Run;
-- `internal/store` — revisioned state/event store, aggregate usage и lock Run;
+- `internal/runtime` — общий scheduler, hooks, loops, approval, governed child lifecycle, cancellation tree и итог Run;
+- `internal/store` — revisioned state/event store, parent/child links, durable cancel markers, aggregate usage и lock Run;
 - `internal/evaluation` — изолированный запуск наборов заданий и агрегация метрик из RunState.
 
 ## Граница с кодовым агентом
@@ -73,11 +75,11 @@ TAKT_NATIVE_HOOKS_JSON
 
 ## Control и execution workspace
 
-Workflow definitions, config, commands, Run state, events, locks и artifacts принадлежат control workspace. При `worktree.enabled` node actions получают отдельный execution workspace. Умный router активирует его на gate выбранного дочернего workflow. Это защищает исходный checkout от изменений, но не является sandbox.
+Workflow definitions, config, commands, Run state, events, locks и artifacts принадлежат control workspace. При `worktree.enabled` node actions получают отдельный execution workspace. Умный router остаётся в control workspace и запускает выбранный процесс отдельным governed child Run; ребёнок применяет собственную worktree policy или явный `isolation`. Это защищает исходный checkout от изменений, но не является sandbox.
 
 ## Состояние
 
-Каждый transition записывается через `Store.Commit`. State и event получают одну revision. `Load` обнаруживает рассогласование. `answer` и `resume` получают lock и проверяют fingerprints определений. Usage всех агентных попыток накапливается в состоянии узла и используется evaluation report.
+Каждый transition записывается через `Store.Commit`. State и event получают одну revision. `Load` обнаруживает рассогласование. `answer` и `resume` получают lock и проверяют fingerprints определений. Usage всех агентных попыток накапливается в состоянии узла и используется evaluation report. Каждый governed child имеет собственный state/events/artifacts и связывается с родителем через явные IDs; approval/resume/cancel проходят по этой связи без объединения файлов состояния.
 
 ## Evaluation
 
@@ -90,3 +92,9 @@ Workflow definitions, config, commands, Run state, events, locks и artifacts п
 ## Компиляция композиции
 
 Loader разворачивает `subworkflow` и `foreach` до валидации DAG. Runtime получает обычные nodes и внутренние no-op/result nodes, поэтому отдельного nested scheduler или nested Run store нет. Подключённые definitions входят в fingerprint.
+
+## Governed child execution
+
+Узел `workflow` остаётся в DAG родителя как одна action boundary. Runtime создаёт отдельный Child Run ID и запускает новый Runner с тем же файловым Repository, но другим каталогом Run. Parent node ждёт terminal status ребёнка и получает его output/usage как execution result. При approval родитель хранит waiting link, а CLI продолжает фактического ребёнка и затем parent chain. При retry создаётся новый child Run.
+
+Governed lifecycle не требует сервера или БД: связи сохраняются в локальном RunState, cancellation — в durable marker. Эта модель подходит однопользовательскому локальному runtime, но не заменяет distributed orchestration.

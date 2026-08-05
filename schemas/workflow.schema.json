@@ -315,6 +315,9 @@
         },
         "output_format": {
           "$ref": "#/$defs/outputFormat"
+        },
+        "workflow": {
+          "$ref": "#/$defs/workflowRun"
         }
       },
       "oneOf": [
@@ -351,6 +354,11 @@
         {
           "required": [
             "foreach"
+          ]
+        },
+        {
+          "required": [
+            "workflow"
           ]
         }
       ],
@@ -530,6 +538,9 @@
         },
         "output_format": {
           "$ref": "#/$defs/outputFormat"
+        },
+        "workflow": {
+          "$ref": "#/$defs/workflowRun"
         }
       },
       "oneOf": [
@@ -556,6 +567,11 @@
         {
           "required": [
             "foreach"
+          ]
+        },
+        {
+          "required": [
+            "workflow"
           ]
         }
       ],
@@ -838,6 +854,32 @@
           }
         }
       ]
+    },
+    "workflowRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "type": "string"
+        },
+        "output_node": {
+          "type": "string"
+        },
+        "isolation": {
+          "enum": [
+            "inherit",
+            "worktree",
+            "none"
+          ]
+        }
+      }
     }
   }
 }

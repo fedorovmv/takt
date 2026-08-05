@@ -75,6 +75,9 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		if n.Foreach != nil {
 			kinds++
 		}
+		if n.WorkflowRun != nil {
+			kinds++
+		}
 		if n.Internal != nil {
 			kinds++
 		}
@@ -83,6 +86,16 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		}
 		if n.Subworkflow != nil || n.Foreach != nil {
 			return fmt.Errorf("node %q contains an unexpanded workflow container", n.ID)
+		}
+		if n.WorkflowRun != nil {
+			if strings.TrimSpace(n.WorkflowRun.Path) == "" {
+				return fmt.Errorf("node %q workflow.path is required", n.ID)
+			}
+			switch n.WorkflowRun.Isolation {
+			case "", "inherit", "worktree", "none":
+			default:
+				return fmt.Errorf("node %q workflow.isolation must be inherit, worktree, or none", n.ID)
+			}
 		}
 		if n.Internal != nil && n.Internal.Mode != "noop" && n.Internal.Mode != "result" && n.Internal.Mode != "collect" && n.Internal.Mode != "worktree" {
 			return fmt.Errorf("node %q has unsupported internal mode %q", n.ID, n.Internal.Mode)

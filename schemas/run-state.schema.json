@@ -59,6 +59,15 @@
         },
         "message": {
           "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "approval",
+            "child_run"
+          ]
+        },
+        "child_run_id": {
+          "type": "string"
         }
       }
     },
@@ -116,6 +125,28 @@
     },
     "run_options": {
       "$ref": "#/$defs/runOptions"
+    },
+    "parent_run_id": {
+      "type": "string"
+    },
+    "parent_node_id": {
+      "type": "string"
+    },
+    "child_run_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "output": {
+      "type": "string"
+    },
+    "usage": {
+      "$ref": "#/$defs/usage"
+    },
+    "cancel_requested": {
+      "type": "boolean"
     }
   },
   "$defs": {
@@ -206,6 +237,16 @@
         },
         "public_parent": {
           "type": "string"
+        },
+        "child_run_id": {
+          "type": "string"
+        },
+        "child_run_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
         }
       }
     },

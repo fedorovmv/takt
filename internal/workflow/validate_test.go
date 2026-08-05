@@ -31,3 +31,21 @@ func TestValidateRejectsNestedLoopGroups(t *testing.T) {
 		t.Fatalf("expected nested loop validation error, got %v", err)
 	}
 }
+
+func TestValidateAcceptsGovernedWorkflowNode(t *testing.T) {
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "parent"}, Nodes: []spec.Node{{
+		ID: "child", WorkflowRun: &spec.WorkflowRunSpec{Path: "child.yaml", Input: "${input}", Isolation: "inherit"},
+	}}}
+	if err := Validate(wf); err != nil {
+		t.Fatalf("governed workflow node was rejected: %v", err)
+	}
+}
+
+func TestValidateRejectsGovernedWorkflowIsolation(t *testing.T) {
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "parent"}, Nodes: []spec.Node{{
+		ID: "child", WorkflowRun: &spec.WorkflowRunSpec{Path: "child.yaml", Isolation: "shared"},
+	}}}
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "isolation") {
+		t.Fatalf("expected governed workflow isolation error, got %v", err)
+	}
+}

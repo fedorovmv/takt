@@ -52,6 +52,9 @@ type Runner struct {
 }
 
 type StartOptions struct {
+	RunID        string
+	ParentRunID  string
+	ParentNodeID string
 	Worktree     *bool
 	WorktreeBase string
 	KeepWorktree bool
@@ -121,9 +124,19 @@ func (r *Runner) Start(ctx context.Context, input string) (*store.RunState, erro
 
 func (r *Runner) StartWithOptions(ctx context.Context, input string, options StartOptions) (*store.RunState, error) {
 	r.startOptions = options
-	id, err := newID()
-	if err != nil {
+	id := options.RunID
+	if id == "" {
+		var err error
+		id, err = newID()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := store.ValidateRunID(id); err != nil {
 		return nil, err
+	}
+	if value, ok := r.Store.(cancellationStore); ok {
+		_ = value.ClearCancel(id)
 	}
 	worktreeSpec := r.Workflow.Worktree
 	if options.Worktree != nil {
@@ -164,7 +177,7 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 	}
 	now := time.Now().UTC()
 	state := &store.RunState{
-		ID: id, Status: store.RunRunning, WorkflowPath: r.WorkflowPath, ConfigPath: r.ConfigPath,
+		ID: id, Status: store.RunRunning, ParentRunID: options.ParentRunID, ParentNodeID: options.ParentNodeID, WorkflowPath: r.WorkflowPath, ConfigPath: r.ConfigPath,
 		Workspace: r.ControlWorkspace, ExecutionWorkspace: r.Workspace, Worktree: worktreeState, RunOptions: runOptionsState(options), Input: input, Nodes: map[string]*store.NodeState{},
 		Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now,
 		WorkflowFingerprint: fingerprints.Workflow,
@@ -175,6 +188,10 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 		state.Nodes[node.ID] = &store.NodeState{Status: store.NodePending, Hidden: node.Hidden, PublicParent: node.PublicParent}
 	}
 	data := map[string]any{"workflow": r.Workflow.Metadata.Name, "execution_workspace": r.Workspace}
+	if options.ParentRunID != "" {
+		data["parent_run_id"] = options.ParentRunID
+		data["parent_node_id"] = options.ParentNodeID
+	}
 	if worktreeState != nil {
 		data["worktree"] = map[string]any{"path": worktreeState.Path, "branch": worktreeState.Branch, "base_commit": worktreeState.BaseCommit}
 	}
@@ -304,7 +321,13 @@ func (r *Runner) Resume(ctx context.Context, state *store.RunState) (*store.RunS
 		return state, err
 	}
 	if state.Status == store.RunWaiting && state.Waiting != nil {
-		return state, ErrWaiting
+		if state.Waiting.Kind != "child_run" {
+			return state, ErrWaiting
+		}
+		if node := state.Nodes[state.Waiting.NodeID]; node != nil {
+			node.Status = store.NodePending
+		}
+		state.Waiting = nil
 	}
 	state.Status = store.RunRunning
 	state.CurrentNodes = nil
@@ -316,6 +339,9 @@ func (r *Runner) Resume(ctx context.Context, state *store.RunState) (*store.RunS
 }
 
 func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunState, error) {
+	if state.CancelRequested {
+		return r.cancelState(state, "cancel_requested")
+	}
 	err := r.executeGraph(ctx, state, r.Workflow.Nodes, nil)
 	if errors.Is(err, ErrWaiting) {
 		return state, ErrWaiting
@@ -325,6 +351,8 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 			kind := execution.KindCancelled
 			if errors.Is(err, context.DeadlineExceeded) {
 				kind = execution.KindTimedOut
+			} else if r.cancellationRequested(state.ID) {
+				state.CancelRequested = true
 			}
 			state.Status = store.RunCancelled
 			state.ErrorCode = string(kind)
@@ -348,6 +376,10 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 	state.Status = status
 	state.ErrorCode = code
 	state.Error = cause
+	state.Usage = aggregateRunUsage(state.Nodes)
+	if status == store.RunCompleted {
+		state.Output = defaultRunOutput(r.Workflow.Nodes, state.Nodes)
+	}
 	switch status {
 	case store.RunCompleted:
 		if err := r.commit(state, "run.completed", "", nil); err != nil {
@@ -378,6 +410,9 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 
 func (r *Runner) executeGraph(ctx context.Context, state *store.RunState, nodes []spec.Node, previous map[string]store.NodeState) error {
 	for {
+		if state.CancelRequested || r.cancellationRequested(state.ID) {
+			return context.Canceled
+		}
 		progress := false
 		runnable := make([]spec.Node, 0, len(nodes))
 		for _, node := range nodes {
@@ -510,6 +545,9 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		if err != nil {
 			return r.finishNodeError(state, node.ID, "invalid_timeout", err, execResult{})
 		}
+		attemptCtx, cancelWatch := r.watchCancellation(attemptCtx, state.ID)
+		originalCancel := cancel
+		cancel = func() { cancelWatch(); originalCancel() }
 
 		decision, feedback, hookErr := r.runHooks(attemptCtx, state, node, hooks.BeforeNode, loopPrevious)
 		if hookErr != nil {
@@ -535,7 +573,11 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 			// Waiting is a suspension point, not a consumed attempt. Persist the
 			// rollback so a separate CLI process can resume the same attempt.
 			ns.Attempts--
-			if err := r.commit(state, "node.suspended", node.ID, map[string]any{"reason": "approval"}); err != nil {
+			reason := "approval"
+			if state.Waiting != nil && state.Waiting.Kind != "" {
+				reason = state.Waiting.Kind
+			}
+			if err := r.commit(state, "node.suspended", node.ID, map[string]any{"reason": reason}); err != nil {
 				return err
 			}
 			return ErrWaiting
@@ -720,7 +762,7 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		}
 		message := renderTemplate(node.Approval.Message, state, local, feedback, artifacts)
 		state.Status = store.RunWaiting
-		state.Waiting = &store.WaitingState{NodeID: node.ID, Message: message}
+		state.Waiting = &store.WaitingState{NodeID: node.ID, Message: message, Kind: "approval"}
 		state.Nodes[node.ID].Status = store.NodeWaiting
 		if err := r.commit(state, "approval.requested", node.ID, map[string]any{"message": message}); err != nil {
 			return execResult{}, err
@@ -728,6 +770,8 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		return execResult{}, ErrWaiting
 	case node.LoopGroup != nil:
 		return r.runLoopGroup(ctx, state, node)
+	case node.WorkflowRun != nil:
+		return r.runChildWorkflow(ctx, state, node, local, feedback, artifacts)
 	case node.Internal != nil:
 		switch node.Internal.Mode {
 		case "noop":

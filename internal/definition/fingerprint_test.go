@@ -7,6 +7,7 @@ import (
 
 	"takt/internal/command"
 	"takt/internal/spec"
+	"takt/internal/workflow"
 )
 
 func TestCommandFingerprintChangesWithContent(t *testing.T) {
@@ -38,5 +39,39 @@ func TestCommandFingerprintChangesWithContent(t *testing.T) {
 	}
 	if err := Verify(before, after); err == nil {
 		t.Fatal("expected definition change")
+	}
+}
+
+func TestGovernedChildWorkflowChangesParentFingerprint(t *testing.T) {
+	dir := t.TempDir()
+	childPath := filepath.Join(dir, "child.yaml")
+	parentPath := filepath.Join(dir, "parent.yaml")
+	if err := os.WriteFile(childPath, []byte("apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: child\nnodes:\n  - id: run\n    bash: echo one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(parentPath, []byte("apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: parent\nnodes:\n  - id: child\n    workflow:\n      path: child.yaml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := Compute(wf, &spec.Config{}, parentPath, "<config>", command.Resolver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(childPath, []byte("apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: child\nnodes:\n  - id: run\n    bash: echo two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, err = workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Compute(wf, &spec.Config{}, parentPath, "<config>", command.Resolver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Workflow == second.Workflow {
+		t.Fatal("child workflow change did not affect parent fingerprint")
 	}
 }

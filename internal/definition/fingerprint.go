@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"takt/internal/command"
 	"takt/internal/spec"
+	"takt/internal/workflow"
 )
 
 type Fingerprints struct {
@@ -75,6 +77,10 @@ func (e *ChangedError) Error() string {
 }
 
 func workflowDefinitionBytes(path string, wf *spec.Workflow) ([]byte, error) {
+	return workflowDefinitionBytesSeen(path, wf, map[string]bool{})
+}
+
+func workflowDefinitionBytesSeen(path string, wf *spec.Workflow, stack map[string]bool) ([]byte, error) {
 	var source []byte
 	if path != "" && path[0] != '<' {
 		b, err := os.ReadFile(path)
@@ -97,7 +103,54 @@ func workflowDefinitionBytes(path string, wf *spec.Workflow) ([]byte, error) {
 	out = append(out, source...)
 	out = append(out, 0)
 	out = append(out, canonical...)
+
+	paths := collectGovernedWorkflowPaths(wf.Nodes)
+	sort.Strings(paths)
+	for _, childPath := range paths {
+		if !filepath.IsAbs(childPath) {
+			childPath = filepath.Join(filepath.Dir(path), childPath)
+		}
+		childPath = filepath.Clean(childPath)
+		if stack[childPath] {
+			return nil, fmt.Errorf("recursive governed child workflow reference: %s", childPath)
+		}
+		stack[childPath] = true
+		child, err := workflow.Load(childPath)
+		if err != nil {
+			return nil, err
+		}
+		childBytes, err := workflowDefinitionBytesSeen(childPath, child, stack)
+		delete(stack, childPath)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, 0)
+		out = append(out, []byte(childPath)...)
+		out = append(out, 0)
+		out = append(out, childBytes...)
+	}
 	return out, nil
+}
+
+func collectGovernedWorkflowPaths(nodes []spec.Node) []string {
+	set := map[string]bool{}
+	var visit func([]spec.Node)
+	visit = func(items []spec.Node) {
+		for _, node := range items {
+			if node.WorkflowRun != nil && node.WorkflowRun.Path != "" {
+				set[node.WorkflowRun.Path] = true
+			}
+			if node.LoopGroup != nil {
+				visit(node.LoopGroup.Nodes)
+			}
+		}
+	}
+	visit(nodes)
+	out := make([]string, 0, len(set))
+	for path := range set {
+		out = append(out, path)
+	}
+	return out
 }
 
 func collectInternalNodes(nodes []spec.Node) map[string]spec.InternalNodeSpec {

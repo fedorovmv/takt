@@ -61,6 +61,9 @@ func TestCodeProfileSmartRouterExecutesExactlyOneWorkflow(t *testing.T) {
 	if state.Nodes["assist"].Status != store.NodeCompleted {
 		t.Fatalf("assist route did not complete: %+v", state.Nodes["assist"])
 	}
+	if state.Output != "assist completed" {
+		t.Fatalf("router did not expose the selected terminal child output: %q", state.Output)
+	}
 	for _, name := range []string{"fix-github-issue", "create-issue", "piv-loop", "smart-pr-review", "ralph-dag"} {
 		if state.Nodes[name].Status != store.NodeSkipped {
 			t.Fatalf("route %s was not skipped: %+v", name, state.Nodes[name])
@@ -68,7 +71,7 @@ func TestCodeProfileSmartRouterExecutesExactlyOneWorkflow(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(calls) != 2 || calls[0] != "route" || calls[1] != "assist__assist" {
+	if len(calls) != 2 || calls[0] != "route" || calls[1] != "assist" {
 		t.Fatalf("unexpected assistant calls: %v", calls)
 	}
 }
@@ -118,18 +121,28 @@ func TestCodeProfileRouterCreatesWorktreeForSelectedMutatingWorkflow(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Status != store.RunCompleted || state.Worktree == nil {
-		t.Fatalf("selected workflow did not complete in a managed worktree: %+v", state)
+	if state.Status != store.RunCompleted || state.Worktree != nil {
+		t.Fatalf("router should complete in the control checkout: %+v", state)
 	}
-	if !state.Worktree.Removed || state.Worktree.Path == "" || state.Worktree.Branch == "" {
-		t.Fatalf("clean selected-workflow worktree was not finalized: %+v", state.Worktree)
+	if len(state.ChildRunIDs) != 1 {
+		t.Fatalf("router did not create exactly one governed child: %+v", state.ChildRunIDs)
+	}
+	child, loadErr := r.Store.Load(state.ChildRunIDs[0])
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if child.Status != store.RunCompleted || child.Worktree == nil {
+		t.Fatalf("selected workflow did not complete in a managed worktree: %+v", child)
+	}
+	if !child.Worktree.Removed || child.Worktree.Path == "" || child.Worktree.Branch == "" {
+		t.Fatalf("clean selected-workflow worktree was not finalized: %+v", child.Worktree)
 	}
 	mu.Lock()
 	defer mu.Unlock()
 	if workspaces["route"] != workspace {
 		t.Fatalf("router should run in control checkout, got %q", workspaces["route"])
 	}
-	for _, id := range []string{"feature-development__implement", "feature-development__create-pr", "feature-development__summary"} {
+	for _, id := range []string{"implement", "create-pr", "summary"} {
 		if workspaces[id] == "" || workspaces[id] == workspace {
 			t.Fatalf("selected child node %s did not run in worktree: %q", id, workspaces[id])
 		}

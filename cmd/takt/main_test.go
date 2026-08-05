@@ -234,3 +234,136 @@ func mainGit(t *testing.T, dir string, args ...string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+func TestAnswerForGovernedChildResumesRootRun(t *testing.T) {
+	dir := t.TempDir()
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	childPath := filepath.Join(dir, "child.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: approve
+    approval:
+      message: Continue child?
+      capture_response: true
+  - id: done
+    depends_on: [approve]
+    bash: printf '%s' '${nodes.approve.output}'
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workflowPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: child
+    workflow:
+      path: child.yaml
+      output_node: done
+  - id: finish
+    depends_on: [child]
+    bash: printf 'root:%s' '${nodes.child.output}'
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("apiVersion: takt/v1alpha1\nkind: Config\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := cfgpkg.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := runtime.New(wf, cfg, workflowPath, configPath, dir).Start(context.Background(), "")
+	if !errors.Is(err, runtime.ErrWaiting) {
+		t.Fatalf("expected governed child waiting, got %v", err)
+	}
+	if err := answerCmd([]string{state.ID, "child", "--value", "yes", "--workspace", dir, "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+	st := store.FS{Workspace: dir}
+	root, err := st.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root.Status != store.RunCompleted || root.Output != "root:yes" {
+		t.Fatalf("root was not resumed to completion: %+v", root)
+	}
+	if len(root.ChildRunIDs) != 1 {
+		t.Fatalf("unexpected child links: %+v", root.ChildRunIDs)
+	}
+	child, err := st.Load(root.ChildRunIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Status != store.RunCompleted || child.Approvals["approve"] != "yes" {
+		t.Fatalf("child approval was not consumed: %+v", child)
+	}
+	if err := childrenCmd([]string{root.ID, "--workspace", dir, "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCancelWaitingGovernedTree(t *testing.T) {
+	dir := t.TempDir()
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	childPath := filepath.Join(dir, "child.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: approve
+    approval:
+      message: wait
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workflowPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: child
+    workflow:
+      path: child.yaml
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("apiVersion: takt/v1alpha1\nkind: Config\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, _ := workflow.Load(workflowPath)
+	cfg, _ := cfgpkg.Load(configPath)
+	state, err := runtime.New(wf, cfg, workflowPath, configPath, dir).Start(context.Background(), "")
+	if !errors.Is(err, runtime.ErrWaiting) {
+		t.Fatalf("expected waiting, got %v", err)
+	}
+	childID := state.Waiting.ChildRunID
+	if err := cancelCmd([]string{state.ID, "--workspace", dir, "--reason", "stop", "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+	st := store.FS{Workspace: dir}
+	root, err := st.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root.Status != store.RunCancelled {
+		t.Fatalf("root was not cancelled: %+v", root)
+	}
+	child, err := st.Load(childID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Status != store.RunCancelled {
+		t.Fatalf("child was not cancelled: %+v", child)
+	}
+}

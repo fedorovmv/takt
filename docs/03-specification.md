@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.25-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.26-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -255,6 +255,32 @@ until:
 
 Рекурсивная ссылка отклоняется с цепочкой файлов. Максимальная глубина развёртывания — 16 одновременно активных workflow; превышение возвращает `subworkflow expansion exceeds depth 16`.
 
+### `workflow` — governed child Run
+
+Запускает подключённый workflow как отдельный Run со своими state, events, artifacts, fingerprints, output и usage:
+
+```yaml
+- id: feature
+  workflow:
+    path: workflows/feature-development.yaml
+    input: ${input}
+    output_node: summary
+    isolation: inherit
+```
+
+`path` вычисляется относительно содержащего workflow. `input` проходит обычный renderer. Если `output_node` не задан, в дочернем определении должен быть ровно один terminal-узел. В отличие от `subworkflow`, дочерние узлы не встраиваются в DAG родителя.
+
+Ребёнок хранит `parent_run_id` и `parent_node_id`; родитель — список `child_run_ids`, а узел — текущий `child_run_id` и историю попыток. Failure/cancellation ребёнка определяет результат родительского узла. Retry узла создаёт новый child Run и сохраняет прежнюю попытку.
+
+Режимы `isolation`:
+
+- пусто — собственная `worktree`-политика ребёнка;
+- `inherit` — execution workspace родителя без отдельного worktree;
+- `worktree` — принудительно отдельный managed worktree;
+- `none` — control workspace без worktree.
+
+Approval ребёнка переводит родителя в `waiting` с `kind: child_run`. `takt answer` можно вызвать по корневому Run ID и публичному ID родительского `workflow`-узла; CLI продолжит фактический approval и затем всю parent chain. `takt cancel` распространяет отмену по дереву. Статические child definitions входят в fingerprint родителя; рекурсия отклоняется, глубина ограничена 16.
+
 ### `foreach`
 
 Выполняет один subworkflow для элементов из workflow или отдельного YAML/JSON-файла. По умолчанию итерации последовательны; `parallel: true` делает их независимыми узлами одной DAG-волны:
@@ -391,7 +417,8 @@ RunState содержит:
 - assistant, версию assistant, requested model и resolved model агентных узлов;
 - aggregate usage узлов: input/output tokens и cost всех агентных попыток;
 - `executions` — отдельные записи фактических попыток с execution identity и usage;
-- результаты последней loop iteration.
+- результаты последней loop iteration;
+- parent/child links, run output, aggregate usage и durable cancellation state.
 
 Каждый commit состояния и события получает одну revision. При несовпадении ревизий `Load` возвращает `store_inconsistent`.
 
@@ -451,6 +478,8 @@ takt run <workflow> --config <config> --workspace <dir> --input <file-or-text>
 takt answer <run-id> <node-id> --workspace <dir> --value <text>
 takt resume <run-id> --workspace <dir>
 takt status <run-id> --workspace <dir>
+takt children <run-id> --workspace <dir>
+takt cancel <run-id> --workspace <dir> [--reason <text>]
 takt command run <name> --config <config> --workspace <dir> --input <text>
 takt workflow list <profile> --workspace <dir>
 takt workflow describe <profile[:workflow]> --workspace <dir>
@@ -461,7 +490,7 @@ takt eval run <workflow> --config <config> --cases <dir> --workspace-template <d
 takt eval report <evaluation-output-dir>
 ```
 
-Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status`, `command run` и `eval` используют JSON по умолчанию.
+Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status`, `children`, `cancel`, `command run` и `eval` используют JSON по умолчанию.
 
 `eval run` выполняет preflight до создания output: нормализованные `case_id` должны быть уникальны, а `workspace-template` и `output` не могут совпадать или быть вложены друг в друга, включая пути через символические ссылки. До запуска вычисляются fingerprints workflow, config, Markdown-команд, упорядоченного набора заданий, копируемого workspace template и указанного валидатора.
 
@@ -478,7 +507,8 @@ takt eval report <evaluation-output-dir>
 - параллельная волна не включает узлы с portable hooks или `attempts.max > 1`;
 - вложенный `loop_group` внутри `loop_group` запрещён;
 - `native_hooks` передаются адаптеру, но не исполняются runtime;
-- нет `takt cancel`;
+- несколько `workflow`-узлов пока не выполняются одной параллельной волной;
+- нет динамического fan-out child Runs из output предыдущего узла;
 - нет sandbox и runtime-managed MCP/tool policy; server, Web UI и БД остаются proposal вне локального режима;
 - stale lock требует ручного удаления после аварийного завершения процесса;
 - специализированные Pi и OpenCode adapters реализованы;

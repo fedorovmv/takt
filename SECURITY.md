@@ -2,7 +2,7 @@
 
 ## Supported trust model
 
-Takt `v0.1.25-alpha` is a local, single-user, trusted runtime.
+Takt `v0.1.26-alpha` is a local, single-user, trusted runtime.
 
 Trusted inputs:
 
@@ -24,7 +24,8 @@ The current version must not be exposed as a service that accepts these values f
 - timeout and output limit for process assistants;
 - Unix process-group termination on context cancellation;
 - revision consistency between state and event log;
-- managed Git worktree separation for code-changing Runs, with safe retention of dirty results.
+- managed Git worktree separation for code-changing Runs, with safe retention of dirty results;
+- explicit parent/child Run links and durable local cancellation markers.
 
 These controls improve reliability but do not form a sandbox. A Git worktree isolates changes from the control checkout, but it does not restrict filesystem access, processes, network, credentials, or agent tools.
 
@@ -76,3 +77,7 @@ A future server or untrusted mode requires at minimum:
 ## Подключённые workflow
 
 Пути `subworkflow.path` считаются доверенными и могут ссылаться на локальные файлы, включая абсолютные пути. Компиляция не создаёт sandbox и не ограничивает чтение definition files. Для untrusted/server режима потребуются отдельная политика корней, запрет выхода из package и проверка символических ссылок.
+
+## Governed child Runs
+
+`workflow.path` is a trusted local definition path. A child Run has separate state, events and artifacts, but this is an execution-lifecycle boundary rather than a security boundary. `isolation: inherit` deliberately shares the parent execution workspace; `worktree` creates a Git worktree but still does not restrict filesystem, network, credentials or process access. Cascading cancellation is cooperative and relies on local context/process termination.

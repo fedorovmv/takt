@@ -1,5 +1,7 @@
 # Git worktree isolation in v0.1.25-alpha
 
+> Historical note: `v0.1.25-alpha` activated a selected structural subworkflow at a compiled gate. Since `v0.1.26-alpha`, the smart router starts the selected process as a governed child Run, which applies its own worktree policy. The worktree lifecycle described below remains valid.
+
 ## Goal
 
 Takt is currently a local trusted runtime, but code-changing workflows still need an execution boundary. A Run must be able to modify, test, and commit a dedicated branch without changing the checkout from which the user started Takt.
@@ -70,6 +72,6 @@ Definitions and bundled Markdown commands remain authoritative from the control 
 
 ## Deliberate boundaries
 
-Managed child Runs, per-node tool policies, MCP/skills/sandbox, script nodes, and runtime fan-out from a previous node's output remain active implementation gaps.
+Per-node tool policies, MCP/skills/sandbox, script nodes, dynamic child fan-out and parallel governed children remain active implementation gaps. Governed child Runs and cancellation were added in `v0.1.26-alpha`.
 
 Server, Web UI, database storage, remote workers, and message adapters remain proposal-level extensions. They become relevant only if Takt moves beyond local trusted execution; that move requires a separate threat model, authentication, secret handling, and multi-user persistence contract.

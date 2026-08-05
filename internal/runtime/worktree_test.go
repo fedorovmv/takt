@@ -253,3 +253,77 @@ nodes:
 		t.Fatalf("override was not persisted: %+v", state.RunOptions)
 	}
 }
+
+func TestGovernedChildRunCanInheritParentWorktree(t *testing.T) {
+	repo := t.TempDir()
+	runtimeGit(t, repo, "init")
+	runtimeGit(t, repo, "config", "user.email", "takt@example.invalid")
+	runtimeGit(t, repo, "config", "user.name", "Takt Test")
+	parentPath := filepath.Join(repo, "workflow.yaml")
+	childPath := filepath.Join(repo, "child.yaml")
+	configPath := filepath.Join(repo, "config.yaml")
+	if err := os.WriteFile(parentPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+worktree:
+  enabled: true
+  cleanup: on_success
+nodes:
+  - id: child
+    workflow:
+      path: child.yaml
+      isolation: inherit
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+worktree:
+  enabled: true
+nodes:
+  - id: change
+    bash: printf child > inherited.txt
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("apiVersion: takt/v1alpha1\nkind: Config\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runtimeGit(t, repo, "add", ".")
+	runtimeGit(t, repo, "commit", "-m", "definitions")
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := cfgpkg.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := New(wf, cfg, parentPath, configPath, repo)
+	parent, err := runner.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parent.Worktree == nil || parent.ExecutionWorkspace == repo || len(parent.ChildRunIDs) != 1 {
+		t.Fatalf("unexpected parent isolation: %+v", parent)
+	}
+	child, err := runner.Store.Load(parent.ChildRunIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Worktree != nil || child.ExecutionWorkspace != parent.ExecutionWorkspace {
+		t.Fatalf("child did not inherit parent worktree: parent=%+v child=%+v", parent.Worktree, child)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "inherited.txt")); !os.IsNotExist(err) {
+		t.Fatalf("child change leaked into control checkout: %v", err)
+	}
+	if content, err := os.ReadFile(filepath.Join(parent.ExecutionWorkspace, "inherited.txt")); err != nil || string(content) != "child" {
+		t.Fatalf("child did not write in inherited worktree: %q err=%v", content, err)
+	}
+	if err := gitworktree.Remove(context.Background(), parent.Worktree.RepositoryRoot, parent.Worktree.Path, true); err != nil {
+		t.Fatal(err)
+	}
+}

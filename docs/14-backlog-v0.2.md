@@ -1,6 +1,6 @@
 # Backlog Takt v0.2
 
-Статус обновлён для `v0.1.25-alpha`: реализованы параллельные DAG-волны, `foreach.parallel`, проверяемый `output_format`, именованные workflow профиля, approval внутри цикла и каталог из 19 процессов с умным роутером.
+Статус обновлён для `v0.1.26-alpha`: реализованы параллельные DAG-волны, `foreach.parallel`, проверяемый `output_format`, именованные workflow профиля, approval внутри цикла и каталог из 19 процессов с умным роутером.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 
@@ -133,10 +133,6 @@
 
 Неизвестная переменная вызывает ошибку; предусмотрены optional/default values.
 
-### TAKT-013. Команда `takt cancel`
-
-Идемпотентная отмена running/waiting Run и событие `run.cancelled`.
-
 ### TAKT-014. Capability contract
 
 Типизированные capabilities, `requires` и проверка до запуска.
@@ -204,7 +200,7 @@ Draft → approval comment → revise → artifact без изменения run
 ### TAKT-023. Каталог процессов code — выполнено
 
 - 19 именованных workflow;
-- умный роутер в том же Run;
+- умный роутер как root Run и выбранный процесс как governed child Run;
 - `workflow list/describe`;
 - reusable full/smart review blocks.
 
@@ -235,6 +231,21 @@ Draft → approval comment → revise → artifact без изменения run
 - safe retain/remove lifecycle and management commands;
 - persisted isolation state and resume semantics.
 
+## Завершено в v0.1.26-alpha
+
+### TAKT-024. Governed child Runs и cancellation tree — выполнено
+
+- отдельные Run ID, state/events/artifacts/output/usage;
+- parent/child links и history child attempts;
+- `workflow` node с `input`, `output_node` и `isolation`;
+- approval через root Run и каскадный resume parent chain;
+- `takt children` и durable `takt cancel`;
+- cancellation активного процесса и ожидающего дерева;
+- новый child Run на retry;
+- recursive fingerprints, recursion/depth checks;
+- smart router и review blocks переведены на governed children;
+- contract suite включён в `make check`.
+
 ### Следующий крупный срез
 
-Governed child Runs with separate Run ID, state/events, artifacts, cost, cancellation, and parent-child lifecycle. Server/Web UI/database remain proposals and are not prerequisites for local execution.
+Per-node tool allow/deny, skills, MCP, sandbox policy and capability negotiation. Then dynamic fan-out governed children and script/artifact contracts. Server/Web UI/database remain proposals and are not prerequisites for local execution.
