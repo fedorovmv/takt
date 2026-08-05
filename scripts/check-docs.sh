@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.8.0" \
+  "skills/takt/VERSION|0.9.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -79,6 +79,15 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-037" \
   "ARCHITECTURE_DECISIONS.md|ADR-038" \
   "docs/39-git-worktree-isolation-v0.1.25.md|Router-aware isolation" \
+  "ARCHITECTURE_DECISIONS.md|ADR-039" \
+  "ARCHITECTURE_DECISIONS.md|ADR-040" \
+  "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \
+  "docs/41-node-capability-policies-v0.1.27.md|allowed_tools: []" \
+  "scripts/test-policies.sh|node capability policy contract: PASS" \
+  ".github/workflows/ci.yml|macos-latest" \
+  "schemas/run-state.schema.json|inherited_policy" \
+  "schemas/assistant-protocol.schema.json|tools_restricted" \
+  "README.md|Политики возможностей узла" \
   "docs/40-governed-child-runs-v0.1.26.md|Governed child Runs" \
   "docs/40-governed-child-runs-v0.1.26.md|takt children" \
   "scripts/test-worktree.sh|git worktree contract: PASS" \
@@ -113,7 +122,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.26-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.27-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \

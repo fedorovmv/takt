@@ -52,6 +52,9 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 	if err := validatePiArgs(p.spec.Args); err != nil {
 		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "pi adapter", Err: err}
 	}
+	if err := validatePiPolicy(req.Policy); err != nil {
+		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "pi policy", Err: err}
+	}
 
 	env := piEnvironment(p.spec, req)
 	version, err := probePiVersion(ctx, binary, req.Workspace, env)
@@ -288,6 +291,17 @@ func piArgs(s spec.AssistantSpec, req Request) []string {
 	if mode == "resume" {
 		args = append(args, "--session", id)
 	}
+	if tools := effectivePiTools(req.Policy); len(tools) > 0 {
+		args = append(args, "--tools", strings.Join(tools, ","))
+	} else if req.Policy.ToolsRestricted {
+		args = append(args, "--no-tools")
+	}
+	if req.Policy.SkillsRestricted || len(req.Policy.Skills) > 0 {
+		args = append(args, "--no-skills")
+		for _, skill := range req.Policy.Skills {
+			args = append(args, "--skill", skill)
+		}
+	}
 	args = append(args, s.Args...)
 	return args
 }
@@ -298,6 +312,8 @@ func validatePiArgs(args []string) error {
 		"--no-session": {}, "--continue": {}, "-c": {}, "--resume": {}, "-r": {}, "--fork": {},
 		"--print": {}, "-p": {}, "--version": {}, "-v": {}, "--help": {}, "-h": {},
 		"--approve": {}, "-a": {}, "--no-approve": {}, "-na": {},
+		"--tools": {}, "-t": {}, "--no-tools": {}, "-nt": {}, "--no-builtin-tools": {}, "-nbt": {},
+		"--skill": {}, "--no-skills": {},
 	}
 	for _, arg := range args {
 		key := arg
@@ -309,6 +325,56 @@ func validatePiArgs(args []string) error {
 		}
 	}
 	return nil
+}
+
+func validatePiPolicy(policy Policy) error {
+	if policy.Filesystem == "read_only" {
+		writable := map[string]bool{"bash": true, "edit": true, "write": true}
+		for _, tool := range policy.AllowedTools {
+			if writable[tool] {
+				return fmt.Errorf("read_only sandbox cannot allow Pi tool %q", tool)
+			}
+		}
+	}
+	for _, skill := range policy.Skills {
+		if strings.TrimSpace(skill) == "" {
+			return fmt.Errorf("skill path must not be empty")
+		}
+		if _, err := os.Stat(skill); err != nil {
+			return fmt.Errorf("resolve Pi skill %q: %w", skill, err)
+		}
+	}
+	return nil
+}
+
+func effectivePiTools(policy Policy) []string {
+	base := []string{"read", "bash", "edit", "write", "grep", "find", "ls"}
+	denied := map[string]bool{}
+	for _, value := range policy.DeniedTools {
+		denied[value] = true
+	}
+	if policy.Filesystem == "read_only" {
+		denied["bash"], denied["edit"], denied["write"] = true, true, true
+	}
+	values := policy.AllowedTools
+	if len(values) == 0 && !policy.ToolsRestricted && (len(denied) > 0 || policy.Filesystem == "read_only") {
+		values = base
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || denied[value] || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func piThinking(params map[string]any) string {
@@ -354,6 +420,8 @@ func piEnvironment(s spec.AssistantSpec, req Request) []string {
 	values["TAKT_SESSION_ID"] = sessionID
 	values["TAKT_METADATA_JSON"] = string(metadataJSON)
 	values["TAKT_NATIVE_HOOKS_JSON"] = ""
+	policyJSON, _ := json.Marshal(req.Policy)
+	values["TAKT_POLICY_JSON"] = string(policyJSON)
 	if len(req.NativeHooks) > 0 {
 		if compact, err := compactJSON(req.NativeHooks); err == nil {
 			values["TAKT_NATIVE_HOOKS_JSON"] = compact
@@ -808,4 +876,7 @@ func piAgentFailure(raw json.RawMessage) string {
 
 func protocolPiError(op string, err error) error {
 	return &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "pi " + op, Err: err}
+}
+func (p Pi) Capabilities() []string {
+	return mergeCapabilities([]string{CapabilityToolPolicy, CapabilitySkills, CapabilitySandboxFilesystem}, p.spec.Capabilities)
 }

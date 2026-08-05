@@ -6,105 +6,292 @@
     "model": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "provider", "id"],
+      "required": [
+        "name",
+        "provider",
+        "id"
+      ],
       "properties": {
-        "name": {"type": "string"},
-        "provider": {"type": "string"},
-        "id": {"type": "string"},
-        "params": {"type": "object"}
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object"
+        }
       }
     },
     "sessionRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode"],
+      "required": [
+        "mode"
+      ],
       "properties": {
-        "mode": {"enum": ["fresh", "resume"]},
-        "id": {"type": "string"}
+        "mode": {
+          "enum": [
+            "fresh",
+            "resume"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
       }
     },
     "sessionResult": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "id": {"type": "string"},
-        "resumed": {"type": "boolean"}
+        "id": {
+          "type": "string"
+        },
+        "resumed": {
+          "type": "boolean"
+        }
       }
     },
     "usage": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "input_tokens": {"type": "integer", "minimum": 0},
-        "output_tokens": {"type": "integer", "minimum": 0},
-        "cost": {"type": "number", "minimum": 0}
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0
+        }
       }
     },
     "request": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "protocol_version", "type", "run_id", "node_id", "attempt",
-        "prompt", "workspace", "model", "session"
+        "protocol_version",
+        "type",
+        "run_id",
+        "node_id",
+        "attempt",
+        "prompt",
+        "workspace",
+        "model",
+        "session"
       ],
       "properties": {
-        "protocol_version": {"const": "takt-assistant/v1alpha1"},
-        "type": {"const": "request"},
-        "run_id": {"type": "string", "minLength": 1},
-        "node_id": {"type": "string", "minLength": 1},
-        "attempt": {"type": "integer", "minimum": 1},
-        "prompt": {"type": "string"},
-        "workspace": {"type": "string"},
-        "model": {"$ref": "#/$defs/model"},
-        "session": {"$ref": "#/$defs/sessionRequest"},
+        "protocol_version": {
+          "const": "takt-assistant/v1alpha1"
+        },
+        "type": {
+          "const": "request"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "node_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "session": {
+          "$ref": "#/$defs/sessionRequest"
+        },
         "native_hooks": {},
         "environment": {
           "type": "object",
-          "additionalProperties": {"type": "string"}
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "metadata": {
           "type": "object",
-          "additionalProperties": {"type": "string"}
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "limits": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "timeout_ms": {"type": "integer", "minimum": 0},
-            "max_output_bytes": {"type": "integer", "minimum": 0}
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_output_bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
+        },
+        "policy": {
+          "$ref": "#/$defs/policy"
         }
       }
     },
     "result": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["protocol_version", "type", "status", "exit_code"],
+      "required": [
+        "protocol_version",
+        "type",
+        "status",
+        "exit_code"
+      ],
       "properties": {
-        "protocol_version": {"const": "takt-assistant/v1alpha1"},
-        "type": {"const": "result"},
-        "status": {"enum": ["completed", "failed"]},
-        "output": {"type": "string"},
+        "protocol_version": {
+          "const": "takt-assistant/v1alpha1"
+        },
+        "type": {
+          "const": "result"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed"
+          ]
+        },
+        "output": {
+          "type": "string"
+        },
         "structured": {},
-        "session": {"$ref": "#/$defs/sessionResult"},
-        "exit_code": {"type": "integer"},
-        "resolved_model": {"$ref": "#/$defs/model"},
-        "usage": {"$ref": "#/$defs/usage"}
+        "session": {
+          "$ref": "#/$defs/sessionResult"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "resolved_model": {
+          "$ref": "#/$defs/model"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
       },
       "allOf": [
         {
-          "if": {"properties": {"status": {"const": "completed"}}},
-          "then": {"properties": {"exit_code": {"const": 0}}}
+          "if": {
+            "properties": {
+              "status": {
+                "const": "completed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "exit_code": {
+                "const": 0
+              }
+            }
+          }
         },
         {
-          "if": {"properties": {"status": {"const": "failed"}}},
-          "then": {"properties": {"exit_code": {"not": {"const": 0}}}}
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "exit_code": {
+                "not": {
+                  "const": 0
+                }
+              }
+            }
+          }
         }
       ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowed_tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "denied_tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "tools_restricted": {
+          "type": "boolean"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "skills_restricted": {
+          "type": "boolean"
+        },
+        "mcp_path": {
+          "type": "string"
+        },
+        "mcp_config": {},
+        "filesystem": {
+          "enum": [
+            "read_only"
+          ]
+        },
+        "network": {
+          "enum": [
+            "deny"
+          ]
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
     }
   },
   "oneOf": [
-    {"$ref": "#/$defs/request"},
-    {"$ref": "#/$defs/result"}
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/result"
+    }
   ]
 }

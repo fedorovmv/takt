@@ -40,6 +40,19 @@ type ModelRef struct {
 	Params   map[string]any `json:"params,omitempty"`
 }
 
+type NodePolicyState struct {
+	AllowedTools     []string `json:"allowed_tools,omitempty"`
+	DeniedTools      []string `json:"denied_tools,omitempty"`
+	ToolsRestricted  bool     `json:"tools_restricted,omitempty"`
+	Skills           []string `json:"skills,omitempty"`
+	SkillsRestricted bool     `json:"skills_restricted,omitempty"`
+	MCPPath          string   `json:"mcp_path,omitempty"`
+	Filesystem       string   `json:"filesystem,omitempty"`
+	Network          string   `json:"network,omitempty"`
+	Requires         []string `json:"requires,omitempty"`
+	Capabilities     []string `json:"capabilities,omitempty"`
+}
+
 type Usage struct {
 	InputTokens  int     `json:"input_tokens,omitempty"`
 	OutputTokens int     `json:"output_tokens,omitempty"`
@@ -91,6 +104,7 @@ type NodeState struct {
 	PublicParent     string               `json:"public_parent,omitempty"`
 	ChildRunID       string               `json:"child_run_id,omitempty"`
 	ChildRunIDs      []string             `json:"child_run_ids,omitempty"`
+	Policy           *NodePolicyState     `json:"policy,omitempty"`
 }
 
 func (n NodeState) Terminal() bool {
@@ -125,6 +139,8 @@ type WorktreeState struct {
 	BaseDirty          bool      `json:"base_dirty,omitempty"`
 	Dirty              bool      `json:"dirty,omitempty"`
 	Removed            bool      `json:"removed,omitempty"`
+	BranchRemoved      bool      `json:"branch_removed,omitempty"`
+	BranchCleanupError string    `json:"branch_cleanup_error,omitempty"`
 	RetainedReason     string    `json:"retained_reason,omitempty"`
 	CleanupError       string    `json:"cleanup_error,omitempty"`
 	RemovedAt          time.Time `json:"removed_at,omitempty"`
@@ -149,6 +165,7 @@ type RunState struct {
 	ExecutionWorkspace  string                `json:"execution_workspace,omitempty"`
 	Worktree            *WorktreeState        `json:"worktree,omitempty"`
 	RunOptions          RunOptionsState       `json:"run_options,omitempty"`
+	InheritedPolicy     *NodePolicyState      `json:"inherited_policy,omitempty"`
 	Input               string                `json:"input"`
 	Output              string                `json:"output,omitempty"`
 	Usage               *Usage                `json:"usage,omitempty"`

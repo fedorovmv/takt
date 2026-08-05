@@ -18,6 +18,7 @@ type Request struct {
 	SessionMode string
 	SessionID   string
 	NativeHooks json.RawMessage
+	Policy      Policy
 	Metadata    map[string]string
 }
 
@@ -37,6 +38,7 @@ type Result struct {
 
 type Adapter interface {
 	Run(context.Context, Request) (Result, error)
+	Capabilities() []string
 }
 
 type Resolver interface {

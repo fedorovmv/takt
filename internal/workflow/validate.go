@@ -91,6 +91,11 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			if strings.TrimSpace(n.WorkflowRun.Path) == "" {
 				return fmt.Errorf("node %q workflow.path is required", n.ID)
 			}
+			if n.WorkflowRun.Policy != nil {
+				if err := validatePolicySpec(*n.WorkflowRun.Policy, "node "+n.ID+".workflow.policy"); err != nil {
+					return err
+				}
+			}
 			switch n.WorkflowRun.Isolation {
 			case "", "inherit", "worktree", "none":
 			default:
@@ -137,6 +142,48 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			duration, err := time.ParseDuration(n.Timeout)
 			if err != nil || duration <= 0 {
 				return fmt.Errorf("node %q has invalid timeout %q", n.ID, n.Timeout)
+			}
+		}
+		if n.AllowedTools != nil || len(n.DeniedTools) > 0 || n.Skills != nil || n.MCP != "" || n.Sandbox != nil || len(n.Requires) > 0 {
+			if n.Command == "" && n.Prompt == "" {
+				return fmt.Errorf("node %q assistant policies are supported only for command or prompt nodes", n.ID)
+			}
+			if err := validateStringSet(optionalStrings(n.AllowedTools), "node "+n.ID+".allowed_tools"); err != nil {
+				return err
+			}
+			if err := validateStringSet(n.DeniedTools, "node "+n.ID+".denied_tools"); err != nil {
+				return err
+			}
+			if err := validateStringSet(optionalStrings(n.Skills), "node "+n.ID+".skills"); err != nil {
+				return err
+			}
+			if err := validateStringSet(n.Requires, "node "+n.ID+".requires"); err != nil {
+				return err
+			}
+			denied := map[string]bool{}
+			for _, tool := range n.DeniedTools {
+				denied[tool] = true
+			}
+			for _, tool := range optionalStrings(n.AllowedTools) {
+				if denied[tool] {
+					return fmt.Errorf("node %q tool %q appears in both allowed_tools and denied_tools", n.ID, tool)
+				}
+			}
+			if n.Sandbox != nil {
+				if n.Sandbox.Filesystem != "" && n.Sandbox.Filesystem != "read_only" {
+					return fmt.Errorf("node %q sandbox.filesystem must be read_only", n.ID)
+				}
+				if n.Sandbox.Network != "" && n.Sandbox.Network != "deny" {
+					return fmt.Errorf("node %q sandbox.network must be deny", n.ID)
+				}
+				if n.Sandbox.Filesystem == "read_only" {
+					mutating := map[string]bool{"bash": true, "edit": true, "write": true, "patch": true}
+					for _, tool := range optionalStrings(n.AllowedTools) {
+						if mutating[tool] {
+							return fmt.Errorf("node %q read_only sandbox cannot allow tool %q", n.ID, tool)
+						}
+					}
+				}
 			}
 		}
 		if n.OutputFormat != nil {
@@ -247,6 +294,68 @@ func validateOutputFormat(format spec.OutputFormat, path string) error {
 	}
 	if len(format.Enum) > 0 && format.Type != "string" {
 		return fmt.Errorf("%s enum is supported only for string", path)
+	}
+	return nil
+}
+
+func optionalStrings(value *[]string) []string {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func validateStringSet(values []string, path string) error {
+	seen := map[string]bool{}
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s contains an empty value", path)
+		}
+		if seen[value] {
+			return fmt.Errorf("%s contains duplicate value %q", path, value)
+		}
+		seen[value] = true
+	}
+	return nil
+}
+
+func validatePolicySpec(value spec.PolicySpec, path string) error {
+	if err := validateStringSet(optionalStrings(value.AllowedTools), path+".allowed_tools"); err != nil {
+		return err
+	}
+	if err := validateStringSet(value.DeniedTools, path+".denied_tools"); err != nil {
+		return err
+	}
+	if err := validateStringSet(optionalStrings(value.Skills), path+".skills"); err != nil {
+		return err
+	}
+	if err := validateStringSet(value.Requires, path+".requires"); err != nil {
+		return err
+	}
+	denied := map[string]bool{}
+	for _, tool := range value.DeniedTools {
+		denied[tool] = true
+	}
+	for _, tool := range optionalStrings(value.AllowedTools) {
+		if denied[tool] {
+			return fmt.Errorf("%s tool %q appears in both allowed_tools and denied_tools", path, tool)
+		}
+	}
+	if value.Sandbox != nil {
+		if value.Sandbox.Filesystem != "" && value.Sandbox.Filesystem != "read_only" {
+			return fmt.Errorf("%s sandbox.filesystem must be read_only", path)
+		}
+		if value.Sandbox.Network != "" && value.Sandbox.Network != "deny" {
+			return fmt.Errorf("%s sandbox.network must be deny", path)
+		}
+		if value.Sandbox.Filesystem == "read_only" {
+			mutating := map[string]bool{"bash": true, "edit": true, "write": true, "patch": true}
+			for _, tool := range optionalStrings(value.AllowedTools) {
+				if mutating[tool] {
+					return fmt.Errorf("%s read_only sandbox cannot allow tool %q", path, tool)
+				}
+			}
+		}
 	}
 	return nil
 }

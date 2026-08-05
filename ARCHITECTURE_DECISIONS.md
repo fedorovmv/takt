@@ -198,3 +198,21 @@ This is a local trusted-runtime isolation boundary, not a security sandbox. Serv
 
 A child uses its own workflow policy by default. `isolation: inherit` shares the parent's execution workspace while preserving a separate lifecycle; `worktree` forces a separate managed worktree; `none` uses the control workspace. Retrying a governed node creates a new child Run rather than mutating the terminal child attempt. Static child definitions participate in the parent fingerprint, recursion is rejected, and depth is limited to 16. Server, Web UI and database are not required for this local file-backed lifecycle.
 
+
+## ADR-039. Политика AI-узла проверяется до запуска adapter
+
+**Статус:** принято.
+
+`allowed_tools`, `denied_tools`, `skills`, `mcp`, `sandbox` и `requires` являются частью определения workflow. Runtime вычисляет effective policy до вызова assistant, проверяет `Adapter.Capabilities()`, сохраняет применённый контракт в state и передаёт его adapter. Неподдерживаемая возможность является ошибкой до запуска процесса и не может молча игнорироваться.
+
+Явные пустые `allowed_tools: []` и `skills: []` являются заданными пустыми allowlists. Governed child Run наследует policy как верхнюю границу: allowlists пересекаются, deny/requirements объединяются, более строгий sandbox сохраняется, inherited MCP нельзя заменить. Policy resources входят в fingerprint.
+
+Filesystem/network policy текущего локального runtime является assistant-enforced contract, а не OS sandbox. Встроенные adapters объявляют только реально реализованные зарезервированные capabilities; `process` может объявить их явно, поскольку исполнение лежит на внешнем adapter.
+
+## ADR-040. Worktree paths canonicalize symbolic links and empty branches are disposable
+
+**Статус:** принято.
+
+Перед проверкой принадлежности workspace репозиторию Takt разрешает символические ссылки для workspace и результата `git rev-parse --show-toplevel`. Это устраняет различие логического и физического пути на macOS и в пользовательских symlinked workspaces.
+
+После удаления worktree ветка удаляется только если её head по-прежнему равен записанному base commit. Ветка с коммитами считается результатом Run и сохраняется. Terminal failed/completed/cancelled Run нельзя переопределить последующей командой cancel.

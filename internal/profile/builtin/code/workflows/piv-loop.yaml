@@ -46,6 +46,8 @@ nodes:
             Human reply:
             ${nodes.feedback.output}
           model: routing
+          allowed_tools: []
+          skills: []
           output_format:
             type: object
             additionalProperties: false
@@ -104,6 +106,8 @@ nodes:
             Decide whether the human feedback explicitly approved the plan. Return only JSON.
             Feedback: ${nodes.feedback.output}
           model: routing
+          allowed_tools: []
+          skills: []
           output_format:
             type: object
             additionalProperties: false
@@ -163,6 +167,8 @@ nodes:
             Decide whether the human explicitly accepted the implementation. Return only JSON.
             Feedback: ${nodes.feedback.output}
           model: routing
+          allowed_tools: []
+          skills: []
           output_format:
             type: object
             additionalProperties: false

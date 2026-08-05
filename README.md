@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.26-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.27-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -48,7 +48,7 @@
 - строгий YAML subset с сохранением пустых строк в block scalar;
 - проверяемый `output_format` для JSON-решений и обращение к вложенным полям результата в `when` и шаблонах;
 - именованные workflow профиля, `workflow list/describe` и селектор `profile:name`;
-- профиль `code` 0.5.0 с 19 процессами разработки, умным роутером и отдельным child Run для выбранного процесса;
+- профиль `code` 0.6.0 с 19 процессами разработки, умным роутером и отдельным child Run для выбранного процесса;
 - управляемые Git worktree: политика workflow, отдельная ветка, безопасное удержание/очистка и `takt worktree list/remove/prune`;
 - parent/child lifecycle с отдельными state/events/artifacts/usage, `takt children`, каскадным `takt cancel` и approval через корневой Run;
 - aggregate usage по узлам и отдельные execution records по каждой фактической попытке;
@@ -185,7 +185,7 @@ Approval внутри ребёнка можно подтвердить чере�
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.5.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Следующие крупные системные срезы — per-node ограничения инструментов/MCP/skills/sandbox, динамический fan-out дочерних Run и script nodes с типизированными артефактами. Server, Web UI и БД остаются proposal-направлением для возможного выхода за локальный trusted runtime.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.6.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Следующие крупные системные срезы — динамический fan-out дочерних Run и script nodes с типизированными артефактами. Server, Web UI и БД остаются proposal-направлением для возможного выхода за локальный trusted runtime.
 
 Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Отдельный предметный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 
@@ -214,6 +214,9 @@ Evaluation runner фиксирует идентичность стратегии
 - [Композиция workflow v0.1.22](docs/36-workflow-composition-v0.1.22.md)
 - [Усиление композиции v0.1.23](docs/37-composition-hardening-v0.1.23.md)
 - [Каталог процессов и умный роутер v0.1.24](docs/38-archon-workflow-catalog-v0.1.24.md)
+- [Git worktree isolation v0.1.25](docs/39-git-worktree-isolation-v0.1.25.md)
+- [Governed child Runs v0.1.26](docs/40-governed-child-runs-v0.1.26.md)
+- [Политики возможностей узлов v0.1.27](docs/41-node-capability-policies-v0.1.27.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -255,8 +258,32 @@ Evaluation runner фиксирует идентичность стратегии
 - [Композиция workflow v0.1.22](docs/36-workflow-composition-v0.1.22.md)
 - [Усиление композиции v0.1.23](docs/37-composition-hardening-v0.1.23.md)
 - [Каталог процессов и умный роутер v0.1.24](docs/38-archon-workflow-catalog-v0.1.24.md)
+- [Git worktree isolation v0.1.25](docs/39-git-worktree-isolation-v0.1.25.md)
+- [Governed child Runs v0.1.26](docs/40-governed-child-runs-v0.1.26.md)
+- [Политики возможностей узлов v0.1.27](docs/41-node-capability-policies-v0.1.27.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
+
+## Политики возможностей узла
+
+AI-узлы поддерживают `allowed_tools`, `denied_tools`, `skills`, `mcp`, `sandbox` и `requires`. Явный `allowed_tools: []` означает запуск без инструментов. Adapter обязан объявить требуемые возможности до запуска; неподдерживаемая гарантия завершает узел до вызова модели. Политика сохраняется в состоянии, входит в fingerprint вместе с файлами MCP/skills и наследуется governed child Run как верхняя граница.
+
+```yaml
+- id: classify
+  command: classify-change
+  allowed_tools: []
+  skills: []
+
+- id: review
+  command: review-code
+  denied_tools: [edit, write]
+  mcp: mcp/repository.json
+  sandbox:
+    filesystem: read_only
+  requires: [tool_policy, mcp]
+```
+
+Filesystem/network policy текущей версии является assistant-enforced contract, а не OS sandbox. `process` получает policy через протокол и `TAKT_POLICY_JSON`; Pi/OpenCode применяют только реально поддерживаемые встроенные capabilities.
 
 ## Важная граница
 

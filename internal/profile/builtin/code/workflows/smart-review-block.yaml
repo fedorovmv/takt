@@ -15,6 +15,8 @@ nodes:
     depends_on: [scope]
     command: classify-review
     model: routing
+    allowed_tools: []
+    skills: []
     output_format:
       type: object
       additionalProperties: false
@@ -37,26 +39,31 @@ nodes:
   - id: code
     depends_on: [scope, classify]
     command: review-code
+    denied_tools: [edit, write]
 
   - id: errors
     depends_on: [scope, classify]
     when: nodes.classify.output.run_error_review == "true"
     command: review-errors
+    denied_tools: [edit, write]
 
   - id: tests
     depends_on: [scope, classify]
     when: nodes.classify.output.run_test_review == "true"
     command: review-tests
+    denied_tools: [edit, write]
 
   - id: docs
     depends_on: [scope, classify]
     when: nodes.classify.output.run_docs_review == "true"
     command: review-docs
+    denied_tools: [edit, write]
 
   - id: simplicity
     depends_on: [scope, classify]
     when: nodes.classify.output.run_simplicity_review == "true"
     command: review-simplicity
+    denied_tools: [edit, write]
 
   - id: synthesize
     depends_on: [code, errors, tests, docs, simplicity]

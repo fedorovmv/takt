@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -51,7 +52,14 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode adapter", Err: err}
 	}
 
-	env := openCodeEnvironment(o.spec, req)
+	env, err := openCodeEnvironment(o.spec, req)
+	if err != nil {
+		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode policy", Err: err}
+	}
+	prompt, err := openCodePrompt(req.Prompt, req.Policy)
+	if err != nil {
+		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode skills", Err: err}
+	}
 	version, err := probeOpenCodeVersion(ctx, binary, req.Workspace, env)
 	if err != nil {
 		return Result{}, err
@@ -64,7 +72,7 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 	execution.ConfigureCommand(cmd)
 	cmd.Dir = req.Workspace
 	cmd.Env = env
-	cmd.Stdin = strings.NewReader(req.Prompt)
+	cmd.Stdin = strings.NewReader(prompt)
 
 	limit := o.spec.MaxOutputBytes
 	if limit == 0 {
@@ -274,7 +282,33 @@ func openCodeVariant(params map[string]any) string {
 	return ""
 }
 
-func openCodeEnvironment(s spec.AssistantSpec, req Request) []string {
+func openCodePrompt(prompt string, policy Policy) (string, error) {
+	var injected []string
+	for _, value := range policy.Skills {
+		path := filepath.Clean(value)
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue // named skills are discovered by OpenCode itself
+			}
+			return "", fmt.Errorf("resolve skill %q: %w", value, err)
+		}
+		if info.IsDir() {
+			path = filepath.Join(path, "SKILL.md")
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read skill %q: %w", value, err)
+		}
+		injected = append(injected, fmt.Sprintf("<takt-skill source=%q>\n%s\n</takt-skill>", path, strings.TrimSpace(string(body))))
+	}
+	if len(injected) == 0 {
+		return prompt, nil
+	}
+	return "The following Takt skills are mandatory instructions for this node.\n\n" + strings.Join(injected, "\n\n") + "\n\n<task>\n" + prompt + "\n</task>\n", nil
+}
+
+func openCodeEnvironment(s spec.AssistantSpec, req Request) ([]string, error) {
 	values := make(map[string]string)
 	for _, entry := range os.Environ() {
 		key, value, found := strings.Cut(entry, "=")
@@ -300,10 +334,28 @@ func openCodeEnvironment(s spec.AssistantSpec, req Request) []string {
 	values["TAKT_SESSION_ID"] = sessionID
 	values["TAKT_METADATA_JSON"] = string(metadataJSON)
 	values["TAKT_NATIVE_HOOKS_JSON"] = ""
+	policyJSON, _ := json.Marshal(req.Policy)
+	values["TAKT_POLICY_JSON"] = string(policyJSON)
 	if len(req.NativeHooks) > 0 {
 		if compact, err := compactJSON(req.NativeHooks); err == nil {
 			values["TAKT_NATIVE_HOOKS_JSON"] = compact
 		}
+	}
+	if policyConfig, err := openCodePolicyConfig(req.Policy); err != nil {
+		return nil, err
+	} else if len(policyConfig) > 0 {
+		base := map[string]any{}
+		if raw := strings.TrimSpace(values["OPENCODE_CONFIG_CONTENT"]); raw != "" {
+			if err := json.Unmarshal([]byte(raw), &base); err != nil {
+				return nil, fmt.Errorf("parse existing OPENCODE_CONFIG_CONTENT: %w", err)
+			}
+		}
+		mergeOpenCodeConfig(base, policyConfig)
+		encoded, err := json.Marshal(base)
+		if err != nil {
+			return nil, err
+		}
+		values["OPENCODE_CONFIG_CONTENT"] = string(encoded)
 	}
 	keys := make([]string, 0, len(values))
 	for key := range values {
@@ -314,7 +366,76 @@ func openCodeEnvironment(s spec.AssistantSpec, req Request) []string {
 	for _, key := range keys {
 		env = append(env, key+"="+values[key])
 	}
-	return env
+	return env, nil
+}
+
+func openCodePolicyConfig(policy Policy) (map[string]any, error) {
+	config := map[string]any{}
+	permission := map[string]any{}
+	if policy.ToolsRestricted || len(policy.AllowedTools) > 0 {
+		permission["*"] = "deny"
+		for _, tool := range policy.AllowedTools {
+			permission[tool] = "allow"
+		}
+	}
+	for _, tool := range policy.DeniedTools {
+		permission[tool] = "deny"
+	}
+	if policy.Filesystem == "read_only" {
+		if !policy.ToolsRestricted && len(policy.AllowedTools) == 0 {
+			permission["*"] = "deny"
+			for _, tool := range []string{"read", "glob", "grep", "lsp", "skill"} {
+				permission[tool] = "allow"
+			}
+		}
+		permission["edit"] = "deny"
+		permission["bash"] = "deny"
+		permission["task"] = "deny"
+	}
+	if policy.SkillsRestricted || len(policy.Skills) > 0 {
+		rules := map[string]any{"*": "deny"}
+		for _, skill := range policy.Skills {
+			rules[openCodeSkillName(skill)] = "allow"
+		}
+		permission["skill"] = rules
+	}
+	if len(permission) > 0 {
+		config["permission"] = permission
+	}
+	if len(policy.MCPConfig) > 0 {
+		var raw map[string]any
+		if err := json.Unmarshal(policy.MCPConfig, &raw); err != nil {
+			return nil, fmt.Errorf("parse MCP config %s: %w", policy.MCPPath, err)
+		}
+		if value, ok := raw["mcp"].(map[string]any); ok {
+			config["mcp"] = value
+		} else {
+			config["mcp"] = raw
+		}
+	}
+	return config, nil
+}
+
+func openCodeSkillName(value string) string {
+	value = filepath.Clean(value)
+	if strings.EqualFold(filepath.Base(value), "SKILL.md") {
+		return filepath.Base(filepath.Dir(value))
+	}
+	return filepath.Base(value)
+}
+
+func mergeOpenCodeConfig(base, overlay map[string]any) {
+	for key, value := range overlay {
+		if current, ok := base[key].(map[string]any); ok {
+			if next, ok := value.(map[string]any); ok {
+				for childKey, childValue := range next {
+					current[childKey] = childValue
+				}
+				continue
+			}
+		}
+		base[key] = value
+	}
 }
 
 func probeOpenCodeVersion(ctx context.Context, binary, workspace string, env []string) (string, error) {
@@ -574,4 +695,7 @@ func cloneProtocolParams(input map[string]any) map[string]any {
 		output[key] = value
 	}
 	return output
+}
+func (o OpenCode) Capabilities() []string {
+	return mergeCapabilities([]string{CapabilityToolPolicy, CapabilitySkills, CapabilityMCP, CapabilitySandboxFilesystem}, o.spec.Capabilities)
 }

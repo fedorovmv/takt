@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -301,5 +302,23 @@ nodes:
 	}
 	if node.ChildRunID != second.ID {
 		t.Fatalf("current child link does not point to the successful attempt: %q != %q", node.ChildRunID, second.ID)
+	}
+}
+
+func TestAggregateRunUsageIncludesHiddenCompositionNodes(t *testing.T) {
+	usage := aggregateRunUsage(map[string]*store.NodeState{
+		"public": {Status: store.NodeCompleted, Usage: &store.Usage{InputTokens: 3, OutputTokens: 4, Cost: 0.1}},
+		"hidden": {Status: store.NodeCompleted, Hidden: true, Usage: &store.Usage{InputTokens: 10, OutputTokens: 20, Cost: 0.5}},
+	})
+	if usage == nil || usage.InputTokens != 13 || usage.OutputTokens != 24 || usage.Cost != 0.6 {
+		t.Fatalf("hidden usage was lost: %+v", usage)
+	}
+}
+
+func TestCancelRejectsFailedRun(t *testing.T) {
+	state := &store.RunState{ID: "failed-run", Status: store.RunFailed}
+	got, err := (&Runner{}).Cancel(state, "late cancel")
+	if err == nil || got.Status != store.RunFailed || !strings.Contains(err.Error(), "cannot cancel terminal run") {
+		t.Fatalf("failed run status was not preserved: state=%+v err=%v", got, err)
 	}
 }

@@ -326,3 +326,12 @@ func TestRenderArgIncludesContractIdentifiers(t *testing.T) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
+
+func TestProtocolRequestCarriesNodePolicy(t *testing.T) {
+	req := protocolRequest(t.TempDir())
+	req.Policy = Policy{AllowedTools: []string{"read"}, ToolsRestricted: true, Requires: []string{"custom"}}
+	protocol := buildProtocolRequest(context.Background(), req, spec.AssistantSpec{}, nil, time.Now())
+	if protocol.Policy == nil || !protocol.Policy.ToolsRestricted || len(protocol.Policy.AllowedTools) != 1 || protocol.Policy.Requires[0] != "custom" {
+		t.Fatalf("policy was not included in protocol request: %+v", protocol.Policy)
+	}
+}

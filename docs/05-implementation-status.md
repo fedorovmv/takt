@@ -44,7 +44,7 @@
 - рекурсивный fingerprint статически подключённых детей, запрет рекурсии и предел глубины 16;
 - contract suite `scripts/test-child-runs.sh`.
 
-### Профиль code 0.5.0
+### Профиль code 0.6.0
 
 - 19 процессов разработки: assist, issue/PR flows, PIV, Ralph, idea/plan-to-PR, reviews, architecture, safe refactoring, PRD, workflow builder, Remotion и conflict resolution;
 - умный роутер как корневой Run с отдельным governed child Run выбранного процесса;
@@ -57,6 +57,9 @@
 ### Assistants, protocol и evaluation
 
 - `mock`, `process`, `pi`, `opencode`;
+- per-node `allowed_tools`, `denied_tools`, explicit empty allowlists, skills, MCP, assistant-enforced filesystem/network policy and `requires`;
+- capability preflight before assistant invocation, persisted effective policy and child-Run inheritance;
+- Pi tool/skill CLI mapping, OpenCode permission/MCP mapping and path-skill prompt injection;
 - строгий `takt-assistant/v1alpha1`, fake contract suites, verified resume и usage;
 - Pi RPC и OpenCode JSON event stream с сохранением provider diagnostics;
 - Route DSL end-to-end и evaluation runner с изоляцией, fingerprints и quality envelopes;
@@ -85,12 +88,11 @@
 
 Все 19 пользовательских процессов, роутер, managed worktree и governed child Run lifecycle перенесены. На уровне инфраструктуры пока отсутствуют:
 
-- per-node tool allow/deny, skills, MCP и sandbox policy;
 - script nodes и semantic artifact `output_type`;
 - динамический fan-out и параллельные governed children;
 - server/Web UI, БД, message adapters, notifications и проверка подключённой GitHub identity — proposal для будущего нелокального режима.
 
-Пока tool/sandbox guarantees выражаются командами workflow и возможностями внешнего coding agent, а не отдельными механизмами ядра.
+Tool/skills/MCP policy теперь является контрактом ядра и adapters. Filesystem/network policy остаётся assistant-enforced и не заменяет OS sandbox.
 
 ## Текущая граница безопасности
 
@@ -98,4 +100,4 @@
 
 ## Ближайший целевой срез
 
-Следующий крупный системный приоритет — per-node capability and policy contract: `allowed_tools`, `denied_tools`, skills, MCP, sandbox и проверка поддержки adapter до запуска. Затем — динамический fan-out governed children, script nodes и типизированные артефакты. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.
+Следующий крупный системный приоритет — динамический fan-out governed children с ограничением конкурентности и ordered join. Затем — script nodes и типизированные артефакты. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.

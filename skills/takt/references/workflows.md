@@ -54,7 +54,29 @@ worktree:
   cleanup: on_success
 ```
 
-Изоляция применяется ко всему workflow. У structural subworkflow policy активируется на его gate. Governed child Run по умолчанию применяет собственную policy либо режим `workflow.isolation`. Состояние и artifacts остаются в control workspace. Runtime автоматически удаляет только чистый успешный worktree; грязный или неуспешный сохраняется. Это не sandbox.
+Изоляция применяется ко всему workflow. У structural subworkflow policy активируется на его gate. Governed child Run по умолчанию применяет собственную policy либо режим `workflow.isolation`. Состояние и artifacts остаются в control workspace. Runtime автоматически удаляет только чистый успешный worktree. Ветка без коммитов поверх base удаляется; ветка с коммитами, грязный или неуспешный worktree сохраняются. Это не sandbox.
+
+
+## Политики AI-узла
+
+Только `command` и `prompt` поддерживают:
+
+```yaml
+- id: classify
+  command: classify
+  allowed_tools: []
+  skills: []
+
+- id: review
+  command: review
+  denied_tools: [edit, write]
+  mcp: mcp/repository.json
+  sandbox:
+    filesystem: read_only
+  requires: [tool_policy, mcp]
+```
+
+Явный пустой allowlist является запретом. Governed `workflow.policy` задаёт inherited upper bound ребёнка. Adapter capabilities проверяются до запуска; policy сохраняется в state и входит в fingerprint вместе с MCP/skill files. `sandbox` является assistant-enforced contract, а не OS isolation.
 
 ## Планирование
 

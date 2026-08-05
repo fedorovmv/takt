@@ -104,6 +104,21 @@ func workflowDefinitionBytesSeen(path string, wf *spec.Workflow, stack map[strin
 	out = append(out, 0)
 	out = append(out, canonical...)
 
+	resources, err := collectPolicyResourcePaths(path, wf.Nodes)
+	if err != nil {
+		return nil, err
+	}
+	for _, resource := range resources {
+		content, err := policyResourceBytes(resource)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, 0)
+		out = append(out, []byte(resource)...)
+		out = append(out, 0)
+		out = append(out, content...)
+	}
+
 	paths := collectGovernedWorkflowPaths(wf.Nodes)
 	sort.Strings(paths)
 	for _, childPath := range paths {
@@ -208,4 +223,118 @@ func collectCommands(nodes []spec.Node) []string {
 		out = append(out, name)
 	}
 	return out
+}
+
+func optionalStringValues(value *[]string) []string {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func optionalStringCount(value *[]string) int {
+	return len(optionalStringValues(value))
+}
+
+func collectPolicyResourcePaths(workflowPath string, nodes []spec.Node) ([]string, error) {
+	set := map[string]bool{}
+	base := filepath.Dir(workflowPath)
+	type resourceRef struct {
+		value     string
+		mandatory bool
+	}
+	var visit func([]spec.Node) error
+	visit = func(items []spec.Node) error {
+		for _, node := range items {
+			refs := make([]resourceRef, 0, optionalStringCount(node.Skills)+2)
+			for _, skill := range optionalStringValues(node.Skills) {
+				refs = append(refs, resourceRef{value: skill})
+			}
+			if node.MCP != "" {
+				refs = append(refs, resourceRef{value: node.MCP, mandatory: true})
+			}
+			if node.WorkflowRun != nil && node.WorkflowRun.Policy != nil {
+				for _, skill := range optionalStringValues(node.WorkflowRun.Policy.Skills) {
+					refs = append(refs, resourceRef{value: skill})
+				}
+				if node.WorkflowRun.Policy.MCP != "" {
+					refs = append(refs, resourceRef{value: node.WorkflowRun.Policy.MCP, mandatory: true})
+				}
+			}
+			for _, ref := range refs {
+				candidate := ref.value
+				if !filepath.IsAbs(candidate) {
+					candidate = filepath.Join(base, candidate)
+				}
+				info, err := os.Stat(candidate)
+				if err != nil {
+					if ref.mandatory || !os.IsNotExist(err) {
+						return fmt.Errorf("fingerprint policy resource %q: %w", ref.value, err)
+					}
+					continue // a non-path skill name is adapter-resolved
+				}
+				if info.Mode()&os.ModeSymlink != 0 {
+					if candidate, err = filepath.EvalSymlinks(candidate); err != nil {
+						return err
+					}
+				}
+				abs, err := filepath.Abs(candidate)
+				if err != nil {
+					return err
+				}
+				set[filepath.Clean(abs)] = true
+			}
+			if node.LoopGroup != nil {
+				if err := visit(node.LoopGroup.Nodes); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	if err := visit(nodes); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(set))
+	for value := range set {
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func policyResourceBytes(path string) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return os.ReadFile(path)
+	}
+	var files []string
+	if err := filepath.Walk(path, func(current string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			files = append(files, current)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	var out []byte
+	for _, file := range files {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		rel, _ := filepath.Rel(path, file)
+		out = append(out, []byte(rel)...)
+		out = append(out, 0)
+		out = append(out, raw...)
+		out = append(out, 0)
+	}
+	return out, nil
 }

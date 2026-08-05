@@ -23,6 +23,8 @@ Takt — Go-runtime, который снаружи оркестрирует го
 - `timed_out` и `cancelled` имеют приоритет над производными ошибками и output overflow.
 - Root DAG, `loop_group`, скомпилированные `subworkflow` и `foreach` используют одну scheduler-семантику; независимые готовые узлы выполняются параллельными волнами, а вложенные `loop_group` в `v1alpha1` запрещены.
 - `output_format` является проверяемым контрактом JSON-вывода агентного узла; условия и шаблоны могут читать его поля через JSON-путь.
+- Node policy проверяется до запуска assistant; explicit empty allowlist остаётся запретом, а неподдерживаемая capability не может молча игнорироваться.
+- Governed child policy является верхней границей: allowlists пересекаются, deny/requirements объединяются, более строгий sandbox наследуется.
 - Approval внутри `loop_group` сохраняет номер активной итерации и после `answer` продолжает ту же итерацию.
 - Markdown-план не преобразуется в task AST; `foreach` принимает только явный список или будущий явно выбранный adapter.
 - `takt-assistant/v1alpha1` принимает один строгий JSON envelope; OS exit code совпадает с `result.exit_code`.

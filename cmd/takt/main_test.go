@@ -367,3 +367,36 @@ nodes:
 		t.Fatalf("child was not cancelled: %+v", child)
 	}
 }
+
+func TestCancelCommandRejectsFailedRun(t *testing.T) {
+	dir := t.TempDir()
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(workflowPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: failing
+nodes:
+  - id: fail
+    bash: exit 7
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("apiVersion: takt/v1alpha1\nkind: Config\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, _ := workflow.Load(workflowPath)
+	cfg, _ := cfgpkg.Load(configPath)
+	state, err := runtime.New(wf, cfg, workflowPath, configPath, dir).Start(context.Background(), "")
+	if err == nil || state.Status != store.RunFailed {
+		t.Fatalf("expected failed run: state=%+v err=%v", state, err)
+	}
+	cancelErr := cancelCmd([]string{state.ID, "--workspace", dir, "--json=false"})
+	if cancelErr == nil || !strings.Contains(cancelErr.Error(), "cannot cancel terminal run") {
+		t.Fatalf("terminal cancel was not rejected: %v", cancelErr)
+	}
+	loaded, loadErr := (store.FS{Workspace: dir}).Load(state.ID)
+	if loadErr != nil || loaded.Status != store.RunFailed {
+		t.Fatalf("failed status changed: state=%+v err=%v", loaded, loadErr)
+	}
+}

@@ -13,7 +13,7 @@ PLAN
 "$ROOT/bin/takt" init code --dir "$TMP/project" --json >/dev/null
 "$ROOT/bin/takt" validate code --workspace "$TMP/project" --json >/dev/null
 [ -f "$TMP/project/.takt/profiles/code/profile.yaml" ]
-[ "$(tr -d '[:space:]' < "$TMP/project/.takt/profiles/code/VERSION")" = "0.5.0" ]
+[ "$(tr -d '[:space:]' < "$TMP/project/.takt/profiles/code/VERSION")" = "0.6.0" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/review-block.yaml" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/smart-review-block.yaml" ]
 [ "$(find "$TMP/project/.takt/profiles/code/workflows" -maxdepth 1 -name '*.yaml' | wc -l | tr -d '[:space:]')" = "22" ]
@@ -22,6 +22,7 @@ PLAN
 grep -q 'format: markdown' "$TMP/project/.takt/profiles/code/profile.yaml"
 grep -q 'preserve_path: true' "$TMP/project/.takt/profiles/code/profile.yaml"
 grep -q 'name: code-router' "$TMP/project/.takt/profiles/code/workflow.yaml"
+grep -q 'allowed_tools: \[\]' "$TMP/project/.takt/profiles/code/workflow.yaml"
 grep -q 'output_format:' "$TMP/project/.takt/profiles/code/workflow.yaml"
 grep -q '^    workflow:' "$TMP/project/.takt/profiles/code/workflow.yaml"
 ! grep -q '^    subworkflow:' "$TMP/project/.takt/profiles/code/workflow.yaml"

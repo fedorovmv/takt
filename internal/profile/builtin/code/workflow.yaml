@@ -11,6 +11,8 @@ nodes:
   - id: route
     command: route-workflow
     model: routing
+    allowed_tools: []
+    skills: []
     attempts:
       max: 2
       retry_on: [protocol]

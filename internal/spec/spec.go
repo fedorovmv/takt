@@ -49,6 +49,12 @@ type Node struct {
 	Timeout      string            `json:"timeout,omitempty"`
 	Hooks        HookSet           `json:"hooks,omitempty"`
 	NativeHooks  json.RawMessage   `json:"native_hooks,omitempty"`
+	AllowedTools *[]string         `json:"allowed_tools,omitempty"`
+	DeniedTools  []string          `json:"denied_tools,omitempty"`
+	Skills       *[]string         `json:"skills,omitempty"`
+	MCP          string            `json:"mcp,omitempty"`
+	Sandbox      *SandboxSpec      `json:"sandbox,omitempty"`
+	Requires     []string          `json:"requires,omitempty"`
 	OutputFormat *OutputFormat     `json:"output_format,omitempty"`
 }
 
@@ -73,10 +79,20 @@ type ForeachItemsSource struct {
 // WorkflowRunSpec starts another workflow as a separately persisted child Run.
 // Unlike subworkflow, it is not expanded into the parent DAG.
 type WorkflowRunSpec struct {
-	Path       string `json:"path"`
-	Input      string `json:"input,omitempty"`
-	OutputNode string `json:"output_node,omitempty"`
-	Isolation  string `json:"isolation,omitempty"`
+	Path       string      `json:"path"`
+	Input      string      `json:"input,omitempty"`
+	OutputNode string      `json:"output_node,omitempty"`
+	Isolation  string      `json:"isolation,omitempty"`
+	Policy     *PolicySpec `json:"policy,omitempty"`
+}
+
+type PolicySpec struct {
+	AllowedTools *[]string    `json:"allowed_tools,omitempty"`
+	DeniedTools  []string     `json:"denied_tools,omitempty"`
+	Skills       *[]string    `json:"skills,omitempty"`
+	MCP          string       `json:"mcp,omitempty"`
+	Sandbox      *SandboxSpec `json:"sandbox,omitempty"`
+	Requires     []string     `json:"requires,omitempty"`
 }
 
 // InternalNodeSpec is produced by workflow expansion and is never accepted
@@ -89,6 +105,13 @@ type InternalNodeSpec struct {
 	DefinitionHash string
 	WorkflowName   string
 	Worktree       *WorktreeSpec
+}
+
+// SandboxSpec is an assistant-enforced node policy. It is not an OS sandbox.
+// Adapters must reject unsupported guarantees instead of silently ignoring them.
+type SandboxSpec struct {
+	Filesystem string `json:"filesystem,omitempty"`
+	Network    string `json:"network,omitempty"`
 }
 
 // OutputFormat describes the JSON value an AI node must return. It is a

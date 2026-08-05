@@ -10,3 +10,4 @@ defaults:
 nodes:
   - id: review
     command: review-perspective
+    denied_tools: [edit, write]

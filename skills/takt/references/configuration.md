@@ -70,7 +70,7 @@ assistants:
     project_trust: deny
     env:
       EXAMPLE: value
-    capabilities: [session_resume, skills]
+    capabilities: [custom_extension]
     max_output_bytes: 10485760
 ```
 
@@ -144,3 +144,7 @@ Takt запускает `opencode run --format json --dir <workspace> --model <p
 
 Не добавляй в `args` управляемые adapter флаги: `run`, `--format`, `--model`, `--agent`, `--session`, `--dir`, `--variant`, `--auto` и их короткие варианты.
 JSON events читаются из stdout, stderr остаётся диагностическим. Usage одной попытки — сумма событий `step_finish`.
+
+## Возможности adapter
+
+Стандартные names: `tool_policy`, `skills`, `mcp`, `sandbox_filesystem`, `sandbox_network`. Pi/OpenCode публикуют встроенные возможности автоматически и не могут через config приписать себе неподдерживаемую зарезервированную capability. `process` объявляет возможности явно, потому что получает policy через протокол и `TAKT_POLICY_JSON`. Дополнительные пользовательские names применяются вместе с `requires`.

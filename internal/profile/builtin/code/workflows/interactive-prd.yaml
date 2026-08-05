@@ -38,6 +38,8 @@ nodes:
             Decide whether the latest human reply explicitly authorizes drafting the PRD. Return only JSON.
             Feedback: ${nodes.feedback.output}
           model: routing
+          allowed_tools: []
+          skills: []
           output_format:
             type: object
             additionalProperties: false
@@ -83,6 +85,8 @@ nodes:
             Decide whether the human explicitly approved the PRD. Return only JSON.
             Feedback: ${nodes.feedback.output}
           model: routing
+          allowed_tools: []
+          skills: []
           output_format:
             type: object
             additionalProperties: false

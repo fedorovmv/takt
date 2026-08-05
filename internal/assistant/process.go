@@ -57,6 +57,9 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 			cmd.Env = append(cmd.Env, "TAKT_NATIVE_HOOKS_JSON="+compact)
 		}
 	}
+	if policyJSON, err := json.Marshal(req.Policy); err == nil {
+		cmd.Env = append(cmd.Env, "TAKT_POLICY_JSON="+string(policyJSON))
+	}
 
 	protocolRequest := ProtocolRequest{}
 	if p.spec.Protocol != "" {
@@ -256,3 +259,4 @@ func (b *limitedBuffer) Truncated() bool {
 	defer b.budget.mu.Unlock()
 	return b.budget.truncated
 }
+func (p Process) Capabilities() []string { return mergeCapabilities(nil, p.spec.Capabilities) }

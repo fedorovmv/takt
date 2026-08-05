@@ -49,8 +49,8 @@ func (r *Runner) watchCancellation(parent context.Context, runID string) (contex
 }
 
 func (r *Runner) Cancel(state *store.RunState, reason string) (*store.RunState, error) {
-	if state.Status == store.RunCompleted || state.Status == store.RunCancelled {
-		return state, nil
+	if terminalRunStatus(state.Status) {
+		return state, fmt.Errorf("cannot cancel terminal run %s with status %s", state.ID, state.Status)
 	}
 	return r.cancelState(state, reason)
 }

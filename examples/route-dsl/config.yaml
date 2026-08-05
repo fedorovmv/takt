@@ -18,7 +18,7 @@ assistants:
     type: pi
     binary: pi
     project_trust: deny
-    capabilities: [session_resume, mcp, skills]
+    capabilities: [session_resume]
   opencode:
     type: process
     argv: ["opencode", "run", "{{prompt}}"]

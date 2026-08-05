@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.27-alpha
+
+- Добавлены per-node `allowed_tools`, `denied_tools`, `skills`, `mcp`, assistant-enforced `sandbox` и `requires`.
+- Явные пустые allowlists сохраняются как запрет инструментов/skills.
+- Добавлена capability preflight до запуска adapter, persistence effective policy и наследование governed child Run.
+- Process protocol и `TAKT_POLICY_JSON` передают policy внешнему adapter.
+- Pi и OpenCode применяют tool/skill policies; OpenCode получает MCP config и path-skill instructions.
+- Исправлена работа managed worktree через symlinked paths на macOS.
+- Usage structural composition включает hidden nodes.
+- `takt cancel` отклоняет все terminal Run.
+- Governed recursion проверяется уже командой `takt validate`.
+- Пустые worktree-ветки удаляются, ветки с коммитами сохраняются.
+- Профиль `code` 0.6.0 применяет no-tool policy к роутерам и read-only tool restrictions к review agents.
+- Добавлен контракт `scripts/test-policies.sh`.
+
 ## v0.1.26-alpha
 
 - добавлен узел `workflow`, запускающий подключённый workflow как отдельный governed child Run со своим ID, state, events, artifacts, output и usage;

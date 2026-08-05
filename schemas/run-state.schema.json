@@ -147,6 +147,9 @@
     },
     "cancel_requested": {
       "type": "boolean"
+    },
+    "inherited_policy": {
+      "$ref": "#/$defs/policyState"
     }
   },
   "$defs": {
@@ -247,6 +250,9 @@
             "type": "string"
           },
           "uniqueItems": true
+        },
+        "policy": {
+          "$ref": "#/$defs/policyState"
         }
       }
     },
@@ -398,6 +404,12 @@
         "removed_at": {
           "type": "string",
           "format": "date-time"
+        },
+        "branch_removed": {
+          "type": "boolean"
+        },
+        "branch_cleanup_error": {
+          "type": "string"
         }
       }
     },
@@ -420,6 +432,66 @@
         },
         "allow_dirty_worktree": {
           "type": "boolean"
+        }
+      }
+    },
+    "policyState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowed_tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "denied_tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "tools_restricted": {
+          "type": "boolean"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "skills_restricted": {
+          "type": "boolean"
+        },
+        "mcp_path": {
+          "type": "string"
+        },
+        "filesystem": {
+          "enum": [
+            "read_only"
+          ]
+        },
+        "network": {
+          "enum": [
+            "deny"
+          ]
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
         }
       }
     }

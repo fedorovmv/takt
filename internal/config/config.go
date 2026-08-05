@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"takt/internal/spec"
 	"takt/internal/yamlmini"
@@ -62,6 +63,27 @@ func Load(path string) (*spec.Config, error) {
 		}
 		if assistant.MaxOutputBytes < 0 {
 			return nil, fmt.Errorf("assistant %q max_output_bytes cannot be negative", name)
+		}
+		builtinCapabilities := map[string]bool{}
+		switch assistant.Type {
+		case "pi":
+			builtinCapabilities = map[string]bool{"tool_policy": true, "skills": true, "sandbox_filesystem": true}
+		case "opencode":
+			builtinCapabilities = map[string]bool{"tool_policy": true, "skills": true, "mcp": true, "sandbox_filesystem": true}
+		}
+		reservedCapabilities := map[string]bool{"tool_policy": true, "skills": true, "mcp": true, "sandbox_filesystem": true, "sandbox_network": true}
+		seenCapabilities := map[string]bool{}
+		for _, capability := range assistant.Capabilities {
+			if strings.TrimSpace(capability) == "" {
+				return nil, fmt.Errorf("assistant %q capabilities contains an empty value", name)
+			}
+			if seenCapabilities[capability] {
+				return nil, fmt.Errorf("assistant %q capabilities contains duplicate %q", name, capability)
+			}
+			if assistant.Type != "process" && reservedCapabilities[capability] && !builtinCapabilities[capability] {
+				return nil, fmt.Errorf("assistant %q type %s cannot declare unsupported built-in capability %q", name, assistant.Type, capability)
+			}
+			seenCapabilities[capability] = true
 		}
 	}
 	return &cfg, nil

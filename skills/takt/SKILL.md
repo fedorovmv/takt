@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, диагностировать workflow либо подготовить готовый .takt-профиль.
+description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль.
 ---
 
 # Работа с Takt
@@ -22,6 +22,7 @@ description: Создаёт, устанавливает, изменяет, пр�
    - `subworkflow` — когда блок должен компилироваться в общий DAG и общий Run;
    - `workflow` — когда этапу нужен отдельный Run ID, state/events/artifacts/usage, cancellation или собственная worktree-политика;
    - `foreach` — для явно заданного inline-списка или внешнего YAML/JSON-массива, без скрытого разбора Markdown.
+   - `allowed_tools`/`denied_tools`, `skills`, `mcp`, `sandbox`, `requires` — для проверяемых ограничений AI-узла; явный `allowed_tools: []` означает отсутствие инструментов.
 5. Сначала используй существующие model aliases и assistants из config. Новые добавляй только при необходимости.
 6. Внеси минимальные изменения и проверь их командой `takt validate`.
 7. Если пользователь просит рабочий запуск и среда готова, выполни `takt run`; при `waiting` покажи запрос approval и продолжи через `takt answer` только после ответа пользователя.
@@ -70,6 +71,8 @@ takt run code --workspace . --input docs/plan.md --json
 - Validation envelope `takt-validation/v1alpha1` выводится только в stdout; логи валидатора идут в stderr.
 - Takt поддерживает ограниченный YAML subset. Для многострочного prompt или bash используй block scalar `|`.
 - Markdown-план не преобразуй в task AST ради `foreach`: используй явный `foreach.items` или `foreach.items_from.path` к YAML/JSON-массиву.
+- Неподдерживаемая capability должна завершать узел до вызова модели; не описывай ограничения только в prompt.
+- Filesystem/network policy текущей версии является assistant-enforced и не заменяет OS sandbox.
 - Не добавляй `system_prompt`, `user_prompt`, автоматический model fallback или иные поля, которых нет в текущем контракте.
 
 ## Переиспользование workflow

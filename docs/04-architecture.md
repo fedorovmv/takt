@@ -98,3 +98,7 @@ Loader разворачивает `subworkflow` и `foreach` до валидац
 Узел `workflow` остаётся в DAG родителя как одна action boundary. Runtime создаёт отдельный Child Run ID и запускает новый Runner с тем же файловым Repository, но другим каталогом Run. Parent node ждёт terminal status ребёнка и получает его output/usage как execution result. При approval родитель хранит waiting link, а CLI продолжает фактического ребёнка и затем parent chain. При retry создаётся новый child Run.
 
 Governed lifecycle не требует сервера или БД: связи сохраняются в локальном RunState, cancellation — в durable marker. Эта модель подходит однопользовательскому локальному runtime, но не заменяет distributed orchestration.
+
+## Policy preflight
+
+Перед AI action runtime разрешает локальные MCP/skill paths, объединяет node policy с inherited child policy и сравнивает необходимый набор capabilities с `Adapter.Capabilities()`. Только после успешного preflight создаётся процесс assistant. Applied policy записывается в NodeState и передаётся adapter. Definition fingerprint включает policy files/directories.

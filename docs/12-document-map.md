@@ -9,7 +9,8 @@
 3. `docs/01-project.md`;
 4. `docs/05-implementation-status.md`;
 5. `skills/takt/SKILL.md`;
-6. `docs/40-governed-child-runs-v0.1.26.md`;
+6. `docs/41-node-capability-policies-v0.1.27.md`;
+7. `docs/40-governed-child-runs-v0.1.26.md`;
 7. `docs/39-git-worktree-isolation-v0.1.25.md`;
 8. `docs/38-archon-workflow-catalog-v0.1.24.md`;
 9. `docs/37-composition-hardening-v0.1.23.md`;
@@ -63,7 +64,7 @@
 | Вопрос | Основной документ | Статус |
 |---|---|---|
 | Правила работы кодовых агентов | `../AGENTS.md` | действующий |
-| Создание и настройка workflow | `../skills/takt/SKILL.md`, `40-governed-child-runs-v0.1.26.md`, `39-git-worktree-isolation-v0.1.25.md`, `38-archon-workflow-catalog-v0.1.24.md`, `36-workflow-composition-v0.1.22.md`, `37-composition-hardening-v0.1.23.md` | действующий скилл, каталог, роутер и композиция |
+| Создание и настройка workflow | `../skills/takt/SKILL.md`, `41-node-capability-policies-v0.1.27.md`, `40-governed-child-runs-v0.1.26.md`, `39-git-worktree-isolation-v0.1.25.md`, `38-archon-workflow-catalog-v0.1.24.md`, `36-workflow-composition-v0.1.22.md`, `37-composition-hardening-v0.1.23.md` | действующий скилл, каталог, роутер и композиция |
 | Зачем нужен Takt | `01-project.md` | действующий |
 | Архитектурный подход | `02-approach.md`, ADR | действующий |
 | Текущий внешний контракт | `03-specification.md` | реализованный `v1alpha1` |
@@ -115,3 +116,5 @@
 - `39-git-worktree-isolation-v0.1.25.md` — managed Git worktree lifecycle, router-aware activation and local-runtime boundary.
 
 - `40-governed-child-runs-v0.1.26.md` — отдельные child Run, parent/child lifecycle, approval cascade, cancellation tree и isolation modes.
+
+- `41-node-capability-policies-v0.1.27.md` — tool/skill/MCP policies, capability negotiation, inheritance and review fixes.

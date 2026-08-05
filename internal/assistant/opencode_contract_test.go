@@ -304,3 +304,54 @@ func TestOpenCodeAdapterOptInSmoke(t *testing.T) {
 		t.Fatalf("OpenCode smoke did not expose execution identity/usage: %+v", result)
 	}
 }
+
+func TestOpenCodePolicyConfig(t *testing.T) {
+	req := fakeOpenCodeRequest(t.TempDir())
+	req.Policy = Policy{
+		AllowedTools: []string{"read", "grep"}, ToolsRestricted: true,
+		DeniedTools: []string{"bash"}, Skills: []string{"review"}, SkillsRestricted: true,
+		Filesystem: "read_only", MCPPath: "mcp.json", MCPConfig: json.RawMessage(`{"docs":{"type":"remote","url":"https://example.invalid/mcp"}}`),
+	}
+	env, err := openCodeEnvironment(spec.AssistantSpec{Env: map[string]string{"OPENCODE_CONFIG_CONTENT": `{"snapshot":false}`}}, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, item := range env {
+		key, value, ok := strings.Cut(item, "=")
+		if ok {
+			values[key] = value
+		}
+	}
+	var config map[string]any
+	if err := json.Unmarshal([]byte(values["OPENCODE_CONFIG_CONTENT"]), &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["snapshot"] != false {
+		t.Fatalf("existing inline config was lost: %#v", config)
+	}
+	permission, ok := config["permission"].(map[string]any)
+	if !ok || permission["*"] != "deny" || permission["read"] != "allow" || permission["bash"] != "deny" || permission["edit"] != "deny" {
+		t.Fatalf("OpenCode permissions are wrong: %#v", config["permission"])
+	}
+	if _, ok := config["mcp"].(map[string]any); !ok {
+		t.Fatalf("MCP config was not injected: %#v", config)
+	}
+	if values["TAKT_POLICY_JSON"] == "" {
+		t.Fatal("policy audit environment is missing")
+	}
+}
+
+func TestOpenCodePromptInjectsPathSkill(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("Always inspect tests first."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prompt, err := openCodePrompt("Fix the issue.", Policy{Skills: []string{dir}, SkillsRestricted: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompt, "Always inspect tests first.") || !strings.Contains(prompt, "<task>\nFix the issue.") {
+		t.Fatalf("skill was not injected into OpenCode prompt: %s", prompt)
+	}
+}

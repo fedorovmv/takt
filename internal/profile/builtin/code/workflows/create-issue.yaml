@@ -11,6 +11,8 @@ nodes:
   - id: classify
     command: classify-issue
     model: routing
+    allowed_tools: []
+    skills: []
     output_format:
       type: object
       additionalProperties: false

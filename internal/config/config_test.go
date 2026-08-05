@@ -185,3 +185,33 @@ func TestLoadRejectsInvalidOpenCodeOptions(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadRejectsInvalidAssistantCapabilities(t *testing.T) {
+	for _, capabilities := range []string{"[tool_policy, tool_policy]", `[tool_policy, ""]`} {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		content := "apiVersion: takt/v1alpha1\nkind: Config\nassistants:\n  bad:\n    type: process\n    argv: [echo]\n    capabilities: " + capabilities + "\n"
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(path); err == nil {
+			t.Fatalf("expected invalid capabilities %s to fail", capabilities)
+		}
+	}
+}
+
+func TestLoadRejectsUnsupportedBuiltinCapabilityDeclaration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `apiVersion: takt/v1alpha1
+kind: Config
+assistants:
+  pi:
+    type: pi
+    capabilities: [mcp]
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected Pi MCP capability declaration to fail")
+	}
+}

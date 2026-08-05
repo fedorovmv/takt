@@ -1,4 +1,4 @@
-.PHONY: build test race vet fmt docs contracts pi-contracts opencode-contracts route-e2e route-eval route-benchmark composition skill profile worktree-contract child-run-contract check demo
+.PHONY: build test race vet fmt docs contracts pi-contracts opencode-contracts route-e2e route-eval route-benchmark composition skill profile worktree-contract child-run-contract policy-contract check demo
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -51,7 +51,11 @@ worktree-contract: build
 child-run-contract: build
 	./scripts/test-child-runs.sh
 
-check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval composition skill profile worktree-contract child-run-contract docs
+policy-contract: build
+	go build -o bin/takt-fake-assistant ./cmd/takt-fake-assistant
+	./scripts/test-policies.sh
+
+check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval composition skill profile worktree-contract child-run-contract policy-contract docs
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml

@@ -39,7 +39,7 @@ type Status struct {
 var unsafeRefChars = regexp.MustCompile(`[^A-Za-z0-9._/-]+`)
 
 func Prepare(ctx context.Context, workspace, runID, workflowName string, options Options) (*Info, error) {
-	control, err := filepath.Abs(workspace)
+	control, err := canonicalExistingPath(workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,10 @@ func Prepare(ctx context.Context, workspace, runID, workflowName string, options
 	if err != nil {
 		return nil, fmt.Errorf("worktree requires a Git repository: %w", err)
 	}
-	repoRoot := filepath.Clean(repoRootText)
+	repoRoot, err := canonicalExistingPath(repoRootText)
+	if err != nil {
+		return nil, fmt.Errorf("resolve repository root: %w", err)
+	}
 	relWorkspace, err := filepath.Rel(repoRoot, control)
 	if err != nil || relWorkspace == ".." || strings.HasPrefix(relWorkspace, ".."+string(filepath.Separator)) {
 		return nil, fmt.Errorf("workspace %s is outside repository root %s", control, repoRoot)
@@ -116,6 +119,18 @@ func Prepare(ctx context.Context, workspace, runID, workflowName string, options
 	}, nil
 }
 
+func canonicalExistingPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(resolved), nil
+}
+
 func Inspect(ctx context.Context, path string) (Status, error) {
 	out, err := gitOutput(ctx, path, "status", "--porcelain=v1", "--untracked-files=normal")
 	if err != nil {
@@ -135,6 +150,23 @@ func Remove(ctx context.Context, repositoryRoot, path string, force bool) error 
 		return fmt.Errorf("remove git worktree %s: %w", path, err)
 	}
 	return nil
+}
+
+func DeleteBranchIfUnchanged(ctx context.Context, repositoryRoot, branch, baseCommit string) (bool, error) {
+	if strings.TrimSpace(branch) == "" || strings.TrimSpace(baseCommit) == "" {
+		return false, nil
+	}
+	head, err := gitOutput(ctx, repositoryRoot, "rev-parse", "--verify", branch+"^{commit}")
+	if err != nil {
+		return false, nil
+	}
+	if strings.TrimSpace(head) != strings.TrimSpace(baseCommit) {
+		return false, nil
+	}
+	if _, err := gitOutput(ctx, repositoryRoot, "branch", "-D", branch); err != nil {
+		return false, fmt.Errorf("delete empty worktree branch %s: %w", branch, err)
+	}
+	return true, nil
 }
 
 func Prune(ctx context.Context, workspace string) error {

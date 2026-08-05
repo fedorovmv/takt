@@ -584,8 +584,8 @@ func cancelCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	if state.Status == store.RunCompleted || state.Status == store.RunCancelled {
-		return printResult(*jsonOut, state)
+	if state.Status == store.RunCompleted || state.Status == store.RunFailed || state.Status == store.RunCancelled {
+		return fmt.Errorf("cannot cancel terminal run %s with status %s", state.ID, state.Status)
 	}
 	if err := cancelRunTree(st, state, *reason, false); err != nil {
 		return err
@@ -790,7 +790,12 @@ func worktreeRemoveCmd(args []string) error {
 	wt.RemovedAt = time.Now().UTC()
 	wt.RetainedReason = ""
 	wt.CleanupError = ""
-	if err := st.Commit(state, store.Event{Type: "worktree.removed", Data: map[string]any{"path": wt.Path, "branch": wt.Branch, "manual": true, "force": *force}}); err != nil {
+	branchRemoved, branchErr := gitworktree.DeleteBranchIfUnchanged(context.Background(), wt.RepositoryRoot, wt.Branch, wt.BaseCommit)
+	wt.BranchRemoved = branchRemoved
+	if branchErr != nil {
+		wt.BranchCleanupError = branchErr.Error()
+	}
+	if err := st.Commit(state, store.Event{Type: "worktree.removed", Data: map[string]any{"path": wt.Path, "branch": wt.Branch, "manual": true, "force": *force, "branch_removed": branchRemoved, "branch_cleanup_error": wt.BranchCleanupError}}); err != nil {
 		return err
 	}
 	return printResult(*jsonOut, state)

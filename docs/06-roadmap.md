@@ -1,21 +1,10 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.26-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.27-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
-## Приоритет 1. Политики и возможности узлов
+## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
-Крупный следующий срез:
-
-- `allowed_tools` и `denied_tools`;
-- подключаемые skills;
-- MCP-конфигурация узла;
-- sandbox/filesystem/network policy contract;
-- `requires` и capability negotiation;
-- preflight-проверка поддержки конкретным adapter;
-- fingerprint policy и сохранение фактически применённых ограничений в execution state;
-- явное поведение Pi/OpenCode/Codex/Claude Code при неподдерживаемом поле.
-
-Сначала контракт должен быть одинаковым для workflow и adapters. Реальный OS sandbox может усиливаться отдельным этапом, но неподдерживаемая гарантия не должна молча игнорироваться.
+Реализованы `allowed_tools`, `denied_tools`, explicit empty allowlists, skills, MCP, assistant-enforced filesystem/network policy, `requires`, capability preflight, fingerprints ресурсов, persistence и наследование governed child Run. Неподдерживаемая гарантия отклоняется до вызова adapter. Реальный OS sandbox остаётся отдельным усилением безопасности.
 
 ## Приоритет 2. Динамический fan-out governed children
 

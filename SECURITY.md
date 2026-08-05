@@ -81,3 +81,7 @@ A future server or untrusted mode requires at minimum:
 ## Governed child Runs
 
 `workflow.path` is a trusted local definition path. A child Run has separate state, events and artifacts, but this is an execution-lifecycle boundary rather than a security boundary. `isolation: inherit` deliberately shares the parent execution workspace; `worktree` creates a Git worktree but still does not restrict filesystem, network, credentials or process access. Cascading cancellation is cooperative and relies on local context/process termination.
+
+## Assistant-enforced node policies
+
+`allowed_tools`, `denied_tools`, `skills`, `mcp`, `sandbox` and `requires` prevent silent policy omission: Takt verifies adapter capabilities before invocation and persists the effective policy. These controls constrain the coding agent interface but do not isolate the assistant binary, arbitrary subprocesses, custom MCP servers or host credentials. `sandbox.filesystem` and `sandbox.network` are contracts that an adapter must implement; they are not an OS security boundary.

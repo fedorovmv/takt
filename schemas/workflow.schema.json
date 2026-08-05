@@ -318,6 +318,25 @@
         },
         "workflow": {
           "$ref": "#/$defs/workflowRun"
+        },
+        "allowed_tools": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "denied_tools": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "skills": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "mcp": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sandbox": {
+          "$ref": "#/$defs/sandbox"
+        },
+        "requires": {
+          "$ref": "#/$defs/stringSet"
         }
       },
       "oneOf": [
@@ -406,11 +425,27 @@
               },
               "timeout": {
                 "maxLength": 0
+              },
+              "allowed_tools": {
+                "maxItems": 0
+              },
+              "denied_tools": {
+                "maxItems": 0
+              },
+              "skills": {
+                "maxItems": 0
+              },
+              "mcp": {
+                "maxLength": 0
+              },
+              "requires": {
+                "maxItems": 0
               }
             },
             "not": {
               "required": [
-                "native_hooks"
+                "native_hooks",
+                "sandbox"
               ]
             }
           }
@@ -458,11 +493,27 @@
               },
               "timeout": {
                 "maxLength": 0
+              },
+              "allowed_tools": {
+                "maxItems": 0
+              },
+              "denied_tools": {
+                "maxItems": 0
+              },
+              "skills": {
+                "maxItems": 0
+              },
+              "mcp": {
+                "maxLength": 0
+              },
+              "requires": {
+                "maxItems": 0
               }
             },
             "not": {
               "required": [
-                "native_hooks"
+                "native_hooks",
+                "sandbox"
               ]
             }
           }
@@ -541,6 +592,25 @@
         },
         "workflow": {
           "$ref": "#/$defs/workflowRun"
+        },
+        "allowed_tools": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "denied_tools": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "skills": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "mcp": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sandbox": {
+          "$ref": "#/$defs/sandbox"
+        },
+        "requires": {
+          "$ref": "#/$defs/stringSet"
         }
       },
       "oneOf": [
@@ -613,11 +683,27 @@
               },
               "timeout": {
                 "maxLength": 0
+              },
+              "allowed_tools": {
+                "maxItems": 0
+              },
+              "denied_tools": {
+                "maxItems": 0
+              },
+              "skills": {
+                "maxItems": 0
+              },
+              "mcp": {
+                "maxLength": 0
+              },
+              "requires": {
+                "maxItems": 0
               }
             },
             "not": {
               "required": [
-                "native_hooks"
+                "native_hooks",
+                "sandbox"
               ]
             }
           }
@@ -659,11 +745,27 @@
               },
               "timeout": {
                 "maxLength": 0
+              },
+              "allowed_tools": {
+                "maxItems": 0
+              },
+              "denied_tools": {
+                "maxItems": 0
+              },
+              "skills": {
+                "maxItems": 0
+              },
+              "mcp": {
+                "maxLength": 0
+              },
+              "requires": {
+                "maxItems": 0
               }
             },
             "not": {
               "required": [
-                "native_hooks"
+                "native_hooks",
+                "sandbox"
               ]
             }
           }
@@ -878,8 +980,58 @@
             "worktree",
             "none"
           ]
+        },
+        "policy": {
+          "$ref": "#/$defs/policy"
         }
       }
+    },
+    "stringSet": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filesystem": {
+          "const": "read_only"
+        },
+        "network": {
+          "const": "deny"
+        }
+      },
+      "minProperties": 1
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowed_tools": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "denied_tools": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "skills": {
+          "$ref": "#/$defs/stringSet"
+        },
+        "mcp": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sandbox": {
+          "$ref": "#/$defs/sandbox"
+        },
+        "requires": {
+          "$ref": "#/$defs/stringSet"
+        }
+      },
+      "minProperties": 1
     }
   }
 }

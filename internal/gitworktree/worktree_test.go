@@ -102,3 +102,27 @@ func git(t *testing.T, dir string, args ...string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+func TestPrepareAcceptsSymlinkedWorkspacePath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("git worktree integration")
+	}
+	repo := initRepo(t)
+	links := t.TempDir()
+	linkedRepo := filepath.Join(links, "repo-link")
+	if err := os.Symlink(repo, linkedRepo); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	info, err := Prepare(context.Background(), linkedRepo, "run-symlink", "symlinked", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer Remove(context.Background(), info.RepositoryRoot, info.Path, true) //nolint:errcheck
+	physical, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.RepositoryRoot != filepath.Clean(physical) || info.ControlWorkspace != filepath.Clean(physical) {
+		t.Fatalf("paths were not canonicalized: %+v physical=%s", info, physical)
+	}
+}

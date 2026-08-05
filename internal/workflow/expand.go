@@ -537,8 +537,8 @@ func sourceKinds(node spec.Node) int {
 }
 
 func validateContainerFields(node spec.Node) error {
-	if node.Attempts.Max != 0 || len(node.Attempts.RetryOn) != 0 || node.Attempts.RetrySession != "" || node.AllowFailure || node.Timeout != "" || !hookSetEmpty(node.Hooks) || len(node.NativeHooks) != 0 || node.OutputFormat != nil {
-		return fmt.Errorf("container node %q supports assistant/model/session defaults, but group attempts, timeout, hooks, native_hooks, output_format and allow_failure must be defined inside the child workflow", node.ID)
+	if node.Attempts.Max != 0 || len(node.Attempts.RetryOn) != 0 || node.Attempts.RetrySession != "" || node.AllowFailure || node.Timeout != "" || !hookSetEmpty(node.Hooks) || len(node.NativeHooks) != 0 || node.OutputFormat != nil || node.AllowedTools != nil || len(node.DeniedTools) != 0 || node.Skills != nil || node.MCP != "" || node.Sandbox != nil || len(node.Requires) != 0 {
+		return fmt.Errorf("container node %q supports assistant/model/session defaults, but attempts, timeout, hooks, native_hooks, policies, output_format and allow_failure must be defined inside the child workflow", node.ID)
 	}
 	return nil
 }

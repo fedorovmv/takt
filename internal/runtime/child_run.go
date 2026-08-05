@@ -86,6 +86,20 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 	if childState == nil {
 		input := renderTemplate(definition.Input, state, local, feedback, artifacts)
 		options := StartOptions{RunID: nodeState.ChildRunID, ParentRunID: state.ID, ParentNodeID: node.ID}
+		childPolicy := r.inheritedPolicy
+		if definition.Policy != nil {
+			resolvedPolicy, policyErr := resolvePolicyFields(*definition.Policy, r.WorkflowPath)
+			if policyErr != nil {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child policy", Err: policyErr}
+			}
+			childPolicy, policyErr = mergePolicies(childPolicy, resolvedPolicy)
+			if policyErr != nil {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "merge child policy", Err: policyErr}
+			}
+		}
+		if len(assistant.RequiredCapabilities(childPolicy)) > 0 {
+			options.InheritedPolicy = &childPolicy
+		}
 		switch definition.Isolation {
 		case "":
 			// Use the child workflow's own worktree policy.
@@ -103,7 +117,7 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 		}
 		childState, err = childRunner.StartWithOptions(ctx, input, options)
 	} else {
-		childRunner.startOptions = StartOptionsFromState(childState)
+		childRunner.SetStartOptions(StartOptionsFromState(childState))
 		if childState.ExecutionWorkspace != "" {
 			childRunner.SetExecutionWorkspace(childState.ExecutionWorkspace)
 		}
@@ -171,7 +185,7 @@ func aggregateRunUsage(nodes map[string]*store.NodeState) *store.Usage {
 	usage := &store.Usage{}
 	seen := false
 	for _, node := range nodes {
-		if node == nil || node.Hidden || node.Usage == nil {
+		if node == nil || node.Usage == nil {
 			continue
 		}
 		seen = true

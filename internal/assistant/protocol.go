@@ -41,6 +41,7 @@ type ProtocolRequest struct {
 	Model           ProtocolModel          `json:"model"`
 	Session         ProtocolSessionRequest `json:"session"`
 	NativeHooks     json.RawMessage        `json:"native_hooks,omitempty"`
+	Policy          *Policy                `json:"policy,omitempty"`
 	Environment     map[string]string      `json:"environment,omitempty"`
 	Metadata        map[string]string      `json:"metadata,omitempty"`
 	Limits          ProtocolLimits         `json:"limits,omitempty"`
@@ -98,6 +99,7 @@ func buildProtocolRequest(ctx context.Context, req Request, assistantSpec spec.A
 		},
 		Session:     ProtocolSessionRequest{Mode: mode, ID: id},
 		NativeHooks: req.NativeHooks,
+		Policy:      protocolPolicy(req.Policy),
 		Environment: env,
 		Metadata:    req.Metadata,
 		Limits:      limits,
@@ -177,4 +179,12 @@ func decodeProtocolResult(src []byte, requestedSession ProtocolSessionRequest) (
 		return ProtocolResult{}, fmt.Errorf("assistant reported resumed=true for a fresh session")
 	}
 	return result, nil
+}
+
+func protocolPolicy(value Policy) *Policy {
+	if len(RequiredCapabilities(value)) == 0 {
+		return nil
+	}
+	copy := value
+	return &copy
 }

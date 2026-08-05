@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.26-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.27-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -346,4 +346,10 @@ Fingerprint workflow включает исходный родительский 
 
 Workflow-level `worktree.enabled` creates a branch and worktree before actions start. For structural subworkflow, a hidden gate can activate its policy before child nodes. The smart router now starts the selected process as a governed child Run; by default that child applies its own workflow policy. CLI overrides are persisted in Run state.
 
-Only a clean successful `on_success` worktree is removed automatically; its branch is preserved. Dirty, failed, cancelled, waiting, manual, or cleanup-error worktrees remain. The runtime never deletes uncommitted changes automatically. This boundary isolates local code changes but is not a sandbox.
+Only a clean successful `on_success` worktree is removed automatically. An unchanged branch whose head still equals the recorded base commit is deleted; a branch with commits is preserved. Dirty, failed, cancelled, waiting, manual, or cleanup-error worktrees remain. The runtime never deletes uncommitted changes automatically. This boundary isolates local code changes but is not a sandbox.
+
+## Политики AI-узлов
+
+Эффективная политика вычисляется до вызова adapter. Локальные ограничения объединяются с inherited policy: deny-списки складываются, allowlist и список skills пересекаются как верхние границы, `read_only` и `network: deny` наследуются как наиболее строгие значения, а inherited MCP нельзя незаметно заменить. Явные пустые `allowed_tools: []` и `skills: []` сохраняются как запрет, а не трактуются как отсутствие настройки.
+
+Adapter публикует capabilities. Если хотя бы одна необходимая capability отсутствует, узел завершается до запуска процесса. Эффективная политика и список capabilities сохраняются в `NodeState.policy`; inherited policy сохраняется в child Run. Policy resources входят в definition fingerprint.

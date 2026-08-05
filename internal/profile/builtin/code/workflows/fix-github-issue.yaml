@@ -15,6 +15,8 @@ nodes:
   - id: classify
     command: classify-issue
     model: routing
+    allowed_tools: []
+    skills: []
     output_format:
       type: object
       additionalProperties: false
@@ -28,7 +30,7 @@ nodes:
           type: string
         repository:
           type: string
-      required: [issue_type, title, issue_number, repository]
+      required: [issue_type, title]
 
   - id: investigate
     depends_on: [classify]

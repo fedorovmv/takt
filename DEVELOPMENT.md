@@ -125,3 +125,7 @@ make opencode-contracts
 ```bash
 make composition
 ```
+
+## CI matrix
+
+`.github/workflows/ci.yml` запускает `make check` на `ubuntu-latest` и `macos-latest`. Worktree/path changes должны проходить обе ОС; локальный Linux-прогон не заменяет macOS job.

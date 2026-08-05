@@ -85,20 +85,18 @@ Transport error возвращается через `error`. Ненулевой 
 
 ## 3. Capabilities
 
-```go
-type Capabilities struct {
-    SessionResume    bool
-    StructuredOutput bool
-    ToolEvents       bool
-    NativeHooks      []string
-    MCP              bool
-    Skills           bool
-    Streaming        bool
-    ModelOverride    bool
-}
-```
+Adapter публикует список строковых capabilities:
 
-Config объявляет ожидаемые capabilities, а адаптер сообщает фактические. Takt должен отклонять запуск, если workflow требует неподдерживаемую возможность.
+- `tool_policy`;
+- `skills`;
+- `mcp`;
+- `sandbox_filesystem`;
+- `sandbox_network`;
+- дополнительные adapter-specific names.
+
+Runtime выводит обязательный набор из effective node policy и `requires`. Запуск отклоняется до вызова процесса, если capability отсутствует. Встроенные Pi/OpenCode не могут объявить через config зарезервированную возможность, которую adapter фактически не реализует. Универсальный `process` объявляет поддерживаемые гарантии явно, поскольку их исполняет внешний adapter.
+
+`allowed_tools: []` и `skills: []` являются заданными пустыми allowlists, а не отсутствием политики. Эффективная политика передаётся в `Request.Policy`, process protocol и `TAKT_POLICY_JSON`; фактически применённая политика и capabilities сохраняются в состоянии узла.
 
 ## 4. Process transport
 
@@ -259,6 +257,7 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 - общий race-safe лимит stdout/stderr;
 - Session ID, версия Pi, фактический `responseModel` и per-attempt usage delta;
 - дополнительные env и нерезервированные Pi flags;
+- `--tools`/`--no-tools`, `--skill`/`--no-skills` и read-only tool restriction;
 - opt-in smoke test с реальным бинарником.
 
 Интерактивный extension UI не проксируется в рамках попытки: запросы, требующие ответа, считаются protocol error. Fire-and-forget методы `notify`, `setStatus`, `setWidget`, `setTitle` и `set_editor_text` допускаются. Project-local Pi resources управляются явным `project_trust`.
@@ -285,6 +284,7 @@ Prompt передаётся через stdin. Stdout трактуется как
 - version probe, timeout/cancellation, общий stdout/stderr limit;
 - provider retry/connection diagnostics при timeout/cancellation без изменения execution kind;
 - per-attempt usage и cost;
+- permission/MCP policy через `OPENCODE_CONFIG_CONTENT`, explicit empty tool/skill allowlists и prompt injection для path skills;
 - opt-in smoke test с реальным OpenCode CLI.
 
 JSON stream текущего CLI не гарантирует отдельное событие о фактическом provider-side routing. Поэтому `resolved_model` равен явно переданному `provider/id`, если event stream не предоставил другую модель; источник фиксируется в structured metadata. `auto_approve: true` передаёт `--auto` и допускается только для доверенного workspace. Takt не парсит TUI и не реализует внутренний tool loop OpenCode.

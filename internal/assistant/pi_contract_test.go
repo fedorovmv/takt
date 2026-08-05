@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -406,5 +407,29 @@ func TestPiAdapterOptInSmoke(t *testing.T) {
 	}
 	if result.ResolvedModel == nil || result.ResolvedModel.Provider == "" || result.ResolvedModel.ID == "" {
 		t.Fatalf("Pi smoke did not expose resolved model: %+v", result.ResolvedModel)
+	}
+}
+
+func TestPiPolicyArguments(t *testing.T) {
+	skill := filepath.Join(t.TempDir(), "SKILL.md")
+	if err := os.WriteFile(skill, []byte("# skill"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	req := fakePiRequest(t.TempDir())
+	req.Policy = Policy{
+		AllowedTools: []string{"read", "grep"}, ToolsRestricted: true,
+		DeniedTools: []string{"write"}, Skills: []string{skill}, SkillsRestricted: true,
+		Filesystem: "read_only",
+	}
+	if err := validatePiPolicy(req.Policy); err != nil {
+		t.Fatal(err)
+	}
+	args := piArgs(spec.AssistantSpec{}, req)
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--tools grep,read") || !strings.Contains(joined, "--no-skills") || !strings.Contains(joined, "--skill "+skill) {
+		t.Fatalf("Pi policy was not translated to CLI args: %v", args)
+	}
+	if strings.Contains(joined, "write") {
+		t.Fatalf("denied write tool leaked into Pi allowlist: %v", args)
 	}
 }

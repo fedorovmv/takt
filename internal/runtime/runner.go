@@ -49,16 +49,18 @@ type Runner struct {
 	Store            store.Repository
 	Assistants       assistant.Resolver
 	startOptions     StartOptions
+	inheritedPolicy  assistant.Policy
 }
 
 type StartOptions struct {
-	RunID        string
-	ParentRunID  string
-	ParentNodeID string
-	Worktree     *bool
-	WorktreeBase string
-	KeepWorktree bool
-	AllowDirty   bool
+	RunID           string
+	ParentRunID     string
+	ParentNodeID    string
+	Worktree        *bool
+	WorktreeBase    string
+	KeepWorktree    bool
+	AllowDirty      bool
+	InheritedPolicy *assistant.Policy
 }
 
 func New(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspace string) *Runner {
@@ -94,6 +96,9 @@ func (r *Runner) SetExecutionWorkspace(workspace string) {
 
 func (r *Runner) SetStartOptions(options StartOptions) {
 	r.startOptions = options
+	if options.InheritedPolicy != nil {
+		r.inheritedPolicy = *options.InheritedPolicy
+	}
 }
 
 func ancestorCommandDirs(start, stop string) []string {
@@ -124,6 +129,9 @@ func (r *Runner) Start(ctx context.Context, input string) (*store.RunState, erro
 
 func (r *Runner) StartWithOptions(ctx context.Context, input string, options StartOptions) (*store.RunState, error) {
 	r.startOptions = options
+	if options.InheritedPolicy != nil {
+		r.inheritedPolicy = *options.InheritedPolicy
+	}
 	id := options.RunID
 	if id == "" {
 		var err error
@@ -178,7 +186,7 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 	now := time.Now().UTC()
 	state := &store.RunState{
 		ID: id, Status: store.RunRunning, ParentRunID: options.ParentRunID, ParentNodeID: options.ParentNodeID, WorkflowPath: r.WorkflowPath, ConfigPath: r.ConfigPath,
-		Workspace: r.ControlWorkspace, ExecutionWorkspace: r.Workspace, Worktree: worktreeState, RunOptions: runOptionsState(options), Input: input, Nodes: map[string]*store.NodeState{},
+		Workspace: r.ControlWorkspace, ExecutionWorkspace: r.Workspace, Worktree: worktreeState, RunOptions: runOptionsState(options), InheritedPolicy: policyState(r.inheritedPolicy, nil), Input: input, Nodes: map[string]*store.NodeState{},
 		Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now,
 		WorkflowFingerprint: fingerprints.Workflow,
 		ConfigFingerprint:   fingerprints.Config,
@@ -222,6 +230,10 @@ func StartOptionsFromState(state *store.RunState) StartOptions {
 		WorktreeBase: state.RunOptions.WorktreeBase,
 		KeepWorktree: state.RunOptions.KeepWorktree,
 		AllowDirty:   state.RunOptions.AllowDirty,
+	}
+	if state.InheritedPolicy != nil {
+		policy := policyFromState(state.InheritedPolicy)
+		options.InheritedPolicy = &policy
 	}
 	switch state.RunOptions.WorktreeMode {
 	case "enabled":
@@ -296,6 +308,7 @@ func (r *Runner) rollbackPreparedWorktree(value *store.WorktreeState) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_ = gitworktree.Remove(ctx, value.RepositoryRoot, value.Path, true)
+	_, _ = gitworktree.DeleteBranchIfUnchanged(ctx, value.RepositoryRoot, value.Branch, value.BaseCommit)
 }
 
 func (r *Runner) VerifyDefinitions(state *store.RunState) error {
@@ -833,6 +846,22 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		if err != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: err}
 		}
+		policy, err := resolveNodePolicy(node, r.WorkflowPath, r.inheritedPolicy)
+		if err != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve node policy", Err: err}
+		}
+		capabilities, err := validateAdapterPolicy(adapter, policy)
+		if err != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "validate assistant capabilities", Err: err}
+		}
+		if state.Nodes[node.ID].Policy == nil {
+			state.Nodes[node.ID].Policy = policyState(policy, capabilities)
+			if state.Nodes[node.ID].Policy != nil {
+				if err := r.commit(state, "node.policy.applied", node.ID, map[string]any{"policy": state.Nodes[node.ID].Policy}); err != nil {
+					return execResult{}, err
+				}
+			}
+		}
 		sessionMode := node.Session
 		if sessionMode == "" {
 			sessionMode = r.Workflow.Defaults.Session
@@ -845,7 +874,7 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			sessionID = ""
 		}
 		prompt = renderTemplate(prompt, state, local, feedback, artifacts)
-		result, err := adapter.Run(ctx, assistant.Request{RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts, Prompt: prompt, Workspace: r.Workspace, ModelName: modelName, Model: model, SessionMode: sessionMode, SessionID: sessionID, NativeHooks: node.NativeHooks})
+		result, err := adapter.Run(ctx, assistant.Request{RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts, Prompt: prompt, Workspace: r.Workspace, ModelName: modelName, Model: model, SessionMode: sessionMode, SessionID: sessionID, NativeHooks: node.NativeHooks, Policy: policy})
 		execResult := execResult{
 			Output: result.Output, Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, SessionID: result.SessionID,
 			Resumed: result.Resumed, Truncated: result.Truncated, Usage: result.Usage,
@@ -1303,7 +1332,12 @@ func (r *Runner) finalizeWorktree(state *store.RunState, terminalStatus string) 
 	value.Removed = true
 	value.RemovedAt = time.Now().UTC()
 	value.RetainedReason = ""
-	return r.commit(state, "worktree.removed", "", map[string]any{"path": value.Path, "branch": value.Branch})
+	branchRemoved, branchErr := gitworktree.DeleteBranchIfUnchanged(ctx, value.RepositoryRoot, value.Branch, value.BaseCommit)
+	value.BranchRemoved = branchRemoved
+	if branchErr != nil {
+		value.BranchCleanupError = branchErr.Error()
+	}
+	return r.commit(state, "worktree.removed", "", map[string]any{"path": value.Path, "branch": value.Branch, "branch_removed": branchRemoved, "branch_cleanup_error": value.BranchCleanupError})
 }
 
 func nodeContext(parent context.Context, timeout string) (context.Context, context.CancelFunc, error) {

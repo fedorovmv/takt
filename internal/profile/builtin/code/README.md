@@ -1,4 +1,4 @@
-# Takt code profile 0.5.0
+# Takt code profile 0.6.0
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -57,4 +57,8 @@ Files installed under `.takt/profiles/code/` are ordinary project files. Teams c
 
 ## Worktree policy
 
-Mutating workflows create a `takt/<workflow>/<run-id>` branch and execute in `.takt/worktrees/<run-id>`. Clean successful worktrees are removed while the branch remains. Dirty or failed worktrees are retained and shown by `takt worktree list`. Current-PR review and conflict-resolution workflows intentionally use the live checkout.
+Mutating workflows create a `takt/<workflow>/<run-id>` branch and execute in `.takt/worktrees/<run-id>`. Clean successful worktrees are removed; a branch is deleted only when it has no commits beyond the recorded base. Dirty or failed worktrees are retained and shown by `takt worktree list`. Current-PR review and conflict-resolution workflows intentionally use the live checkout.
+
+## Node policies
+
+Routing and decision nodes use explicit empty tool/skill allowlists. Review agents deny edit/write tools while fix nodes retain mutation access. The policies are checked against adapter capabilities before invocation and are persisted in Run state.

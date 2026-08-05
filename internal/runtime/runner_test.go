@@ -17,12 +17,17 @@ import (
 	"takt/internal/execution"
 	"takt/internal/spec"
 	"takt/internal/store"
+	"takt/internal/workflow"
 )
 
 type adapterFunc func(context.Context, assistant.Request) (assistant.Result, error)
 
 func (f adapterFunc) Run(ctx context.Context, req assistant.Request) (assistant.Result, error) {
 	return f(ctx, req)
+}
+
+func (f adapterFunc) Capabilities() []string {
+	return []string{assistant.CapabilityToolPolicy, assistant.CapabilitySkills, assistant.CapabilityMCP, assistant.CapabilitySandboxFilesystem, assistant.CapabilitySandboxNetwork}
 }
 
 type resolverFunc func(string) (assistant.Adapter, error)
@@ -958,5 +963,131 @@ func TestParallelWavePublishesAllCurrentNodes(t *testing.T) {
 	out := <-done
 	if out.err != nil || out.state.Status != store.RunCompleted || len(out.state.CurrentNodes) != 0 {
 		t.Fatalf("unexpected final result state=%+v err=%v", out.state, out.err)
+	}
+}
+
+type policyAdapter struct {
+	caps []string
+	seen *assistant.Request
+}
+
+func (p *policyAdapter) Run(_ context.Context, req assistant.Request) (assistant.Result, error) {
+	copy := req
+	p.seen = &copy
+	return assistant.Result{Output: "ok", Stdout: "raw", ExitCode: 0}, nil
+}
+
+func (p *policyAdapter) Capabilities() []string { return append([]string(nil), p.caps...) }
+
+func TestNodePolicyRejectsUnsupportedAssistantCapability(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "policy"}, Nodes: []spec.Node{{
+		ID: "agent", Prompt: "test", Assistant: "demo", Model: "model", DeniedTools: []string{"write"},
+	}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"model": {Provider: "test", ID: "model"}}}
+	adapter := &policyAdapter{}
+	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
+	state, err := r.Start(context.Background(), "")
+	if err == nil || state.Status != store.RunFailed || !strings.Contains(err.Error(), assistant.CapabilityToolPolicy) {
+		t.Fatalf("unsupported policy was not rejected: state=%+v err=%v", state, err)
+	}
+	if adapter.seen != nil {
+		t.Fatal("adapter was invoked before capability validation")
+	}
+}
+
+func TestNodePolicyIsResolvedPassedAndPersisted(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "skills", "review")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Review"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "mcp.json"), []byte(`{"search":{"type":"remote","url":"https://example.invalid/mcp"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	allowedTools := []string{"read", "grep"}
+	skills := []string{"skills/review"}
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "policy"}, Nodes: []spec.Node{{
+		ID: "agent", Prompt: "test", Assistant: "demo", Model: "model",
+		AllowedTools: &allowedTools, DeniedTools: []string{"write"}, Skills: &skills, MCP: "mcp.json",
+		Sandbox: &spec.SandboxSpec{Filesystem: "read_only"}, Requires: []string{"custom"},
+	}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"model": {Provider: "test", ID: "model"}}}
+	adapter := &policyAdapter{caps: []string{assistant.CapabilityToolPolicy, assistant.CapabilitySkills, assistant.CapabilityMCP, assistant.CapabilitySandboxFilesystem, "custom"}}
+	r := New(wf, cfg, workflowPath, filepath.Join(dir, "config.yaml"), dir)
+	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adapter.seen == nil || adapter.seen.Policy.MCPPath != filepath.Join(dir, "mcp.json") || len(adapter.seen.Policy.MCPConfig) == 0 {
+		t.Fatalf("policy resources were not passed: %+v", adapter.seen)
+	}
+	if got := adapter.seen.Policy.Skills; len(got) != 1 || got[0] != skillDir {
+		t.Fatalf("skill path was not resolved: %+v", got)
+	}
+	stored := state.Nodes["agent"].Policy
+	if stored == nil || stored.MCPPath == "" || stored.Filesystem != "read_only" || !stored.ToolsRestricted || len(stored.Capabilities) != 5 {
+		t.Fatalf("policy was not persisted: %+v", stored)
+	}
+}
+
+func TestGovernedChildPolicyRestrictsChildNode(t *testing.T) {
+	dir := t.TempDir()
+	childPath := filepath.Join(dir, "child.yaml")
+	parentPath := filepath.Join(dir, "parent.yaml")
+	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: agent
+    prompt: child
+    assistant: demo
+    model: model
+    allowed_tools: [read, write]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(parentPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: child
+    workflow:
+      path: child.yaml
+      policy:
+        allowed_tools: [read, grep]
+        denied_tools: [write]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"model": {Provider: "test", ID: "model"}}}
+	adapter := &policyAdapter{caps: []string{assistant.CapabilityToolPolicy}}
+	r := New(wf, cfg, parentPath, filepath.Join(dir, "config.yaml"), dir)
+	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adapter.seen == nil || len(adapter.seen.Policy.AllowedTools) != 1 || adapter.seen.Policy.AllowedTools[0] != "read" || len(adapter.seen.Policy.DeniedTools) != 1 {
+		t.Fatalf("child policy was not inherited as an upper bound: %+v", adapter.seen)
+	}
+	child, err := r.Store.Load(state.ChildRunIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.InheritedPolicy == nil || !child.InheritedPolicy.ToolsRestricted {
+		t.Fatalf("inherited policy was not persisted on child run: %+v", child.InheritedPolicy)
 	}
 }

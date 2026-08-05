@@ -23,14 +23,14 @@ worktree:
 
 `cleanup` accepts:
 
-- `on_success`: remove a clean successful worktree while preserving its branch;
+- `on_success`: remove a clean successful worktree and delete its branch only when the branch still points to the recorded base commit;
 - `manual`: retain it until an explicit CLI removal.
 
 A failed, cancelled, waiting, dirty, or uninspectable worktree is retained. Takt never discards uncommitted work automatically.
 
 ## Router-aware isolation
 
-The `code` router itself runs in the control checkout. When the selected subworkflow declares `worktree.enabled`, its compiled gate creates the worktree before any child node executes. This keeps routing auditable without applying the wrong isolation policy to every branch.
+The `code` router itself runs in the control checkout. The selected governed child applies its own worktree policy before its first node. Once a structural dynamic gate activates a worktree, the remainder of that Run uses the execution workspace; switching is Run-scoped, not container-scoped. This keeps routing auditable without applying the wrong isolation policy to every branch.
 
 Mutating workflows such as feature development, issue fixing, refactoring, architecture changes, Ralph, and Remotion generation enable isolation. General assistance, current-PR reviews, issue creation, validation, and conflict resolution stay in the live checkout because they either do not mutate code or depend on the checkout's current branch/conflict state.
 
@@ -72,6 +72,10 @@ Definitions and bundled Markdown commands remain authoritative from the control 
 
 ## Deliberate boundaries
 
-Per-node tool policies, MCP/skills/sandbox, script nodes, dynamic child fan-out and parallel governed children remain active implementation gaps. Governed child Runs and cancellation were added in `v0.1.26-alpha`.
+Per-node tool policies, MCP/skills and assistant-enforced sandbox were added in `v0.1.27-alpha`; script nodes, dynamic child fan-out and parallel governed children remain active implementation gaps. Governed child Runs and cancellation were added in `v0.1.26-alpha`.
 
 Server, Web UI, database storage, remote workers, and message adapters remain proposal-level extensions. They become relevant only if Takt moves beyond local trusted execution; that move requires a separate threat model, authentication, secret handling, and multi-user persistence contract.
+
+## Path canonicalization
+
+Before comparing the requested workspace with `git rev-parse --show-toplevel`, Takt resolves both paths through `filepath.EvalSymlinks`. This is required on macOS, where temporary paths commonly traverse `/var` → `/private/var`, and for any user workspace reached through a symbolic link.

@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.26-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.27-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -203,6 +203,39 @@ nodes:
     additionalProperties: false
 ```
 
+
+### Политики `command` и `prompt`
+
+```yaml
+- id: classify
+  command: classify-change
+  allowed_tools: []
+  skills: []
+
+- id: review
+  command: review-code
+  denied_tools: [edit, write]
+  skills: [skills/go-review]
+  mcp: mcp/repository.json
+  sandbox:
+    filesystem: read_only
+    network: deny
+  requires: [tool_policy, skills, mcp]
+```
+
+Поля поддерживаются только у `command` и `prompt`:
+
+- `allowed_tools` — верхняя граница доступных инструментов; явный пустой список означает отсутствие инструментов;
+- `denied_tools` — дополнительный deny-list; пересечение с allowlist запрещено;
+- `skills` — список имён или путей; явный пустой список запрещает inherited skills;
+- `mcp` — JSON-файл конфигурации относительно workflow;
+- `sandbox.filesystem: read_only` и `sandbox.network: deny` — обязательные гарантии adapter;
+- `requires` — дополнительные capability names.
+
+До запуска assistant runtime вычисляет эффективную политику, проверяет `Adapter.Capabilities()`, сохраняет её в `NodeState.policy` и передаёт adapter. Неподдерживаемая capability завершает узел до запуска процесса. Для governed child Run поле `workflow.policy` задаёт inherited upper bound. Allowlist и skills пересекаются, deny/requirements объединяются, а более строгая sandbox-политика наследуется. Файлы MCP и локальные skills входят в fingerprint.
+
+Это assistant-enforced contract, а не OS sandbox. `process` обязан объявить поддерживаемые capabilities в config и получает политику через `takt-assistant/v1alpha1` и `TAKT_POLICY_JSON`. Pi поддерживает tool policy, path skills и read-only tool restriction. OpenCode получает permission/MCP config через `OPENCODE_CONFIG_CONTENT`; локальные path skills дополнительно внедряются в prompt. Network deny не объявляется встроенными Pi/OpenCode и потому отклоняется до запуска.
+
 ### `bash`
 
 Выполняет команду через `bash -lc`. Runtime сохраняет stdout и stderr раздельно в `stdout`/`stderr`, а также формирует объединённый `output` для шаблонов, feedback и диагностики.
@@ -266,6 +299,10 @@ until:
     input: ${input}
     output_node: summary
     isolation: inherit
+    policy:
+      denied_tools: [edit, write]
+      sandbox:
+        filesystem: read_only
 ```
 
 `path` вычисляется относительно содержащего workflow. `input` проходит обычный renderer. Если `output_node` не задан, в дочернем определении должен быть ровно один terminal-узел. В отличие от `subworkflow`, дочерние узлы не встраиваются в DAG родителя.
@@ -526,4 +563,4 @@ worktree:
   allow_dirty: false
 ```
 
-State and artifacts remain in the control workspace. Node execution moves into the worktree. `cleanup` is `on_success` or `manual`. Automatic cleanup applies only to a clean successful worktree; all states that may contain evidence or changes are retained. `--no-worktree`, `--keep-worktree`, `--worktree-base`, and `--allow-dirty-worktree` override policy and are persisted for resume.
+State and artifacts remain in the control workspace. Node execution moves into the worktree. `cleanup` is `on_success` or `manual`. Automatic cleanup applies only to a clean successful worktree; an unchanged branch is deleted, while a branch with commits and all states that may contain evidence or changes are retained. `--no-worktree`, `--keep-worktree`, `--worktree-base`, and `--allow-dirty-worktree` override policy and are persisted for resume.

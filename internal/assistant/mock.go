@@ -20,3 +20,6 @@ func (m Mock) Run(_ context.Context, req Request) (Result, error) {
 		ExitCode:  0,
 	}, nil
 }
+func (m Mock) Capabilities() []string {
+	return []string{CapabilityToolPolicy, CapabilitySkills, CapabilityMCP, CapabilitySandboxFilesystem, CapabilitySandboxNetwork}
+}

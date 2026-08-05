@@ -91,8 +91,8 @@ nodes:
 		t.Fatalf("worktree path still exists: %v", err)
 	}
 	branch := runtimeGit(t, repo, "branch", "--list", state.Worktree.Branch)
-	if !strings.Contains(branch, state.Worktree.Branch) {
-		t.Fatalf("run branch was removed unexpectedly: %q", branch)
+	if strings.Contains(branch, state.Worktree.Branch) || !state.Worktree.BranchRemoved {
+		t.Fatalf("empty run branch was not removed: branch=%q state=%+v", branch, state.Worktree)
 	}
 }
 
