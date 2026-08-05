@@ -1,4 +1,4 @@
-# Результаты проверки Takt v0.1.23-alpha
+# Результаты проверки Takt v0.1.24-alpha
 
 Проверено 5 августа 2026 года.
 
@@ -7,38 +7,54 @@
 ```text
 Go: go1.23.2 linux/amd64
 OS: Linux 6.12.13 x86_64
-Исходный архив: takt-v0.1.22-alpha.zip
-SHA-256 исходного архива: 4496a3492401917b6e58ca7c2bcc233fb16144fff083cf9ccdefcc6f8c31a6e0
+Исходный архив: takt-v0.1.23-alpha.zip
+SHA-256 исходного архива: 50685e14575d6867ebee0978be17592eb05c56cd652baa4f364013487cba1ea8
 ```
 
-Контрольная сумма исходного архива совпала с приложенным файлом `takt-v0.1.22-alpha.sha256`.
+Контрольная сумма исходного архива совпала с приложенным файлом `takt-v0.1.23-alpha.sha256`.
 
 ## Проверенный контракт среза
 
-- `foreach` принимает inline `items` или внешний YAML/JSON-массив через `items_from.path`;
-- изменение внешнего массива меняет workflow fingerprint и блокирует resume старого Run;
-- `subworkflow` и `foreach` работают внутри дочернего DAG `loop_group` с тем же scheduler;
-- публичный output `foreach` содержит упорядоченный JSON-массив результатов всех итераций;
-- CLI скрывает развёрнутые ID, отображает ожидание через ID контейнера и принимает approval по этому ID;
-- контейнер задаёт defaults `assistant`, `model` и `session` для дочернего workflow;
-- локальные команды ищутся от каталога ребёнка до корня композиции;
-- схема и Go-валидатор одинаково трактуют нулевые значения полей контейнера;
-- задокументированы рекурсия, предел глубины 16, запрещённые поля и оставшиеся ограничения;
-- профиль `code` обновлён до 0.2.1, authoring skill — до 0.5.0.
+- профиль `code` 0.3.0 содержит ровно 19 пользовательских workflow и два переиспользуемых review-блока;
+- default workflow профиля является умным роутером и выбирает одну из 19 ветвей внутри того же Run;
+- любой процесс запускается напрямую селектором `code:<workflow>`;
+- `takt workflow list` и `takt workflow describe` показывают каталог;
+- `output_format` проверяет один JSON-результат агентного узла, обязательные поля, типы, `enum`, массивы и `additionalProperties`;
+- вложенные JSON-пути доступны в `when` и шаблонах;
+- независимые простые `command`, `prompt` и `bash` выполняются параллельной scheduler-волной;
+- `foreach.parallel` выполняет итерации конкурентно и собирает результат в порядке входного массива;
+- approval внутри `loop_group` останавливает Run, после ответа продолжает текущую итерацию и повторно запрашивается на следующей;
+- `trigger_rule: one_success` соединяет условные ветви после их terminal-состояния;
+- authoring skill обновлён до 0.6.0 и описывает новый контракт.
 
 ## Полные проверки рабочего дерева
 
 Фактически завершились успешно:
 
 ```text
-go vet ./...
-go test ./... -count=1                  PASS, real 25.18s
-go test -race ./... -count=1            PASS, real 27.89s
-make check                               PASS
-./scripts/verify.sh                      PASS
+gofmt -w cmd internal                       PASS
+go vet ./...                                PASS
+./scripts/verify.sh                         PASS
 ```
 
-`make check` последовательно подтвердил:
+`verify.sh` последовательно выполнил полный `go test ./...`, полный `go test -race ./...`, сборку бинарников, adapter contract suites, Route DSL E2E/evaluation, composition, authoring skill, каталог `code`, документацию и штатные `takt validate`.
+
+Дополнительно отдельно выполнены с `-count=1`:
+
+```text
+go test ./internal/profile ./internal/workflow ./internal/runtime ./cmd/takt
+                                               PASS
+go test -race ./internal/runtime               PASS
+go test -race ./internal/workflow ./internal/profile ./cmd/takt
+                                               PASS
+go test -race ./internal/assistant              PASS
+go test -race ./internal/command ./internal/config ./internal/definition \
+  ./internal/evaluation ./internal/execution   PASS
+go test -race ./internal/store ./internal/validation ./internal/yamlmini
+                                               PASS
+```
+
+Контрактные наборы:
 
 ```text
 fake-assistant contract suite: PASS
@@ -49,50 +65,40 @@ Route DSL evaluation: PASS
 Route DSL evaluation isolation: PASS
 workflow composition: PASS
 Takt authoring skill: PASS
-code profile contract: PASS
+code profile catalog contract: PASS
 documentation check: PASS
+verification: PASS
 ```
 
-`verify.sh` дополнительно собрал fake binaries и проверил `takt validate` для штатных примеров, включая composition.
+## Специальные регрессии v0.1.24
 
-## Повтор нестабильных сценариев
+Проверены отдельные сценарии:
 
-После исправлений отдельно выполнены:
-
-```text
-go test ./internal/runtime \
-  -run TestOpenCodeTimeoutPreservesProviderDiagnostics -count=3
-PASS
-
-go test ./internal/assistant \
-  -run TestOpenCodeRunPreservesContextPriorityWithRealOverflow -count=3
-PASS
-
-go test ./internal/assistant \
-  -run 'TestOpenCodeAdapterContract/provider_diagnostics_survive_timeout' -count=3
-PASS
-
-go test ./internal/assistant \
-  -run 'TestPiAdapterContract/process_exit' -count=20
-PASS
-```
-
-Для OpenCode timeout-тестов увеличен только запас на запуск тестового процесса и выдачу диагностик. Тестовый provider продолжает работать дольше deadline, поэтому сценарий по-прежнему проверяет timeout, а не обычное завершение. Pi adapter считает `os.ErrClosed` от stderr pipe после `cmd.Wait()` штатным закрытием потока и не превращает успешный `process_exit` в protocol error.
+- два независимых узла проходят взаимный файловый барьер, который невозможно пройти при последовательном запуске;
+- параллельный `foreach` проходит общий барьер двух итераций и возвращает `["one","two"]`;
+- два последовательных approval внутри разных итераций одного `loop_group` корректно возобновляют Run;
+- schema-valid JSON нормализуется, недопустимое значение `enum` становится `protocol`-ошибкой;
+- поле `nodes.route.output.workflow` работает в условии и шаблоне;
+- mock-запуск роутера вызывает только `route` и выбранный `assist`, остальные 18 ветвей пропускаются;
+- каждый из 19 явных селекторов проходит `takt validate` после `takt init code`;
+- профиль после установки содержит 21 YAML-файл workflow: 19 пользовательских и два reusable review-блока.
 
 ## Прерванные запуски
 
-Один предварительный холодный `go test -race ./... -count=1` был прерван внешним лимитом запуска инструмента до получения результата. Он не учитывается как успешная проверка. Полный повтор той же команды, `make check` и `verify.sh` завершились с кодом 0.
+Первые два foreground-запуска `make check` были остановлены внешним лимитом одного вызова инструмента во время полного `go test -race ./...`. Следующий полный запуск выявил слишком жёсткий временной порог теста параллельности: две секундные ветви завершились за 1,82 с при пороге 1,8 с. Проверка заменена на взаимный файловый барьер, который доказывает конкурентный запуск без зависимости от скорости среды; новый тест прошёл 20 повторов. После исправления полный `make check` и `verify.sh` выполнены повторно.
 
-Комбинированная команда с тремя повторными наборами тестов также достигла внешнего лимита после успешного завершения первых двух наборов. Третий набор `Pi process_exit -count=20` был сразу выполнен отдельной командой и прошёл.
+## Внешние интеграции
 
-## Внешние smoke-тесты
+Реальные Pi/OpenCode smoke и фактические операции с GitHub/Remotion не запускались: в среде сборки нет пользовательских credentials, provider-конфигурации и целевых репозиториев. Проверены fake adapter contracts, структура всех workflow, маршрутизация с mock assistant и детерминированные runtime-механизмы.
 
-Реальные Pi и OpenCode smoke не запускались: в среде сборки нет пользовательских credentials и provider-конфигурации. Контрактные fake adapters прошли полностью.
+## Оставшиеся функциональные пробелы относительно Archon
 
-## Оставшиеся ограничения
+Все 19 процессов и умный роутер присутствуют. Оставшиеся различия относятся к инфраструктуре исполнения:
 
-- `foreach` выполняется последовательно; конкурентный режим требует отдельной семантики scheduler;
-- `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` для всей композиционной группы задаются внутри дочернего workflow;
-- полный служебный `state.json` сохраняет namespaced ID для resume и диагностики; внешним контрактом является публичная проекция CLI;
-- approval и вложенный `loop_group` внутри `loop_group` остаются запрещены;
-- `items_from.path` читает статический файл при компиляции; динамический список из output другого узла пока не поддержан.
+- нет автоматической git worktree isolation для Run;
+- `subworkflow` остаётся частью родительского Run, а не отдельным governed child Run;
+- нет per-node `allowed_tools`, `denied_tools`, skills, MCP и sandbox policy;
+- нет script nodes Bun/uv, `output_type`, CLI `cancel`, server/Web UI, БД, message adapters и notifications;
+- параллельная scheduler-волна пока не включает узлы с portable hooks или `attempts.max > 1`;
+- `items_from` читает статический compile-time файл, динамический fan-out из output узла не реализован;
+- полный служебный `state.json` сохраняет namespaced ID, внешним контрактом остаётся публичная проекция CLI.

@@ -1,0 +1,44 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: plan-to-pr
+  description: Execute an existing plan, validate the implementation, create a PR, run five parallel review perspectives, and self-fix findings.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: resume
+nodes:
+  - id: confirm-plan
+    command: plan-change
+    model: review
+
+  - id: implement
+    depends_on: [confirm-plan]
+    command: implement-change
+    attempts:
+      max: 3
+    hooks:
+      after_node:
+        - id: validation
+          bash: ./.takt/profiles/code/tools/validate
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: validate
+    depends_on: [implement]
+    bash: ./.takt/profiles/code/tools/validate
+
+  - id: create-pr
+    depends_on: [validate]
+    command: create-pr
+
+  - id: review
+    depends_on: [create-pr]
+    subworkflow:
+      path: review-block.yaml
+
+  - id: summary
+    depends_on: [review]
+    command: summary
+    model: review

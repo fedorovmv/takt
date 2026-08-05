@@ -1,0 +1,82 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: code-smart-review-block
+  description: Classify review scope, run relevant independent reviewers, synthesize and repair findings.
+defaults:
+  assistant: opencode
+  model: review
+  session: fresh
+nodes:
+  - id: scope
+    command: review-scope
+
+  - id: classify
+    depends_on: [scope]
+    command: classify-review
+    model: routing
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        run_error_review:
+          type: boolean
+        run_test_review:
+          type: boolean
+        run_docs_review:
+          type: boolean
+        run_simplicity_review:
+          type: boolean
+        complexity:
+          type: string
+          enum: [trivial, small, medium, large]
+        reason:
+          type: string
+      required: [run_error_review, run_test_review, run_docs_review, run_simplicity_review, complexity, reason]
+
+  - id: code
+    depends_on: [scope, classify]
+    command: review-code
+
+  - id: errors
+    depends_on: [scope, classify]
+    when: nodes.classify.output.run_error_review == "true"
+    command: review-errors
+
+  - id: tests
+    depends_on: [scope, classify]
+    when: nodes.classify.output.run_test_review == "true"
+    command: review-tests
+
+  - id: docs
+    depends_on: [scope, classify]
+    when: nodes.classify.output.run_docs_review == "true"
+    command: review-docs
+
+  - id: simplicity
+    depends_on: [scope, classify]
+    when: nodes.classify.output.run_simplicity_review == "true"
+    command: review-simplicity
+
+  - id: synthesize
+    depends_on: [code, errors, tests, docs, simplicity]
+    trigger_rule: one_success
+    command: synthesize-review
+
+  - id: fixes
+    depends_on: [synthesize]
+    command: fix-review-findings
+    model: implementation
+    attempts:
+      max: 2
+    hooks:
+      after_node:
+        - id: validate-fixes
+          bash: ./.takt/profiles/code/tools/validate
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: final-validation
+    depends_on: [fixes]
+    bash: ./.takt/profiles/code/tools/validate

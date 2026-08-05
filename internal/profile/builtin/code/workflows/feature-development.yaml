@@ -1,0 +1,39 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: feature-development
+  description: Implement a feature from an existing plan, validate it deterministically, and create a pull request.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: resume
+nodes:
+  - id: implement
+    command: implement-change
+    attempts:
+      max: 3
+    hooks:
+      after_node:
+        - id: validation
+          bash: ./.takt/profiles/code/tools/validate
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: validate-agent
+    depends_on: [implement]
+    command: validate-change
+    model: review
+
+  - id: validate
+    depends_on: [validate-agent]
+    bash: ./.takt/profiles/code/tools/validate
+
+  - id: create-pr
+    depends_on: [validate]
+    command: create-pr
+
+  - id: summary
+    depends_on: [create-pr]
+    command: summary
+    model: review

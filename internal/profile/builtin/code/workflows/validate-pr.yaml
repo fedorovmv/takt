@@ -1,0 +1,16 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: validate-pr
+  description: Thoroughly test and compare the pull request base and feature branches, distinguishing regressions from pre-existing failures.
+defaults:
+  assistant: opencode
+  model: review
+  session: fresh
+nodes:
+  - id: validate
+    command: validate-pr
+
+  - id: summary
+    depends_on: [validate]
+    command: summary

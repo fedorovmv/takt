@@ -41,11 +41,11 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.5.0" \
+  "skills/takt/VERSION|0.6.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
-  "skills/takt/references/workflows.md|Approval и вложенный" \
+  "skills/takt/references/workflows.md|Approval, \`subworkflow\` и \`foreach\`" \
   "skills/takt/references/patterns.md|валидатор → feedback → retry" \
   "skills/takt/references/troubleshooting.md|Workflow валиден, но не запускается" \
   "skills/takt/assets/validated-agent-profile/.takt/workflows/basic.yaml|model: deep" \
@@ -75,6 +75,12 @@ for check in \
   "docs/36-workflow-composition-v0.1.22.md|Последовательный foreach" \
   "docs/37-composition-hardening-v0.1.23.md|Публичная проекция Run" \
   "ARCHITECTURE_DECISIONS.md|ADR-034" \
+  "ARCHITECTURE_DECISIONS.md|ADR-035" \
+  "docs/38-archon-workflow-catalog-v0.1.24.md|19 типовых процессов" \
+  "docs/03-specification.md|output_format" \
+  "docs/03-specification.md|one_success" \
+  "docs/03-specification.md|parallel: true" \
+  "internal/profile/builtin/code/profile.yaml|Smart-routed catalog of 19" \
   "docs/03-specification.md|Подключает отдельный \`takt/v1alpha1 Workflow\`" \
   "docs/03-specification.md|отдельного YAML/JSON-файла" \
   "skills/takt/references/workflows.md|## Subworkflow" \
@@ -84,7 +90,7 @@ for check in \
   "README.md|takt init code" \
   "schemas/profile.schema.json|Takt Profile" \
   "skills/takt/SKILL.md|Готовые профили" \
-  "scripts/test-code-profile.sh|code profile contract: PASS" \
+  "scripts/test-code-profile.sh|code profile catalog contract: PASS" \
   "docs/10-assistant-adapter-spec.md|OpenCode adapter реализован" \
   "docs/03-specification.md|### OpenCode assistant" \
   "skills/takt/references/configuration.md|Assistant opencode" \
@@ -96,7 +102,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.18-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.24-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \

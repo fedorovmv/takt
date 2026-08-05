@@ -1,24 +1,11 @@
 # Takt authoring skill
 
-Переносимый скилл для кодовых агентов, которые создают и настраивают Takt-профили.
+Скилл помогает создавать и проверять `takt/v1alpha1` workflow, config, Markdown-команды и профили. Он охватывает параллельный DAG, `output_format`, JSON-пути, retry/feedback, approval внутри циклов, subworkflow, последовательный/параллельный foreach и именованные каталоги workflow с роутером.
 
-## Установка
+Версия скилла — `0.6.0`. Он рассчитан на Takt `v0.1.24-alpha` и контракт `takt/v1alpha1`.
 
-Скопируйте каталог `skills/takt` в каталог skills выбранного агента, сохранив структуру `SKILL.md`, `references/` и `assets/`.
+Проверка:
 
-Версия скилла — `0.5.0`. Он рассчитан на Takt `v0.1.23-alpha` и контракт `takt/v1alpha1`.
-
-## Примеры запросов агенту
-
-- «Собери Takt workflow для генерации файла с проверкой и двумя повторами».
-- «Добавь отдельную модель для узла ревью».
-- «Перенеси длинный inline prompt в Markdown-команду».
-- «Настрой validator → feedback → retry/resume и approval».
-- «Проверь существующий `.takt`-профиль и исправь ошибки».
-- «Вынеси повторяемую часть процесса в subworkflow и прогони её через foreach».
-
-## Состав
-
-- `SKILL.md` — обязательный алгоритм и инварианты;
-- `references/` — точная справка по конфигурации и workflow;
-- `assets/validated-agent-profile/` — стартовый профиль, проверяемый через `takt validate`.
+```bash
+./scripts/test-takt-skill.sh
+```

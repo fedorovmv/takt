@@ -51,10 +51,8 @@ type Runner struct {
 func New(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspace string) *Runner {
 	workflowDir := filepath.Dir(workflowPath)
 	home, _ := os.UserHomeDir()
-	dirs := []string{
-		filepath.Join(workspace, ".takt", "commands"),
-		filepath.Join(workflowDir, "commands"),
-	}
+	dirs := []string{filepath.Join(workspace, ".takt", "commands")}
+	dirs = append(dirs, ancestorCommandDirs(workflowDir, workspace)...)
 	if home != "" {
 		dirs = append(dirs, filepath.Join(home, ".takt", "commands"))
 	}
@@ -68,6 +66,28 @@ func New(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspac
 		Store:        store.FS{Workspace: workspace},
 		Assistants:   assistant.Factory{Config: cfg},
 	}
+}
+
+func ancestorCommandDirs(start, stop string) []string {
+	start, _ = filepath.Abs(start)
+	stop, _ = filepath.Abs(stop)
+	seen := map[string]bool{}
+	var dirs []string
+	for dir := start; ; dir = filepath.Dir(dir) {
+		commandDir := filepath.Join(dir, "commands")
+		if !seen[commandDir] {
+			dirs = append(dirs, commandDir)
+			seen[commandDir] = true
+		}
+		if dir == stop || dir == filepath.Dir(dir) {
+			break
+		}
+		rel, err := filepath.Rel(stop, dir)
+		if err == nil && (rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+			break
+		}
+	}
+	return dirs
 }
 
 func (r *Runner) Start(ctx context.Context, input string) (*store.RunState, error) {
@@ -180,6 +200,7 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 func (r *Runner) executeGraph(ctx context.Context, state *store.RunState, nodes []spec.Node, previous map[string]store.NodeState) error {
 	for {
 		progress := false
+		runnable := make([]spec.Node, 0, len(nodes))
 		for _, node := range nodes {
 			ns := state.Nodes[node.ID]
 			if ns == nil {
@@ -225,6 +246,27 @@ func (r *Runner) executeGraph(ctx context.Context, state *store.RunState, nodes 
 				}
 				continue
 			}
+			runnable = append(runnable, node)
+		}
+
+		parallel := make([]spec.Node, 0, len(runnable))
+		sequential := make([]spec.Node, 0, len(runnable))
+		for _, node := range runnable {
+			if parallelEligible(node) {
+				parallel = append(parallel, node)
+			} else {
+				sequential = append(sequential, node)
+			}
+		}
+		if len(parallel) >= 2 {
+			progress = true
+			if err := r.runParallelWave(ctx, state, parallel, previous); err != nil {
+				return err
+			}
+		} else {
+			sequential = append(parallel, sequential...)
+		}
+		for _, node := range sequential {
 			progress = true
 			if err := r.runNode(ctx, state, node, previous); err != nil {
 				return err
@@ -558,6 +600,14 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		if result.ResolvedModel != nil {
 			execResult.ResolvedModel = &store.ModelRef{Name: result.ResolvedModel.Name, Provider: result.ResolvedModel.Provider, ID: result.ResolvedModel.ID, Params: cloneParams(result.ResolvedModel.Params)}
 		}
+		if err == nil && node.OutputFormat != nil {
+			normalized, validationErr := validateAndNormalizeOutput(result.Output, node.OutputFormat)
+			if validationErr != nil {
+				return execResult, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "validate structured output", Err: validationErr}
+			}
+			execResult.Output = normalized
+			execResult.Stdout = normalized
+		}
 		return execResult, err
 	default:
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "execute node", Err: fmt.Errorf("unsupported node %q", node.ID)}
@@ -599,18 +649,27 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 		}
 		seen[child.ID] = struct{}{}
 	}
-	var previous map[string]store.NodeState
-	for iteration := 1; iteration <= parent.LoopGroup.MaxIterations; iteration++ {
-		for _, child := range parent.LoopGroup.Nodes {
-			if _, exists := state.Nodes[child.ID]; exists {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("child node id %q collides with existing runtime state", child.ID)}
+	parentState := state.Nodes[parent.ID]
+	previous := parentState.LoopPrevious
+	startIteration := 1
+	if parentState.LoopIteration > 0 {
+		startIteration = parentState.LoopIteration
+	}
+	for iteration := startIteration; iteration <= parent.LoopGroup.MaxIterations; iteration++ {
+		resuming := parentState.LoopIteration == iteration
+		if !resuming {
+			for _, child := range parent.LoopGroup.Nodes {
+				if _, exists := state.Nodes[child.ID]; exists {
+					return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("child node id %q collides with existing runtime state", child.ID)}
+				}
 			}
-		}
-		for _, child := range parent.LoopGroup.Nodes {
-			state.Nodes[child.ID] = &store.NodeState{Status: store.NodePending, Hidden: child.Hidden, PublicParent: child.PublicParent}
-		}
-		if err := r.commit(state, "loop.iteration.started", parent.ID, map[string]any{"iteration": iteration}); err != nil {
-			return execResult{}, err
+			for _, child := range parent.LoopGroup.Nodes {
+				state.Nodes[child.ID] = &store.NodeState{Status: store.NodePending, Hidden: child.Hidden, PublicParent: child.PublicParent}
+			}
+			parentState.LoopIteration = iteration
+			if err := r.commit(state, "loop.iteration.started", parent.ID, map[string]any{"iteration": iteration}); err != nil {
+				return execResult{}, err
+			}
 		}
 		if err := r.executeGraph(ctx, state, parent.LoopGroup.Nodes, previous); err != nil {
 			return execResult{}, err
@@ -619,12 +678,14 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 		for _, child := range parent.LoopGroup.Nodes {
 			local[child.ID] = *state.Nodes[child.ID]
 			delete(state.Nodes, child.ID)
+			delete(state.Approvals, child.ID)
 		}
 		check, exists := local[parent.LoopGroup.Until.Node]
 		if !exists {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("until node %q missing", parent.LoopGroup.Until.Node)}
 		}
-		state.Nodes[parent.ID].LoopPrevious = local
+		parentState.LoopPrevious = local
+		parentState.LoopIteration = 0
 		if err := r.commit(state, "loop.iteration.completed", parent.ID, map[string]any{
 			"iteration": iteration, "until_node": parent.LoopGroup.Until.Node,
 			"exit_code": check.ExitCode, "status": check.Status,
@@ -871,6 +932,8 @@ func dependenciesReady(node spec.Node, states map[string]*store.NodeState) (read
 		return true, false
 	case "none_failed_min_one_success":
 		return failed == 0 && completed > 0, failed > 0 || completed == 0
+	case "one_success":
+		return completed > 0, completed == 0
 	default:
 		return completed == len(node.DependsOn), completed != len(node.DependsOn)
 	}

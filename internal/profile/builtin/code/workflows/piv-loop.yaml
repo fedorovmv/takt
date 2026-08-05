@@ -1,0 +1,193 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: piv-loop
+  description: Guided Plan-Implement-Validate loop with iterative human exploration, plan approval, implementation, validation review, and repair.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: fresh
+nodes:
+  - id: explore
+    loop_group:
+      max_iterations: 15
+      nodes:
+        - id: research
+          prompt: |
+            Explore the user's requested change as a senior engineering partner.
+            Read AGENTS.md, relevant code, tests, documentation, and git history before asking questions.
+            Present current understanding, existing implementation, architecture options, scope boundaries, risks, and only the decisions that still require human input.
+
+            Original request:
+            $USER_MESSAGE
+
+            Previous human feedback:
+            ${loop.previous.feedback.output}
+
+        - id: feedback
+          depends_on: [research]
+          approval:
+            message: |
+              ${nodes.research.output}
+
+              Reply with corrections or additional decisions. Reply `ready` when exploration is complete and the plan can be created.
+            capture_response: true
+
+        - id: decision
+          depends_on: [feedback]
+          prompt: |
+            Decide whether the latest human reply explicitly authorizes creation of the implementation plan.
+            Reply only with JSON. Treat questions, corrections, additions, or ambiguous approval as not ready.
+
+            Human reply:
+            ${nodes.feedback.output}
+          model: routing
+          output_format:
+            type: object
+            additionalProperties: false
+            properties:
+              ready:
+                type: boolean
+            required: [ready]
+
+        - id: check
+          depends_on: [decision]
+          bash: test "${nodes.decision.output.ready}" = "true"
+          allow_failure: true
+      until:
+        node: check
+        exit_code: 0
+
+  - id: create-plan
+    depends_on: [explore]
+    command: plan-change
+    model: review
+
+  - id: plan-review
+    depends_on: [create-plan]
+    loop_group:
+      max_iterations: 10
+      nodes:
+        - id: inspect
+          prompt: |
+            Review `$ARTIFACTS_DIR/plan.md` against the original request, repository, tests, constraints, and the latest human feedback.
+            Present concrete weaknesses or state that it is ready for implementation.
+
+            Previous human feedback:
+            ${loop.previous.feedback.output}
+
+        - id: feedback
+          depends_on: [inspect]
+          approval:
+            message: |
+              ${nodes.inspect.output}
+
+              Reply with required plan changes. Reply `ready` to approve the plan for implementation.
+            capture_response: true
+
+        - id: revise
+          depends_on: [feedback]
+          prompt: |
+            Revise `$ARTIFACTS_DIR/plan.md` using the human feedback below. Keep verified correct content and re-check affected code.
+            If the reply is exactly an approval such as `ready`, leave the plan unchanged.
+
+            Feedback:
+            ${nodes.feedback.output}
+
+        - id: decision
+          depends_on: [revise]
+          prompt: |
+            Decide whether the human feedback explicitly approved the plan. Return only JSON.
+            Feedback: ${nodes.feedback.output}
+          model: routing
+          output_format:
+            type: object
+            additionalProperties: false
+            properties:
+              ready:
+                type: boolean
+            required: [ready]
+
+        - id: check
+          depends_on: [decision]
+          bash: test "${nodes.decision.output.ready}" = "true"
+          allow_failure: true
+      until:
+        node: check
+        exit_code: 0
+
+  - id: implement
+    depends_on: [plan-review]
+    command: implement-change
+    session: resume
+    attempts:
+      max: 3
+    hooks:
+      after_node:
+        - id: validate-implementation
+          bash: ./.takt/profiles/code/tools/validate
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: validate
+    depends_on: [implement]
+    command: validate-change
+    model: review
+
+  - id: validation-review
+    depends_on: [validate]
+    loop_group:
+      max_iterations: 10
+      nodes:
+        - id: review
+          command: review-code
+          model: review
+
+        - id: feedback
+          depends_on: [review]
+          approval:
+            message: |
+              ${nodes.review.output}
+
+              Reply with required fixes. Reply `ready` when the implementation is accepted.
+            capture_response: true
+
+        - id: decision
+          depends_on: [feedback]
+          prompt: |
+            Decide whether the human explicitly accepted the implementation. Return only JSON.
+            Feedback: ${nodes.feedback.output}
+          model: routing
+          output_format:
+            type: object
+            additionalProperties: false
+            properties:
+              ready:
+                type: boolean
+            required: [ready]
+
+        - id: fix
+          depends_on: [decision]
+          when: nodes.decision.output.ready == "false"
+          prompt: |
+            Apply the human's requested fixes to the current implementation, add or update tests, and run focused validation.
+            Feedback: ${nodes.feedback.output}
+
+        - id: check
+          depends_on: [fix]
+          trigger_rule: all_done
+          bash: test "${nodes.decision.output.ready}" = "true"
+          allow_failure: true
+      until:
+        node: check
+        exit_code: 0
+
+  - id: final-validation
+    depends_on: [validation-review]
+    bash: ./.takt/profiles/code/tools/validate
+
+  - id: summary
+    depends_on: [final-validation]
+    command: summary
+    model: review

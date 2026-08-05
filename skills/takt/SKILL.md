@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant для узлов, собрать DAG, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, диагностировать workflow либо подготовить готовый .takt-профиль.
+description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, диагностировать workflow либо подготовить готовый .takt-профиль.
 ---
 
 # Работа с Takt
@@ -62,8 +62,8 @@ takt run code --workspace . --input docs/plan.md --json
 - Для исправления результата используй детерминированную проверку в hook и `on_failure.action: retry`.
 - `${feedback}` содержит вывод неуспешных hooks предыдущей попытки.
 - Текст агента и наличие файла сами по себе не подтверждают успех; нужен bash-валидатор или другой детерминированный gate.
-- Approval оформляй отдельным узлом. Approval внутри `loop_group` не поддерживается.
-- Вложенные `loop_group` в `takt/v1alpha1` не поддерживаются. `subworkflow` и `foreach` внутри `loop_group` разрешены; approval внутри цикла остаётся отдельным ограничением.
+- Approval оформляй отдельным узлом. Внутри `loop_group` он сохраняет активную итерацию и после `takt answer` продолжает её.
+- Вложенные `loop_group` в `takt/v1alpha1` не поддерживаются. `subworkflow`, `foreach` и approval внутри `loop_group` разрешены.
 - `allow_failure: true` разрешает только штатный ненулевой exit code, но не timeout, cancellation или ошибку запуска.
 - Bash stdout/stderr сохраняются отдельно, а `${nodes.<id>.output}` содержит объединённый вывод.
 - Validation envelope `takt-validation/v1alpha1` выводится только в stdout; логи валидатора идут в stderr.
@@ -86,12 +86,13 @@ takt run code --workspace . --input docs/plan.md --json
 
 В подключённом workflow вход читается как `${inputs.plan}`. Если terminal-узел один, `output_node` можно не задавать. При нескольких terminal-узлах он обязателен.
 
-Последовательный `foreach` принимает inline-список или внешний YAML/JSON-массив:
+`foreach` принимает inline-список или внешний YAML/JSON-массив; для независимых элементов включай `parallel: true`:
 
 ```yaml
 - id: checks
   foreach:
     as: check
+    parallel: true
     items_from:
       path: checks.yaml
     subworkflow:
@@ -100,9 +101,38 @@ takt run code --workspace . --input docs/plan.md --json
         name: ${check}
 ```
 
-Публичный узел `checks` завершается после последней итерации и возвращает JSON-массив outputs в порядке элементов. Изменение внешнего списка меняет fingerprint. Параллельный режим пока отсутствует.
+Публичный узел `checks` завершается после всех итераций и возвращает JSON-массив outputs в порядке элементов, даже если параллельные ветви завершились иначе. Изменение внешнего списка меняет fingerprint.
 
 На контейнере можно задать `assistant`, `model` и `session` как defaults дочернего вызова. `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` задавай внутри дочернего workflow. Глубина композиции ограничена 16; рекурсивные ссылки отклоняются.
+
+## Структурированный вывод и умный роутер
+
+Для классификации, маршрутизации и других машинных решений задавай `output_format`. Он поддерживает небольшой JSON-Schema-подобный subset: `object`, `array`, `string`, `boolean`, `number`, `integer`, `properties`, `required`, `enum`, `items`, `additionalProperties`.
+
+```yaml
+- id: route
+  command: route-workflow
+  output_format:
+    type: object
+    properties:
+      workflow:
+        type: string
+        enum: [assist, fix-github-issue, smart-pr-review]
+      reason:
+        type: string
+    required: [workflow, reason]
+    additionalProperties: false
+
+- id: fix
+  depends_on: [route]
+  when: nodes.route.output.workflow == "fix-github-issue"
+  subworkflow:
+    path: workflows/fix-github-issue.yaml
+```
+
+Runtime принимает ровно одно JSON-значение и завершает узел `protocol`-ошибкой при нарушении схемы. В шаблонах и `when` доступны вложенные пути `${nodes.route.output.workflow}` и `nodes.route.output.workflow`.
+
+Профиль может объявить именованный каталог `workflows`. Запускай роутер через `takt run code`, конкретный процесс — через `takt run code:piv-loop`, список — через `takt workflow list code`.
 
 ## Выбор prompt или command
 

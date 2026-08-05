@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"takt/internal/yamlmini"
@@ -20,12 +21,13 @@ type Metadata struct {
 }
 
 type Manifest struct {
-	APIVersion string    `json:"apiVersion"`
-	Kind       string    `json:"kind"`
-	Metadata   Metadata  `json:"metadata"`
-	Workflow   string    `json:"workflow"`
-	Config     string    `json:"config"`
-	Input      InputSpec `json:"input,omitempty"`
+	APIVersion string            `json:"apiVersion"`
+	Kind       string            `json:"kind"`
+	Metadata   Metadata          `json:"metadata"`
+	Workflow   string            `json:"workflow"`
+	Workflows  map[string]string `json:"workflows,omitempty"`
+	Config     string            `json:"config"`
+	Input      InputSpec         `json:"input,omitempty"`
 }
 
 type InputSpec struct {
@@ -35,6 +37,7 @@ type InputSpec struct {
 
 type Resolved struct {
 	Name         string
+	WorkflowName string
 	ManifestPath string
 	WorkflowPath string
 	ConfigPath   string
@@ -105,7 +108,8 @@ func Init(name, destination string, force bool) (string, error) {
 	return root, nil
 }
 
-func Resolve(name, workspace string) (*Resolved, error) {
+func Resolve(selector, workspace string) (*Resolved, error) {
+	name, workflowName := splitSelector(selector)
 	candidates := []string{
 		filepath.Join(workspace, ".takt", "profiles", name, "profile.yaml"),
 	}
@@ -114,10 +118,23 @@ func Resolve(name, workspace string) (*Resolved, error) {
 	}
 	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err == nil {
-			return Load(candidate)
+			resolved, err := Load(candidate)
+			if err != nil {
+				return nil, err
+			}
+			return resolved.SelectWorkflow(workflowName)
 		}
 	}
 	return nil, fmt.Errorf("profile %q was not found; run 'takt init %s' first", name, name)
+}
+
+func splitSelector(selector string) (string, string) {
+	selector = strings.TrimSpace(selector)
+	name, workflowName, found := strings.Cut(selector, ":")
+	if !found {
+		return selector, ""
+	}
+	return strings.TrimSpace(name), strings.TrimSpace(workflowName)
 }
 
 func Load(path string) (*Resolved, error) {
@@ -144,6 +161,17 @@ func Load(path string) (*Resolved, error) {
 	if strings.TrimSpace(manifest.Config) == "" {
 		return nil, fmt.Errorf("profile config is required")
 	}
+	for name, workflowPath := range manifest.Workflows {
+		if strings.TrimSpace(name) == "" {
+			return nil, fmt.Errorf("profile workflow name is required")
+		}
+		if strings.Contains(name, ":") {
+			return nil, fmt.Errorf("profile workflow name %q must not contain ':'", name)
+		}
+		if strings.TrimSpace(workflowPath) == "" {
+			return nil, fmt.Errorf("profile workflow %q path is required", name)
+		}
+	}
 	dir := filepath.Dir(path)
 	workflowPath, err := secureJoin(dir, manifest.Workflow)
 	if err != nil {
@@ -154,6 +182,31 @@ func Load(path string) (*Resolved, error) {
 		return nil, fmt.Errorf("profile config: %w", err)
 	}
 	return &Resolved{Name: manifest.Metadata.Name, ManifestPath: path, WorkflowPath: workflowPath, ConfigPath: configPath, Manifest: manifest}, nil
+}
+
+func (r *Resolved) SelectWorkflow(name string) (*Resolved, error) {
+	if strings.TrimSpace(name) == "" {
+		clone := *r
+		clone.WorkflowName = ""
+		return &clone, nil
+	}
+	rel, ok := r.Manifest.Workflows[name]
+	if !ok {
+		names := make([]string, 0, len(r.Manifest.Workflows))
+		for candidate := range r.Manifest.Workflows {
+			names = append(names, candidate)
+		}
+		sort.Strings(names)
+		return nil, fmt.Errorf("profile %q has no workflow %q; available: %s", r.Name, name, strings.Join(names, ", "))
+	}
+	path, err := secureJoin(filepath.Dir(r.ManifestPath), rel)
+	if err != nil {
+		return nil, fmt.Errorf("profile workflow %q: %w", name, err)
+	}
+	clone := *r
+	clone.WorkflowName = name
+	clone.WorkflowPath = path
+	return &clone, nil
 }
 
 func secureJoin(base, rel string) (string, error) {

@@ -4,27 +4,69 @@
   "title": "Takt Profile",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "workflow", "config"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "workflow",
+    "config"
+  ],
   "properties": {
-    "apiVersion": {"const": "takt/v1alpha1"},
-    "kind": {"const": "Profile"},
+    "apiVersion": {
+      "const": "takt/v1alpha1"
+    },
+    "kind": {
+      "const": "Profile"
+    },
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
-        "name": {"type": "string", "minLength": 1},
-        "description": {"type": "string"}
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
-    "workflow": {"type": "string", "minLength": 1},
-    "config": {"type": "string", "minLength": 1},
+    "workflow": {
+      "type": "string",
+      "minLength": 1
+    },
+    "config": {
+      "type": "string",
+      "minLength": 1
+    },
     "input": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "format": {"enum": ["text", "markdown"]},
-        "preserve_path": {"type": "boolean"}
+        "format": {
+          "enum": [
+            "text",
+            "markdown"
+          ]
+        },
+        "preserve_path": {
+          "type": "boolean"
+        }
+      }
+    },
+    "workflows": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      },
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^:]+$"
       }
     }
   }

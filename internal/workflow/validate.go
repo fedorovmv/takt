@@ -83,6 +83,14 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 				return fmt.Errorf("node %q has invalid timeout %q", n.ID, n.Timeout)
 			}
 		}
+		if n.OutputFormat != nil {
+			if n.Command == "" && n.Prompt == "" {
+				return fmt.Errorf("node %q output_format is supported only for command or prompt nodes", n.ID)
+			}
+			if err := validateOutputFormat(*n.OutputFormat, "node "+n.ID+".output_format"); err != nil {
+				return err
+			}
+		}
 		if n.Approval != nil && strings.TrimSpace(n.Approval.Message) == "" {
 			return fmt.Errorf("approval node %q requires message", n.ID)
 		}
@@ -100,9 +108,6 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			for _, child := range n.LoopGroup.Nodes {
 				if child.ID == n.LoopGroup.Until.Node {
 					found = true
-				}
-				if child.Approval != nil {
-					return fmt.Errorf("approval inside loop_group is not supported in v1alpha1 implementation: %s.%s", n.ID, child.ID)
 				}
 			}
 			if !found {
@@ -128,7 +133,7 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 				return fmt.Errorf("node %q depends on unknown node %q", n.ID, dep)
 			}
 		}
-		if n.TriggerRule != "" && n.TriggerRule != "all_success" && n.TriggerRule != "all_done" && n.TriggerRule != "none_failed_min_one_success" {
+		if n.TriggerRule != "" && n.TriggerRule != "all_success" && n.TriggerRule != "all_done" && n.TriggerRule != "none_failed_min_one_success" && n.TriggerRule != "one_success" {
 			return fmt.Errorf("node %q has unsupported trigger_rule %q", n.ID, n.TriggerRule)
 		}
 	}
@@ -156,6 +161,36 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		if err := visit(id); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateOutputFormat(format spec.OutputFormat, path string) error {
+	switch format.Type {
+	case "object":
+		for _, name := range format.Required {
+			if _, ok := format.Properties[name]; !ok {
+				return fmt.Errorf("%s requires unknown property %q", path, name)
+			}
+		}
+		for name, child := range format.Properties {
+			if err := validateOutputFormat(child, path+".properties."+name); err != nil {
+				return err
+			}
+		}
+	case "array":
+		if format.Items == nil {
+			return fmt.Errorf("%s array requires items", path)
+		}
+		if err := validateOutputFormat(*format.Items, path+".items"); err != nil {
+			return err
+		}
+	case "string", "boolean", "number", "integer":
+	default:
+		return fmt.Errorf("%s has unsupported type %q", path, format.Type)
+	}
+	if len(format.Enum) > 0 && format.Type != "string" {
+		return fmt.Errorf("%s enum is supported only for string", path)
 	}
 	return nil
 }

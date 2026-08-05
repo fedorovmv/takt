@@ -312,3 +312,50 @@ nodes:
 		}
 	}
 }
+
+func TestForeachParallelRunsIterationsConcurrentlyAndCollectsInInputOrder(t *testing.T) {
+	dir := t.TempDir()
+	writeCompositionFile(t, filepath.Join(dir, "item.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: item
+nodes:
+  - id: result
+    bash: |
+      touch "$ARTIFACTS_DIR/${inputs.value}.ready"
+      i=0
+      while { [ ! -f "$ARTIFACTS_DIR/one.ready" ] || [ ! -f "$ARTIFACTS_DIR/two.ready" ]; } && [ "$i" -lt 200 ]; do
+        i=$((i + 1))
+        sleep 0.01
+      done
+      test -f "$ARTIFACTS_DIR/one.ready"
+      test -f "$ARTIFACTS_DIR/two.ready"
+      printf '%s' '${inputs.value}'
+`)
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parallel-foreach
+nodes:
+  - id: batch
+    foreach:
+      parallel: true
+      items: [one, two]
+      subworkflow:
+        path: item.yaml
+        inputs:
+          value: ${item}
+`)
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := New(wf, &spec.Config{}, workflowPath, "<config>", dir).Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Nodes["batch"].Output != `["one","two"]` {
+		t.Fatalf("parallel foreach did not cross the shared barrier in input order: %+v", state.Nodes["batch"])
+	}
+}

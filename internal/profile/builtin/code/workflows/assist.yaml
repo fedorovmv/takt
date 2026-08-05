@@ -1,0 +1,12 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: assist
+  description: General repository Q&A, debugging, exploration, CI diagnosis, and one-off implementation work.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: resume
+nodes:
+  - id: assist
+    command: assist

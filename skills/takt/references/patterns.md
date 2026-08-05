@@ -160,3 +160,41 @@ nodes:
 ```
 
 Такой `foreach` подходит для известного набора окружений, файлов или компонентов. Markdown-план оставляй Markdown-документом и передавай coding agent целиком.
+
+## 8. Умный роутер с проверяемым решением
+
+```yaml
+- id: route
+  command: route-workflow
+  output_format:
+    type: object
+    properties:
+      workflow:
+        type: string
+        enum: [assist, implement, review]
+    required: [workflow]
+    additionalProperties: false
+
+- id: review
+  depends_on: [route]
+  when: nodes.route.output.workflow == "review"
+  subworkflow:
+    path: workflows/review.yaml
+```
+
+## 9. Параллельные проверки и сводка
+
+```yaml
+- id: code
+  command: review-code
+- id: tests
+  command: review-tests
+- id: docs
+  command: review-docs
+- id: synthesize
+  depends_on: [code, tests, docs]
+  trigger_rule: one_success
+  command: synthesize-review
+```
+
+Три независимых review-узла выполняются конкурентно. Сводка запускается после terminal-состояния всех ветвей, когда хотя бы одна завершилась успешно.

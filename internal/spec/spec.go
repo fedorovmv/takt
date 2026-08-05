@@ -46,6 +46,7 @@ type Node struct {
 	Timeout      string            `json:"timeout,omitempty"`
 	Hooks        HookSet           `json:"hooks,omitempty"`
 	NativeHooks  json.RawMessage   `json:"native_hooks,omitempty"`
+	OutputFormat *OutputFormat     `json:"output_format,omitempty"`
 }
 
 type SubworkflowSpec struct {
@@ -58,6 +59,7 @@ type ForeachSpec struct {
 	Items       []any               `json:"items,omitempty"`
 	ItemsFrom   *ForeachItemsSource `json:"items_from,omitempty"`
 	As          string              `json:"as,omitempty"`
+	Parallel    bool                `json:"parallel,omitempty"`
 	Subworkflow SubworkflowSpec     `json:"subworkflow"`
 }
 
@@ -73,6 +75,18 @@ type InternalNodeSpec struct {
 	ResultFrom     string
 	ResultsFrom    []string
 	DefinitionHash string
+}
+
+// OutputFormat describes the JSON value an AI node must return. It is a
+// deliberately small JSON-Schema-compatible subset used for routing and
+// machine-readable workflow decisions.
+type OutputFormat struct {
+	Type                 string                  `json:"type"`
+	Properties           map[string]OutputFormat `json:"properties,omitempty"`
+	Required             []string                `json:"required,omitempty"`
+	Enum                 []string                `json:"enum,omitempty"`
+	Items                *OutputFormat           `json:"items,omitempty"`
+	AdditionalProperties *bool                   `json:"additionalProperties,omitempty"`
 }
 
 type AttemptsSpec struct {

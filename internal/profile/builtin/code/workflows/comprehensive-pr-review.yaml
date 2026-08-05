@@ -1,0 +1,17 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: comprehensive-pr-review
+  description: Run code, error-handling, test, documentation, and simplicity reviews in parallel, synthesize findings, fix them, and validate.
+defaults:
+  assistant: opencode
+  model: review
+  session: fresh
+nodes:
+  - id: review
+    subworkflow:
+      path: review-block.yaml
+
+  - id: summary
+    depends_on: [review]
+    command: summary

@@ -1,7 +1,6 @@
 # Backlog Takt v0.2
 
-Статус обновлён после уточнения семантики benchmark-метрик и per-attempt execution identity в `v0.1.17-alpha`.
-В `v0.1.17-alpha` добавлен корневой `AGENTS.md`; порядок продуктовых задач не изменён.
+Статус обновлён для `v0.1.24-alpha`: реализованы параллельные DAG-волны, `foreach.parallel`, проверяемый `output_format`, именованные workflow профиля, approval внутри цикла и каталог из 19 процессов с умным роутером.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 
@@ -181,6 +180,35 @@ Draft → approval comment → revise → artifact без изменения run
 
 Реализован `type: opencode` через `opencode run --format json`: model/agent/variant mapping, fresh/resume, version, usage/cost, output limit, context priority, fake contract suite и opt-in smoke.
 
+
+## Завершено в v0.1.24-alpha
+
+### TAKT-020. Параллельные DAG-волны и foreach — выполнено
+
+- независимые простые узлы выполняются конкурентно;
+- persistence остаётся сериализованным;
+- `foreach.parallel` собирает результаты в порядке входа;
+- добавлены race и timing regressions.
+
+### TAKT-021. Структурированный routing contract — выполнено
+
+- `output_format` для `command` и `prompt`;
+- проверка одного JSON-значения, типов, required, enum и additionalProperties;
+- JSON-пути в шаблонах и `when`;
+- protocol error при нарушении схемы.
+
+### TAKT-022. Интерактивные циклы — выполнено
+
+- approval разрешён внутри `loop_group`;
+- resume продолжает активную итерацию;
+- следующая итерация запрашивает новый ответ.
+
+### TAKT-023. Каталог процессов code — выполнено
+
+- 19 именованных workflow;
+- умный роутер в том же Run;
+- `workflow list/describe`;
+- reusable full/smart review blocks.
 
 ## Завершено в v0.1.21–v0.1.23-alpha
 

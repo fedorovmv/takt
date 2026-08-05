@@ -1,0 +1,62 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: ralph-dag
+  description: Prepare a PRD story backlog and iterate with fresh story implementation sessions until every story and the complete validation suite pass.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: fresh
+nodes:
+  - id: prd
+    command: create-prd
+    model: review
+
+  - id: stories
+    depends_on: [prd]
+    command: prd-to-stories
+    model: review
+
+  - id: setup-validation
+    depends_on: [stories]
+    bash: |
+      test -s "$ARTIFACTS_DIR/prd.md"
+      test -s "$ARTIFACTS_DIR/prd.json"
+
+  - id: implement
+    depends_on: [setup-validation]
+    loop_group:
+      max_iterations: 50
+      nodes:
+        - id: story
+          command: implement-story
+          model: implementation
+          session: fresh
+          hooks:
+            after_node:
+              - id: story-validation
+                bash: ./.takt/profiles/code/tools/validate
+                on_failure:
+                  action: retry
+                  session: fresh
+
+        - id: check
+          depends_on: [story]
+          bash: printf '%s' "${nodes.story.output}" | grep -q 'RALPH_DONE'
+          allow_failure: true
+      until:
+        node: check
+        exit_code: 0
+
+  - id: final-validation
+    depends_on: [implement]
+    bash: ./.takt/profiles/code/tools/validate
+
+  - id: create-pr
+    depends_on: [final-validation]
+    command: create-pr
+
+  - id: summary
+    depends_on: [create-pr]
+    command: summary
+    model: review

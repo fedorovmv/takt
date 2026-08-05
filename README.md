@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.23-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.24-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -15,11 +15,11 @@
 - конфигурация моделей и исполнителей;
 - Markdown-команды с frontmatter;
 - workflow в YAML или JSON;
-- последовательный DAG с `depends_on`, `when` и `trigger_rule`;
+- DAG с параллельным выполнением независимых узлов, `depends_on`, `when` и `trigger_rule`;
 - единая семантика корневого DAG и дочернего DAG `loop_group`;
 - узлы `command`, `prompt`, `bash`, `approval`, `loop_group`, `subworkflow`, `foreach`;
 - reusable `subworkflow` компилируется в тот же DAG;
-- последовательный `foreach` для inline-списков и внешних YAML/JSON-массивов без преобразования Markdown в task AST;
+- последовательный и параллельный `foreach` для inline-списков и внешних YAML/JSON-массивов без преобразования Markdown в task AST;
 - `subworkflow` и `foreach` внутри `loop_group`;
 - JSON-массив результатов всех итераций `foreach`;
 - публичное состояние Run без внутренних развёрнутых ID;
@@ -32,7 +32,7 @@
 - timeout всей попытки узла, включая portable hooks;
 - timeout/cancellation родительского `loop_group` сохраняют `timed_out`/`cancelled`;
 - общий thread-safe лимит stdout/stderr process assistant;
-- approval с сохранением состояния и продолжением через `takt answer`;
+- approval с сохранением состояния и продолжением через `takt answer`, включая повторные решения внутри `loop_group`;
 - явное продолжение через `takt resume`;
 - fingerprints workflow, config и Markdown-команд;
 - блокировка Run при `answer` и `resume`;
@@ -46,6 +46,9 @@
 - полное совпадение OS exit code и envelope `exit_code`, включая ноль;
 - единый JSON envelope CLI для успеха и ошибок;
 - строгий YAML subset с сохранением пустых строк в block scalar;
+- проверяемый `output_format` для JSON-решений и обращение к вложенным полям результата в `when` и шаблонах;
+- именованные workflow профиля, `workflow list/describe` и селектор `profile:name`;
+- профиль `code` 0.3.0 с 19 процессами разработки и умным роутером внутри общего Run;
 - aggregate usage по узлам и отдельные execution records по каждой фактической попытке;
 - `takt eval run/report` для воспроизводимой оценки каталогов заданий с fingerprints стратегии, benchmark, workspace и валидатора, версией assistant, requested/resolved model и предметными метриками качества;
 - атрибуция tokens/cost по execution identity; смена assistant, его версии или resolved model между retry помечается как mixed;
@@ -105,6 +108,19 @@ make check
 
 
 
+
+## Профиль code: 19 процессов и умный роутер
+
+```bash
+takt init code
+takt workflow list code
+takt workflow describe code:piv-loop
+takt run code --input "Исправь issue #123 и создай PR"
+takt run code:comprehensive-pr-review --input "Проверь текущий PR"
+```
+
+Запуск `code` без суффикса выполняет schema-validated router node и открывает ровно одну ветку в том же Run. Каталог включает assist, GitHub issue/PR процессы, PIV, PRD, Ralph, архитектурный анализ, безопасный рефакторинг, adversarial development, Remotion и разрешение конфликтов. Подробности: [Каталог процессов v0.1.24](docs/38-archon-workflow-catalog-v0.1.24.md).
+
 ## Композиция workflow
 
 ```yaml
@@ -126,7 +142,7 @@ nodes:
           name: ${check}
 ```
 
-`subworkflow` и `foreach` разворачиваются до запуска в обычный DAG, включая дочерний DAG `loop_group`. Публичные ID `implementation` и `checks` остаются доступными для зависимостей и шаблонов, а внутренние ID скрыты из CLI-состояния. `foreach` принимает inline `items` или `items_from.path` и возвращает JSON-массив результатов; Markdown-планы Takt не преобразует во внутренний список задач.
+`subworkflow` и `foreach` разворачиваются до запуска в обычный DAG, включая дочерний DAG `loop_group`. Публичные ID `implementation` и `checks` остаются доступными для зависимостей и шаблонов, а внутренние ID скрыты из CLI-состояния. `foreach` принимает inline `items` или `items_from.path`, поддерживает `parallel: true` и возвращает JSON-массив результатов в порядке элементов; Markdown-планы Takt не преобразует во внутренний список задач.
 
 Рабочий пример: [`examples/composition/`](examples/composition/).
 
@@ -147,7 +163,7 @@ nodes:
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Пакеты профилей, reusable `subworkflow` и последовательный `foreach` реализованы. Профиль `code` теперь состоит из переиспользуемых фаз реализации и ревью, сохраняя Markdown-план исходным документом. Следующий runtime-срез — расширяемые input adapters для профилей, которым нужен структурированный источник данных.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.3.0 содержит 19 процессов разработки и умный роутер. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Следующие системные срезы — изоляция Run в git worktree, управляемые дочерние Run и per-node ограничения инструментов.
 
 Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Отдельный предметный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 
@@ -175,6 +191,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Скилл настройки Takt v0.1.18](docs/32-takt-authoring-skill-v0.1.18.md)
 - [Композиция workflow v0.1.22](docs/36-workflow-composition-v0.1.22.md)
 - [Усиление композиции v0.1.23](docs/37-composition-hardening-v0.1.23.md)
+- [Каталог процессов и умный роутер v0.1.24](docs/38-archon-workflow-catalog-v0.1.24.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -215,6 +232,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Скилл настройки Takt v0.1.18](docs/32-takt-authoring-skill-v0.1.18.md)
 - [Композиция workflow v0.1.22](docs/36-workflow-composition-v0.1.22.md)
 - [Усиление композиции v0.1.23](docs/37-composition-hardening-v0.1.23.md)
+- [Каталог процессов и умный роутер v0.1.24](docs/38-archon-workflow-catalog-v0.1.24.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

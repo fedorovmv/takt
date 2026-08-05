@@ -1,0 +1,56 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: idea-to-pr
+  description: Turn a feature idea into a researched plan, approved implementation, validation, pull request, five parallel reviews, and self-fixes.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: fresh
+nodes:
+  - id: investigate
+    command: investigate-issue
+    model: review
+
+  - id: plan
+    depends_on: [investigate]
+    command: plan-change
+    model: review
+
+  - id: approve-plan
+    depends_on: [plan]
+    approval:
+      message: Review `$ARTIFACTS_DIR/plan.md`. Approve implementation or provide changes.
+      capture_response: true
+
+  - id: implement
+    depends_on: [approve-plan]
+    command: implement-change
+    session: resume
+    attempts:
+      max: 3
+    hooks:
+      after_node:
+        - id: validation
+          bash: ./.takt/profiles/code/tools/validate
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: validate
+    depends_on: [implement]
+    bash: ./.takt/profiles/code/tools/validate
+
+  - id: create-pr
+    depends_on: [validate]
+    command: create-pr
+
+  - id: review
+    depends_on: [create-pr]
+    subworkflow:
+      path: review-block.yaml
+
+  - id: summary
+    depends_on: [review]
+    command: summary
+    model: review

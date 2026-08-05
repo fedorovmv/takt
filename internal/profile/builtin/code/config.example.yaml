@@ -1,6 +1,11 @@
 apiVersion: takt/v1alpha1
 kind: Config
 models:
+  routing:
+    provider: openai
+    id: gpt-5-mini
+    params:
+      variant: low
   implementation:
     provider: openai
     id: gpt-5

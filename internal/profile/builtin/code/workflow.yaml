@@ -1,33 +1,146 @@
 apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
-  name: code-plan
-  description: Implement a Markdown plan, validate the project, review the diff, and request approval
+  name: code-router
+  description: Smart router for the complete code workflow catalog; classifies the request and executes exactly one specialized workflow in the same auditable Run.
 defaults:
   assistant: opencode
   model: implementation
-  session: resume
+  session: fresh
 nodes:
-  - id: implementation
+  - id: route
+    command: route-workflow
+    model: routing
+    attempts:
+      max: 2
+    hooks:
+      on_failure:
+        - id: retry-invalid-route
+          bash: exit 1
+          on_failure:
+            action: retry
+            session: fresh
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        workflow:
+          type: string
+          enum: [assist, fix-github-issue, create-issue, issue-review-full, piv-loop, idea-to-pr, plan-to-pr, feature-development, adversarial-dev, smart-pr-review, comprehensive-pr-review, validate-pr, architect, refactor-safely, interactive-prd, ralph-dag, workflow-builder, remotion-generate, resolve-conflicts]
+        reason:
+          type: string
+      required: [workflow, reason]
+
+  - id: assist
+    depends_on: [route]
+    when: nodes.route.output.workflow == "assist"
     subworkflow:
-      path: workflows/implementation.yaml
-      inputs:
-        plan: ${input}
+      path: workflows/assist.yaml
 
-  - id: review-cycle
-    depends_on: [implementation]
+  - id: fix-github-issue
+    depends_on: [route]
+    when: nodes.route.output.workflow == "fix-github-issue"
     subworkflow:
-      path: workflows/review.yaml
-      inputs:
-        plan: ${input}
+      path: workflows/fix-github-issue.yaml
 
-  - id: final-validation
-    depends_on: [review-cycle]
-    bash: |
-      ./.takt/profiles/code/tools/validate
+  - id: create-issue
+    depends_on: [route]
+    when: nodes.route.output.workflow == "create-issue"
+    subworkflow:
+      path: workflows/create-issue.yaml
 
-  - id: approve
-    depends_on: [final-validation]
-    approval:
-      message: Implementation and review are complete. Approve the result.
-      capture_response: true
+  - id: issue-review-full
+    depends_on: [route]
+    when: nodes.route.output.workflow == "issue-review-full"
+    subworkflow:
+      path: workflows/issue-review-full.yaml
+
+  - id: piv-loop
+    depends_on: [route]
+    when: nodes.route.output.workflow == "piv-loop"
+    subworkflow:
+      path: workflows/piv-loop.yaml
+
+  - id: idea-to-pr
+    depends_on: [route]
+    when: nodes.route.output.workflow == "idea-to-pr"
+    subworkflow:
+      path: workflows/idea-to-pr.yaml
+
+  - id: plan-to-pr
+    depends_on: [route]
+    when: nodes.route.output.workflow == "plan-to-pr"
+    subworkflow:
+      path: workflows/plan-to-pr.yaml
+
+  - id: feature-development
+    depends_on: [route]
+    when: nodes.route.output.workflow == "feature-development"
+    subworkflow:
+      path: workflows/feature-development.yaml
+
+  - id: adversarial-dev
+    depends_on: [route]
+    when: nodes.route.output.workflow == "adversarial-dev"
+    subworkflow:
+      path: workflows/adversarial-dev.yaml
+
+  - id: smart-pr-review
+    depends_on: [route]
+    when: nodes.route.output.workflow == "smart-pr-review"
+    subworkflow:
+      path: workflows/smart-pr-review.yaml
+
+  - id: comprehensive-pr-review
+    depends_on: [route]
+    when: nodes.route.output.workflow == "comprehensive-pr-review"
+    subworkflow:
+      path: workflows/comprehensive-pr-review.yaml
+
+  - id: validate-pr
+    depends_on: [route]
+    when: nodes.route.output.workflow == "validate-pr"
+    subworkflow:
+      path: workflows/validate-pr.yaml
+
+  - id: architect
+    depends_on: [route]
+    when: nodes.route.output.workflow == "architect"
+    subworkflow:
+      path: workflows/architect.yaml
+
+  - id: refactor-safely
+    depends_on: [route]
+    when: nodes.route.output.workflow == "refactor-safely"
+    subworkflow:
+      path: workflows/refactor-safely.yaml
+
+  - id: interactive-prd
+    depends_on: [route]
+    when: nodes.route.output.workflow == "interactive-prd"
+    subworkflow:
+      path: workflows/interactive-prd.yaml
+
+  - id: ralph-dag
+    depends_on: [route]
+    when: nodes.route.output.workflow == "ralph-dag"
+    subworkflow:
+      path: workflows/ralph-dag.yaml
+
+  - id: workflow-builder
+    depends_on: [route]
+    when: nodes.route.output.workflow == "workflow-builder"
+    subworkflow:
+      path: workflows/workflow-builder.yaml
+
+  - id: remotion-generate
+    depends_on: [route]
+    when: nodes.route.output.workflow == "remotion-generate"
+    subworkflow:
+      path: workflows/remotion-generate.yaml
+
+  - id: resolve-conflicts
+    depends_on: [route]
+    when: nodes.route.output.workflow == "resolve-conflicts"
+    subworkflow:
+      path: workflows/resolve-conflicts.yaml

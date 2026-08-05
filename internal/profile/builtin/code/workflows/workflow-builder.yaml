@@ -1,0 +1,43 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: workflow-builder
+  description: Generate or modify a complete Takt workflow package, validate the YAML and references, and repair it until the profile passes.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: resume
+nodes:
+  - id: build-cycle
+    loop_group:
+      max_iterations: 6
+      nodes:
+        - id: build
+          command: workflow-builder
+          attempts:
+            max: 2
+
+        - id: validate
+          depends_on: [build]
+          bash: |
+            if [ -s "$ARTIFACTS_DIR/workflow-path.txt" ]; then
+              workflow_path=$(cat "$ARTIFACTS_DIR/workflow-path.txt")
+              takt validate "$workflow_path" --workspace .
+            else
+              echo "workflow builder must write $ARTIFACTS_DIR/workflow-path.txt" >&2
+              exit 2
+            fi
+          allow_failure: true
+      until:
+        node: validate
+        exit_code: 0
+
+  - id: review
+    depends_on: [build-cycle]
+    command: review-code
+    model: review
+
+  - id: summary
+    depends_on: [review]
+    command: summary
+    model: review

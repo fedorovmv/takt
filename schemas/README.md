@@ -1,7 +1,8 @@
 # Машиночитаемые схемы
 
 - `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `mock`, `process`, `pi`, `opencode`, Pi-specific `session_dir/project_trust` и OpenCode-specific `agent/auto_approve`, `max_output_bytes` и условные запреты несовместимых полей;
-- `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`;
+- `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`, `output_format`, `one_success`, approval в цикле и `foreach.parallel`;
+- `profile.schema.json` — Profile с default workflow и картой именованных `workflows`;
 - `command-frontmatter.schema.json` — frontmatter Markdown-команд;
 - `run-state.schema.json` — состояние Run, fingerprints, revisions, типизированные Node statuses, execution identity и aggregate usage;
 - `event.schema.json` — JSONL-событие с revision;
@@ -17,4 +18,4 @@ Go-loader остаётся главным валидатором текущей 
 
 `run-state.schema.json` and `evaluation-report.schema.json` expose separate `stdout` and `stderr` fields for node results. The compatibility field `output`/`diagnostic_output` remains the combined diagnostic representation. Structured validation results are decoded only from `stdout`.
 
-`workflow.schema.json` также описывает reusable `subworkflow`, последовательный `foreach` с `items` или `items_from.path` и композицию внутри `loop_group`. Подключённые workflow проверяются той же схемой после загрузки и компиляции.
+`workflow.schema.json` также описывает reusable `subworkflow`, последовательный/параллельный `foreach` с `items` или `items_from.path`, проверяемый JSON output и композицию с approval внутри `loop_group`. Подключённые workflow проверяются той же схемой после загрузки и компиляции.

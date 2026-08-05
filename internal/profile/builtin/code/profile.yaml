@@ -2,8 +2,28 @@ apiVersion: takt/v1alpha1
 kind: Profile
 metadata:
   name: code
-  description: Implement and review a Markdown development plan
+  description: Smart-routed catalog of 19 development workflows for planning, implementation, review, PR, issues, PRD, Ralph, architecture, refactoring, Remotion, and conflict resolution
 workflow: workflow.yaml
+workflows:
+  assist: workflows/assist.yaml
+  fix-github-issue: workflows/fix-github-issue.yaml
+  create-issue: workflows/create-issue.yaml
+  issue-review-full: workflows/issue-review-full.yaml
+  piv-loop: workflows/piv-loop.yaml
+  idea-to-pr: workflows/idea-to-pr.yaml
+  plan-to-pr: workflows/plan-to-pr.yaml
+  feature-development: workflows/feature-development.yaml
+  adversarial-dev: workflows/adversarial-dev.yaml
+  smart-pr-review: workflows/smart-pr-review.yaml
+  comprehensive-pr-review: workflows/comprehensive-pr-review.yaml
+  validate-pr: workflows/validate-pr.yaml
+  architect: workflows/architect.yaml
+  refactor-safely: workflows/refactor-safely.yaml
+  interactive-prd: workflows/interactive-prd.yaml
+  ralph-dag: workflows/ralph-dag.yaml
+  workflow-builder: workflows/workflow-builder.yaml
+  remotion-generate: workflows/remotion-generate.yaml
+  resolve-conflicts: workflows/resolve-conflicts.yaml
 config: ../../config.yaml
 input:
   format: markdown

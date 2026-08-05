@@ -20,12 +20,12 @@
 
 ## Этап 3. Полноценный runtime
 
-- параллельные DAG-слои;
-- расширяемые input adapters и typed inputs;
+- расширить параллельные DAG-волны на hooks и повторные попытки;
+- динамический fan-out из output узла и расширяемые input adapters;
 - retries с backoff;
 - SQLite store;
 - блокировки и recovery;
-- typed outputs по JSON Schema;
+- расширить реализованный `output_format` до более полного JSON Schema;
 - richer expressions через CEL-совместимый слой.
 
 ## Этап 4. Интеграция с кодовыми агентами
@@ -38,7 +38,7 @@
 ## Этап 5. Продуктовые функции
 
 - server и web UI;
-- worktree isolation;
+- worktree isolation и governed child Run;
 - удалённые workers;
 - GitHub integration;
 - секреты и права;

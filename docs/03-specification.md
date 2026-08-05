@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.23-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.24-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -19,8 +19,9 @@
 Порядок поиска команд:
 
 1. `<workspace>/.takt/commands/`;
-2. каталог рядом с workflow: `commands/`;
-3. `~/.takt/commands/`.
+2. `commands/` рядом с workflow;
+3. для подключённого или профильного workflow — `commands/` в каждом родительском каталоге до корня композиции/профиля;
+4. `~/.takt/commands/`.
 
 ## 3. Конфигурация моделей и исполнителей
 
@@ -173,6 +174,8 @@ nodes:
 
 `timeout` использует формат Go duration: `500ms`, `30s`, `5m`, `1h`. Лимит действует на всю попытку узла: `before_node`, действие, `on_failure`, `after_node` и `before_complete`.
 
+Независимые готовые узлы `command`, `prompt` и `bash` без portable hooks и повторных попыток выполняются одной параллельной волной. Переходы `pending → running → terminal` и запись событий сериализуются, поэтому Run и журнал остаются едиными и детерминированными. Узлы с hooks или `attempts.max > 1` пока исполняются последовательно.
+
 ## 6. Типы узлов
 
 ### `command`
@@ -182,6 +185,23 @@ nodes:
 ### `prompt`
 
 Передаёт assistant встроенный prompt.
+
+Для `command` и `prompt` можно задать проверяемый JSON-контракт `output_format`. Runtime принимает ровно одно JSON-значение, проверяет типы, обязательные поля, `enum`, массивы и запрет дополнительных свойств, затем сохраняет канонический компактный JSON. Нарушение контракта завершает узел ошибкой `protocol`.
+
+```yaml
+- id: classify
+  prompt: Классифицируй запрос и верни только JSON.
+  output_format:
+    type: object
+    properties:
+      workflow:
+        type: string
+        enum: [assist, fix-github-issue]
+      reason:
+        type: string
+    required: [workflow, reason]
+    additionalProperties: false
+```
 
 ### `bash`
 
@@ -207,7 +227,7 @@ until:
 
 Если timeout или cancellation родительской попытки наступают во время выполнения дочернего узла, родительский `loop_group` и Run сохраняют `timed_out` или `cancelled`. Производная ошибка `loop_group exhausted` не переопределяет причину завершения контекста.
 
-`subworkflow` и `foreach` разрешены внутри `loop_group` и компилируются в тот же дочерний DAG. Поле `until.node` ссылается на публичный ID контейнера. Вложенные `loop_group` и approval внутри `loop_group` остаются запрещены в `v1alpha1`.
+`subworkflow`, `foreach` и `approval` разрешены внутри `loop_group` и используют тот же дочерний DAG. При остановке на approval сохраняется активная итерация; `takt answer` продолжает её, а следующая итерация создаёт новый запрос approval. Поле `until.node` ссылается на публичный ID контейнера. Вложенные `loop_group` остаются запрещены в `v1alpha1`.
 
 ### `subworkflow`
 
@@ -237,12 +257,13 @@ until:
 
 ### `foreach`
 
-Последовательно выполняет один subworkflow для элементов из workflow или отдельного YAML/JSON-файла:
+Выполняет один subworkflow для элементов из workflow или отдельного YAML/JSON-файла. По умолчанию итерации последовательны; `parallel: true` делает их независимыми узлами одной DAG-волны:
 
 ```yaml
 - id: checks
   foreach:
     as: check
+    parallel: true
     items_from:
       path: checks.yaml
     subworkflow:
@@ -253,9 +274,9 @@ until:
 
 Нужно задать ровно один источник: `items` или `items_from.path`. Путь вычисляется относительно содержащего workflow; файл должен содержать непустой массив верхнего уровня. Его исходные байты входят в fingerprint определения, поэтому изменение списка блокирует resume ранее начатого Run.
 
-Поддерживаются scalar и inline JSON objects. Для объекта доступны `${check}` как JSON и `${check.<field>}`. `${index}` и `${check.index}` содержат индекс с нуля. Итерации выполняются строго последовательно. Публичный output — JSON-массив результатов всех итераций в исходном порядке; JSON-результаты сохраняют тип, остальные результаты становятся строками.
+Поддерживаются scalar и inline JSON objects. Для объекта доступны `${check}` как JSON и `${check.<field>}`. `${index}` и `${check.index}` содержат индекс с нуля. При `parallel: false` каждая итерация зависит от предыдущей; при `parallel: true` все итерации зависят от общего gate и могут выполняться конкурентно. Публичный output всегда является JSON-массивом результатов в исходном порядке; JSON-результаты сохраняют тип, остальные результаты становятся строками.
 
-Runtime читает только явный массив и не преобразует Markdown-план в task AST. Параллельный режим `foreach` в текущем контракте отсутствует.
+Runtime читает только явный массив и не преобразует Markdown-план в task AST.
 
 ## 7. Зависимости, ошибки и итог Run
 
@@ -265,7 +286,8 @@ Runtime читает только явный массив и не преобра
 
 - `all_success` — все зависимости `completed`;
 - `all_done` — любые terminal-состояния зависимостей;
-- `none_failed_min_one_success` — нет failure-like зависимостей и есть хотя бы одна `completed`.
+- `none_failed_min_one_success` — нет failure-like зависимостей и есть хотя бы одна `completed`;
+- `one_success` — после завершения всех зависимостей запускает узел, если хотя бы одна зависимость `completed`, включая соединение взаимоисключающих ветвей.
 
 После failed/errored/timed_out node scheduler продолжает DAG, чтобы выполнить `all_done`. Итоговый статус Run вычисляется после завершения доступного графа.
 
@@ -287,6 +309,7 @@ Runtime читает только явный массив и не преобра
 ```yaml
 when: nodes.analyze.exit_code == 0
 when: nodes.classify.output == "feature"
+when: nodes.classify.output.workflow == "fix-github-issue"
 when: inputs.input != "dry-run"
 ```
 
@@ -337,7 +360,7 @@ Takt не заявляет полную совместимость с YAML 1.2. 
 - `$ARTIFACTS_DIR`;
 - `${input}`;
 - `${feedback}`;
-- `${nodes.<id>.output}`;
+- `${nodes.<id>.output}` и `${nodes.<id>.output.<field>}` с вложенными объектами и индексами массивов;
 - `${nodes.<id>.exit_code}`;
 - `${nodes.<id>.status}`;
 - `${loop.previous.<id>.output}`;
@@ -374,7 +397,25 @@ RunState содержит:
 
 `answer` и `resume` используют lock Run и блокируются при изменении определений после старта.
 
-## 12. JSON CLI
+## 12. Профили и именованные workflow
+
+`Profile` задаёт default workflow, config и необязательную карту именованных процессов:
+
+```yaml
+apiVersion: takt/v1alpha1
+kind: Profile
+metadata:
+  name: code
+workflow: workflow.yaml
+workflows:
+  assist: workflows/assist.yaml
+  piv-loop: workflows/piv-loop.yaml
+config: ../../config.yaml
+```
+
+Селектор `code` запускает default workflow, например умный роутер. Селектор `code:piv-loop` выбирает именованный файл без роутинга. Имена не могут содержать `:`; пути вычисляются относительно `profile.yaml`.
+
+## 13. JSON CLI
 
 Успех:
 
@@ -411,6 +452,8 @@ takt answer <run-id> <node-id> --workspace <dir> --value <text>
 takt resume <run-id> --workspace <dir>
 takt status <run-id> --workspace <dir>
 takt command run <name> --config <config> --workspace <dir> --input <text>
+takt workflow list <profile> --workspace <dir>
+takt workflow describe <profile[:workflow]> --workspace <dir>
 takt eval run <workflow> --config <config> --cases <dir> --workspace-template <dir> --output <dir> [--strategy-id <id>] [--benchmark-id <id>] [--quality-node <id>] [--generation-node <id>] [--validator-path <path>]
 takt eval report <evaluation-output-dir>
 ```
@@ -427,10 +470,10 @@ takt eval report <evaluation-output-dir>
 
 Измеренные нулевые доли сериализуются как `0`. Метрики, которые нельзя вычислить, например average score без score или cost per valid без корректных результатов, сериализуются как `null`. Общий benchmark fingerprint включает ID, версию и fingerprint валидатора. Workflow и предметный валидатор остаются источником критерия качества; Takt не интерпретирует семантику Route DSL.
 
-## 13. Ограничения
+## 14. Ограничения
 
-- DAG выполняется последовательно;
-- approval и вложенный `loop_group` внутри `loop_group` запрещены;
+- параллельная волна не включает узлы с portable hooks или `attempts.max > 1`;
+- вложенный `loop_group` внутри `loop_group` запрещён;
 - `native_hooks` передаются адаптеру, но не исполняются runtime;
 - нет `takt cancel`;
 - нет sandbox, server, MCP и Web UI;

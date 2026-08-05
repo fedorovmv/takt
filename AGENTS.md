@@ -21,7 +21,9 @@ Takt — Go-runtime, который снаружи оркестрирует го
 
 - `allow_failure` разрешает только ненулевой exit code.
 - `timed_out` и `cancelled` имеют приоритет над производными ошибками и output overflow.
-- Root DAG, `loop_group`, скомпилированные `subworkflow` и `foreach` используют одну scheduler-семантику; вложенные `loop_group` в `v1alpha1` запрещены.
+- Root DAG, `loop_group`, скомпилированные `subworkflow` и `foreach` используют одну scheduler-семантику; независимые готовые узлы выполняются параллельными волнами, а вложенные `loop_group` в `v1alpha1` запрещены.
+- `output_format` является проверяемым контрактом JSON-вывода агентного узла; условия и шаблоны могут читать его поля через JSON-путь.
+- Approval внутри `loop_group` сохраняет номер активной итерации и после `answer` продолжает ту же итерацию.
 - Markdown-план не преобразуется в task AST; `foreach` принимает только явный список или будущий явно выбранный adapter.
 - `takt-assistant/v1alpha1` принимает один строгий JSON envelope; OS exit code совпадает с `result.exit_code`.
 - Pi adapter ждёт `agent_settled`, проверяет Session ID, считает usage delta и не заменяет неуспешный resume на fresh.
@@ -63,7 +65,7 @@ make check
 
 ## Границы изменений
 
-Сохраняйте Takt компактным orchestration runtime. Собственный coding-agent tool loop, общий plugin framework, Web UI, сервер, БД, параллельный scheduler и поддержка недоверенных workflow не входят в текущий scope.
+Сохраняйте Takt компактным orchestration runtime. Собственный coding-agent tool loop, общий plugin framework, Web UI, сервер, БД и поддержка недоверенных workflow не входят в текущий scope. Параллельность остаётся частью scheduler: независимые простые узлы и `foreach.parallel` выполняются конкурентно, а переходы состояния и запись событий сериализуются.
 
 ### OpenCode adapter
 

@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -25,15 +26,15 @@ func renderTemplate(src string, state *store.RunState, local map[string]store.No
 		parts := strings.Split(key, ".")
 		if len(parts) >= 3 && parts[0] == "nodes" {
 			if n, ok := state.Nodes[parts[1]]; ok {
-				return nodeField(*n, parts[2])
+				return nodePath(*n, parts[2:])
 			}
 			if n, ok := local[parts[1]]; ok {
-				return nodeField(n, parts[2])
+				return nodePath(n, parts[2:])
 			}
 		}
 		if len(parts) >= 4 && parts[0] == "loop" && parts[1] == "previous" {
 			if n, ok := local[parts[2]]; ok {
-				return nodeField(n, parts[3])
+				return nodePath(n, parts[3:])
 			}
 		}
 		if len(parts) == 2 && parts[0] == "approvals" {
@@ -41,6 +42,55 @@ func renderTemplate(src string, state *store.RunState, local map[string]store.No
 		}
 		return token
 	})
+}
+
+func nodePath(n store.NodeState, parts []string) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	value := nodeField(n, parts[0])
+	if len(parts) == 1 || parts[0] != "output" {
+		return value
+	}
+	return jsonPathString(value, parts[1:])
+}
+
+func jsonPathString(raw string, path []string) string {
+	if len(path) == 0 {
+		return raw
+	}
+	var current any
+	dec := json.NewDecoder(strings.NewReader(strings.TrimSpace(raw)))
+	dec.UseNumber()
+	if err := dec.Decode(&current); err != nil {
+		return ""
+	}
+	for _, part := range path {
+		switch value := current.(type) {
+		case map[string]any:
+			current = value[part]
+		case []any:
+			index, err := strconv.Atoi(part)
+			if err != nil || index < 0 || index >= len(value) {
+				return ""
+			}
+			current = value[index]
+		default:
+			return ""
+		}
+	}
+	switch value := current.(type) {
+	case string:
+		return value
+	case nil:
+		return ""
+	default:
+		b, err := json.Marshal(value)
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
 }
 
 func nodeField(n store.NodeState, field string) string {
@@ -81,12 +131,12 @@ func evalWhen(expr string, state *store.RunState) (bool, error) {
 
 func resolveExprPath(path string, state *store.RunState) (string, error) {
 	parts := strings.Split(path, ".")
-	if len(parts) == 3 && parts[0] == "nodes" {
+	if len(parts) >= 3 && parts[0] == "nodes" {
 		n, ok := state.Nodes[parts[1]]
 		if !ok {
 			return "", fmt.Errorf("when references unknown node %q", parts[1])
 		}
-		return nodeField(*n, parts[2]), nil
+		return nodePath(*n, parts[2:]), nil
 	}
 	if len(parts) == 2 && parts[0] == "inputs" {
 		if parts[1] == "message" || parts[1] == "input" {

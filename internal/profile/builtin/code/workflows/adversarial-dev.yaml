@@ -1,0 +1,75 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: adversarial-dev
+  description: Build a complete application or large feature, then repeat adversarial review, repair, and validation until no material finding remains.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: resume
+nodes:
+  - id: architecture
+    command: architecture-review
+    model: review
+
+  - id: plan
+    depends_on: [architecture]
+    command: plan-change
+    model: review
+
+  - id: build
+    depends_on: [plan]
+    command: adversarial-builder
+    attempts:
+      max: 3
+    hooks:
+      after_node:
+        - id: baseline-validation
+          bash: ./.takt/profiles/code/tools/validate
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: adversarial-cycle
+    depends_on: [build]
+    loop_group:
+      max_iterations: 8
+      nodes:
+        - id: review
+          command: adversarial-review
+          model: review
+
+        - id: check
+          depends_on: [review]
+          bash: printf '%s' "${nodes.review.output}" | grep -q 'ADVERSARIAL_PASS'
+          allow_failure: true
+
+        - id: repair
+          depends_on: [check]
+          when: nodes.check.exit_code != "0"
+          command: adversarial-builder
+          model: implementation
+          session: resume
+          hooks:
+            after_node:
+              - id: cycle-validation
+                bash: ./.takt/profiles/code/tools/validate
+                on_failure:
+                  action: retry
+                  session: resume
+      until:
+        node: check
+        exit_code: 0
+
+  - id: final-validation
+    depends_on: [adversarial-cycle]
+    bash: ./.takt/profiles/code/tools/validate
+
+  - id: create-pr
+    depends_on: [final-validation]
+    command: create-pr
+
+  - id: summary
+    depends_on: [create-pr]
+    command: summary
+    model: review

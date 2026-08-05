@@ -1,0 +1,68 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: issue-review-full
+  description: Fix a GitHub issue end to end, create a PR, run all five review perspectives in parallel, and repair every valid finding.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: fresh
+nodes:
+  - id: classify
+    command: classify-issue
+    model: routing
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        issue_type:
+          type: string
+          enum: [bug, feature, enhancement, refactor, chore, documentation]
+        title:
+          type: string
+        issue_number:
+          type: string
+        repository:
+          type: string
+      required: [issue_type, title, issue_number, repository]
+
+  - id: investigate
+    depends_on: [classify]
+    command: investigate-issue
+    model: review
+
+  - id: plan
+    depends_on: [investigate]
+    command: plan-change
+    model: review
+
+  - id: implement
+    depends_on: [plan]
+    command: implement-change
+    attempts:
+      max: 3
+    hooks:
+      after_node:
+        - id: validation
+          bash: ./.takt/profiles/code/tools/validate
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: validate
+    depends_on: [implement]
+    bash: ./.takt/profiles/code/tools/validate
+
+  - id: create-pr
+    depends_on: [validate]
+    command: create-pr
+
+  - id: review
+    depends_on: [create-pr]
+    subworkflow:
+      path: review-block.yaml
+
+  - id: summary
+    depends_on: [review]
+    command: summary
+    model: review

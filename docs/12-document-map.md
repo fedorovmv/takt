@@ -9,28 +9,29 @@
 3. `docs/01-project.md`;
 4. `docs/05-implementation-status.md`;
 5. `skills/takt/SKILL.md`;
-6. `docs/37-composition-hardening-v0.1.23.md`;
-7. `docs/34-opencode-provider-diagnostics-v0.1.20.md`;
-8. `docs/33-opencode-adapter-v0.1.19.md`;
-9. `docs/32-takt-authoring-skill-v0.1.18.md`;
-10. `docs/31-quality-stdout-separation-v0.1.17.md`;
-11. `docs/30-quality-envelope-semantics-v0.1.16.md`;
-12. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
-13. `docs/28-benchmark-identity-quality-v0.1.14.md`;
-14. `docs/27-evaluation-isolation-report-v0.1.13.md`;
-15. `docs/26-evaluation-runner-v0.1.12.md`;
-16. `docs/25-route-dsl-e2e-v0.1.11.md`;
-17. `docs/24-pi-context-usage-hardening-v0.1.10.md`;
-18. `docs/23-pi-rpc-alignment-v0.1.9.md`;
-19. `docs/22-pi-adapter-v0.1.8.md`;
-20. `docs/21-protocol-hardening-v0.1.7.md`;
-21. `docs/20-fake-assistant-contract-v0.1.6.md`;
-22. `docs/19-document-recovery-v0.1.5.md`;
-23. `docs/18-audit-remediation-v0.1.4.md`;
-24. `docs/17-audit-remediation-v0.1.3.md`;
-25. `docs/16-audit-remediation-v0.1.2.md`;
-26. `docs/08-target-v0.2.md`;
-27. `docs/11-implementation-plan.md`;
+6. `docs/38-archon-workflow-catalog-v0.1.24.md`;
+7. `docs/37-composition-hardening-v0.1.23.md`;
+8. `docs/34-opencode-provider-diagnostics-v0.1.20.md`;
+9. `docs/33-opencode-adapter-v0.1.19.md`;
+10. `docs/32-takt-authoring-skill-v0.1.18.md`;
+11. `docs/31-quality-stdout-separation-v0.1.17.md`;
+12. `docs/30-quality-envelope-semantics-v0.1.16.md`;
+13. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
+14. `docs/28-benchmark-identity-quality-v0.1.14.md`;
+15. `docs/27-evaluation-isolation-report-v0.1.13.md`;
+16. `docs/26-evaluation-runner-v0.1.12.md`;
+17. `docs/25-route-dsl-e2e-v0.1.11.md`;
+18. `docs/24-pi-context-usage-hardening-v0.1.10.md`;
+19. `docs/23-pi-rpc-alignment-v0.1.9.md`;
+20. `docs/22-pi-adapter-v0.1.8.md`;
+21. `docs/21-protocol-hardening-v0.1.7.md`;
+22. `docs/20-fake-assistant-contract-v0.1.6.md`;
+23. `docs/19-document-recovery-v0.1.5.md`;
+24. `docs/18-audit-remediation-v0.1.4.md`;
+25. `docs/17-audit-remediation-v0.1.3.md`;
+26. `docs/16-audit-remediation-v0.1.2.md`;
+27. `docs/08-target-v0.2.md`;
+28. `docs/11-implementation-plan.md`;
 
 
 Для изменения runtime:
@@ -60,7 +61,7 @@
 | Вопрос | Основной документ | Статус |
 |---|---|---|
 | Правила работы кодовых агентов | `../AGENTS.md` | действующий |
-| Создание и настройка workflow | `../skills/takt/SKILL.md`, `32-takt-authoring-skill-v0.1.18.md`, `36-workflow-composition-v0.1.22.md`, `37-composition-hardening-v0.1.23.md` | действующий скилл и проверяемые шаблоны |
+| Создание и настройка workflow | `../skills/takt/SKILL.md`, `38-archon-workflow-catalog-v0.1.24.md`, `36-workflow-composition-v0.1.22.md`, `37-composition-hardening-v0.1.23.md` | действующий скилл, каталог, роутер и композиция |
 | Зачем нужен Takt | `01-project.md` | действующий |
 | Архитектурный подход | `02-approach.md`, ADR | действующий |
 | Текущий внешний контракт | `03-specification.md` | реализованный `v1alpha1` |
@@ -106,3 +107,5 @@
 - `36-workflow-composition-v0.1.22.md` — reusable subworkflow, последовательный foreach и fingerprint подключённых определений.
 
 - `37-composition-hardening-v0.1.23.md` — внешний items source, композиция в loop_group, агрегированный foreach output и публичная проекция Run.
+
+- `38-archon-workflow-catalog-v0.1.24.md` — 19 процессов профиля code, умный роутер, параллельность, output_format и интерактивные циклы.

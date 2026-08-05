@@ -41,7 +41,12 @@ nodes:
 
 - `all_success` — все зависимости `completed`;
 - `all_done` — любые terminal-состояния;
-- `none_failed_min_one_success` — нет failure-like зависимостей и есть хотя бы одна успешная.
+- `none_failed_min_one_success` — нет failure-like зависимостей и есть хотя бы одна успешная;
+- `one_success` — после завершения всех зависимостей есть хотя бы одна успешная ветвь.
+
+## Планирование
+
+Независимые готовые `command`, `prompt` и `bash` без portable hooks и повторных попыток выполняются параллельной волной. Узлы с hooks или `attempts.max > 1` пока идут последовательным путём. Ошибка одной ветви не отменяет остальные уже запущенные ветви.
 
 ## Типы узлов
 
@@ -65,7 +70,8 @@ nodes:
 
 1. `<workspace>/.takt/commands/`;
 2. `commands/` рядом с workflow;
-3. `~/.takt/commands/`.
+3. родительские `commands/` до корня композиции или профиля;
+4. `~/.takt/commands/`.
 
 ### Bash
 
@@ -102,7 +108,26 @@ nodes:
       exit_code: 0
 ```
 
-Approval и вложенный `loop_group` внутри `loop_group` не поддерживаются. `subworkflow` и `foreach` внутри цикла разрешены; `until.node` использует публичный ID контейнера.
+Approval, `subworkflow` и `foreach` разрешены внутри `loop_group`; `until.node` использует публичный ID контейнера. Approval сохраняет активную итерацию и после ответа продолжает её. Вложенный `loop_group` остаётся запрещён.
+
+## Проверяемый JSON output
+
+Для `command` и `prompt` доступен `output_format`:
+
+```yaml
+- id: classify
+  prompt: Верни только JSON.
+  output_format:
+    type: object
+    properties:
+      kind:
+        type: string
+        enum: [bug, feature]
+    required: [kind]
+    additionalProperties: false
+```
+
+Поддерживаются `object`, `array`, `string`, `boolean`, `number`, `integer`, `properties`, `required`, `enum`, `items`, `additionalProperties`. Нарушение контракта является `protocol`-ошибкой.
 
 ## Hooks
 
@@ -136,7 +161,7 @@ hooks:
 
 - `$USER_MESSAGE` и `${input}` — вход пользователя;
 - `${feedback}` — вывод неуспешных hooks прошлой попытки;
-- `${nodes.<id>.output}`;
+- `${nodes.<id>.output}` и `${nodes.<id>.output.<field>}`;
 - `${nodes.<id>.exit_code}`;
 - `${nodes.<id>.status}`;
 - `${loop.previous.<id>.output}`;
@@ -172,12 +197,13 @@ hooks:
 
 Глубина композиции ограничена 16. Рекурсивные ссылки отклоняются при загрузке. Локальная команда ищется рядом с дочерним workflow и далее вверх до корня композиции.
 
-## Последовательный foreach
+## Foreach
 
 ```yaml
 - id: checks
   foreach:
     as: check
+    parallel: true
     items_from:
       path: checks.yaml
     subworkflow:
@@ -186,8 +212,19 @@ hooks:
         name: ${check}
 ```
 
-Элементы выполняются строго по порядку. Поддерживаются строки, числа, логические значения и inline JSON objects. Для объекта доступны `${check}` как JSON и `${check.<field>}` для полей. `${index}` и `${check.index}` содержат индекс с нуля.
+При `parallel: false` элементы выполняются строго по порядку; при `parallel: true` итерации становятся независимыми DAG-ветвями. Поддерживаются строки, числа, логические значения и inline JSON objects. Для объекта доступны `${check}` как JSON и `${check.<field>}` для полей. `${index}` и `${check.index}` содержат индекс с нуля.
 
-`foreach` принимает ровно один источник: inline `items` или `items_from.path` к непустому YAML/JSON-массиву. Результат — JSON-массив outputs всех итераций в исходном порядке. Содержимое внешнего файла входит в fingerprint. Takt не разбирает Markdown-планы в task AST. Параллельный `foreach` пока не поддерживается.
+`foreach` принимает ровно один источник: inline `items` или `items_from.path` к непустому YAML/JSON-массиву. Результат — JSON-массив outputs всех итераций в исходном порядке, независимо от порядка завершения параллельных ветвей. Содержимое внешнего файла входит в fingerprint. Takt не разбирает Markdown-планы в task AST.
 
 `subworkflow` и `foreach` внутри `loop_group` используют ту же компиляцию в DAG.
+
+## Именованные workflow профиля
+
+```yaml
+workflow: workflow.yaml
+workflows:
+  assist: workflows/assist.yaml
+  piv-loop: workflows/piv-loop.yaml
+```
+
+`workflow` — default/роутер. Явный селектор `code:piv-loop` выбирает запись из `workflows`. Команды: `takt workflow list code`, `takt workflow describe code:piv-loop`.

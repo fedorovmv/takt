@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"takt/internal/command"
@@ -46,6 +47,8 @@ func run(args []string) error {
 		return validateCmd(args[1:])
 	case "run":
 		return runCmd(args[1:])
+	case "workflow":
+		return workflowCmd(args[1:])
 	case "answer":
 		return answerCmd(args[1:])
 	case "resume":
@@ -173,6 +176,125 @@ func runCmd(args []string) error {
 		return runErr
 	}
 	return printResult(*jsonOut, state)
+}
+
+type workflowListEntry struct {
+	Name        string `json:"name"`
+	Selector    string `json:"selector"`
+	Description string `json:"description,omitempty"`
+	Default     bool   `json:"default,omitempty"`
+}
+
+func workflowCmd(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: takt workflow <list|describe> ...")
+	}
+	switch args[0] {
+	case "list":
+		return workflowListCmd(args[1:])
+	case "describe":
+		return workflowDescribeCmd(args[1:])
+	default:
+		return fmt.Errorf("usage: takt workflow <list|describe> ...")
+	}
+}
+
+func workflowListCmd(args []string) error {
+	fs := newFlagSet("workflow list")
+	workspace := fs.String("workspace", ".", "workspace")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt workflow list <profile> [--workspace dir]")
+	}
+	absWorkspace, err := filepath.Abs(*workspace)
+	if err != nil {
+		return err
+	}
+	resolved, err := profile.Resolve(fs.Arg(0), absWorkspace)
+	if err != nil {
+		return err
+	}
+	entries := make([]workflowListEntry, 0, len(resolved.Manifest.Workflows)+1)
+	defaultWorkflow, err := workflow.Load(resolved.WorkflowPath)
+	if err != nil {
+		return err
+	}
+	entries = append(entries, workflowListEntry{
+		Name:        defaultWorkflow.Metadata.Name,
+		Selector:    resolved.Name,
+		Description: defaultWorkflow.Metadata.Description,
+		Default:     true,
+	})
+	names := make([]string, 0, len(resolved.Manifest.Workflows))
+	for name := range resolved.Manifest.Workflows {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		selected, err := resolved.SelectWorkflow(name)
+		if err != nil {
+			return err
+		}
+		wf, err := workflow.Load(selected.WorkflowPath)
+		if err != nil {
+			return fmt.Errorf("profile workflow %q: %w", name, err)
+		}
+		entries = append(entries, workflowListEntry{
+			Name:        name,
+			Selector:    resolved.Name + ":" + name,
+			Description: wf.Metadata.Description,
+		})
+	}
+	return printResult(*jsonOut, map[string]any{"profile": resolved.Name, "workflows": entries})
+}
+
+func workflowDescribeCmd(args []string) error {
+	fs := newFlagSet("workflow describe")
+	workspace := fs.String("workspace", ".", "workspace")
+	jsonOut := fs.Bool("json", false, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt workflow describe <profile[:workflow]> [--workspace dir]")
+	}
+	absWorkspace, err := filepath.Abs(*workspace)
+	if err != nil {
+		return err
+	}
+	resolved, err := profile.Resolve(fs.Arg(0), absWorkspace)
+	if err != nil {
+		return err
+	}
+	wf, err := workflow.Load(resolved.WorkflowPath)
+	if err != nil {
+		return err
+	}
+	selector := resolved.Name
+	if resolved.WorkflowName != "" {
+		selector += ":" + resolved.WorkflowName
+	}
+	publicNodes := make([]map[string]any, 0)
+	for _, node := range wf.Nodes {
+		if node.Hidden || node.PublicParent != "" {
+			continue
+		}
+		publicNodes = append(publicNodes, map[string]any{
+			"id":           node.ID,
+			"depends_on":   node.DependsOn,
+			"when":         node.When,
+			"trigger_rule": node.TriggerRule,
+		})
+	}
+	return printResult(*jsonOut, map[string]any{
+		"selector":    selector,
+		"name":        wf.Metadata.Name,
+		"description": wf.Metadata.Description,
+		"nodes":       publicNodes,
+	})
 }
 
 func answerCmd(args []string) error {
@@ -614,5 +736,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|run|answer|resume|status|command|eval|version>")
+	return fmt.Errorf("usage: takt <init|validate|run|workflow|answer|resume|status|command|eval|version>")
 }

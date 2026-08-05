@@ -86,6 +86,7 @@ type NodeState struct {
 	Error            string               `json:"error,omitempty"`
 	Executions       []ExecutionState     `json:"executions,omitempty"`
 	LoopPrevious     map[string]NodeState `json:"loop_previous,omitempty"`
+	LoopIteration    int                  `json:"loop_iteration,omitempty"`
 	Hidden           bool                 `json:"internal,omitempty"`
 	PublicParent     string               `json:"public_parent,omitempty"`
 }

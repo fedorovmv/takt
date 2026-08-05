@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.24-alpha
+
+- профиль `code` 0.3.0 получил полный каталог из 19 процессов разработки и умный роутер в обычном Run;
+- Profile поддерживает именованные `workflows`, селектор `profile:workflow`, `takt workflow list` и `takt workflow describe`;
+- `command` и `prompt` поддерживают проверяемый `output_format`, а шаблоны и `when` — вложенные JSON-пути;
+- scheduler выполняет независимые простые узлы параллельными волнами с сериализованным persistence и моделью all-settled;
+- `foreach.parallel` выполняет итерации конкурентно и сохраняет порядок входного массива в агрегированном output;
+- approval разрешён внутри `loop_group`; resume продолжает активную итерацию, а следующая итерация создаёт новый approval;
+- добавлено `trigger_rule: one_success` для соединения условных ветвей;
+- добавлены reusable full/smart review blocks, тест роутера, race/timing regressions и контракт всех 19 workflow;
+- authoring skill обновлён до 0.6.0;
+- добавлены ADR-035, ADR-036 и `docs/38-archon-workflow-catalog-v0.1.24.md`.
+
 ## v0.1.23-alpha
 
 - `foreach` поддерживает внешний YAML/JSON-массив через `items_from.path`; содержимое входит в workflow fingerprint;

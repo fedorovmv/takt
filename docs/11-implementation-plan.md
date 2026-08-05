@@ -111,14 +111,18 @@ prepare input
 - итоговый успех определяется валидатором;
 - Run воспроизводится с теми же fingerprints.
 
-## 6. Этап E. Пакеты профилей и композиция — реализовано в v0.1.21–v0.1.23-alpha
+## 6. Этап E. Пакеты профилей и композиция — реализовано в v0.1.21–v0.1.24-alpha
 
 - пакеты профилей и `takt init/validate/run <profile>`;
+- именованные workflow, селектор `profile:workflow`, `workflow list/describe`;
 - Markdown-профиль `code` без обязательного task AST;
 - reusable `subworkflow`;
-- последовательный `foreach` по inline-списку или внешнему YAML/JSON-массиву;
+- последовательный и параллельный `foreach` по inline-списку или внешнему YAML/JSON-массиву;
 - fingerprints подключённых определений;
-- следующий шаг — расширяемые input adapters.
+- 19 процессов разработки и умный роутер;
+- проверяемый `output_format`, JSON-пути и approval внутри `loop_group`;
+- параллельные DAG-волны простых независимых узлов;
+- следующий шаг — worktree isolation, governed child Run и ограничения инструментов.
 
 ## 7. Проверка универсальности
 
@@ -144,11 +148,13 @@ agent draft
 
 ## 8. Outputs и iteration history
 
+Реализовано компактное `output_format`, JSON-пути, агрегированный `foreach` output и сохранение активной loop iteration. Остаётся:
+
 - строгий template renderer;
-- structured output с JSON Schema;
-- полная история loop iterations;
-- публичный агрегированный output loop node;
-- capability requirements.
+- расширение до полного JSON Schema;
+- полная история всех loop iterations, а не только последней;
+- публичный агрегированный output `loop_group`;
+- capability requirements и per-node tool policy.
 
 ## 9. Подготовка v1beta1
 
@@ -160,17 +166,16 @@ agent draft
 
 ## 10. Текущий порядок ближайших задач
 
-1. Opt-in smoke test с установленным Pi и целевой моделью.
-2. Route DSL end-to-end.
-3. Расширяемые input adapters без обязательного преобразования Markdown.
-4. Git worktree и транзакция задачи.
-5. Validation suites и структурированный review protocol.
-6. Parallel scheduler и matrix.
-7. Strict templates, structured outputs и v1beta1 design.
+1. Запуск Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями.
+2. Git worktree isolation и транзакция задачи.
+3. Governed child Run с отдельными artifacts/usage.
+4. Per-node tool, skills и MCP policy.
+5. Динамический fan-out из output предыдущего узла.
+6. Расширение параллельности на hooks/retries.
+7. Strict templates, полный JSON Schema и v1beta1 design.
 
 ## 11. Пока не начинать
 
-- parallel DAG;
 - Web UI;
 - серверную очередь;
 - распределённые workers;

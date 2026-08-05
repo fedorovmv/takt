@@ -825,3 +825,83 @@ func TestRetryPreservesPerExecutionModelIdentityAndUsage(t *testing.T) {
 		t.Fatalf("aggregate compatibility fields are incorrect: %+v", node)
 	}
 }
+
+func TestIndependentNodesRunInParallel(t *testing.T) {
+	dir := t.TempDir()
+	waitForPeer := func(self, peer string) string {
+		return fmt.Sprintf(`touch "$ARTIFACTS_DIR/%s.ready"
+i=0
+while [ ! -f "$ARTIFACTS_DIR/%s.ready" ] && [ "$i" -lt 200 ]; do
+  i=$((i + 1))
+  sleep 0.01
+done
+test -f "$ARTIFACTS_DIR/%s.ready"
+printf '%s'`, self, peer, peer, self)
+	}
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "parallel"}, Nodes: []spec.Node{
+		{ID: "a", Bash: waitForPeer("a", "b")},
+		{ID: "b", Bash: waitForPeer("b", "a")},
+	}}
+	state, err := New(wf, &spec.Config{}, "<workflow>", "<config>", dir).Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunCompleted || state.Nodes["a"].Output != "a" || state.Nodes["b"].Output != "b" {
+		t.Fatalf("independent nodes did not cross the concurrency barrier: %+v", state)
+	}
+}
+
+func TestApprovalInsideLoopGroupResumesAndPromptsEachIteration(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "interactive-loop"}, Nodes: []spec.Node{{
+		ID: "explore",
+		LoopGroup: &spec.LoopGroupSpec{
+			MaxIterations: 3,
+			Nodes: []spec.Node{
+				{ID: "feedback", Approval: &spec.ApprovalSpec{Message: "Continue or ready?", CaptureResponse: true}},
+				{ID: "check", DependsOn: []string{"feedback"}, Bash: `test "${nodes.feedback.output}" = "ready"`, AllowFailure: true},
+			},
+			Until: spec.UntilSpec{Node: "check", ExitCode: &zero},
+		},
+	}}}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if !errors.Is(err, ErrWaiting) {
+		t.Fatalf("expected first wait, got %v", err)
+	}
+	waiting := state.Waiting.NodeID
+	state.Approvals[waiting] = "continue"
+	state.Nodes[waiting].Status = store.NodePending
+	state.Status = store.RunRunning
+	state.Waiting = nil
+	if err := r.Store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	state, err = r.Resume(context.Background(), state)
+	if !errors.Is(err, ErrWaiting) {
+		t.Fatalf("expected second wait, got %v", err)
+	}
+	if state.Nodes["explore"].LoopIteration != 2 {
+		t.Fatalf("unexpected active iteration: %+v", state.Nodes["explore"])
+	}
+	waiting = state.Waiting.NodeID
+	state.Approvals[waiting] = "ready"
+	state.Nodes[waiting].Status = store.NodePending
+	state.Status = store.RunRunning
+	state.Waiting = nil
+	if err := r.Store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	state, err = r.Resume(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunCompleted {
+		t.Fatalf("unexpected final state: %+v", state)
+	}
+	previous := state.Nodes["explore"].LoopPrevious
+	if previous["feedback"].Output != "ready" {
+		t.Fatalf("latest loop feedback was not preserved: %+v", previous)
+	}
+}

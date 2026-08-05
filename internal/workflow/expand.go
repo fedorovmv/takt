@@ -239,7 +239,11 @@ func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, p
 		if err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q item %d: %w", node.ID, index, err)
 		}
-		addDependency(childGroup.nodes, childGroup.entries, previous)
+		dependency := previous
+		if node.Foreach.Parallel {
+			dependency = gateID
+		}
+		addDependency(childGroup.nodes, childGroup.entries, dependency)
 		markExpandedNodes(childGroup.nodes, publicID)
 		outputID, err := chooseOutput(node.Foreach.Subworkflow.OutputNode, childGroup, childPath)
 		if err != nil {
@@ -252,7 +256,9 @@ func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, p
 		}
 		all = append(all, childGroup.nodes...)
 		all = append(all, iterationResult)
-		previous = iterationID
+		if !node.Foreach.Parallel {
+			previous = iterationID
+		}
 		iterationResults = append(iterationResults, iterationID)
 	}
 	aggregator := spec.Node{
@@ -500,8 +506,8 @@ func sourceKinds(node spec.Node) int {
 }
 
 func validateContainerFields(node spec.Node) error {
-	if node.Attempts.Max != 0 || node.AllowFailure || node.Timeout != "" || !hookSetEmpty(node.Hooks) || len(node.NativeHooks) != 0 {
-		return fmt.Errorf("container node %q supports assistant/model/session defaults, but group attempts, timeout, hooks, native_hooks and allow_failure must be defined inside the child workflow", node.ID)
+	if node.Attempts.Max != 0 || node.AllowFailure || node.Timeout != "" || !hookSetEmpty(node.Hooks) || len(node.NativeHooks) != 0 || node.OutputFormat != nil {
+		return fmt.Errorf("container node %q supports assistant/model/session defaults, but group attempts, timeout, hooks, native_hooks, output_format and allow_failure must be defined inside the child workflow", node.ID)
 	}
 	return nil
 }

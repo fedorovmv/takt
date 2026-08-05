@@ -1,21 +1,55 @@
-# Code profile
+# Takt code profile 0.3.0
 
-Version: 0.2.1
-
-This profile keeps the development plan in Markdown. Takt passes the original file path and content to the coding agent; no mandatory task AST is created.
-
-Configure `.takt/config.yaml`, then run:
+The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
 ```bash
-takt run code --input docs/plan.md
+takt init code
+takt workflow list code
+takt workflow describe code:piv-loop
+takt run code --input "Fix GitHub issue #123 and open a PR"
+takt run code:comprehensive-pr-review --input "Review the current PR"
 ```
 
-Set an explicit validation command when auto-detection is not appropriate:
+The router is an ordinary first node in the same Run. It returns schema-validated JSON and the selected branch executes in the same expanded DAG, so routing, cost, events, approvals, and results remain auditable.
 
-```bash
-TAKT_VALIDATE_COMMAND='go test ./... && go vet ./...' takt run code --input docs/plan.md
-```
+## Included workflows
 
-The bundled workflow composes reusable implementation and review subworkflows. It uses OpenCode for both phases so one installed assistant is sufficient. Change the `review` node or command frontmatter to `pi` when an independent assistant is desired.
+| Workflow | Purpose |
+|---|---|
+| `assist` | General questions, debugging, exploration, CI diagnosis, and one-off work |
+| `fix-github-issue` | Classify issue, investigate or plan, implement, validate, create PR, smart review, self-fix |
+| `create-issue` | Gather context in parallel, investigate, reproduce, deduplicate, and create an issue |
+| `issue-review-full` | Fix an issue and run the full five-perspective review pipeline |
+| `piv-loop` | Interactive Plan-Implement-Validate with repeated human feedback and approvals |
+| `idea-to-pr` | Research an idea, plan, implement, validate, create PR, full review, self-fix |
+| `plan-to-pr` | Execute an existing plan through PR and full review |
+| `feature-development` | Implement an existing plan, validate, and create PR |
+| `adversarial-dev` | Build a large feature/application and repeat adversarial review and repair |
+| `smart-pr-review` | Classify change complexity and run only relevant reviewers in parallel |
+| `comprehensive-pr-review` | Always run code, errors, tests, docs, and simplicity reviewers in parallel |
+| `validate-pr` | Compare deterministic validation on base and feature branches |
+| `architect` | Architectural sweep, human approval, implementation, and review |
+| `refactor-safely` | Baseline behavior, refactor, compare validation, and repair regressions |
+| `interactive-prd` | Build and approve a PRD through guided conversation |
+| `ralph-dag` | Convert PRD to stories and implement one validated story per fresh iteration |
+| `workflow-builder` | Generate and repeatedly validate a Takt workflow package |
+| `remotion-generate` | Plan, generate, render-check, and review Remotion compositions |
+| `resolve-conflicts` | Analyze both conflict sides, resolve, validate, and finish safely |
 
-Version 0.2.1 also fingerprints commands from the profile root when a composed workflow is stored in `workflows/`.
+Five independent review nodes are scheduled concurrently. `foreach.parallel: true` uses the same scheduler for parallel fan-out. Interactive workflow loops can pause on approval and resume the active iteration; the approval answer is cleared before the next iteration so each round obtains new human input.
+
+## Configuration
+
+The installed `.takt/config.yaml` contains three model aliases:
+
+- `routing` for classifiers and the workflow router;
+- `implementation` for code-changing agents;
+- `review` for investigation and review agents.
+
+All aliases can point to the same provider/model. The split exists so projects can tune cost and reasoning independently.
+
+The validation hook uses `TAKT_VALIDATE_COMMAND` when set, then `scripts/verify.sh`, `make check`, Go tests, or npm tests. Set a project-specific command when automatic detection is insufficient.
+
+## Repository overrides
+
+Files installed under `.takt/profiles/code/` are ordinary project files. Teams can edit and commit workflow or command overrides. Re-running `takt init code --force` replaces them with the bundled version.

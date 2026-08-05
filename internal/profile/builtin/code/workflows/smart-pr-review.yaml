@@ -1,0 +1,17 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: smart-pr-review
+  description: Classify PR complexity, run only relevant review agents in parallel, synthesize findings, fix them, and validate.
+defaults:
+  assistant: opencode
+  model: review
+  session: fresh
+nodes:
+  - id: review
+    subworkflow:
+      path: smart-review-block.yaml
+
+  - id: summary
+    depends_on: [review]
+    command: summary
