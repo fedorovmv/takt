@@ -37,8 +37,9 @@
 
 ## Этап 5. Продуктовые функции
 
-- server и web UI;
-- worktree isolation и governed child Run;
+- governed child Run;
+- per-node tool/MCP/skills/sandbox policy;
+- server, Web UI и БД как proposal после решения о нелокальном режиме;
 - удалённые workers;
 - GitHub integration;
 - секреты и права;

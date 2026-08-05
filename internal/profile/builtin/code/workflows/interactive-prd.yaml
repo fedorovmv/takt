@@ -77,14 +77,8 @@ nodes:
               Reply with changes. Reply `ready` to approve the PRD.
             capture_response: true
 
-        - id: revise
-          depends_on: [feedback]
-          prompt: |
-            Revise `$ARTIFACTS_DIR/prd.md` using the human feedback. Preserve approved content and verify consistency.
-            Feedback: ${nodes.feedback.output}
-
         - id: decision
-          depends_on: [revise]
+          depends_on: [feedback]
           prompt: |
             Decide whether the human explicitly approved the PRD. Return only JSON.
             Feedback: ${nodes.feedback.output}
@@ -97,8 +91,16 @@ nodes:
                 type: boolean
             required: [ready]
 
-        - id: check
+        - id: revise
           depends_on: [decision]
+          when: nodes.decision.output.ready == "false"
+          prompt: |
+            Revise `$ARTIFACTS_DIR/prd.md` using the human feedback. Preserve approved content and verify consistency.
+            Feedback: ${nodes.feedback.output}
+
+        - id: check
+          depends_on: [decision, revise]
+          trigger_rule: one_success
           bash: test "${nodes.decision.output.ready}" = "true"
           allow_failure: true
       until:

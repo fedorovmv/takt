@@ -150,12 +150,17 @@ func (c *compiler) compileNode(node spec.Node, workflowPath, prefix string, defa
 func (c *compiler) compileSubworkflow(node spec.Node, workflowPath, prefix string, parentDefaults spec.Defaults, vars map[string]string, siblings map[string]spec.Node) (compiledGroup, error) {
 	publicID := qualify(prefix, node.ID)
 	gateID := publicID + "__start"
-	gate := spec.Node{ID: gateID, Hidden: true, PublicParent: publicID, DependsOn: qualifyDependencies(prefix, node.DependsOn), When: rewriteWhenNodeRefs(replaceVars(node.When, vars), prefix, siblings), TriggerRule: node.TriggerRule, Internal: &spec.InternalNodeSpec{Mode: "noop"}}
 
 	childPath, child, err := c.loadChild(workflowPath, node.Subworkflow.Path)
 	if err != nil {
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
 	}
+	gateInternal := &spec.InternalNodeSpec{Mode: "noop"}
+	if child.Worktree.Enabled {
+		worktree := child.Worktree
+		gateInternal = &spec.InternalNodeSpec{Mode: "worktree", WorkflowName: child.Metadata.Name, Worktree: &worktree}
+	}
+	gate := spec.Node{ID: gateID, Hidden: true, PublicParent: publicID, DependsOn: qualifyDependencies(prefix, node.DependsOn), When: rewriteWhenNodeRefs(replaceVars(node.When, vars), prefix, siblings), TriggerRule: node.TriggerRule, Internal: gateInternal}
 	childVars, err := resolveInputs(node.Subworkflow.Inputs, vars)
 	if err != nil {
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
@@ -172,12 +177,13 @@ func (c *compiler) compileSubworkflow(node spec.Node, workflowPath, prefix strin
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
 	}
 	addDependency(childGroup.nodes, childGroup.entries, gateID)
+	markNodeGuards(childGroup.nodes, gateID)
 	markExpandedNodes(childGroup.nodes, publicID)
 	outputID, err := chooseOutput(node.Subworkflow.OutputNode, childGroup, childPath)
 	if err != nil {
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
 	}
-	aggregator := spec.Node{ID: publicID, DependsOn: append([]string{}, childGroup.terminals...), Internal: &spec.InternalNodeSpec{Mode: "result", ResultFrom: outputID}}
+	aggregator := spec.Node{ID: publicID, Guard: gateID, DependsOn: append([]string{}, childGroup.terminals...), Internal: &spec.InternalNodeSpec{Mode: "result", ResultFrom: outputID}}
 	all := make([]spec.Node, 0, len(childGroup.nodes)+2)
 	all = append(all, gate)
 	all = append(all, childGroup.nodes...)
@@ -223,6 +229,9 @@ func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, p
 		if err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q: %w", node.ID, err)
 		}
+		if child.Worktree.Enabled {
+			return compiledGroup{}, fmt.Errorf("foreach node %q child workflow %q enables worktree isolation; per-item worktrees require governed child Runs", node.ID, child.Metadata.Name)
+		}
 		childInputs, err := resolveInputs(node.Foreach.Subworkflow.Inputs, merged)
 		if err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q item %d: %w", node.ID, index, err)
@@ -244,13 +253,14 @@ func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, p
 			dependency = gateID
 		}
 		addDependency(childGroup.nodes, childGroup.entries, dependency)
+		markNodeGuards(childGroup.nodes, gateID)
 		markExpandedNodes(childGroup.nodes, publicID)
 		outputID, err := chooseOutput(node.Foreach.Subworkflow.OutputNode, childGroup, childPath)
 		if err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q item %d: %w", node.ID, index, err)
 		}
 		iterationResult := spec.Node{
-			ID: iterationID, Hidden: true, PublicParent: publicID,
+			ID: iterationID, Hidden: true, PublicParent: publicID, Guard: gateID,
 			DependsOn: append([]string{}, childGroup.terminals...),
 			Internal:  &spec.InternalNodeSpec{Mode: "result", ResultFrom: outputID},
 		}
@@ -263,6 +273,7 @@ func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, p
 	}
 	aggregator := spec.Node{
 		ID:        publicID,
+		Guard:     gateID,
 		DependsOn: append([]string{}, iterationResults...),
 		Internal:  &spec.InternalNodeSpec{Mode: "collect", ResultsFrom: append([]string{}, iterationResults...)},
 	}
@@ -469,6 +480,14 @@ func isWithin(path, root string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+func markNodeGuards(nodes []spec.Node, guard string) {
+	for index := range nodes {
+		if nodes[index].Guard == "" {
+			nodes[index].Guard = guard
+		}
+	}
+}
+
 func markExpandedNodes(nodes []spec.Node, publicParent string) {
 	for i := range nodes {
 		nodes[i].Hidden = true
@@ -506,7 +525,7 @@ func sourceKinds(node spec.Node) int {
 }
 
 func validateContainerFields(node spec.Node) error {
-	if node.Attempts.Max != 0 || node.AllowFailure || node.Timeout != "" || !hookSetEmpty(node.Hooks) || len(node.NativeHooks) != 0 || node.OutputFormat != nil {
+	if node.Attempts.Max != 0 || len(node.Attempts.RetryOn) != 0 || node.Attempts.RetrySession != "" || node.AllowFailure || node.Timeout != "" || !hookSetEmpty(node.Hooks) || len(node.NativeHooks) != 0 || node.OutputFormat != nil {
 		return fmt.Errorf("container node %q supports assistant/model/session defaults, but group attempts, timeout, hooks, native_hooks, output_format and allow_failure must be defined inside the child workflow", node.ID)
 	}
 	return nil

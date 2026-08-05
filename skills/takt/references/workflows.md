@@ -44,6 +44,18 @@ nodes:
 - `none_failed_min_one_success` — нет failure-like зависимостей и есть хотя бы одна успешная;
 - `one_success` — после завершения всех зависимостей есть хотя бы одна успешная ветвь.
 
+## Git worktree isolation
+
+```yaml
+worktree:
+  enabled: true
+  base: HEAD
+  branch_prefix: takt
+  cleanup: on_success
+```
+
+Изоляция применяется ко всему workflow. У подключённого subworkflow policy активируется на его gate до запуска дочерних узлов. Состояние и artifacts остаются в control workspace. Runtime автоматически удаляет только чистый успешный worktree; грязный или неуспешный сохраняется. Это не sandbox.
+
 ## Планирование
 
 Независимые готовые `command`, `prompt` и `bash` без portable hooks и повторных попыток выполняются параллельной волной. Узлы с hooks или `attempts.max > 1` пока идут последовательным путём. Ошибка одной ветви не отменяет остальные уже запущенные ветви.
@@ -127,7 +139,7 @@ Approval, `subworkflow` и `foreach` разрешены внутри `loop_group
     additionalProperties: false
 ```
 
-Поддерживаются `object`, `array`, `string`, `boolean`, `number`, `integer`, `properties`, `required`, `enum`, `items`, `additionalProperties`. Нарушение контракта является `protocol`-ошибкой.
+Поддерживаются `object`, `array`, `string`, `boolean`, `number`, `integer`, `properties`, `required`, `enum`, `items`, `additionalProperties`. Нарушение контракта является `protocol`-ошибкой. Для retry укажи `attempts.retry_on: [protocol]`; точная ошибка попадёт в `${feedback}`, а raw stdout останется в состоянии.
 
 ## Hooks
 

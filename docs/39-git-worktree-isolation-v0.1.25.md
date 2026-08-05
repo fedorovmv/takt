@@ -1,0 +1,75 @@
+# Git worktree isolation in v0.1.25-alpha
+
+## Goal
+
+Takt is currently a local trusted runtime, but code-changing workflows still need an execution boundary. A Run must be able to modify, test, and commit a dedicated branch without changing the checkout from which the user started Takt.
+
+This slice adds managed Git worktrees as a runtime feature. Server, Web UI, and database storage remain proposals because local single-user operation does not require them yet.
+
+## Workflow policy
+
+```yaml
+worktree:
+  enabled: true
+  base: HEAD
+  branch_prefix: takt
+  cleanup: on_success
+  allow_dirty: false
+```
+
+`enabled` moves node execution into a branch and worktree created for the Run. State, events, locks, and artifacts remain under the control workspace.
+
+`cleanup` accepts:
+
+- `on_success`: remove a clean successful worktree while preserving its branch;
+- `manual`: retain it until an explicit CLI removal.
+
+A failed, cancelled, waiting, dirty, or uninspectable worktree is retained. Takt never discards uncommitted work automatically.
+
+## Router-aware isolation
+
+The `code` router itself runs in the control checkout. When the selected subworkflow declares `worktree.enabled`, its compiled gate creates the worktree before any child node executes. This keeps routing auditable without applying the wrong isolation policy to every branch.
+
+Mutating workflows such as feature development, issue fixing, refactoring, architecture changes, Ralph, and Remotion generation enable isolation. General assistance, current-PR reviews, issue creation, validation, and conflict resolution stay in the live checkout because they either do not mutate code or depend on the checkout's current branch/conflict state.
+
+Direct selectors such as `code:feature-development` apply the same policy at Run start.
+
+## CLI
+
+```bash
+takt run code:feature-development --input PLAN.md
+takt run code:feature-development --worktree-base origin/main
+takt run code:feature-development --keep-worktree
+takt run code:feature-development --no-worktree
+takt run code:feature-development --allow-dirty-worktree
+
+takt worktree list --workspace .
+takt worktree remove <run-id> --workspace .
+takt worktree remove <run-id> --workspace . --force
+takt worktree prune --workspace .
+```
+
+`--allow-dirty-worktree` does not copy uncommitted files. It explicitly starts from the resolved committed base while recording that the control checkout was dirty.
+
+## Stored state
+
+Run state records the control and execution workspace, repository root, worktree path, branch, base revision and commit, cleanup policy, dirty state, removal status, and retention or cleanup error. CLI overrides are also persisted so resume preserves the original isolation decision.
+
+Definitions and bundled Markdown commands remain authoritative from the control checkout. Execution-worktree project commands are only a fallback. This prevents definition fingerprints from changing merely because node execution moved to another checkout.
+
+## Reliability fixes included in the slice
+
+- `output_format` normalizes only `NodeState.output`; raw provider stdout remains unchanged for diagnostics;
+- native retry can target `protocol` errors and passes the exact schema validation error through `${feedback}`;
+- the router uses one retry mechanism instead of combining attempts and a failing hook;
+- approved `interactive-prd` content is no longer revised on the `ready` iteration;
+- `create-issue` reports malformed reproduction results and still runs its summary branch;
+- parallel waves persist both active `current_nodes` and an explicit completion transition;
+- integer validation remains exact beyond the IEEE-754 safe range;
+- the full review catalog now uses `foreach.parallel` for five review perspectives.
+
+## Deliberate boundaries
+
+Managed child Runs, per-node tool policies, MCP/skills/sandbox, script nodes, and runtime fan-out from a previous node's output remain active implementation gaps.
+
+Server, Web UI, database storage, remote workers, and message adapters remain proposal-level extensions. They become relevant only if Takt moves beyond local trusted execution; that move requires a separate threat model, authentication, secret handling, and multi-user persistence contract.

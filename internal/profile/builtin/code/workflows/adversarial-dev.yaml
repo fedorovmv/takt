@@ -3,6 +3,10 @@ kind: Workflow
 metadata:
   name: adversarial-dev
   description: Build a complete application or large feature, then repeat adversarial review, repair, and validation until no material finding remains.
+worktree:
+  enabled: true
+  cleanup: on_success
+
 defaults:
   assistant: opencode
   model: implementation

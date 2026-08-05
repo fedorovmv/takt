@@ -3,6 +3,10 @@ kind: Workflow
 metadata:
   name: plan-to-pr
   description: Execute an existing plan, validate the implementation, create a PR, run five parallel review perspectives, and self-fix findings.
+worktree:
+  enabled: true
+  cleanup: on_success
+
 defaults:
   assistant: opencode
   model: implementation

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"strings"
 
 	"takt/internal/spec"
@@ -116,15 +115,77 @@ func validateOutputValue(value any, schema spec.OutputFormat, path string, requi
 		}
 	case "integer":
 		number, ok := value.(json.Number)
-		if !ok {
-			return fmt.Errorf("%s must be an integer", path)
-		}
-		float, err := number.Float64()
-		if err != nil || math.Trunc(float) != float {
+		if !ok || !jsonNumberIsInteger(number.String()) {
 			return fmt.Errorf("%s must be an integer", path)
 		}
 	default:
 		return fmt.Errorf("%s has unsupported schema type %q", path, typeName)
 	}
 	return nil
+}
+
+func jsonNumberIsInteger(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if value[0] == '-' {
+		value = value[1:]
+	}
+	mantissa, exponentText := value, ""
+	if index := strings.IndexAny(value, "eE"); index >= 0 {
+		mantissa, exponentText = value[:index], value[index+1:]
+	}
+	exponent := 0
+	if exponentText != "" {
+		sign := 1
+		if exponentText[0] == '+' || exponentText[0] == '-' {
+			if exponentText[0] == '-' {
+				sign = -1
+			}
+			exponentText = exponentText[1:]
+		}
+		if exponentText == "" {
+			return false
+		}
+		for _, digit := range exponentText {
+			if digit < '0' || digit > '9' {
+				return false
+			}
+			if exponent < 1_000_000 {
+				exponent = exponent*10 + int(digit-'0')
+			}
+		}
+		exponent *= sign
+	}
+	fractionDigits := 0
+	if dot := strings.IndexByte(mantissa, '.'); dot >= 0 {
+		fractionDigits = len(mantissa) - dot - 1
+		mantissa = mantissa[:dot] + mantissa[dot+1:]
+	}
+	allZero := true
+	for _, digit := range mantissa {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+		if digit != '0' {
+			allZero = false
+		}
+	}
+	if allZero {
+		return true
+	}
+	scale := fractionDigits - exponent
+	if scale <= 0 {
+		return true
+	}
+	if scale > len(mantissa) {
+		return false
+	}
+	for _, digit := range mantissa[len(mantissa)-scale:] {
+		if digit != '0' {
+			return false
+		}
+	}
+	return true
 }

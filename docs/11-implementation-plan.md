@@ -111,7 +111,7 @@ prepare input
 - итоговый успех определяется валидатором;
 - Run воспроизводится с теми же fingerprints.
 
-## 6. Этап E. Пакеты профилей и композиция — реализовано в v0.1.21–v0.1.24-alpha
+## 6. Этап E. Пакеты профилей и композиция — реализовано в v0.1.21–v0.1.25-alpha
 
 - пакеты профилей и `takt init/validate/run <profile>`;
 - именованные workflow, селектор `profile:workflow`, `workflow list/describe`;
@@ -122,7 +122,7 @@ prepare input
 - 19 процессов разработки и умный роутер;
 - проверяемый `output_format`, JSON-пути и approval внутри `loop_group`;
 - параллельные DAG-волны простых независимых узлов;
-- следующий шаг — worktree isolation, governed child Run и ограничения инструментов.
+- следующий шаг — governed child Run и ограничения инструментов/MCP/skills/sandbox.
 
 ## 7. Проверка универсальности
 
@@ -167,7 +167,7 @@ agent draft
 ## 10. Текущий порядок ближайших задач
 
 1. Запуск Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями.
-2. Git worktree isolation и транзакция задачи.
+2. Git worktree isolation и транзакция задачи — реализовано в v0.1.25-alpha.
 3. Governed child Run с отдельными artifacts/usage.
 4. Per-node tool, skills и MCP policy.
 5. Динамический fan-out из output предыдущего узла.

@@ -1,6 +1,6 @@
 # Backlog Takt v0.2
 
-Статус обновлён для `v0.1.24-alpha`: реализованы параллельные DAG-волны, `foreach.parallel`, проверяемый `output_format`, именованные workflow профиля, approval внутри цикла и каталог из 19 процессов с умным роутером.
+Статус обновлён для `v0.1.25-alpha`: реализованы параллельные DAG-волны, `foreach.parallel`, проверяемый `output_format`, именованные workflow профиля, approval внутри цикла и каталог из 19 процессов с умным роутером.
 
 ## Завершено в v0.1.2–v0.1.4-alpha
 
@@ -165,14 +165,12 @@ Draft → approval comment → revise → artifact без изменения run
 
 `takt eval run/report` собирает идентичность стратегии/benchmark/workspace/валидатора, per-attempt assistant/version/requested/resolved model, status, attempts, duration, usage, approvals, diagnostics и предметное качество. Реализованы success@1, final success, average score, attempts/cost per valid, амортизированная end-to-end длительность и usage по execution identity. Остаются настоящий time-to-valid, CLI-сравнение нескольких отчётов, экспорт таблиц и manual corrections.
 
-## Вне v0.2
+## Вне локального v0.2
 
-- parallel DAG;
 - SQLite/Postgres;
-- MCP server;
-- Web UI;
-- remote workers;
-- untrusted/server mode;
+- Web UI и server API;
+- remote workers и message adapters;
+- untrusted/multi-user mode;
 - sandbox и многопользовательская авторизация.
 
 
@@ -225,3 +223,18 @@ Draft → approval comment → revise → artifact без изменения run
 - отдельный composition contract suite.
 
 Остаются отдельные задачи параллельного `foreach`, групповых attempts/timeout/hooks и input adapters для OpenSpec, issue и других структурированных источников. Явный YAML/JSON-массив уже поддерживается через `items_from`; основной Markdown-режим сохраняется.
+
+
+## Завершено в v0.1.25-alpha
+
+### TAKT-023. Managed Git worktree isolation — выполнено
+
+- workflow policy and CLI overrides;
+- separate branch and execution workspace;
+- router-aware activation at selected subworkflow gate;
+- safe retain/remove lifecycle and management commands;
+- persisted isolation state and resume semantics.
+
+### Следующий крупный срез
+
+Governed child Runs with separate Run ID, state/events, artifacts, cost, cancellation, and parent-child lifecycle. Server/Web UI/database remain proposals and are not prerequisites for local execution.

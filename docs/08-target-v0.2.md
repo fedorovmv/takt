@@ -200,7 +200,7 @@ takt command run
 - восстановление исключительно по event log;
 - MCP-сервер;
 - Web UI;
-- worktree isolation;
+- governed child Runs поверх уже реализованной worktree isolation;
 - marketplace пакетов.
 
 ## 7. Условие перехода к v1beta1

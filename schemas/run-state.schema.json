@@ -100,6 +100,22 @@
     },
     "error_code": {
       "type": "string"
+    },
+    "execution_workspace": {
+      "type": "string"
+    },
+    "current_nodes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "worktree": {
+      "$ref": "#/$defs/worktreeState"
+    },
+    "run_options": {
+      "$ref": "#/$defs/runOptions"
     }
   },
   "$defs": {
@@ -283,6 +299,86 @@
         },
         "usage": {
           "$ref": "#/$defs/usage"
+        }
+      }
+    },
+    "worktreeState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "repository_root": {
+          "type": "string"
+        },
+        "control_workspace": {
+          "type": "string"
+        },
+        "execution_workspace": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "base_ref": {
+          "type": "string"
+        },
+        "base_commit": {
+          "type": "string"
+        },
+        "cleanup": {
+          "enum": [
+            "on_success",
+            "manual"
+          ]
+        },
+        "base_dirty": {
+          "type": "boolean"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "removed": {
+          "type": "boolean"
+        },
+        "retained_reason": {
+          "type": "string"
+        },
+        "cleanup_error": {
+          "type": "string"
+        },
+        "removed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "runOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "worktree_mode": {
+          "enum": [
+            "auto",
+            "enabled",
+            "disabled"
+          ]
+        },
+        "worktree_base": {
+          "type": "string"
+        },
+        "keep_worktree": {
+          "type": "boolean"
+        },
+        "allow_dirty_worktree": {
+          "type": "boolean"
         }
       }
     }

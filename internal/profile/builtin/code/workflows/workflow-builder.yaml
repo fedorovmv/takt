@@ -3,6 +3,10 @@ kind: Workflow
 metadata:
   name: workflow-builder
   description: Generate or modify a complete Takt workflow package, validate the YAML and references, and repair it until the profile passes.
+worktree:
+  enabled: true
+  cleanup: on_success
+
 defaults:
   assistant: opencode
   model: implementation

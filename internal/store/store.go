@@ -110,14 +110,43 @@ func (n NodeState) FailedLike() bool {
 	}
 }
 
+type WorktreeState struct {
+	Enabled            bool      `json:"enabled"`
+	RepositoryRoot     string    `json:"repository_root,omitempty"`
+	ControlWorkspace   string    `json:"control_workspace,omitempty"`
+	ExecutionWorkspace string    `json:"execution_workspace,omitempty"`
+	Path               string    `json:"path,omitempty"`
+	Branch             string    `json:"branch,omitempty"`
+	BaseRef            string    `json:"base_ref,omitempty"`
+	BaseCommit         string    `json:"base_commit,omitempty"`
+	Cleanup            string    `json:"cleanup,omitempty"`
+	BaseDirty          bool      `json:"base_dirty,omitempty"`
+	Dirty              bool      `json:"dirty,omitempty"`
+	Removed            bool      `json:"removed,omitempty"`
+	RetainedReason     string    `json:"retained_reason,omitempty"`
+	CleanupError       string    `json:"cleanup_error,omitempty"`
+	RemovedAt          time.Time `json:"removed_at,omitempty"`
+}
+
+type RunOptionsState struct {
+	WorktreeMode string `json:"worktree_mode,omitempty"`
+	WorktreeBase string `json:"worktree_base,omitempty"`
+	KeepWorktree bool   `json:"keep_worktree,omitempty"`
+	AllowDirty   bool   `json:"allow_dirty_worktree,omitempty"`
+}
+
 type RunState struct {
 	ID                  string                `json:"id"`
 	Status              string                `json:"status"`
 	WorkflowPath        string                `json:"workflow_path"`
 	ConfigPath          string                `json:"config_path"`
 	Workspace           string                `json:"workspace"`
+	ExecutionWorkspace  string                `json:"execution_workspace,omitempty"`
+	Worktree            *WorktreeState        `json:"worktree,omitempty"`
+	RunOptions          RunOptionsState       `json:"run_options,omitempty"`
 	Input               string                `json:"input"`
 	CurrentNode         string                `json:"current_node,omitempty"`
+	CurrentNodes        []string              `json:"current_nodes,omitempty"`
 	Waiting             *WaitingState         `json:"waiting,omitempty"`
 	Nodes               map[string]*NodeState `json:"nodes"`
 	Approvals           map[string]string     `json:"approvals"`
@@ -161,6 +190,20 @@ func (s *RunState) PublicView() *RunState {
 	}
 	if node := s.Nodes[s.CurrentNode]; node != nil && node.PublicParent != "" {
 		out.CurrentNode = node.PublicParent
+	}
+	if len(s.CurrentNodes) > 0 {
+		seen := map[string]bool{}
+		out.CurrentNodes = make([]string, 0, len(s.CurrentNodes))
+		for _, id := range s.CurrentNodes {
+			publicID := id
+			if node := s.Nodes[id]; node != nil && node.PublicParent != "" {
+				publicID = node.PublicParent
+			}
+			if !seen[publicID] {
+				seen[publicID] = true
+				out.CurrentNodes = append(out.CurrentNodes, publicID)
+			}
+		}
 	}
 	out.Approvals = make(map[string]string, len(s.Approvals))
 	for id, value := range s.Approvals {

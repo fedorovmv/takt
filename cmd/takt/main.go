@@ -11,11 +11,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"takt/internal/command"
 	cfgpkg "takt/internal/config"
 	"takt/internal/definition"
 	"takt/internal/evaluation"
+	"takt/internal/gitworktree"
 	"takt/internal/profile"
 	"takt/internal/runtime"
 	"takt/internal/spec"
@@ -55,6 +57,8 @@ func run(args []string) error {
 		return resumeCmd(args[1:])
 	case "status":
 		return statusCmd(args[1:])
+	case "worktree":
+		return worktreeCmd(args[1:])
 	case "command":
 		return commandCmd(args[1:])
 	case "eval":
@@ -131,8 +135,13 @@ func runCmd(args []string) error {
 	configPath := fs.String("config", ".takt/config.yaml", "config path")
 	workspace := fs.String("workspace", ".", "workspace")
 	input := fs.String("input", "", "input text or file")
+	worktreeFlag := fs.Bool("worktree", false, "force Git worktree isolation")
+	noWorktreeFlag := fs.Bool("no-worktree", false, "disable workflow Git worktree isolation")
+	keepWorktree := fs.Bool("keep-worktree", false, "keep the worktree after a successful clean run")
+	allowDirtyWorktree := fs.Bool("allow-dirty-worktree", false, "start from committed HEAD even when the control workspace is dirty")
+	worktreeBase := fs.String("worktree-base", "", "Git revision used as the worktree base")
 	jsonOut := fs.Bool("json", true, "JSON output")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--config": true, "--workspace": true, "--input": true, "--json": false})); err != nil {
+	if err := fs.Parse(interspersed(args, map[string]bool{"--config": true, "--workspace": true, "--input": true, "--worktree": false, "--no-worktree": false, "--keep-worktree": false, "--allow-dirty-worktree": false, "--worktree-base": true, "--json": false})); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -167,8 +176,22 @@ func runCmd(args []string) error {
 	if err != nil {
 		return err
 	}
+	if *worktreeFlag && *noWorktreeFlag {
+		return fmt.Errorf("--worktree and --no-worktree are mutually exclusive")
+	}
+	var worktreeOverride *bool
+	if flagPresent(args, "--worktree") {
+		value := true
+		worktreeOverride = &value
+	}
+	if flagPresent(args, "--no-worktree") {
+		value := false
+		worktreeOverride = &value
+	}
 	runner := runtime.New(wf, cfg, wfPath, cfgPath, absWorkspace)
-	state, runErr := runner.Start(context.Background(), inputValue)
+	state, runErr := runner.StartWithOptions(context.Background(), inputValue, runtime.StartOptions{
+		Worktree: worktreeOverride, WorktreeBase: *worktreeBase, KeepWorktree: *keepWorktree, AllowDirty: *allowDirtyWorktree,
+	})
 	if errors.Is(runErr, runtime.ErrWaiting) {
 		return printResult(*jsonOut, state)
 	}
@@ -410,6 +433,15 @@ func runnerForState(state *store.RunState) (*runtime.Runner, error) {
 		return nil, err
 	}
 	runner := runtime.New(wf, cfg, state.WorkflowPath, state.ConfigPath, state.Workspace)
+	runner.SetStartOptions(runtime.StartOptionsFromState(state))
+	if state.ExecutionWorkspace != "" {
+		if state.Worktree != nil && state.Worktree.Enabled && !state.Worktree.Removed {
+			if info, statErr := os.Stat(state.ExecutionWorkspace); statErr != nil || !info.IsDir() {
+				return nil, fmt.Errorf("managed worktree for run %s is unavailable at %s", state.ID, state.ExecutionWorkspace)
+			}
+		}
+		runner.SetExecutionWorkspace(state.ExecutionWorkspace)
+	}
 	if err := validateReferences(wf.Nodes, wf.Defaults, cfg, runner.Commands); err != nil {
 		return nil, err
 	}
@@ -432,6 +464,160 @@ func statusCmd(args []string) error {
 		return err
 	}
 	return printResult(*jsonOut, state)
+}
+
+type worktreeListEntry struct {
+	RunID              string `json:"run_id"`
+	RunStatus          string `json:"run_status"`
+	Path               string `json:"path"`
+	Branch             string `json:"branch"`
+	BaseCommit         string `json:"base_commit,omitempty"`
+	Dirty              bool   `json:"dirty,omitempty"`
+	Removed            bool   `json:"removed,omitempty"`
+	RetainedReason     string `json:"retained_reason,omitempty"`
+	ExecutionWorkspace string `json:"execution_workspace,omitempty"`
+}
+
+func worktreeCmd(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: takt worktree <list|remove|prune> ...")
+	}
+	switch args[0] {
+	case "list":
+		return worktreeListCmd(args[1:])
+	case "remove":
+		return worktreeRemoveCmd(args[1:])
+	case "prune":
+		return worktreePruneCmd(args[1:])
+	default:
+		return fmt.Errorf("usage: takt worktree <list|remove|prune> ...")
+	}
+}
+
+func worktreeListCmd(args []string) error {
+	fs := newFlagSet("worktree list")
+	workspace := fs.String("workspace", ".", "control workspace")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("usage: takt worktree list [--workspace dir]")
+	}
+	abs, err := filepath.Abs(*workspace)
+	if err != nil {
+		return err
+	}
+	runsDir := filepath.Join(abs, ".takt", "runs")
+	entries, err := os.ReadDir(runsDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return printResult(*jsonOut, map[string]any{"worktrees": []worktreeListEntry{}})
+	}
+	if err != nil {
+		return err
+	}
+	st := store.FS{Workspace: abs}
+	var result []worktreeListEntry
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		state, loadErr := st.Load(entry.Name())
+		if loadErr != nil {
+			return loadErr
+		}
+		if state.Worktree == nil || !state.Worktree.Enabled {
+			continue
+		}
+		wt := state.Worktree
+		if !wt.Removed {
+			if status, inspectErr := gitworktree.Inspect(context.Background(), wt.Path); inspectErr == nil {
+				wt.Dirty = status.Dirty
+			}
+		}
+		result = append(result, worktreeListEntry{
+			RunID: state.ID, RunStatus: state.Status, Path: wt.Path, Branch: wt.Branch,
+			BaseCommit: wt.BaseCommit, Dirty: wt.Dirty, Removed: wt.Removed,
+			RetainedReason: wt.RetainedReason, ExecutionWorkspace: wt.ExecutionWorkspace,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].RunID < result[j].RunID })
+	return printResult(*jsonOut, map[string]any{"worktrees": result})
+}
+
+func worktreeRemoveCmd(args []string) error {
+	fs := newFlagSet("worktree remove")
+	workspace := fs.String("workspace", ".", "control workspace")
+	force := fs.Bool("force", false, "remove a dirty worktree")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--force": false, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt worktree remove <run-id> [--force]")
+	}
+	abs, err := filepath.Abs(*workspace)
+	if err != nil {
+		return err
+	}
+	st := store.FS{Workspace: abs}
+	release, err := st.AcquireLock(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	defer release()
+	state, err := st.Load(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	if state.Status == store.RunRunning || state.Status == store.RunWaiting {
+		return fmt.Errorf("cannot remove worktree for active run %s with status %s", state.ID, state.Status)
+	}
+	wt := state.Worktree
+	if wt == nil || !wt.Enabled {
+		return fmt.Errorf("run %s has no managed worktree", state.ID)
+	}
+	if wt.Removed {
+		return printResult(*jsonOut, state)
+	}
+	status, inspectErr := gitworktree.Inspect(context.Background(), wt.Path)
+	if inspectErr == nil {
+		wt.Dirty = status.Dirty
+	}
+	if wt.Dirty && !*force {
+		return fmt.Errorf("worktree %s has uncommitted changes; inspect it or pass --force", wt.Path)
+	}
+	if err := gitworktree.Remove(context.Background(), wt.RepositoryRoot, wt.Path, *force); err != nil {
+		return err
+	}
+	wt.Removed = true
+	wt.RemovedAt = time.Now().UTC()
+	wt.RetainedReason = ""
+	wt.CleanupError = ""
+	if err := st.Commit(state, store.Event{Type: "worktree.removed", Data: map[string]any{"path": wt.Path, "branch": wt.Branch, "manual": true, "force": *force}}); err != nil {
+		return err
+	}
+	return printResult(*jsonOut, state)
+}
+
+func worktreePruneCmd(args []string) error {
+	fs := newFlagSet("worktree prune")
+	workspace := fs.String("workspace", ".", "workspace inside the Git repository")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("usage: takt worktree prune [--workspace dir]")
+	}
+	abs, err := filepath.Abs(*workspace)
+	if err != nil {
+		return err
+	}
+	if err := gitworktree.Prune(context.Background(), abs); err != nil {
+		return err
+	}
+	return printResult(*jsonOut, map[string]any{"pruned": true})
 }
 
 func commandCmd(args []string) error {
@@ -684,7 +870,7 @@ func wantsJSON(args []string) bool {
 	value := false
 	if len(args) > 0 {
 		switch args[0] {
-		case "run", "answer", "resume", "status", "eval":
+		case "run", "answer", "resume", "status", "worktree", "eval":
 			value = true
 		case "command":
 			value = len(args) > 1 && args[1] == "run"
@@ -736,5 +922,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|run|workflow|answer|resume|status|command|eval|version>")
+	return fmt.Errorf("usage: takt <init|validate|run|workflow|answer|resume|status|worktree|command|eval|version>")
 }

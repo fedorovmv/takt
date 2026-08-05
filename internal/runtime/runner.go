@@ -17,6 +17,7 @@ import (
 	"takt/internal/command"
 	"takt/internal/definition"
 	"takt/internal/execution"
+	"takt/internal/gitworktree"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
@@ -38,34 +39,58 @@ func (e *RunFailedError) Error() string {
 }
 
 type Runner struct {
-	Workflow     *spec.Workflow
-	Config       *spec.Config
-	WorkflowPath string
-	ConfigPath   string
-	Workspace    string
-	Commands     command.Resolver
-	Store        store.Repository
-	Assistants   assistant.Resolver
+	Workflow         *spec.Workflow
+	Config           *spec.Config
+	WorkflowPath     string
+	ConfigPath       string
+	ControlWorkspace string
+	Workspace        string
+	Commands         command.Resolver
+	Store            store.Repository
+	Assistants       assistant.Resolver
+	startOptions     StartOptions
+}
+
+type StartOptions struct {
+	Worktree     *bool
+	WorktreeBase string
+	KeepWorktree bool
+	AllowDirty   bool
 }
 
 func New(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspace string) *Runner {
+	return &Runner{
+		Workflow: wf, Config: cfg, WorkflowPath: workflowPath, ConfigPath: configPath,
+		ControlWorkspace: workspace, Workspace: workspace,
+		Commands: buildCommandResolver(workflowPath, workspace, workspace),
+		Store:    store.FS{Workspace: workspace}, Assistants: assistant.Factory{Config: cfg},
+	}
+}
+
+func buildCommandResolver(workflowPath, executionWorkspace, controlWorkspace string) command.Resolver {
 	workflowDir := filepath.Dir(workflowPath)
 	home, _ := os.UserHomeDir()
-	dirs := []string{filepath.Join(workspace, ".takt", "commands")}
-	dirs = append(dirs, ancestorCommandDirs(workflowDir, workspace)...)
+	// Definitions and bundled commands belong to the control checkout. Keep
+	// those sources authoritative after execution moves into a worktree; only
+	// use worktree-local project commands as a final project-level fallback.
+	dirs := []string{filepath.Join(controlWorkspace, ".takt", "commands")}
+	dirs = append(dirs, ancestorCommandDirs(workflowDir, controlWorkspace)...)
+	if controlWorkspace != executionWorkspace {
+		dirs = append(dirs, filepath.Join(executionWorkspace, ".takt", "commands"))
+	}
 	if home != "" {
 		dirs = append(dirs, filepath.Join(home, ".takt", "commands"))
 	}
-	return &Runner{
-		Workflow:     wf,
-		Config:       cfg,
-		WorkflowPath: workflowPath,
-		ConfigPath:   configPath,
-		Workspace:    workspace,
-		Commands:     command.Resolver{Dirs: dirs},
-		Store:        store.FS{Workspace: workspace},
-		Assistants:   assistant.Factory{Config: cfg},
-	}
+	return command.Resolver{Dirs: dirs}
+}
+
+func (r *Runner) SetExecutionWorkspace(workspace string) {
+	r.Workspace = workspace
+	r.Commands = buildCommandResolver(r.WorkflowPath, workspace, r.ControlWorkspace)
+}
+
+func (r *Runner) SetStartOptions(options StartOptions) {
+	r.startOptions = options
 }
 
 func ancestorCommandDirs(start, stop string) []string {
@@ -91,18 +116,56 @@ func ancestorCommandDirs(start, stop string) []string {
 }
 
 func (r *Runner) Start(ctx context.Context, input string) (*store.RunState, error) {
+	return r.StartWithOptions(ctx, input, StartOptions{})
+}
+
+func (r *Runner) StartWithOptions(ctx context.Context, input string, options StartOptions) (*store.RunState, error) {
+	r.startOptions = options
 	id, err := newID()
 	if err != nil {
 		return nil, err
 	}
+	worktreeSpec := r.Workflow.Worktree
+	if options.Worktree != nil {
+		worktreeSpec.Enabled = *options.Worktree
+	}
+	if options.WorktreeBase != "" {
+		worktreeSpec.Base = options.WorktreeBase
+	}
+	if options.KeepWorktree {
+		worktreeSpec.Cleanup = "manual"
+	}
+	if options.AllowDirty {
+		worktreeSpec.AllowDirty = true
+	}
+	if worktreeSpec.Enabled && worktreeSpec.Cleanup == "" {
+		worktreeSpec.Cleanup = "on_success"
+	}
+	var worktreeState *store.WorktreeState
+	if worktreeSpec.Enabled {
+		info, prepareErr := gitworktree.Prepare(ctx, r.ControlWorkspace, id, r.Workflow.Metadata.Name, gitworktree.Options{
+			Base: worktreeSpec.Base, BranchPrefix: worktreeSpec.BranchPrefix, AllowDirty: worktreeSpec.AllowDirty,
+		})
+		if prepareErr != nil {
+			return nil, prepareErr
+		}
+		r.Workspace = info.ExecutionWorkspace
+		r.Commands = buildCommandResolver(r.WorkflowPath, r.Workspace, r.ControlWorkspace)
+		worktreeState = &store.WorktreeState{
+			Enabled: true, RepositoryRoot: info.RepositoryRoot, ControlWorkspace: info.ControlWorkspace,
+			ExecutionWorkspace: info.ExecutionWorkspace, Path: info.Path, Branch: info.Branch,
+			BaseRef: info.BaseRef, BaseCommit: info.BaseCommit, Cleanup: worktreeSpec.Cleanup, BaseDirty: info.BaseDirty,
+		}
+	}
 	fingerprints, err := definition.Compute(r.Workflow, r.Config, r.WorkflowPath, r.ConfigPath, r.Commands)
 	if err != nil {
+		r.rollbackPreparedWorktree(worktreeState)
 		return nil, err
 	}
 	now := time.Now().UTC()
 	state := &store.RunState{
 		ID: id, Status: store.RunRunning, WorkflowPath: r.WorkflowPath, ConfigPath: r.ConfigPath,
-		Workspace: r.Workspace, Input: input, Nodes: map[string]*store.NodeState{},
+		Workspace: r.ControlWorkspace, ExecutionWorkspace: r.Workspace, Worktree: worktreeState, RunOptions: runOptionsState(options), Input: input, Nodes: map[string]*store.NodeState{},
 		Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now,
 		WorkflowFingerprint: fingerprints.Workflow,
 		ConfigFingerprint:   fingerprints.Config,
@@ -111,10 +174,111 @@ func (r *Runner) Start(ctx context.Context, input string) (*store.RunState, erro
 	for _, node := range r.Workflow.Nodes {
 		state.Nodes[node.ID] = &store.NodeState{Status: store.NodePending, Hidden: node.Hidden, PublicParent: node.PublicParent}
 	}
-	if err := r.commit(state, "run.started", "", map[string]any{"workflow": r.Workflow.Metadata.Name}); err != nil {
+	data := map[string]any{"workflow": r.Workflow.Metadata.Name, "execution_workspace": r.Workspace}
+	if worktreeState != nil {
+		data["worktree"] = map[string]any{"path": worktreeState.Path, "branch": worktreeState.Branch, "base_commit": worktreeState.BaseCommit}
+	}
+	if err := r.commit(state, "run.started", "", data); err != nil {
+		r.rollbackPreparedWorktree(worktreeState)
 		return nil, err
 	}
 	return r.resume(ctx, state)
+}
+
+func runOptionsState(options StartOptions) store.RunOptionsState {
+	mode := "auto"
+	if options.Worktree != nil {
+		if *options.Worktree {
+			mode = "enabled"
+		} else {
+			mode = "disabled"
+		}
+	}
+	return store.RunOptionsState{
+		WorktreeMode: mode, WorktreeBase: options.WorktreeBase,
+		KeepWorktree: options.KeepWorktree, AllowDirty: options.AllowDirty,
+	}
+}
+
+func StartOptionsFromState(state *store.RunState) StartOptions {
+	options := StartOptions{
+		WorktreeBase: state.RunOptions.WorktreeBase,
+		KeepWorktree: state.RunOptions.KeepWorktree,
+		AllowDirty:   state.RunOptions.AllowDirty,
+	}
+	switch state.RunOptions.WorktreeMode {
+	case "enabled":
+		value := true
+		options.Worktree = &value
+	case "disabled":
+		value := false
+		options.Worktree = &value
+	}
+	return options
+}
+
+func (r *Runner) prepareDynamicWorktree(ctx context.Context, state *store.RunState, internal *spec.InternalNodeSpec) error {
+	if internal == nil || internal.Worktree == nil || !internal.Worktree.Enabled {
+		return nil
+	}
+	if state.Worktree != nil && state.Worktree.Enabled && !state.Worktree.Removed {
+		return nil
+	}
+	policy := *internal.Worktree
+	options := r.startOptions
+	if options.Worktree != nil {
+		policy.Enabled = *options.Worktree
+	}
+	if !policy.Enabled {
+		return nil
+	}
+	if options.WorktreeBase != "" {
+		policy.Base = options.WorktreeBase
+	}
+	if options.KeepWorktree {
+		policy.Cleanup = "manual"
+	}
+	if options.AllowDirty {
+		policy.AllowDirty = true
+	}
+	if policy.Cleanup == "" {
+		policy.Cleanup = "on_success"
+	}
+	info, err := gitworktree.Prepare(ctx, r.ControlWorkspace, state.ID, internal.WorkflowName, gitworktree.Options{
+		Base: policy.Base, BranchPrefix: policy.BranchPrefix, AllowDirty: policy.AllowDirty,
+	})
+	if err != nil {
+		return err
+	}
+	value := &store.WorktreeState{
+		Enabled: true, RepositoryRoot: info.RepositoryRoot, ControlWorkspace: info.ControlWorkspace,
+		ExecutionWorkspace: info.ExecutionWorkspace, Path: info.Path, Branch: info.Branch,
+		BaseRef: info.BaseRef, BaseCommit: info.BaseCommit, Cleanup: policy.Cleanup, BaseDirty: info.BaseDirty,
+	}
+	previousWorkspace := r.Workspace
+	r.SetExecutionWorkspace(info.ExecutionWorkspace)
+	state.ExecutionWorkspace = info.ExecutionWorkspace
+	state.Worktree = value
+	if err := r.commit(state, "worktree.created", "", map[string]any{
+		"path": value.Path, "branch": value.Branch, "base_commit": value.BaseCommit,
+		"workflow": internal.WorkflowName, "dynamic": true,
+	}); err != nil {
+		r.SetExecutionWorkspace(previousWorkspace)
+		state.ExecutionWorkspace = previousWorkspace
+		state.Worktree = nil
+		r.rollbackPreparedWorktree(value)
+		return err
+	}
+	return nil
+}
+
+func (r *Runner) rollbackPreparedWorktree(value *store.WorktreeState) {
+	if value == nil || value.Path == "" || value.RepositoryRoot == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = gitworktree.Remove(ctx, value.RepositoryRoot, value.Path, true)
 }
 
 func (r *Runner) VerifyDefinitions(state *store.RunState) error {
@@ -143,6 +307,7 @@ func (r *Runner) Resume(ctx context.Context, state *store.RunState) (*store.RunS
 		return state, ErrWaiting
 	}
 	state.Status = store.RunRunning
+	state.CurrentNodes = nil
 	state.Error, state.ErrorCode = "", ""
 	if err := r.commit(state, "run.resumed", "", nil); err != nil {
 		return state, err
@@ -165,6 +330,10 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 			state.ErrorCode = string(kind)
 			state.Error = err.Error()
 			state.CurrentNode = ""
+			state.CurrentNodes = nil
+			if finalizeErr := r.finalizeWorktree(state, store.RunCancelled); finalizeErr != nil {
+				return state, finalizeErr
+			}
 			if commitErr := r.commit(state, "run.cancelled", "", map[string]any{"error": err.Error()}); commitErr != nil {
 				return state, commitErr
 			}
@@ -175,6 +344,7 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 
 	status, nodeID, code, cause := graphResult(r.Workflow.Nodes, state.Nodes)
 	state.CurrentNode = ""
+	state.CurrentNodes = nil
 	state.Status = status
 	state.ErrorCode = code
 	state.Error = cause
@@ -183,13 +353,22 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 		if err := r.commit(state, "run.completed", "", nil); err != nil {
 			return state, err
 		}
+		if err := r.finalizeWorktree(state, store.RunCompleted); err != nil {
+			return state, err
+		}
 		return state, nil
 	case store.RunCancelled:
+		if err := r.finalizeWorktree(state, store.RunCancelled); err != nil {
+			return state, err
+		}
 		if err := r.commit(state, "run.cancelled", nodeID, map[string]any{"error": cause, "code": code}); err != nil {
 			return state, err
 		}
 		return state, &RunFailedError{RunID: state.ID, NodeID: nodeID, Code: code, Cause: cause}
 	default:
+		if err := r.finalizeWorktree(state, store.RunFailed); err != nil {
+			return state, err
+		}
 		if err := r.commit(state, "run.failed", nodeID, map[string]any{"error": cause, "code": code}); err != nil {
 			return state, err
 		}
@@ -209,6 +388,21 @@ func (r *Runner) executeGraph(ctx context.Context, state *store.RunState, nodes 
 			}
 			if ns.Terminal() {
 				continue
+			}
+			if node.Guard != "" {
+				guard := state.Nodes[node.Guard]
+				if guard == nil || !guard.Terminal() {
+					continue
+				}
+				if guard.Status != store.NodeCompleted {
+					ns.Status = store.NodeSkipped
+					ns.ErrorCode = "container_guard_not_satisfied"
+					progress = true
+					if err := r.commit(state, "node.skipped", node.ID, map[string]any{"reason": "container_guard", "guard": node.Guard}); err != nil {
+						return err
+					}
+					continue
+				}
 			}
 			if ns.Status == store.NodeWaiting {
 				return ErrWaiting
@@ -307,6 +501,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		ns.Status = store.NodeRunning
 		ns.Error, ns.ErrorCode = "", ""
 		state.CurrentNode = node.ID
+		state.CurrentNodes = nil
 		if err := r.commit(state, "node.started", node.ID, map[string]any{"attempt": ns.Attempts}); err != nil {
 			return err
 		}
@@ -374,6 +569,17 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		}
 		if execErr != nil {
 			kind := execution.KindOf(execErr)
+			if shouldRetryAttempt(node.Attempts, kind, ns.Attempts, max) {
+				cancel()
+				ns.Feedback = joinFeedback(ns.Feedback, execErr.Error())
+				if node.Attempts.RetrySession == "fresh" {
+					ns.SessionID = ""
+				}
+				if err := r.commit(state, "node.retry", node.ID, map[string]any{"feedback": ns.Feedback, "phase": "attempts", "kind": string(kind)}); err != nil {
+					return err
+				}
+				continue
+			}
 			if kind == execution.KindCancelled || kind == execution.KindTimedOut {
 				cancel()
 				return r.finishAttemptExecutionError(state, node.ID, execErr, result)
@@ -444,6 +650,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		cancel()
 		ns.Status = store.NodeCompleted
 		state.CurrentNode = ""
+		state.CurrentNodes = nil
 		if err := r.commit(state, "node.completed", node.ID, map[string]any{"attempts": ns.Attempts, "exit_code": ns.ExitCode, "output_truncated": ns.OutputTruncated, "usage": ns.Usage}); err != nil {
 			return err
 		}
@@ -525,6 +732,11 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		switch node.Internal.Mode {
 		case "noop":
 			return execResult{ExitCode: 0}, nil
+		case "worktree":
+			if err := r.prepareDynamicWorktree(ctx, state, node.Internal); err != nil {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "prepare worktree", Err: err}
+			}
+			return execResult{Output: r.Workspace, Stdout: r.Workspace, ExitCode: 0}, nil
 		case "result":
 			source := state.Nodes[node.Internal.ResultFrom]
 			if source == nil {
@@ -606,7 +818,6 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 				return execResult, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "validate structured output", Err: validationErr}
 			}
 			execResult.Output = normalized
-			execResult.Stdout = normalized
 		}
 		return execResult, err
 	default:
@@ -864,6 +1075,7 @@ func (r *Runner) finishNodeExecutionError(state *store.RunState, nodeID string, 
 	applyExecResult(ns, result)
 
 	state.CurrentNode = ""
+	state.CurrentNodes = nil
 	return r.commit(state, "node."+status, nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "exit_code": ns.ExitCode, "usage": ns.Usage})
 }
 
@@ -875,6 +1087,7 @@ func (r *Runner) finishNodeError(state *store.RunState, nodeID, code string, err
 	applyExecResult(ns, result)
 
 	state.CurrentNode = ""
+	state.CurrentNodes = nil
 	return r.commit(state, "node.errored", nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "usage": ns.Usage})
 }
 
@@ -886,6 +1099,7 @@ func (r *Runner) finishNodeFailure(state *store.RunState, nodeID, code string, e
 	applyExecResult(ns, result)
 
 	state.CurrentNode = ""
+	state.CurrentNodes = nil
 	return r.commit(state, "node.failed", nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "usage": ns.Usage})
 }
 
@@ -981,6 +1195,18 @@ func untilSatisfied(until spec.UntilSpec, node store.NodeState) bool {
 	return true
 }
 
+func shouldRetryAttempt(policy spec.AttemptsSpec, kind execution.Kind, attempt, max int) bool {
+	if attempt >= max || len(policy.RetryOn) == 0 {
+		return false
+	}
+	for _, value := range policy.RetryOn {
+		if value == string(kind) {
+			return true
+		}
+	}
+	return false
+}
+
 func joinFeedback(values ...string) string {
 	var clean []string
 	for _, value := range values {
@@ -989,6 +1215,51 @@ func joinFeedback(values ...string) string {
 		}
 	}
 	return strings.Join(clean, "\n\n")
+}
+
+func (r *Runner) finalizeWorktree(state *store.RunState, terminalStatus string) error {
+	value := state.Worktree
+	if value == nil || !value.Enabled || value.Removed || value.Path == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	status, inspectErr := gitworktree.Inspect(ctx, value.Path)
+	if inspectErr == nil {
+		value.Dirty = status.Dirty
+	} else {
+		value.CleanupError = inspectErr.Error()
+	}
+	if terminalStatus != store.RunCompleted {
+		value.RetainedReason = terminalStatus
+		return nil
+	}
+	data := map[string]any{"path": value.Path, "branch": value.Branch, "dirty": value.Dirty}
+	if value.Cleanup == "manual" {
+		value.RetainedReason = "manual_cleanup"
+		data["reason"] = value.RetainedReason
+		return r.commit(state, "worktree.retained", "", data)
+	}
+	if value.CleanupError != "" {
+		value.RetainedReason = "inspection_failed"
+		data["reason"], data["error"] = value.RetainedReason, value.CleanupError
+		return r.commit(state, "worktree.retained", "", data)
+	}
+	if value.Dirty {
+		value.RetainedReason = "uncommitted_changes"
+		data["reason"] = value.RetainedReason
+		return r.commit(state, "worktree.retained", "", data)
+	}
+	if err := gitworktree.Remove(ctx, value.RepositoryRoot, value.Path, false); err != nil {
+		value.CleanupError = err.Error()
+		value.RetainedReason = "cleanup_failed"
+		data["reason"], data["error"] = value.RetainedReason, value.CleanupError
+		return r.commit(state, "worktree.retained", "", data)
+	}
+	value.Removed = true
+	value.RemovedAt = time.Now().UTC()
+	value.RetainedReason = ""
+	return r.commit(state, "worktree.removed", "", map[string]any{"path": value.Path, "branch": value.Branch})
 }
 
 func nodeContext(parent context.Context, timeout string) (context.Context, context.CancelFunc, error) {

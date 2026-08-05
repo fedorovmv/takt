@@ -3,6 +3,10 @@ kind: Workflow
 metadata:
   name: idea-to-pr
   description: Turn a feature idea into a researched plan, approved implementation, validation, pull request, five parallel reviews, and self-fixes.
+worktree:
+  enabled: true
+  cleanup: on_success
+
 defaults:
   assistant: opencode
   model: implementation

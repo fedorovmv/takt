@@ -3,6 +3,10 @@ kind: Workflow
 metadata:
   name: remotion-generate
   description: Inspect, plan, generate or modify a Remotion composition, validate code and rendering, review visual/technical risks, and repair findings.
+worktree:
+  enabled: true
+  cleanup: on_success
+
 defaults:
   assistant: opencode
   model: implementation

@@ -1,4 +1,4 @@
-# Результаты проверки Takt v0.1.24-alpha
+# Результаты проверки Takt v0.1.25-alpha
 
 Проверено 5 августа 2026 года.
 
@@ -7,51 +7,37 @@
 ```text
 Go: go1.23.2 linux/amd64
 OS: Linux 6.12.13 x86_64
-Исходный архив: takt-v0.1.23-alpha.zip
-SHA-256 исходного архива: 50685e14575d6867ebee0978be17592eb05c56cd652baa4f364013487cba1ea8
+Исходный архив: takt-v0.1.24-alpha.zip
+SHA-256 исходного архива: b4d189bff44fa55fa5444edd6b8ae4b72e56a1c6688311286c13faca1e533966
 ```
 
-Контрольная сумма исходного архива совпала с приложенным файлом `takt-v0.1.23-alpha.sha256`.
+Контрольная сумма исходного архива совпала с приложенным файлом `takt-v0.1.24-alpha.sha256`.
 
 ## Проверенный контракт среза
 
-- профиль `code` 0.3.0 содержит ровно 19 пользовательских workflow и два переиспользуемых review-блока;
-- default workflow профиля является умным роутером и выбирает одну из 19 ветвей внутри того же Run;
-- любой процесс запускается напрямую селектором `code:<workflow>`;
-- `takt workflow list` и `takt workflow describe` показывают каталог;
-- `output_format` проверяет один JSON-результат агентного узла, обязательные поля, типы, `enum`, массивы и `additionalProperties`;
-- вложенные JSON-пути доступны в `when` и шаблонах;
-- независимые простые `command`, `prompt` и `bash` выполняются параллельной scheduler-волной;
-- `foreach.parallel` выполняет итерации конкурентно и собирает результат в порядке входного массива;
-- approval внутри `loop_group` останавливает Run, после ответа продолжает текущую итерацию и повторно запрашивается на следующей;
-- `trigger_rule: one_success` соединяет условные ветви после их terminal-состояния;
-- authoring skill обновлён до 0.6.0 и описывает новый контракт.
+- workflow-level Git worktree policy создаёт отдельную ветку и execution workspace, сохраняя state/events/artifacts в control workspace;
+- direct selector применяет policy при старте Run, а smart router активирует policy выбранного дочернего workflow на его gate;
+- CLI поддерживает `--worktree`, `--no-worktree`, `--keep-worktree`, `--allow-dirty-worktree`, `--worktree-base` и `takt worktree list/remove/prune`;
+- чистый успешный worktree с `cleanup: on_success` удаляется, branch сохраняется; dirty/failed/cancelled/manual worktree удерживается;
+- CLI overrides и оба workspace сохраняются в Run state и используются при resume;
+- `output_format` нормализует только `output`, сохраняя raw provider stdout/stderr;
+- native attempts policy повторяет `protocol`-ошибки и передаёт точный validation error через `${feedback}`;
+- router использует один retry mechanism без дублирующего failure hook;
+- утверждённый `interactive-prd` не запускает revise на итерации `ready`;
+- malformed reproduction output в `create-issue` запускает reporting и summary branches;
+- integer output validation сохраняет точность для значений больше `2^53`;
+- `current_nodes` публикуется на время параллельной волны и очищается отдельным persisted transition;
+- comprehensive review использует `foreach.parallel` по пяти перспективам;
+- профиль `code` 0.4.0 содержит 19 пользовательских workflow и три reusable workflow-блока;
+- authoring skill 0.7.0 описывает managed worktree contract.
 
-## Полные проверки рабочего дерева
-
-Фактически завершились успешно:
+## Фактически завершившиеся проверки
 
 ```text
 gofmt -w cmd internal                       PASS
 go vet ./...                                PASS
-./scripts/verify.sh                         PASS
-```
-
-`verify.sh` последовательно выполнил полный `go test ./...`, полный `go test -race ./...`, сборку бинарников, adapter contract suites, Route DSL E2E/evaluation, composition, authoring skill, каталог `code`, документацию и штатные `takt validate`.
-
-Дополнительно отдельно выполнены с `-count=1`:
-
-```text
-go test ./internal/profile ./internal/workflow ./internal/runtime ./cmd/takt
-                                               PASS
-go test -race ./internal/runtime               PASS
-go test -race ./internal/workflow ./internal/profile ./cmd/takt
-                                               PASS
-go test -race ./internal/assistant              PASS
-go test -race ./internal/command ./internal/config ./internal/definition \
-  ./internal/evaluation ./internal/execution   PASS
-go test -race ./internal/store ./internal/validation ./internal/yamlmini
-                                               PASS
+go test ./... -count=1                      PASS
+go test -race ./... -count=1                PASS
 ```
 
 Контрактные наборы:
@@ -66,39 +52,39 @@ Route DSL evaluation isolation: PASS
 workflow composition: PASS
 Takt authoring skill: PASS
 code profile catalog contract: PASS
+git worktree contract: PASS
 documentation check: PASS
-verification: PASS
 ```
 
-## Специальные регрессии v0.1.24
+## Специальные регрессии v0.1.25
 
-Проверены отдельные сценарии:
+- top-level workflow изменяет файл только в managed worktree, а control checkout остаётся неизменным;
+- clean successful worktree удаляется автоматически, но созданная branch остаётся;
+- child workflow включает worktree isolation на compiled gate до первого дочернего действия;
+- `--no-worktree` подавляет child policy и сохраняется в Run state;
+- code router работает в control checkout, выбирает `feature-development`, после чего все дочерние agent nodes получают execution workspace worktree;
+- assist route не создаёт worktree;
+- waiting Run возобновляется в том же worktree, а active worktree нельзя удалить через CLI;
+- dirty retained worktree требует `--force` для ручного удаления;
+- structured output сохраняет raw NDJSON stdout после JSON normalization;
+- второй protocol attempt получает enum/schema error в `${feedback}` и использует fresh session;
+- `create-issue` сохраняет protocol failure узла reproduce, но выполняет `reproduction-error` и итоговый summary;
+- большие целые и целые в exponent form принимаются без `Float64`, дробные значения отклоняются;
+- full review fan-out возвращает результаты `foreach.parallel` в исходном порядке.
 
-- два независимых узла проходят взаимный файловый барьер, который невозможно пройти при последовательном запуске;
-- параллельный `foreach` проходит общий барьер двух итераций и возвращает `["one","two"]`;
-- два последовательных approval внутри разных итераций одного `loop_group` корректно возобновляют Run;
-- schema-valid JSON нормализуется, недопустимое значение `enum` становится `protocol`-ошибкой;
-- поле `nodes.route.output.workflow` работает в условии и шаблоне;
-- mock-запуск роутера вызывает только `route` и выбранный `assist`, остальные 18 ветвей пропускаются;
-- каждый из 19 явных селекторов проходит `takt validate` после `takt init code`;
-- профиль после установки содержит 21 YAML-файл workflow: 19 пользовательских и два reusable review-блока.
+## Запуски, остановленные внешним лимитом
 
-## Прерванные запуски
-
-Первые два foreground-запуска `make check` были остановлены внешним лимитом одного вызова инструмента во время полного `go test -race ./...`. Следующий полный запуск выявил слишком жёсткий временной порог теста параллельности: две секундные ветви завершились за 1,82 с при пороге 1,8 с. Проверка заменена на взаимный файловый барьер, который доказывает конкурентный запуск без зависимости от скорости среды; новый тест прошёл 20 повторов. После исправления полный `make check` и `verify.sh` выполнены повторно.
+Один foreground-запуск `make check` был остановлен внешним лимитом инструмента во время `go test ./...`; на момент остановки ошибок проекта не было. Полные unit и race suites после этого выполнены отдельными фоновыми командами и завершились с кодом `0`. Все составные contract scripts и `verify.sh` также запущены отдельно, чтобы внешний лимит одного tool call не подменял результат проекта.
 
 ## Внешние интеграции
 
-Реальные Pi/OpenCode smoke и фактические операции с GitHub/Remotion не запускались: в среде сборки нет пользовательских credentials, provider-конфигурации и целевых репозиториев. Проверены fake adapter contracts, структура всех workflow, маршрутизация с mock assistant и детерминированные runtime-механизмы.
+Реальные Pi/OpenCode smoke, GitHub writes и Remotion rendering не запускались: в среде сборки нет пользовательских credentials, provider-конфигурации и целевого репозитория. Проверены fake adapter contracts, Git worktree lifecycle, все workflow definitions и runtime semantics.
 
-## Оставшиеся функциональные пробелы относительно Archon
+## Оставшиеся крупные пробелы
 
-Все 19 процессов и умный роутер присутствуют. Оставшиеся различия относятся к инфраструктуре исполнения:
-
-- нет автоматической git worktree isolation для Run;
-- `subworkflow` остаётся частью родительского Run, а не отдельным governed child Run;
-- нет per-node `allowed_tools`, `denied_tools`, skills, MCP и sandbox policy;
-- нет script nodes Bun/uv, `output_type`, CLI `cancel`, server/Web UI, БД, message adapters и notifications;
+- `subworkflow` остаётся частью родительского Run; governed child Run с отдельными ID, state/events, artifacts, cost и cancellation пока не реализован;
+- отсутствуют per-node `allowed_tools`, `denied_tools`, skills, MCP и sandbox policy;
+- отсутствуют script nodes Bun/uv, `output_type`, CLI `cancel` и runtime fan-out из output предыдущего узла;
+- `foreach` с child workflow, который сам требует отдельный worktree, отклоняется до появления governed child Runs;
 - параллельная scheduler-волна пока не включает узлы с portable hooks или `attempts.max > 1`;
-- `items_from` читает статический compile-time файл, динамический fan-out из output узла не реализован;
-- полный служебный `state.json` сохраняет namespaced ID, внешним контрактом остаётся публичная проекция CLI.
+- server, Web UI, БД, remote workers и message adapters остаются proposal-направлением для возможного выхода за локальный trusted runtime и не входят в текущий приоритет.

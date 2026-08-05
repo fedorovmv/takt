@@ -4,6 +4,9 @@
 CLI
  │
  ▼
+Control Workspace / Run Store ── Git Worktree Manager ── Execution Workspace
+ │
+ ▼
 Workflow Loader ── Command Resolver ── Config/Model Registry
  │
  ▼
@@ -26,6 +29,7 @@ Runner / Shared DAG Scheduler
 - `internal/config` — модели и исполнители;
 - `internal/command` — Markdown-команды;
 - `internal/execution` — классы ошибок и управление process group;
+- `internal/gitworktree` — создание ветки/worktree, проверка dirty state, удаление и prune;
 - `internal/assistant` — адаптеры `mock`, универсальный `process` и специализированные `pi` и `opencode`;
 - `internal/definition` — fingerprints workflow/config/commands;
 - `internal/workflow` — загрузка и статическая проверка DAG;
@@ -66,6 +70,10 @@ TAKT_NATIVE_HOOKS_JSON
 ## OpenCode assistant
 
 Специализированный `opencode` adapter запускает `opencode run --format json` в workspace узла. Prompt передаётся через stdin, stdout читается как NDJSON event stream, stderr остаётся диагностикой. Takt нормализует итоговый текст, Session ID, version, requested/resolved model и usage, но не вмешивается во внутренний tool loop, agents, MCP и работу с файлами OpenCode.
+
+## Control и execution workspace
+
+Workflow definitions, config, commands, Run state, events, locks и artifacts принадлежат control workspace. При `worktree.enabled` node actions получают отдельный execution workspace. Умный router активирует его на gate выбранного дочернего workflow. Это защищает исходный checkout от изменений, но не является sandbox.
 
 ## Состояние
 

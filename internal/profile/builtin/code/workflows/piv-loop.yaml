@@ -3,6 +3,10 @@ kind: Workflow
 metadata:
   name: piv-loop
   description: Guided Plan-Implement-Validate loop with iterative human exploration, plan approval, implementation, validation review, and repair.
+worktree:
+  enabled: true
+  cleanup: on_success
+
 defaults:
   assistant: opencode
   model: implementation

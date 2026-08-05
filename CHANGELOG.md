@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.25-alpha
+
+- добавлена управляемая Git worktree isolation: политика workflow, CLI-переопределения, отдельная ветка/каталог выполнения, сохранение состояния и безопасная очистка;
+- умный роутер создаёт worktree только после выбора изменяющего дочернего workflow; direct selector применяет ту же политику при старте Run;
+- добавлены `takt worktree list/remove/prune`, блокировка удаления активного Run и защита грязного worktree без `--force`;
+- определения и команды fingerprint-ятся из control checkout, а CLI-решение по изоляции сохраняется для resume;
+- исправлено сохранение raw stdout при `output_format`, добавлен protocol retry с точным `${feedback}`, устранён двойной retry роутера;
+- исправлены approved-итерация `interactive-prd`, fallback `create-issue`, публикация параллельного статуса и exact integer validation;
+- полный review block использует настоящий `foreach.parallel` по пяти перспективам;
+- профиль `code` обновлён до 0.4.0, authoring skill — до 0.7.0;
+- добавлены ADR-037, worktree contract suite и `docs/39-git-worktree-isolation-v0.1.25.md`.
+
 ## v0.1.24-alpha
 
 - профиль `code` 0.3.0 получил полный каталог из 19 процессов разработки и умный роутер в обычном Run;

@@ -3,6 +3,10 @@ kind: Workflow
 metadata:
   name: issue-review-full
   description: Fix a GitHub issue end to end, create a PR, run all five review perspectives in parallel, and repair every valid finding.
+worktree:
+  enabled: true
+  cleanup: on_success
+
 defaults:
   assistant: opencode
   model: implementation

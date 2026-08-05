@@ -13,13 +13,8 @@ nodes:
     model: routing
     attempts:
       max: 2
-    hooks:
-      on_failure:
-        - id: retry-invalid-route
-          bash: exit 1
-          on_failure:
-            action: retry
-            session: fresh
+      retry_on: [protocol]
+      retry_session: fresh
     output_format:
       type: object
       additionalProperties: false

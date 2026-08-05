@@ -34,7 +34,10 @@ func runtimeHookSetEmpty(hooks spec.HookSet) bool {
 // same time. State transitions and persistence remain serialized before and
 // after the wave, so one Run and one event stream remain authoritative.
 func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nodes []spec.Node, previous map[string]store.NodeState) error {
+	state.CurrentNode = ""
+	state.CurrentNodes = make([]string, 0, len(nodes))
 	for _, node := range nodes {
+		state.CurrentNodes = append(state.CurrentNodes, node.ID)
 		ns := state.Nodes[node.ID]
 		ns.Attempts++
 		ns.Status = store.NodeRunning
@@ -43,7 +46,6 @@ func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nod
 			return err
 		}
 	}
-	state.CurrentNode = ""
 
 	results := make(chan parallelNodeResult, len(nodes))
 	var wg sync.WaitGroup
@@ -102,6 +104,11 @@ func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nod
 		if err := r.commit(state, "node.completed", node.ID, map[string]any{"attempts": ns.Attempts, "exit_code": ns.ExitCode, "output_truncated": ns.OutputTruncated, "usage": ns.Usage, "parallel": true}); err != nil {
 			return err
 		}
+	}
+	completedIDs := append([]string(nil), state.CurrentNodes...)
+	state.CurrentNodes = nil
+	if err := r.commit(state, "parallel.wave.completed", "", map[string]any{"nodes": completedIDs}); err != nil {
+		return err
 	}
 	if cancelled || errors.Is(ctx.Err(), context.Canceled) {
 		return context.Canceled

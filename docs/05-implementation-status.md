@@ -25,14 +25,16 @@
 - defaults `assistant`, `model`, `session` на композиционном контейнере;
 - portable hooks, retry с feedback, timeout/cancellation, `allow_failure`;
 - fingerprints workflow/config/commands/subworkflow/items source;
-- файловые state/events/artifacts, revision consistency и блокировка Run.
+- файловые state/events/artifacts, revision consistency и блокировка Run;
+- управляемая Git worktree isolation с отдельной веткой, control/execution workspace, safe cleanup и resume;
+- CLI `worktree list/remove/prune` и persisted Run overrides.
 
-### Профиль code 0.3.0
+### Профиль code 0.4.0
 
 - 19 процессов разработки: assist, issue/PR flows, PIV, Ralph, idea/plan-to-PR, reviews, architecture, safe refactoring, PRD, workflow builder, Remotion и conflict resolution;
 - умный роутер как обычный workflow внутри общего Run;
 - структурированный выбор маршрута с enum всех 19 процессов;
-- параллельные многоаспектные PR-review ветви;
+- параллельные многоаспектные PR-review ветви, включая `foreach.parallel` по пяти перспективам;
 - интерактивные PIV и PRD-циклы;
 - reusable `review-block` и `smart-review-block`;
 - отдельный запуск любого процесса через `code:<workflow>`.
@@ -48,6 +50,7 @@
 ### CLI
 
 - `init`, `validate`, `run`, `answer`, `resume`, `status`, `command run`;
+- `worktree list`, `worktree remove`, `worktree prune`;
 - `workflow list`, `workflow describe`;
 - единый JSON success/error envelope.
 
@@ -65,10 +68,10 @@
 
 Все 19 пользовательских процессов и роутер перенесены. На уровне инфраструктуры пока отсутствуют:
 
-- автоматическая worktree isolation и governed child Run;
+- governed child Run с отдельным Run ID, cost и artifacts;
 - per-node tool allow/deny, skills, MCP и sandbox policy;
 - script nodes, semantic artifact `output_type` и команда `cancel`;
-- server/Web UI, БД, message adapters, notifications и проверка подключённой GitHub identity.
+- server/Web UI, БД, message adapters, notifications и проверка подключённой GitHub identity — proposal для будущего нелокального режима.
 
 Пока эти гарантии выражаются командами workflow и возможностями внешнего coding agent, а не отдельными механизмами ядра.
 
@@ -78,4 +81,4 @@
 
 ## Ближайший целевой срез
 
-Следующие системные задачи: worktree isolation, управляемые child Run, ограничения инструментов/skills/MCP на узле и динамический fan-out из результата предыдущего узла. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.
+Следующие системные задачи: управляемые child Run, ограничения инструментов/skills/MCP/sandbox на узле и динамический fan-out из результата предыдущего узла. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.

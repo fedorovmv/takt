@@ -32,6 +32,9 @@
     },
     "hooks": {
       "$ref": "#/$defs/hooks"
+    },
+    "worktree": {
+      "$ref": "#/$defs/worktree"
     }
   },
   "$defs": {
@@ -79,6 +82,24 @@
         "max": {
           "type": "integer",
           "minimum": 0
+        },
+        "retry_on": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "exit",
+              "start",
+              "protocol",
+              "internal"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "retry_session": {
+          "enum": [
+            "fresh",
+            "reuse"
+          ]
         }
       }
     },
@@ -346,6 +367,12 @@
                 "properties": {
                   "max": {
                     "const": 0
+                  },
+                  "retry_on": {
+                    "maxItems": 0
+                  },
+                  "retry_session": {
+                    "maxLength": 0
                   }
                 }
               },
@@ -392,6 +419,12 @@
                 "properties": {
                   "max": {
                     "const": 0
+                  },
+                  "retry_on": {
+                    "maxItems": 0
+                  },
+                  "retry_session": {
+                    "maxLength": 0
                   }
                 }
               },
@@ -738,6 +771,73 @@
           "type": "boolean"
         }
       }
+    },
+    "worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "base": {
+          "type": "string"
+        },
+        "branch_prefix": {
+          "type": "string"
+        },
+        "cleanup": {
+          "enum": [
+            "on_success",
+            "manual"
+          ]
+        },
+        "allow_dirty": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": false
+              }
+            },
+            "required": [
+              "enabled"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "base"
+                  ]
+                },
+                {
+                  "required": [
+                    "branch_prefix"
+                  ]
+                },
+                {
+                  "required": [
+                    "cleanup"
+                  ]
+                },
+                {
+                  "required": [
+                    "allow_dirty"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   }
 }

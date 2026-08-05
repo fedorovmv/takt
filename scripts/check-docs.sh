@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.6.0" \
+  "skills/takt/VERSION|0.7.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -76,6 +76,10 @@ for check in \
   "docs/37-composition-hardening-v0.1.23.md|Публичная проекция Run" \
   "ARCHITECTURE_DECISIONS.md|ADR-034" \
   "ARCHITECTURE_DECISIONS.md|ADR-035" \
+  "ARCHITECTURE_DECISIONS.md|ADR-037" \
+  "docs/39-git-worktree-isolation-v0.1.25.md|Router-aware isolation" \
+  "scripts/test-worktree.sh|git worktree contract: PASS" \
+  "README.md|takt worktree list/remove/prune" \
   "docs/38-archon-workflow-catalog-v0.1.24.md|19 типовых процессов" \
   "docs/03-specification.md|output_format" \
   "docs/03-specification.md|one_success" \
@@ -102,7 +106,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.24-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.25-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \

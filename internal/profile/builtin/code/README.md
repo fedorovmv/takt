@@ -1,4 +1,4 @@
-# Takt code profile 0.3.0
+# Takt code profile 0.4.0
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -10,7 +10,7 @@ takt run code --input "Fix GitHub issue #123 and open a PR"
 takt run code:comprehensive-pr-review --input "Review the current PR"
 ```
 
-The router is an ordinary first node in the same Run. It returns schema-validated JSON and the selected branch executes in the same expanded DAG, so routing, cost, events, approvals, and results remain auditable.
+The router is an ordinary first node in the same Run. Mutating selected workflows activate a managed Git worktree at their subworkflow gate; routing itself stays in the control checkout. It returns schema-validated JSON and the selected branch executes in the same expanded DAG, so routing, cost, events, approvals, and results remain auditable.
 
 ## Included workflows
 
@@ -36,7 +36,7 @@ The router is an ordinary first node in the same Run. It returns schema-validate
 | `remotion-generate` | Plan, generate, render-check, and review Remotion compositions |
 | `resolve-conflicts` | Analyze both conflict sides, resolve, validate, and finish safely |
 
-Five independent review nodes are scheduled concurrently. `foreach.parallel: true` uses the same scheduler for parallel fan-out. Interactive workflow loops can pause on approval and resume the active iteration; the approval answer is cleared before the next iteration so each round obtains new human input.
+The comprehensive review uses `foreach.parallel` to schedule five independent review perspectives concurrently. `foreach.parallel: true` uses the same scheduler for parallel fan-out. Interactive workflow loops can pause on approval and resume the active iteration; the approval answer is cleared before the next iteration so each round obtains new human input.
 
 ## Configuration
 
@@ -53,3 +53,8 @@ The validation hook uses `TAKT_VALIDATE_COMMAND` when set, then `scripts/verify.
 ## Repository overrides
 
 Files installed under `.takt/profiles/code/` are ordinary project files. Teams can edit and commit workflow or command overrides. Re-running `takt init code --force` replaces them with the bundled version.
+
+
+## Worktree policy
+
+Mutating workflows create a `takt/<workflow>/<run-id>` branch and execute in `.takt/worktrees/<run-id>`. Clean successful worktrees are removed while the branch remains. Dirty or failed worktrees are retained and shown by `takt worktree list`. Current-PR review and conflict-resolution workflows intentionally use the live checkout.

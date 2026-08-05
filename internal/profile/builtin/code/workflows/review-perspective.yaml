@@ -1,0 +1,12 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: review-perspective
+  description: Run one isolated review perspective selected by a parallel foreach iteration.
+defaults:
+  assistant: opencode
+  model: review
+  session: fresh
+nodes:
+  - id: review
+    command: review-perspective

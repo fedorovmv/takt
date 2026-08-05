@@ -9,12 +9,13 @@ type Metadata struct {
 }
 
 type Workflow struct {
-	APIVersion string   `json:"apiVersion"`
-	Kind       string   `json:"kind"`
-	Metadata   Metadata `json:"metadata"`
-	Defaults   Defaults `json:"defaults,omitempty"`
-	Nodes      []Node   `json:"nodes"`
-	Hooks      HookSet  `json:"hooks,omitempty"`
+	APIVersion string       `json:"apiVersion"`
+	Kind       string       `json:"kind"`
+	Metadata   Metadata     `json:"metadata"`
+	Defaults   Defaults     `json:"defaults,omitempty"`
+	Nodes      []Node       `json:"nodes"`
+	Hooks      HookSet      `json:"hooks,omitempty"`
+	Worktree   WorktreeSpec `json:"worktree,omitempty"`
 }
 
 type Defaults struct {
@@ -27,6 +28,7 @@ type Node struct {
 	ID           string            `json:"id"`
 	Hidden       bool              `json:"-"`
 	PublicParent string            `json:"-"`
+	Guard        string            `json:"-"`
 	DependsOn    []string          `json:"depends_on,omitempty"`
 	When         string            `json:"when,omitempty"`
 	TriggerRule  string            `json:"trigger_rule,omitempty"`
@@ -75,6 +77,8 @@ type InternalNodeSpec struct {
 	ResultFrom     string
 	ResultsFrom    []string
 	DefinitionHash string
+	WorkflowName   string
+	Worktree       *WorktreeSpec
 }
 
 // OutputFormat describes the JSON value an AI node must return. It is a
@@ -90,7 +94,20 @@ type OutputFormat struct {
 }
 
 type AttemptsSpec struct {
-	Max int `json:"max,omitempty"`
+	Max          int      `json:"max,omitempty"`
+	RetryOn      []string `json:"retry_on,omitempty"`
+	RetrySession string   `json:"retry_session,omitempty"`
+}
+
+// WorktreeSpec isolates a Run in a dedicated Git branch and worktree. The
+// control workspace still owns state and artifacts; only node execution moves
+// to the worktree.
+type WorktreeSpec struct {
+	Enabled      bool   `json:"enabled,omitempty"`
+	Base         string `json:"base,omitempty"`
+	BranchPrefix string `json:"branch_prefix,omitempty"`
+	Cleanup      string `json:"cleanup,omitempty"`
+	AllowDirty   bool   `json:"allow_dirty,omitempty"`
 }
 
 type ApprovalSpec struct {

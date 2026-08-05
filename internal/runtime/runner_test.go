@@ -905,3 +905,58 @@ func TestApprovalInsideLoopGroupResumesAndPromptsEachIteration(t *testing.T) {
 		t.Fatalf("latest loop feedback was not preserved: %+v", previous)
 	}
 }
+
+func TestParallelWavePublishesAllCurrentNodes(t *testing.T) {
+	workspace := t.TempDir()
+	wf := &spec.Workflow{
+		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "parallel-status"},
+		Nodes: []spec.Node{
+			{ID: "left", Bash: `while [ ! -f release ]; do sleep 0.02; done`},
+			{ID: "right", Bash: `while [ ! -f release ]; do sleep 0.02; done`},
+		},
+	}
+	cfg := &spec.Config{}
+	r := New(wf, cfg, "<workflow>", "<config>", workspace)
+	type result struct {
+		state *store.RunState
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		state, err := r.Start(context.Background(), "")
+		done <- result{state: state, err: err}
+	}()
+	var runID string
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		entries, _ := os.ReadDir(filepath.Join(workspace, ".takt", "runs"))
+		if len(entries) > 0 {
+			runID = entries[0].Name()
+			state, err := (store.FS{Workspace: workspace}).Load(runID)
+			if err == nil && len(state.CurrentNodes) == 2 {
+				if state.CurrentNodes[0] != "left" || state.CurrentNodes[1] != "right" {
+					t.Fatalf("unexpected current nodes: %v", state.CurrentNodes)
+				}
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if runID == "" {
+		t.Fatal("run state was not created")
+	}
+	state, err := (store.FS{Workspace: workspace}).Load(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.CurrentNodes) != 2 {
+		t.Fatalf("parallel current nodes were not published: %+v", state)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "release"), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := <-done
+	if out.err != nil || out.state.Status != store.RunCompleted || len(out.state.CurrentNodes) != 0 {
+		t.Fatalf("unexpected final result state=%+v err=%v", out.state, out.err)
+	}
+}

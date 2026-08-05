@@ -11,28 +11,20 @@ nodes:
   - id: scope
     command: review-scope
 
-  - id: code
+  - id: perspectives
     depends_on: [scope]
-    command: review-code
-
-  - id: errors
-    depends_on: [scope]
-    command: review-errors
-
-  - id: tests
-    depends_on: [scope]
-    command: review-tests
-
-  - id: docs
-    depends_on: [scope]
-    command: review-docs
-
-  - id: simplicity
-    depends_on: [scope]
-    command: review-simplicity
+    foreach:
+      items: [code, errors, tests, docs, simplicity]
+      as: perspective
+      parallel: true
+      subworkflow:
+        path: review-perspective.yaml
+        inputs:
+          perspective: ${perspective}
+          scope: ${nodes.scope.output}
 
   - id: synthesize
-    depends_on: [code, errors, tests, docs, simplicity]
+    depends_on: [perspectives]
     command: synthesize-review
 
   - id: fixes

@@ -3,6 +3,10 @@ kind: Workflow
 metadata:
   name: ralph-dag
   description: Prepare a PRD story backlog and iterate with fresh story implementation sessions until every story and the complete validation suite pass.
+worktree:
+  enabled: true
+  cleanup: on_success
+
 defaults:
   assistant: opencode
   model: implementation

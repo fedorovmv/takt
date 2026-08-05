@@ -3,6 +3,10 @@ kind: Workflow
 metadata:
   name: refactor-safely
   description: Capture a behavioral baseline, plan and perform a refactor, then compare validation and repair any regression before delivery.
+worktree:
+  enabled: true
+  cleanup: on_success
+
 defaults:
   assistant: opencode
   model: review

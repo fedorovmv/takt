@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.24-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.25-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -23,6 +23,10 @@
 ### Execution record
 
 Сохраняемая запись одного фактического вызова действия. Она содержит номер попытки, assistant, его версию, requested/resolved model, Session ID, usage и результат выполнения. Агрегированные поля Node описывают итог узла, а execution records сохраняют различия между retry.
+
+### Control и execution workspace
+
+Control workspace хранит определения, state/events, locks и artifacts. При worktree policy execution workspace указывает на отдельный Git worktree, где выполняются node actions.
 
 ### Iteration
 
@@ -310,3 +314,10 @@ Fingerprint workflow включает исходный родительский 
 `foreach` при `parallel: false` связывает итерации последовательно, а при `parallel: true` создаёт независимые ветви от общего gate. Aggregator ждёт terminal-состояния всех итераций и собирает output в порядке исходного массива, а не в порядке завершения.
 
 Рекурсивные ссылки отклоняются по стеку абсолютных путей. Глубина одновременно активной композиции ограничена 16 workflow.
+
+
+## Managed Git worktree
+
+Workflow-level `worktree.enabled` creates a branch and worktree before actions start. For an expanded subworkflow, its hidden gate creates the worktree before child nodes, allowing the smart router to choose policy per branch. CLI overrides are persisted in Run state.
+
+Only a clean successful `on_success` worktree is removed automatically; its branch is preserved. Dirty, failed, cancelled, waiting, manual, or cleanup-error worktrees remain. The runtime never deletes uncommitted changes automatically. This boundary isolates local code changes but is not a sandbox.

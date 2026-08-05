@@ -24,7 +24,7 @@ nodes:
           type: string
         repository:
           type: string
-      required: [issue_type, title, issue_number, repository]
+      required: [issue_type, title]
 
   - id: git-context
     depends_on: [classify]
@@ -75,8 +75,18 @@ nodes:
       Report that the issue was not created because reproduction did not succeed.
       Summarize the exact attempts and evidence from $ARTIFACTS_DIR, explain what additional data is needed, and preserve the investigation artifacts.
 
+
+  - id: reproduction-error
+    depends_on: [reproduce]
+    trigger_rule: all_done
+    when: nodes.reproduce.status != "completed"
+    prompt: |
+      Report that issue reproduction could not produce a valid structured result.
+      Include the reproduce node status, error, raw stdout/stderr diagnostics, investigation artifacts, and concrete next steps.
+      Do not create a GitHub issue without reproducible evidence.
+
   - id: summary
-    depends_on: [create, cannot-reproduce]
+    depends_on: [create, cannot-reproduce, reproduction-error]
     trigger_rule: one_success
     command: summary
     model: review

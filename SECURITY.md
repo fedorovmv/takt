@@ -2,7 +2,7 @@
 
 ## Supported trust model
 
-Takt `v0.1.20-alpha` is a local, single-user, trusted runtime.
+Takt `v0.1.25-alpha` is a local, single-user, trusted runtime.
 
 Trusted inputs:
 
@@ -23,9 +23,10 @@ The current version must not be exposed as a service that accepts these values f
 - definition fingerprints before resume;
 - timeout and output limit for process assistants;
 - Unix process-group termination on context cancellation;
-- revision consistency between state and event log.
+- revision consistency between state and event log;
+- managed Git worktree separation for code-changing Runs, with safe retention of dirty results.
 
-These controls improve reliability but do not form a sandbox.
+These controls improve reliability but do not form a sandbox. A Git worktree isolates changes from the control checkout, but it does not restrict filesystem access, processes, network, credentials, or agent tools.
 
 ## OpenCode approval mode
 

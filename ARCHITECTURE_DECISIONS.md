@@ -183,3 +183,11 @@ Scheduler собирает готовые независимые `command`, `pro
 Profile может публиковать карту именованных workflow. Default workflow профиля `code` является аудируемым роутером: агент возвращает решение по проверяемому `output_format`, после чего `when` по JSON-полю открывает ровно одну ветку `subworkflow`. Решение роутера, модель, usage и ошибки остаются частью того же Run и event log.
 
 Прямой селектор `profile:workflow` обходит роутер и нужен для воспроизводимых запусков, тестов и ручного выбора. Каталог из 19 процессов является содержимым профиля, а не захардкоженной логикой Go. Добавление процесса требует изменения `profile.yaml`, workflow и команд, но не нового типа runtime.
+
+## ADR-037. Control workspace and execution worktree are separate Run contexts
+
+Run state, events, locks, artifacts, workflow definitions, config, and Markdown-command fingerprints belong to the control workspace. A workflow may move node execution into a managed Git worktree with its own branch. The router may activate this boundary at a selected subworkflow gate, before the first child action.
+
+Takt removes only a clean successful worktree whose policy is `on_success`; the branch remains. Dirty, failed, cancelled, waiting, manually retained, or uninspectable worktrees are preserved for inspection. A dirty control checkout is rejected by default. Explicit `allow_dirty` starts from a committed base and never pretends to copy uncommitted changes.
+
+This is a local trusted-runtime isolation boundary, not a security sandbox. Server, Web UI, database, remote execution, and multi-user authorization require a separate architecture and threat model.

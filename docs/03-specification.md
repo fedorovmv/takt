@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.24-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.25-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -454,6 +454,9 @@ takt status <run-id> --workspace <dir>
 takt command run <name> --config <config> --workspace <dir> --input <text>
 takt workflow list <profile> --workspace <dir>
 takt workflow describe <profile[:workflow]> --workspace <dir>
+takt worktree list --workspace <dir>
+takt worktree remove <run-id> --workspace <dir> [--force]
+takt worktree prune --workspace <dir>
 takt eval run <workflow> --config <config> --cases <dir> --workspace-template <dir> --output <dir> [--strategy-id <id>] [--benchmark-id <id>] [--quality-node <id>] [--generation-node <id>] [--validator-path <path>]
 takt eval report <evaluation-output-dir>
 ```
@@ -476,7 +479,21 @@ takt eval report <evaluation-output-dir>
 - вложенный `loop_group` внутри `loop_group` запрещён;
 - `native_hooks` передаются адаптеру, но не исполняются runtime;
 - нет `takt cancel`;
-- нет sandbox, server, MCP и Web UI;
+- нет sandbox и runtime-managed MCP/tool policy; server, Web UI и БД остаются proposal вне локального режима;
 - stale lock требует ручного удаления после аварийного завершения процесса;
 - специализированные Pi и OpenCode adapters реализованы;
 - `takt-assistant/v1alpha1` реализован для универсального `process`; специализированный `pi` использует официальный Pi RPC JSONL, а `opencode` — официальный `run --format json` event stream; потоковые события пока не публикуются в EventSink.
+
+
+## Managed worktree policy
+
+```yaml
+worktree:
+  enabled: true
+  base: HEAD
+  branch_prefix: takt
+  cleanup: on_success
+  allow_dirty: false
+```
+
+State and artifacts remain in the control workspace. Node execution moves into the worktree. `cleanup` is `on_success` or `manual`. Automatic cleanup applies only to a clean successful worktree; all states that may contain evidence or changes are retained. `--no-worktree`, `--keep-worktree`, `--worktree-base`, and `--allow-dirty-worktree` override policy and are persisted for resume.

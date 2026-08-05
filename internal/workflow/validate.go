@@ -18,7 +18,26 @@ func Validate(wf *spec.Workflow) error {
 	if strings.TrimSpace(wf.Metadata.Name) == "" {
 		return fmt.Errorf("metadata.name is required")
 	}
+	if err := validateWorktree(wf.Worktree); err != nil {
+		return err
+	}
 	return validateNodes(wf.Nodes, "nodes", false)
+}
+
+func validateWorktree(value spec.WorktreeSpec) error {
+	if !value.Enabled {
+		if value.Base != "" || value.BranchPrefix != "" || value.Cleanup != "" || value.AllowDirty {
+			return fmt.Errorf("worktree options require worktree.enabled: true")
+		}
+		return nil
+	}
+	if strings.TrimSpace(value.BranchPrefix) != value.BranchPrefix {
+		return fmt.Errorf("worktree.branch_prefix must not have surrounding whitespace")
+	}
+	if value.Cleanup != "" && value.Cleanup != "on_success" && value.Cleanup != "manual" {
+		return fmt.Errorf("worktree.cleanup must be on_success or manual")
+	}
+	return nil
 }
 
 func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
@@ -65,7 +84,7 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		if n.Subworkflow != nil || n.Foreach != nil {
 			return fmt.Errorf("node %q contains an unexpanded workflow container", n.ID)
 		}
-		if n.Internal != nil && n.Internal.Mode != "noop" && n.Internal.Mode != "result" && n.Internal.Mode != "collect" {
+		if n.Internal != nil && n.Internal.Mode != "noop" && n.Internal.Mode != "result" && n.Internal.Mode != "collect" && n.Internal.Mode != "worktree" {
 			return fmt.Errorf("node %q has unsupported internal mode %q", n.ID, n.Internal.Mode)
 		}
 		if n.Internal != nil && n.Internal.Mode == "result" && strings.TrimSpace(n.Internal.ResultFrom) == "" {
@@ -74,8 +93,32 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		if n.Internal != nil && n.Internal.Mode == "collect" && len(n.Internal.ResultsFrom) == 0 {
 			return fmt.Errorf("node %q internal collect requires result sources", n.ID)
 		}
+		if n.Internal != nil && n.Internal.Mode == "worktree" && (n.Internal.Worktree == nil || !n.Internal.Worktree.Enabled) {
+			return fmt.Errorf("node %q internal worktree action requires an enabled policy", n.ID)
+		}
 		if n.Attempts.Max < 0 {
 			return fmt.Errorf("node %q attempts.max cannot be negative", n.ID)
+		}
+		if len(n.Attempts.RetryOn) > 0 {
+			if n.Attempts.Max < 2 {
+				return fmt.Errorf("node %q attempts.retry_on requires attempts.max >= 2", n.ID)
+			}
+			if len(n.Hooks.OnFailure) > 0 {
+				return fmt.Errorf("node %q cannot combine attempts.retry_on with hooks.on_failure", n.ID)
+			}
+			seenRetryKinds := map[string]bool{}
+			for _, kind := range n.Attempts.RetryOn {
+				if kind != "exit" && kind != "start" && kind != "protocol" && kind != "internal" {
+					return fmt.Errorf("node %q attempts.retry_on contains unsupported kind %q", n.ID, kind)
+				}
+				if seenRetryKinds[kind] {
+					return fmt.Errorf("node %q attempts.retry_on contains duplicate kind %q", n.ID, kind)
+				}
+				seenRetryKinds[kind] = true
+			}
+		}
+		if n.Attempts.RetrySession != "" && n.Attempts.RetrySession != "fresh" && n.Attempts.RetrySession != "reuse" {
+			return fmt.Errorf("node %q attempts.retry_session must be fresh or reuse", n.ID)
 		}
 		if n.Timeout != "" {
 			duration, err := time.ParseDuration(n.Timeout)
