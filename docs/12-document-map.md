@@ -67,7 +67,7 @@
 | Вопрос | Основной документ | Статус |
 |---|---|---|
 | Правила работы кодовых агентов | `../AGENTS.md` | действующий |
-| Создание и настройка workflow | `../skills/takt/SKILL.md`, `43-script-nodes-typed-artifacts-v0.1.29.md`, `42-governed-child-fanout-v0.1.28.md`, `41-node-capability-policies-v0.1.27.md`, `40-governed-child-runs-v0.1.26.md`, `39-git-worktree-isolation-v0.1.25.md`, `38-archon-workflow-catalog-v0.1.24.md`, `36-workflow-composition-v0.1.22.md`, `37-composition-hardening-v0.1.23.md` | действующий скилл, каталог, роутер и композиция |
+| Создание и настройка workflow | `../skills/takt/SKILL.md`, `46-controlled-agent-events-deep-workflows-v0.1.32.md`, `43-script-nodes-typed-artifacts-v0.1.29.md`, `42-governed-child-fanout-v0.1.28.md`, `41-node-capability-policies-v0.1.27.md`, `40-governed-child-runs-v0.1.26.md`, `39-git-worktree-isolation-v0.1.25.md`, `38-archon-workflow-catalog-v0.1.24.md`, `36-workflow-composition-v0.1.22.md`, `37-composition-hardening-v0.1.23.md` | действующий скилл, каталог, роутер и композиция |
 | Зачем нужен Takt | `01-project.md` | действующий |
 | Архитектурный подход | `02-approach.md`, ADR | действующий |
 | Текущий внешний контракт | `03-specification.md` | реализованный `v1alpha1` |
@@ -75,6 +75,7 @@
 | Динамический fan-out governed children | `42-governed-child-fanout-v0.1.28.md` | фактический |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
 | Локальный MCP control plane | `44-local-mcp-control-plane-v0.1.30.md` | фактический |
+| Управляемые agent events и глубокие workflow | `46-controlled-agent-events-deep-workflows-v0.1.32.md` | фактический |
 | Исправления последнего аудита | `16–18-audit-remediation-*.md` | фактический |
 | Fake-assistant protocol suite | `20-fake-assistant-contract-v0.1.6.md` | фактический |
 | Строгая OS/envelope семантика | `21-protocol-hardening-v0.1.7.md` | фактический |
@@ -130,3 +131,5 @@
 - `44-local-mcp-control-plane-v0.1.30.md` — dual-era stdio MCP server, local control service, detached Run lifecycle, events и artifacts.
 
 - `45-agent-events-external-executor-v0.1.31.md` — нормализованные assistant/tool events, durable внешний executor узла и исправление конкурентного store.
+
+- `46-controlled-agent-events-deep-workflows-v0.1.32.md` — event protocol v2, управляемые tool calls и глубокие шесть workflow с Git/recovery contract.

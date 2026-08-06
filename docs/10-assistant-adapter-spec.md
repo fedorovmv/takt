@@ -205,28 +205,29 @@ invalid_structured_output
 
 ## 8. События адаптера
 
-Минимально:
-
-```text
-assistant.started
-assistant.stdout
-assistant.stderr
-assistant.completed
-assistant.failed
-```
-
-При поддержке исполнителем:
+Канонический протокол `takt-agent-events/v2`:
 
 ```text
 assistant.session.started
 assistant.session.resumed
+assistant.message
+assistant.tool.requested
+assistant.tool.allowed
+assistant.tool.denied
 assistant.tool.started
 assistant.tool.completed
-assistant.artifact.changed
+assistant.artifact.declared
 assistant.usage
+assistant.diagnostic
+assistant.completed
+assistant.failed
 ```
 
-Потоковые события не должны быть обязательными для process adapter.
+Adapter объявляет protocol, список capabilities, event types и флаги `session_events`, `tool_events`, `tool_control`, `artifact_events`, `usage_events`. `tool_control` разрешён только при pre-execution interception: Takt должен увидеть `tool.requested`, применить policy/approval и вернуть решение до запуска инструмента.
+
+OpenCode и Pi поддерживают наблюдательные события и не заявляют `tool_control`. Внешний executor реализует durable blocking lifecycle. Process protocol `takt-assistant/v1alpha2` поддерживает bidirectional records `capabilities`, `event`, `tool.request`, `result` и ответ `tool.decision`.
+
+Артефакт может содержать `call_id`, связывающий его с породившим tool call. Нормализованный поток не заменяет raw stdout/stderr.
 
 ## 9. Pi adapter
 

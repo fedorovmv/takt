@@ -332,4 +332,17 @@ workflows:
 
 ## Внешний executor AI-узла
 
-Для передачи одного `command` или `prompt` внешнему coding agent укажи `executor: external`. Takt сохранит resolved prompt/model/session/policy и приостановит Run. Worker обязан использовать MCP-цикл `takt.node.pending → claim → event → complete|fail`; обычные `attempts`, hooks, `output_format` и `output_type` продолжают действовать после submission.
+Для передачи одного `command` или `prompt` внешнему coding agent укажи `executor: external`. Takt сохранит resolved prompt/model/session/policy и приостановит Run. Worker обязан использовать MCP-цикл `takt.node.pending → claim`, передавать обычные события через `node.event`, а tool calls — через `node.tool.request → decide → start → complete`; обычные `attempts`, hooks, `output_format` и `output_type` продолжают действовать после submission.
+
+Для блокирующего решения добавь:
+
+```yaml
+executor: external
+tool_approval:
+  mode: required
+  tools: [write, bash]
+  message: "Разрешить ${tool}?"
+requires: [tool_control, agent_events_v2, tool_events]
+```
+
+Такой workflow запускается только с executor, который заявил pre-execution `tool_control`.

@@ -79,24 +79,49 @@ type ExecutionState struct {
 	Usage            *Usage    `json:"usage,omitempty"`
 }
 
+type ToolApprovalState struct {
+	Mode    string   `json:"mode"`
+	Tools   []string `json:"tools,omitempty"`
+	Message string   `json:"message,omitempty"`
+}
+
+type ToolCallState struct {
+	CallID          string          `json:"call_id"`
+	Tool            string          `json:"tool"`
+	Input           json.RawMessage `json:"input,omitempty"`
+	Output          json.RawMessage `json:"output,omitempty"`
+	Status          string          `json:"status"`
+	Decision        string          `json:"decision,omitempty"`
+	Reason          string          `json:"reason,omitempty"`
+	ApprovalNeeded  bool            `json:"approval_needed,omitempty"`
+	CancelRequested bool            `json:"cancel_requested,omitempty"`
+	RequestedAt     time.Time       `json:"requested_at,omitempty"`
+	DecidedAt       time.Time       `json:"decided_at,omitempty"`
+	StartedAt       time.Time       `json:"started_at,omitempty"`
+	CompletedAt     time.Time       `json:"completed_at,omitempty"`
+}
+
 // ExternalExecutionState is a durable hand-off of one command/prompt node to a
 // local MCP client. The claim token is intentionally omitted from PublicView.
 type ExternalExecutionState struct {
-	Status            string               `json:"status"`
-	Attempt           int                  `json:"attempt"`
-	Prompt            string               `json:"prompt"`
-	Workspace         string               `json:"workspace"`
-	Assistant         string               `json:"assistant,omitempty"`
-	RequestedModel    *ModelRef            `json:"requested_model,omitempty"`
-	SessionMode       string               `json:"session_mode,omitempty"`
-	SessionID         string               `json:"session_id,omitempty"`
-	Policy            *NodePolicyState     `json:"policy,omitempty"`
-	OutputFormat      json.RawMessage      `json:"output_format,omitempty"`
-	ClaimedBy         string               `json:"claimed_by,omitempty"`
-	ClaimToken        string               `json:"claim_token,omitempty"`
-	LeaseExpiresAt    time.Time            `json:"lease_expires_at,omitempty"`
-	LastEventSequence uint64               `json:"last_event_sequence,omitempty"`
-	Result            *ExternalResultState `json:"result,omitempty"`
+	Status                string                    `json:"status"`
+	Attempt               int                       `json:"attempt"`
+	Prompt                string                    `json:"prompt"`
+	Workspace             string                    `json:"workspace"`
+	Assistant             string                    `json:"assistant,omitempty"`
+	RequestedModel        *ModelRef                 `json:"requested_model,omitempty"`
+	SessionMode           string                    `json:"session_mode,omitempty"`
+	SessionID             string                    `json:"session_id,omitempty"`
+	Policy                *NodePolicyState          `json:"policy,omitempty"`
+	CapabilityDeclaration json.RawMessage           `json:"capability_declaration,omitempty"`
+	ToolApproval          *ToolApprovalState        `json:"tool_approval,omitempty"`
+	ToolCalls             map[string]*ToolCallState `json:"tool_calls,omitempty"`
+	OutputFormat          json.RawMessage           `json:"output_format,omitempty"`
+	ClaimedBy             string                    `json:"claimed_by,omitempty"`
+	ClaimToken            string                    `json:"claim_token,omitempty"`
+	LeaseExpiresAt        time.Time                 `json:"lease_expires_at,omitempty"`
+	LastEventSequence     uint64                    `json:"last_event_sequence,omitempty"`
+	Result                *ExternalResultState      `json:"result,omitempty"`
 }
 
 type ExternalResultState struct {
@@ -142,6 +167,7 @@ type ArtifactRef struct {
 	ProducerNodeID string    `json:"producer_node_id"`
 	Attempt        int       `json:"attempt"`
 	CreatedAt      time.Time `json:"created_at"`
+	CallID         string    `json:"call_id,omitempty"`
 }
 
 type NodeState struct {

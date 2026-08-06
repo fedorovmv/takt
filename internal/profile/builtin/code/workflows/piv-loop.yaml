@@ -2,49 +2,137 @@ apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
   name: piv-loop
-  description: Guided Plan-Implement-Validate loop with iterative human exploration, plan approval, implementation, validation review, and repair.
-worktree:
-  enabled: true
-  cleanup: on_success
-
+  description: Run a guided Plan-Implement-Validate process with durable exploration, approval, recovery, review and human acceptance checkpoints.
+input:
+  format: json
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      repository:
+        type: string
+      request:
+        type: string
+      base_branch:
+        type: string
+      validation_commands:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        uniqueItems: true
+      max_review_rounds:
+        type: integer
+    required:
+      - repository
+      - request
+      - base_branch
+      - validation_commands
+      - max_review_rounds
 defaults:
   assistant: opencode
   model: implementation
   session: fresh
 nodes:
+  - id: git-prepare
+    command: git-prepare
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - GIT_READY
+            - GIT_DIRTY
+            - GIT_BRANCH_MISMATCH
+            - GIT_BASE_MISSING
+            - GIT_REMOTE_MISSING
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: git-state
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/git-state.json
   - id: explore
+    depends_on:
+      - git-prepare
+    when: nodes.git-prepare.output.status == "ready"
     loop_group:
       max_iterations: 15
       nodes:
         - id: research
-          prompt: |
-            Explore the user's requested change as a senior engineering partner.
-            Read AGENTS.md, relevant code, tests, documentation, and git history before asking questions.
-            Present current understanding, existing implementation, architecture options, scope boundaries, risks, and only the decisions that still require human input.
-
-            Original request:
-            $USER_MESSAGE
-
-            Previous human feedback:
-            ${loop.previous.feedback.output}
-
+          command: piv-exploration
+          model: review
+          output_format:
+            type: object
+            additionalProperties: false
+            properties:
+              status:
+                type: string
+                enum:
+                  - ready
+                  - blocked
+                  - failed
+              code:
+                type: string
+                enum:
+                  - EXPLORATION_READY_FOR_PLAN
+                  - EXPLORATION_NEEDS_DECISION
+                  - EXPLORATION_SCOPE_CONFLICT
+                  - EXPLORATION_EVIDENCE_INCOMPLETE
+              summary:
+                type: string
+              evidence:
+                type: array
+                items:
+                  type: string
+                minItems: 1
+                uniqueItems: true
+              artifact_path:
+                type: string
+            required:
+              - status
+              - code
+              - summary
+              - evidence
+              - artifact_path
+          output_type: exploration
+          output_mime: text/markdown
+          output_path: $ARTIFACTS_DIR/exploration.md
         - id: feedback
-          depends_on: [research]
+          depends_on:
+            - research
+          when: nodes.research.output.status == "ready"
           approval:
-            message: |
-              ${nodes.research.output}
+            message: |-
+              ${nodes.research.output.summary}
 
-              Reply with corrections or additional decisions. Reply `ready` when exploration is complete and the plan can be created.
+              Reply with corrections or `ready` when exploration is sufficient.
             capture_response: true
-
         - id: decision
-          depends_on: [feedback]
-          prompt: |
-            Decide whether the latest human reply explicitly authorizes creation of the implementation plan.
-            Reply only with JSON. Treat questions, corrections, additions, or ambiguous approval as not ready.
-
-            Human reply:
-            ${nodes.feedback.output}
+          depends_on:
+            - feedback
+          prompt: 'Return JSON only. Set ready=true only when the latest human response explicitly authorizes planning. Human response: ${nodes.feedback.output}'
           model: routing
           allowed_tools: []
           skills: []
@@ -54,153 +142,298 @@ nodes:
             properties:
               ready:
                 type: boolean
-            required: [ready]
-
+            required:
+              - ready
         - id: check
-          depends_on: [decision]
+          depends_on:
+            - decision
           bash: test "${nodes.decision.output.ready}" = "true"
           allow_failure: true
       until:
         node: check
         exit_code: 0
-
-  - id: create-plan
-    depends_on: [explore]
-    command: plan-change
+  - id: plan
+    command: piv-plan
+    depends_on:
+      - explore
     model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - PIV_PLAN_READY
+            - PIV_PLAN_NEEDS_DECISION
+            - PIV_PLAN_SCOPE_DRIFT
+            - PIV_PLAN_STALE
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
     output_type: plan
     output_mime: text/markdown
     output_path: $ARTIFACTS_DIR/plan.md
-
-  - id: plan-review
-    depends_on: [create-plan]
-    loop_group:
-      max_iterations: 10
-      nodes:
-        - id: inspect
-          prompt: |
-            Review `$ARTIFACTS_DIR/plan.md` against the original request, repository, tests, constraints, and the latest human feedback.
-            Present concrete weaknesses or state that it is ready for implementation.
-
-            Previous human feedback:
-            ${loop.previous.feedback.output}
-
-        - id: feedback
-          depends_on: [inspect]
-          approval:
-            message: |
-              ${nodes.inspect.output}
-
-              Reply with required plan changes. Reply `ready` to approve the plan for implementation.
-            capture_response: true
-
-        - id: revise
-          depends_on: [feedback]
-          prompt: |
-            Revise `$ARTIFACTS_DIR/plan.md` using the human feedback below. Keep verified correct content and re-check affected code.
-            If the reply is exactly an approval such as `ready`, leave the plan unchanged.
-
-            Feedback:
-            ${nodes.feedback.output}
-
-        - id: decision
-          depends_on: [revise]
-          prompt: |
-            Decide whether the human feedback explicitly approved the plan. Return only JSON.
-            Feedback: ${nodes.feedback.output}
-          model: routing
-          allowed_tools: []
-          skills: []
-          output_format:
-            type: object
-            additionalProperties: false
-            properties:
-              ready:
-                type: boolean
-            required: [ready]
-
-        - id: check
-          depends_on: [decision]
-          bash: test "${nodes.decision.output.ready}" = "true"
-          allow_failure: true
-      until:
-        node: check
-        exit_code: 0
-
+  - id: approve-plan
+    depends_on:
+      - plan
+    approval:
+      message: Review the PIV plan artifact. Reply `ready` to approve or provide corrections.
+      capture_response: true
   - id: implement
-    depends_on: [plan-review]
-    command: implement-change
+    command: piv-implementation
+    depends_on:
+      - approve-plan
     session: resume
     attempts:
       max: 3
-    hooks:
-      after_node:
-        - id: validate-implementation
-          bash: ./.takt/profiles/code/tools/validate
-          on_failure:
-            action: retry
-            session: resume
-
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - PIV_IMPLEMENTED
+            - PIV_IMPLEMENTATION_BLOCKED
+            - PIV_SCOPE_CHANGE_REQUIRED
+            - PIV_TEST_FAILED
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: implementation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/implementation-report.md
   - id: validate
-    depends_on: [implement]
-    command: validate-change
+    command: change-validation
+    depends_on:
+      - implement
+    when: nodes.implement.output.status == "ready"
     model: review
-
-  - id: validation-review
-    depends_on: [validate]
-    loop_group:
-      max_iterations: 10
-      nodes:
-        - id: review
-          command: review-code
-          model: review
-
-        - id: feedback
-          depends_on: [review]
-          approval:
-            message: |
-              ${nodes.review.output}
-
-              Reply with required fixes. Reply `ready` when the implementation is accepted.
-            capture_response: true
-
-        - id: decision
-          depends_on: [feedback]
-          prompt: |
-            Decide whether the human explicitly accepted the implementation. Return only JSON.
-            Feedback: ${nodes.feedback.output}
-          model: routing
-          allowed_tools: []
-          skills: []
-          output_format:
-            type: object
-            additionalProperties: false
-            properties:
-              ready:
-                type: boolean
-            required: [ready]
-
-        - id: fix
-          depends_on: [decision]
-          when: nodes.decision.output.ready == "false"
-          prompt: |
-            Apply the human's requested fixes to the current implementation, add or update tests, and run focused validation.
-            Feedback: ${nodes.feedback.output}
-
-        - id: check
-          depends_on: [fix]
-          trigger_rule: all_done
-          bash: test "${nodes.decision.output.ready}" = "true"
-          allow_failure: true
-      until:
-        node: check
-        exit_code: 0
-
-  - id: final-validation
-    depends_on: [validation-review]
-    bash: ./.takt/profiles/code/tools/validate
-
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - VALIDATION_PASSED
+            - VALIDATION_FAILED
+            - VALIDATION_ENVIRONMENT_MISSING
+            - ACCEPTANCE_NOT_PROVEN
+            - DIFF_SCOPE_VIOLATION
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: validation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/validation-report.md
+  - id: recover
+    command: workflow-recovery
+    depends_on:
+      - validate
+    when: nodes.validate.output.status != "ready"
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - RECOVERY_APPLIED
+            - RECOVERY_NOT_POSSIBLE
+            - RECOVERY_REQUIRES_HUMAN
+            - RECOVERY_SCOPE_CONFLICT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: recovery-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/recovery-report.md
+  - id: revalidate
+    command: change-validation
+    depends_on:
+      - recover
+    model: review
+    when: nodes.validate.output.status != "ready"
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - VALIDATION_PASSED
+            - VALIDATION_FAILED
+            - VALIDATION_ENVIRONMENT_MISSING
+            - ACCEPTANCE_NOT_PROVEN
+            - DIFF_SCOPE_VIOLATION
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: validation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/validation-report.md
+  - id: validation-gate
+    depends_on:
+      - validate
+      - recover
+      - revalidate
+    trigger_rule: all_done
+    bash: |
+      if [ "${nodes.validate.output.status}" = "ready" ] || [ "${nodes.revalidate.output.status}" = "ready" ]; then
+        exit 0
+      fi
+      printf 'validation failed: initial=%s recovery=%s revalidate=%s
+      '   '${nodes.validate.output.code}' '${nodes.recover.output.code}' '${nodes.revalidate.output.code}' >&2
+      exit 1
+  - id: review
+    depends_on:
+      - validation-gate
+    workflow:
+      path: smart-review-block.yaml
+      isolation: inherit
+  - id: accept
+    depends_on:
+      - review
+    approval:
+      message: Review the implementation, validation and review artifacts. Reply `ready` to accept or provide required fixes.
+      capture_response: true
   - id: summary
-    depends_on: [final-validation]
-    command: summary
+    command: workflow-final-summary
+    depends_on:
+      - accept
     model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - WORKFLOW_COMPLETE
+            - WORKFLOW_INCOMPLETE
+            - EVIDENCE_INCONSISTENT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: workflow-summary
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/summary.md
+worktree:
+  enabled: true
+  cleanup: on_success

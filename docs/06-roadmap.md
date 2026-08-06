@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.31-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.32-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -20,19 +20,53 @@
 
 ## Выполнено в v0.1.31-alpha. Агентные события и внешний исполнитель
 
-Реализованы provider-neutral `assistant.*`/tool-call events, `Request.Emit`, durable `executor: external`, claim с capability attestation и lease/token, MCP tools pending/claim/event/complete/fail и возврат результата в обычные retry/hooks/output/artifact semantics. Одновременно устранён torn-read store при конкурентном polling и добавлен индекс событий. Полный архив среза: `45-agent-events-external-executor-v0.1.31.md`.
+Реализованы provider-neutral базовые `assistant.*`/tool-call events, `Request.Emit`, durable `executor: external`, claim с capability attestation и lease/token, MCP tools pending/claim/event/complete/fail и возврат результата в обычные retry/hooks/output/artifact semantics. Одновременно устранён torn-read store при конкурентном polling и добавлен индекс событий. Полный архив среза: `45-agent-events-external-executor-v0.1.31.md`.
 
-## Приоритет 1. Усиление runtime и безопасность локального исполнения
+## Выполнено в v0.1.32-alpha. Управляемый agent lifecycle и глубокие workflow
 
-- раннее завершение `one_success` с отменой оставшихся детей;
-- строгий renderer с optional/default values;
-- нормализованные diagnostics и fingerprint ошибок;
+Завершён event protocol v2: session lifecycle, tool request/allow/deny/start/complete, отдельная отмена вызова, artifact declaration с `call_id`, usage/diagnostic/terminal events и capability declaration adapter. Внешний executor обеспечивает блокирующий policy/approval до запуска инструмента и не может завершить узел с незакрытыми tool calls.
+
+Шесть основных процессов профиля `code` 0.9.0 получили строгие JSON-входы, специализированные предметные команды, обязательные checkpoint artifacts, domain error codes, Git decision trees, validation recovery и сквозной локальный Git/GitHub fixture. Полный архив среза: `46-controlled-agent-events-deep-workflows-v0.1.32.md`.
+
+## Приоритет 1. Улучшение authoring
+
+- предупреждения о подозрительных полях и `did you mean` для опечаток;
+- capability preflight в `takt validate`, а не только перед запуском узла;
+- статическая диагностика `${nodes.*}` и artifact references;
+- подсказки по несовместимым параметрам;
+- более полный JSON Schema;
+- `always_run`;
+- `idle_timeout`;
+- строгий renderer;
+- optional/default expressions.
+
+## Приоритет 2. Опциональный локальный daemon
+
+```bash
+takt daemon
+```
+
+Daemon нужен только для локальных сценариев, которым недостаточно времени жизни одного CLI/MCP-процесса:
+
+- фоновые Run;
+- продолжение после закрытия клиента;
+- event subscriptions;
+- постоянный MCP endpoint;
+- несколько локальных coding agents;
+- восстановление активных external leases после перезапуска.
+
+Файловый Store остаётся источником истины; БД не требуется. HTTP, удалённый доступ и многопользовательская авторизация не входят в этот срез.
+
+## Приоритет 3. Усиление runtime и безопасность локального исполнения
+
+- раннее завершение `one_success` и `all_success` с отменой ненужных детей;
+- нормализованные diagnostics и fingerprints ошибок;
 - retry с backoff;
-- расширение JSON Schema и языка условий;
-- защита секретов в state/events;
-- реальный OS sandbox для недоверенных процессов.
+- защита секретов в state/events/artifacts;
+- реальный OS sandbox для недоверенных процессов;
+- path-based namespace для вложенных циклов.
 
-## Приоритет 2. Предметная проверка
+## Приоритет 4. Предметная проверка
 
 Отдельно от системных функций нужен Route DSL benchmark со штатным валидатором и обезличенными реальными заданиями: success@1, final success, число попыток, стоимость и стабильность на неизменных fingerprints.
 

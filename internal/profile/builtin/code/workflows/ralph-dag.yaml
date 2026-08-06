@@ -2,65 +2,406 @@ apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
   name: ralph-dag
-  description: Prepare a PRD story backlog and iterate with fresh story implementation sessions until every story and the complete validation suite pass.
-worktree:
-  enabled: true
-  cleanup: on_success
-
+  description: Execute a bounded dependency-aware story backlog with fresh sessions, validation recovery, PR and final evidence audit.
+input:
+  format: json
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      repository:
+        type: string
+      prd_path:
+        type: string
+      request:
+        type: string
+      base_branch:
+        type: string
+      draft_pr:
+        type: boolean
+      validation_commands:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        uniqueItems: true
+      max_stories:
+        type: integer
+    required:
+      - repository
+      - prd_path
+      - base_branch
+      - draft_pr
+      - validation_commands
+      - max_stories
 defaults:
   assistant: opencode
   model: implementation
   session: fresh
 nodes:
-  - id: prd
-    command: create-prd
+  - id: git-prepare
+    command: git-prepare
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - GIT_READY
+            - GIT_DIRTY
+            - GIT_BRANCH_MISMATCH
+            - GIT_BASE_MISSING
+            - GIT_REMOTE_MISSING
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: git-state
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/git-state.json
+  - id: prepare
+    command: ralph-prepare
+    depends_on:
+      - git-prepare
+    when: nodes.git-prepare.output.status == "ready"
     model: review
-
-  - id: stories
-    depends_on: [prd]
-    command: prd-to-stories
-    model: review
-
-  - id: setup-validation
-    depends_on: [stories]
-    bash: |
-      test -s "$ARTIFACTS_DIR/prd.md"
-      test -s "$ARTIFACTS_DIR/prd.json"
-
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - RALPH_BACKLOG_READY
+            - RALPH_PRD_NOT_FOUND
+            - RALPH_STORY_CYCLE
+            - RALPH_STORY_TOO_LARGE
+            - RALPH_SCOPE_AMBIGUOUS
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: ralph-backlog
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/ralph-backlog.json
   - id: implement
-    depends_on: [setup-validation]
+    depends_on:
+      - prepare
+    when: nodes.prepare.output.status == "ready"
     loop_group:
       max_iterations: 50
       nodes:
         - id: story
-          command: implement-story
-          model: implementation
+          command: ralph-story
           session: fresh
-          hooks:
-            after_node:
-              - id: story-validation
-                bash: ./.takt/profiles/code/tools/validate
-                on_failure:
-                  action: retry
-                  session: fresh
-
+          attempts:
+            max: 2
+          output_format:
+            type: object
+            additionalProperties: false
+            properties:
+              status:
+                type: string
+                enum:
+                  - ready
+                  - blocked
+                  - failed
+              code:
+                type: string
+                enum:
+                  - RALPH_STORY_COMPLETED
+                  - RALPH_ALL_DONE
+                  - RALPH_STORY_BLOCKED
+                  - RALPH_STORY_VALIDATION_FAILED
+                  - RALPH_BACKLOG_CHANGED
+              summary:
+                type: string
+              evidence:
+                type: array
+                items:
+                  type: string
+                minItems: 1
+                uniqueItems: true
+              artifact_path:
+                type: string
+              done:
+                type: boolean
+            required:
+              - status
+              - code
+              - summary
+              - evidence
+              - artifact_path
+              - done
+          output_type: ralph-progress
+          output_mime: application/json
+          output_path: $ARTIFACTS_DIR/ralph-progress.json
         - id: check
-          depends_on: [story]
-          bash: printf '%s' "${nodes.story.output}" | grep -q 'RALPH_DONE'
+          depends_on:
+            - story
+          bash: test "${nodes.story.output.done}" = "true"
           allow_failure: true
       until:
         node: check
         exit_code: 0
-
-  - id: final-validation
-    depends_on: [implement]
-    bash: ./.takt/profiles/code/tools/validate
-
-  - id: create-pr
-    depends_on: [final-validation]
-    command: create-pr
-
-  - id: summary
-    depends_on: [create-pr]
-    command: summary
+  - id: validate
+    command: change-validation
+    depends_on:
+      - implement
     model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - VALIDATION_PASSED
+            - VALIDATION_FAILED
+            - VALIDATION_ENVIRONMENT_MISSING
+            - ACCEPTANCE_NOT_PROVEN
+            - DIFF_SCOPE_VIOLATION
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: validation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/validation-report.md
+  - id: recover
+    command: workflow-recovery
+    depends_on:
+      - validate
+    when: nodes.validate.output.status != "ready"
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - RECOVERY_APPLIED
+            - RECOVERY_NOT_POSSIBLE
+            - RECOVERY_REQUIRES_HUMAN
+            - RECOVERY_SCOPE_CONFLICT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: recovery-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/recovery-report.md
+  - id: revalidate
+    command: change-validation
+    depends_on:
+      - recover
+    model: review
+    when: nodes.validate.output.status != "ready"
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - VALIDATION_PASSED
+            - VALIDATION_FAILED
+            - VALIDATION_ENVIRONMENT_MISSING
+            - ACCEPTANCE_NOT_PROVEN
+            - DIFF_SCOPE_VIOLATION
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: validation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/validation-report.md
+  - id: validation-gate
+    depends_on:
+      - validate
+      - recover
+      - revalidate
+    trigger_rule: all_done
+    bash: |
+      if [ "${nodes.validate.output.status}" = "ready" ] || [ "${nodes.revalidate.output.status}" = "ready" ]; then
+        exit 0
+      fi
+      printf 'validation failed: initial=%s recovery=%s revalidate=%s
+      '   '${nodes.validate.output.code}' '${nodes.recover.output.code}' '${nodes.revalidate.output.code}' >&2
+      exit 1
+  - id: create-pr
+    command: pr-finalize
+    depends_on:
+      - validation-gate
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - PR_READY
+            - PR_GIT_STATE_INVALID
+            - PR_DIFF_SCOPE_VIOLATION
+            - PR_VALIDATION_MISSING
+            - PR_PUSH_FAILED
+            - PR_CREATE_FAILED
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: pr-metadata
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/pr.json
+  - id: summary
+    command: ralph-summary
+    depends_on:
+      - create-pr
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - RALPH_COMPLETE
+            - RALPH_INCOMPLETE
+            - RALPH_EVIDENCE_INCONSISTENT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: ralph-summary
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/ralph-summary.md
+worktree:
+  enabled: true
+  cleanup: on_success

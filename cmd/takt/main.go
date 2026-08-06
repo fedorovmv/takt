@@ -196,10 +196,14 @@ func runCmd(args []string) error {
 	}
 	var inputValue string
 	if resolvedProfile != nil {
-		inputValue, err = profile.PrepareInput(resolvedProfile.Manifest.Input, *input)
+		inputValue, err = profile.PrepareInput(resolvedProfile.EffectiveInput(), *input)
 	} else {
 		inputValue, err = readInput(*input)
 	}
+	if err != nil {
+		return err
+	}
+	inputValue, err = runtime.ValidateWorkflowInput(inputValue, wf.Input)
 	if err != nil {
 		return err
 	}

@@ -247,3 +247,19 @@ Run state остаётся явным handle в аргументах tools. Deta
 `executor: external` не создаёт второй scheduler и не считает MCP-сессию источником истины. Takt до передачи полностью разрешает command/prompt, model/session, policy и output contract, сохраняет задачу в NodeState и приостанавливает обычную попытку. Worker получает bounded lease и opaque token, подтверждает capabilities, пишет нормализованные assistant/tool events и возвращает результат. После submission Takt продолжает прежнюю попытку через обычные retry, hooks, output validation, artifacts и parent/child lifecycle.
 
 Built-in adapters используют тот же provider-neutral event contract. Raw provider streams сохраняются отдельно. Event journal остаётся авторитетным: indexed reads ускоряют polling, а `FS.Load` лечит только кратковременный torn read между atomic renames и по-прежнему отвергает устойчивую несогласованность после сбоя.
+
+## ADR-045. Tool call является сохраняемой управляемой единицей внешнего узла
+
+**Статус:** принято.
+
+Наблюдательное событие `tool.started` не считается контролем инструмента. Adapter может заявить `tool_control` только если Takt получает запрос до фактического запуска и способен вернуть сохраняемое решение `allow|deny`. Внешний executor хранит каждый вызов по устойчивому `call_id`, применяет effective node policy до approval, поддерживает blocking decision, отдельную отмену и связывает объявленные артефакты с вызовом.
+
+Внешний узел не может вернуть terminal-result при незавершённом tool call. `cancel_requested` не считается terminal: worker обязан прекратить действие и подтвердить завершение. OpenCode и Pi публикуют наблюдательные events без `tool_control`, пока их provider interface не предоставляет pre-execution interception.
+
+## ADR-046. Основные workflow являются проверяемыми предметными процессами
+
+**Статус:** принято.
+
+Шесть основных workflow профиля `code` принимают строгий JSON input и разделяются на специализированные фазы. Каждая значимая фаза обязана вернуть checkpoint с ограниченным domain code, evidence и artifact path, а также сохранить типизированный артефакт. Git preparation, validation, recovery и PR finalization являются явными узлами, а не неформальными инструкциями внутри одной универсальной команды.
+
+Сквозные contract tests используют настоящий локальный Git repository, bare remote, fake `gh` и детерминированный process adapter. Это проверяет orchestration, ветки, коммиты, push, recovery и provenance без зависимости от GitHub network. Production workflow по-прежнему использует фактический coding agent и `gh`/GitHub environment пользователя.

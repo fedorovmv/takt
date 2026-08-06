@@ -2,7 +2,7 @@ apiVersion: takt/v1alpha1
 kind: Profile
 metadata:
   name: code
-  description: Smart-routed catalog of 19 development workflows for planning, implementation, review, PR, issues, PRD, Ralph, architecture, refactoring, Remotion, and conflict resolution
+  description: Evidence-driven catalog of 19 development workflows with six deep repository processes, governed reviews, recovery paths, typed artifacts, and smart routing
 workflow: workflow.yaml
 workflows:
   assist: workflows/assist.yaml
@@ -28,3 +28,22 @@ config: ../../config.yaml
 input:
   format: markdown
   preserve_path: true
+inputs:
+  fix-github-issue:
+    format: json
+    preserve_path: true
+  idea-to-pr:
+    format: json
+    preserve_path: true
+  plan-to-pr:
+    format: json
+    preserve_path: true
+  smart-pr-review:
+    format: json
+    preserve_path: true
+  piv-loop:
+    format: json
+    preserve_path: true
+  ralph-dag:
+    format: json
+    preserve_path: true

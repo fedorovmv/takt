@@ -2,17 +2,120 @@ apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
   name: smart-pr-review
-  description: Classify PR complexity, run only relevant review agents in parallel, synthesize findings, fix them, and validate.
+  description: Review one exact pull request through normalized intake, dynamic governed reviewers, evidence synthesis, optional fixes and final summary.
+input:
+  format: json
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      repository:
+        type: string
+      pr_number:
+        type: integer
+      fix_findings:
+        type: boolean
+      validation_commands:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        uniqueItems: true
+    required:
+      - repository
+      - pr_number
+      - fix_findings
+      - validation_commands
 defaults:
   assistant: opencode
-  model: review
+  model: implementation
   session: fresh
 nodes:
+  - id: intake
+    command: review-intake
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - REVIEW_READY
+            - PR_NOT_FOUND
+            - PR_REPOSITORY_MISMATCH
+            - PR_BASE_STALE
+            - PR_CONFLICTED
+            - REVIEW_SCOPE_EMPTY
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: review-scope
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/review-scope.json
   - id: review
+    depends_on:
+      - intake
+    when: nodes.intake.output.status == "ready"
     workflow:
       path: smart-review-block.yaml
       isolation: inherit
-
   - id: summary
-    depends_on: [review]
-    command: summary
+    command: workflow-final-summary
+    depends_on:
+      - review
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - WORKFLOW_COMPLETE
+            - WORKFLOW_INCOMPLETE
+            - EVIDENCE_INCONSISTENT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: workflow-summary
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/summary.md

@@ -2,37 +2,83 @@ apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
   name: code-review-block
-  description: Run five independent governed review Runs in parallel, synthesize findings, repair them, and validate.
+  description: Evidence-scoped governed review, synthesis, controlled fixes and independent validation.
 defaults:
   assistant: opencode
   model: review
   session: fresh
 nodes:
   - id: scope
-    command: review-scope
-
+    command: review-intake
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - REVIEW_READY
+            - PR_NOT_FOUND
+            - PR_REPOSITORY_MISMATCH
+            - PR_BASE_STALE
+            - PR_CONFLICTED
+            - REVIEW_SCOPE_EMPTY
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: review-scope
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/review-scope.json
   - id: perspectives
-    depends_on: [scope]
+    depends_on:
+      - scope
     script:
       runtime: command
       path: ../tools/review-perspectives
     output_format:
       type: array
+      minItems: 1
+      uniqueItems: true
       items:
         type: string
-        enum: [code, errors, tests, docs, simplicity]
+        enum:
+          - code
+          - errors
+          - tests
+          - docs
+          - simplicity
     output_type: review-perspectives
     output_mime: application/json
-
   - id: reviews
-    depends_on: [scope, perspectives]
+    depends_on:
+      - scope
+      - perspectives
     workflow:
       path: review-perspective.yaml
       input: |
         Perspective: ${perspective}
 
-        Scoped change:
-        ${nodes.scope.output}
+        Scoped change artifact: $ARTIFACTS_DIR/review-scope.json
       isolation: inherit
       output_node: review
       fan_out:
@@ -40,25 +86,130 @@ nodes:
         as: perspective
         max_parallel: 5
         join: all_success
-
   - id: synthesize
-    depends_on: [reviews]
-    command: synthesize-review
-
+    command: review-synthesis
+    depends_on:
+      - reviews
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - REVIEW_APPROVED
+            - REVIEW_CHANGES_REQUIRED
+            - REVIEW_EVIDENCE_INCOMPLETE
+            - REVIEW_SCOPE_CHANGED
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: review-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/review-report.md
   - id: fixes
-    depends_on: [synthesize]
-    command: fix-review-findings
-    model: implementation
-    attempts:
-      max: 2
-    hooks:
-      after_node:
-        - id: validate-fixes
-          bash: ./.takt/profiles/code/tools/validate
-          on_failure:
-            action: retry
-            session: resume
-
-  - id: final-validation
-    depends_on: [fixes]
-    bash: ./.takt/profiles/code/tools/validate
+    command: review-fix
+    depends_on:
+      - synthesize
+    when: nodes.synthesize.output.code == "REVIEW_CHANGES_REQUIRED"
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - REVIEW_FIXES_APPLIED
+            - REVIEW_NO_FIXES_REQUIRED
+            - REVIEW_FIX_REQUIRES_DECISION
+            - REVIEW_FIX_VALIDATION_FAILED
+            - REVIEW_FIX_SCOPE_DRIFT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: review-fix-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/review-fix-report.md
+  - id: validate
+    command: change-validation
+    depends_on:
+      - synthesize
+      - fixes
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - VALIDATION_PASSED
+            - VALIDATION_FAILED
+            - VALIDATION_ENVIRONMENT_MISSING
+            - ACCEPTANCE_NOT_PROVEN
+            - DIFF_SCOPE_VIOLATION
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: validation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/validation-report.md
+    trigger_rule: all_done

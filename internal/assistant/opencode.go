@@ -698,3 +698,10 @@ func cloneProtocolParams(input map[string]any) map[string]any {
 func (o OpenCode) Capabilities() []string {
 	return mergeCapabilities([]string{CapabilityToolPolicy, CapabilitySkills, CapabilityMCP, CapabilitySandboxFilesystem}, o.spec.Capabilities)
 }
+
+func (o OpenCode) CapabilityDeclaration() CapabilityDeclaration {
+	return CapabilityDeclaration{
+		Capabilities: o.Capabilities(), EventTypes: []string{EventSessionStarted, EventSessionResumed, EventMessage, EventUsage, EventDiagnostic, EventCompleted, EventFailed},
+		SessionEvents: true, UsageEvents: true,
+	}
+}

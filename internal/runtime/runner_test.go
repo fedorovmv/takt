@@ -1122,7 +1122,7 @@ func TestAssistantEventsAreNormalizedAndPersisted(t *testing.T) {
 			types = append(types, event.Type)
 		}
 	}
-	want := []string{"assistant.started", "assistant.tool.started", "assistant.tool.completed", "assistant.message", "assistant.usage", "assistant.completed"}
+	want := []string{"assistant.session.started", "assistant.tool.started", "assistant.tool.completed", "assistant.message", "assistant.usage", "assistant.completed"}
 	if strings.Join(types, ",") != strings.Join(want, ",") {
 		t.Fatalf("assistant event types = %#v, want %#v", types, want)
 	}

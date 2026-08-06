@@ -123,7 +123,7 @@ prepare input
 - проверяемый `output_format`, JSON-пути и approval внутри `loop_group`;
 - параллельные DAG-волны простых независимых узлов;
 - governed child Run, parent/child approval-resume, cancellation tree и worktree isolation;
-- следующий шаг — ограничения инструментов/MCP/skills/sandbox.
+- ограничения инструментов/MCP/skills/sandbox, динамический fan-out, script/artifacts, local MCP, event protocol v2 и внешний executor реализованы в v0.1.27–v0.1.32-alpha.
 
 ## 7. Проверка универсальности
 
@@ -167,13 +167,19 @@ agent draft
 
 ## 10. Текущий порядок ближайших задач
 
-1. Агентные события и внешний исполнитель узла поверх существующего assistant protocol.
-2. Инструкции подключения локального MCP для OpenCode, Pi, Codex и Claude Code.
-3. Запуск Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями.
-4. Расширение параллельности на hooks/retries/governed nodes.
-5. Strict templates, полный JSON Schema и v1beta1 design.
+Завершённые крупные срезы:
 
-Завершённый локальный MCP control plane перенесён в архив `docs/44-local-mcp-control-plane-v0.1.30.md`.
+1. локальный MCP control plane — `docs/44-local-mcp-control-plane-v0.1.30.md`;
+2. базовые агентные события и внешний executor — `docs/45-agent-events-external-executor-v0.1.31.md`;
+3. управляемый event protocol v2 и углубление шести workflow — `docs/46-controlled-agent-events-deep-workflows-v0.1.32.md`.
+
+Активный порядок:
+
+1. authoring diagnostics: suspicious fields, capability validation, output-reference analysis, strict renderer, optional/default, `always_run`, `idle_timeout`;
+2. опциональный локальный `takt daemon` на файловом Store;
+3. runtime security hardening: early-exit fan-out, retry backoff, secret protection, OS sandbox;
+4. Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями;
+5. более полный JSON Schema, iteration history и v1beta1 design.
 
 ## 11. Пока не начинать
 

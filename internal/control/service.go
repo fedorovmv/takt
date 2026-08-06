@@ -270,10 +270,14 @@ func (s *Service) prepareStart(request StartRequest) (*preparedStart, error) {
 		inputCandidate = filepath.Join(s.Workspace, inputCandidate)
 	}
 	if resolved != nil {
-		input, err = profile.PrepareInput(resolved.Manifest.Input, inputCandidate)
+		input, err = profile.PrepareInput(resolved.EffectiveInput(), inputCandidate)
 	} else if raw, readErr := os.ReadFile(inputCandidate); request.Input != "" && readErr == nil {
 		input = string(raw)
 	}
+	if err != nil {
+		return nil, err
+	}
+	input, err = runtime.ValidateWorkflowInput(input, wf.Input)
 	if err != nil {
 		return nil, err
 	}

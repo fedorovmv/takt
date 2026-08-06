@@ -852,7 +852,11 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: err}
 		}
 		collector := &assistantEventCollector{}
-		collector.Emit(assistant.Event{Type: assistant.EventStarted, Provider: resolved.Model.Provider, SessionID: resolved.SessionID, Data: map[string]any{"assistant": resolved.AssistantName, "attempt": state.Nodes[node.ID].Attempts}})
+		sessionEvent := assistant.EventSessionStarted
+		if resolved.SessionMode == "resume" && resolved.SessionID != "" {
+			sessionEvent = assistant.EventSessionResumed
+		}
+		collector.Emit(assistant.Event{Type: sessionEvent, Provider: resolved.Model.Provider, SessionID: resolved.SessionID, Data: map[string]any{"assistant": resolved.AssistantName, "attempt": state.Nodes[node.ID].Attempts}})
 		result, err := adapter.Run(ctx, assistant.Request{
 			RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts,
 			Prompt: resolved.Prompt, Workspace: r.Workspace, ModelName: resolved.ModelName, Model: resolved.Model,

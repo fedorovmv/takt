@@ -62,6 +62,20 @@ func TestScriptCommandStructuredOutputCreatesTypedArtifact(t *testing.T) {
 	if artifact.SHA256 != hex.EncodeToString(sum[:]) || artifact.Size != int64(len(raw)) {
 		t.Fatalf("artifact checksum/size mismatch: %+v", artifact)
 	}
+	events, err := (store.FS{Workspace: dir}).ReadEvents(state.ID, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundArtifactEvent := false
+	for _, event := range events {
+		if event.Type == "assistant.artifact.declared" && event.NodeID == "emit" {
+			foundArtifactEvent = true
+			break
+		}
+	}
+	if !foundArtifactEvent {
+		t.Fatalf("assistant.artifact.declared event is missing: %+v", events)
+	}
 }
 
 func TestScriptCanRegisterFileArtifact(t *testing.T) {

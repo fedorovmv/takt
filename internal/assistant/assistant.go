@@ -21,6 +21,7 @@ type Request struct {
 	Policy      Policy
 	Metadata    map[string]string
 	Emit        EventSink
+	ToolControl ToolController
 }
 
 type Result struct {

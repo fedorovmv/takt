@@ -23,3 +23,10 @@ func (m Mock) Run(_ context.Context, req Request) (Result, error) {
 func (m Mock) Capabilities() []string {
 	return []string{CapabilityToolPolicy, CapabilitySkills, CapabilityMCP, CapabilitySandboxFilesystem, CapabilitySandboxNetwork}
 }
+
+func (m Mock) CapabilityDeclaration() CapabilityDeclaration {
+	return CapabilityDeclaration{
+		Capabilities: m.Capabilities(), EventTypes: []string{EventSessionStarted, EventSessionResumed, EventMessage, EventUsage, EventCompleted, EventFailed},
+		SessionEvents: true, UsageEvents: true,
+	}
+}

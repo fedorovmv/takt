@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"takt/internal/artifacttype"
+	"takt/internal/assistant"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
@@ -93,7 +94,13 @@ func (r *Runner) captureDeclaredArtifact(state *store.RunState, node spec.Node, 
 	}
 	ns.Artifacts = appendArtifactUnique(ns.Artifacts, artifact)
 	state.Artifacts = appendArtifactUnique(state.Artifacts, artifact)
-	return nil
+	return r.commit(state, "assistant."+assistant.EventArtifactDeclared, node.ID, assistant.EventData(assistant.Event{
+		Type: assistant.EventArtifactDeclared,
+		Artifact: &assistant.ArtifactDeclaration{
+			ID: artifact.ID, Type: artifact.Type, MIME: artifact.MIME, Path: artifact.Path,
+			SHA256: artifact.SHA256, Size: artifact.Size,
+		},
+	}))
 }
 
 func (r *Runner) resolveArtifactSourcePath(value, artifactsDir string) (string, error) {

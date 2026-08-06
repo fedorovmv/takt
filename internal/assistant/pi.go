@@ -880,3 +880,10 @@ func protocolPiError(op string, err error) error {
 func (p Pi) Capabilities() []string {
 	return mergeCapabilities([]string{CapabilityToolPolicy, CapabilitySkills, CapabilitySandboxFilesystem}, p.spec.Capabilities)
 }
+
+func (p Pi) CapabilityDeclaration() CapabilityDeclaration {
+	return CapabilityDeclaration{
+		Capabilities: p.Capabilities(), EventTypes: []string{EventSessionStarted, EventSessionResumed, EventMessage, EventUsage, EventDiagnostic, EventCompleted, EventFailed},
+		SessionEvents: true, UsageEvents: true,
+	}
+}

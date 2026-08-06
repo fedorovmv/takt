@@ -33,17 +33,20 @@
 - управляемая Git worktree isolation с отдельной веткой, control/execution workspace, safe cleanup и resume;
 - CLI `worktree list/remove/prune` и persisted Run overrides.
 
-### Локальный MCP control plane
+### Локальный MCP control plane и управляемый worker lifecycle
 
 - команда `takt mcp` и stdio JSON-RPC transport без отдельного daemon/БД;
 - legacy initialization `2025-03-26|2025-06-18|2025-11-25` и stateless discovery `2026-07-28`;
-- 15 tools: workflow list/describe, Run start/get/resume/answer/cancel/children/artifacts/events и external node pending/claim/event/complete/fail;
+- 22 tools: workflow list/describe, Run start/get/resume/answer/cancel/children/artifacts/events, external node pending/claim/event/complete/fail и управляемые tool request/decision/start/complete/get/cancel/artifact declaration;
 - detached start с durable `run_id`;
 - indexed revision cursor и bounded long polling событий без полного пересканирования журнала;
 - structured/text tool results, bounded artifact content, request cancellation и strict arguments;
 - MCP использует существующие fingerprints, locks, store и parent/child lifecycle.
 - `executor: external` передаёт один command/prompt узел внешнему worker через durable claim/lease/token, capability preflight, normalized events и обычные retry/hooks/output/artifact semantics.
-- встроенные adapters и внешние workers сохраняют provider-neutral `assistant.started|message|tool.*|usage|diagnostic|completed|failed`.
+- event protocol v2 сохраняет `assistant.session.started|session.resumed|message|tool.requested|tool.allowed|tool.denied|tool.started|tool.completed|artifact.declared|usage|diagnostic|completed|failed`;
+- capability declaration различает наблюдательные events и настоящий `tool_control`; OpenCode/Pi не заявляют pre-execution interception;
+- внешний executor применяет node policy до запуска инструмента, поддерживает blocking approval, отдельную отмену и запрещает terminal-result при незавершённых tool calls;
+- process protocol `takt-assistant/v1alpha2` поддерживает двунаправленный tool decision channel.
 
 ### Governed child Runs
 
@@ -62,7 +65,7 @@
 - динамический fan-out из JSON-массива upstream-узла: устойчивые Run ID, `max_parallel`, resume, ordered aggregation, `all_success|all_done|one_success`, выборочная и каскадная отмена;
 - contract suite `scripts/test-child-fanout.sh`.
 
-### Профиль code 0.8.1
+### Профиль code 0.9.0
 
 - 19 процессов разработки: assist, issue/PR flows, PIV, Ralph, idea/plan-to-PR, reviews, architecture, safe refactoring, PRD, workflow builder, Remotion и conflict resolution;
 - умный роутер как корневой Run с отдельным governed child Run выбранного процесса;
@@ -71,7 +74,12 @@
 - review perspectives формируются script-узлом; PIV, idea-to-PR и interactive PRD публикуют типизированные plan/PRD артефакты;
 - интерактивные PIV и PRD-циклы;
 - reusable `review-block` и `smart-review-block` как отдельные child Runs с `isolation: inherit`;
-- отдельный запуск любого процесса через `code:<workflow>`.
+- отдельный запуск любого процесса через `code:<workflow>`;
+- шесть основных процессов (`fix-github-issue`, `idea-to-pr`, `plan-to-pr`, `smart-pr-review`, `piv-loop`, `ralph-dag`) принимают строгие JSON-входы;
+- специализированные Git/issue/plan/review/PIV/Ralph/validation/recovery/PR-команды вместо универсальных каркасов;
+- обязательные типизированные checkpoint artifacts и ограниченные domain error codes;
+- явные Git decision trees и validation → recovery → revalidation;
+- сквозной contract на настоящем локальном Git repository, bare remote и fake `gh`.
 
 ### Assistants, protocol и evaluation
 
@@ -117,4 +125,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Локальный MCP-интерфейс и внешний executor узла реализованы к `v0.1.31-alpha`. Следующий крупный системный приоритет — runtime hardening: early-exit fan-out, strict renderer, diagnostics, secret redaction и реальный OS sandbox; затем предметный Route DSL benchmark. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.
+Локальный MCP, event protocol v2, управляемый внешний executor и глубокие шесть workflow реализованы к `v0.1.32-alpha`. Следующие крупные приоритеты — authoring diagnostics/strict renderer, опциональный локальный daemon, затем runtime security hardening и предметный Route DSL benchmark. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.

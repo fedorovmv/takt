@@ -2,82 +2,527 @@ apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
   name: fix-github-issue
-  description: Classify and investigate a GitHub issue, implement and validate the fix, create a PR, run smart review, and self-fix findings.
-worktree:
-  enabled: true
-  cleanup: on_success
-
+  description: Resolve one GitHub issue through exact intake, Git preparation, root-cause evidence, reproduction, scoped plan, implementation, validation recovery, PR and review.
+input:
+  format: json
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      repository:
+        type: string
+      issue_number:
+        type: integer
+      issue_url:
+        type: string
+      base_branch:
+        type: string
+      draft_pr:
+        type: boolean
+      validation_commands:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        uniqueItems: true
+      scope_limits:
+        type: array
+        items:
+          type: string
+        uniqueItems: true
+    required:
+      - repository
+      - issue_number
+      - base_branch
+      - draft_pr
+      - validation_commands
 defaults:
   assistant: opencode
   model: implementation
   session: fresh
 nodes:
-  - id: classify
-    command: classify-issue
-    model: routing
-    allowed_tools: []
-    skills: []
+  - id: issue-intake
+    command: issue-intake
+    model: review
     output_format:
       type: object
       additionalProperties: false
       properties:
-        issue_type:
+        status:
           type: string
-          enum: [bug, feature, enhancement, refactor, chore, documentation]
-        title:
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
           type: string
-        issue_number:
+          enum:
+            - ISSUE_READY
+            - ISSUE_NOT_FOUND
+            - ISSUE_REPOSITORY_MISMATCH
+            - ISSUE_ALREADY_ADDRESSED
+            - ISSUE_INPUT_AMBIGUOUS
+        summary:
           type: string
-        repository:
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
           type: string
-      required: [issue_type, title]
-
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: issue-intake
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/issue-intake.json
+  - id: git-prepare
+    command: git-prepare
+    depends_on:
+      - issue-intake
+    when: nodes.issue-intake.output.status == "ready"
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - GIT_READY
+            - GIT_DIRTY
+            - GIT_BRANCH_MISMATCH
+            - GIT_BASE_MISSING
+            - GIT_REMOTE_MISSING
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: git-state
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/git-state.json
   - id: investigate
-    depends_on: [classify]
-    when: nodes.classify.output.issue_type == "bug"
-    command: investigate-issue
-
+    command: issue-root-cause
+    depends_on:
+      - issue-intake
+      - git-prepare
+    when: nodes.git-prepare.output.status == "ready"
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - ROOT_CAUSE_CONFIRMED
+            - ROOT_CAUSE_UNCONFIRMED
+            - REPOSITORY_STATE_UNEXPECTED
+            - ISSUE_SCOPE_CONFLICT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: investigation
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/investigation.md
+  - id: reproduce
+    command: issue-reproduction
+    depends_on:
+      - investigate
+    when: nodes.investigate.output.status == "ready"
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - ISSUE_REPRODUCED
+            - ISSUE_NOT_REPRODUCED
+            - REPRODUCTION_ENVIRONMENT_MISSING
+            - REPRODUCTION_UNSAFE
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: reproduction
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/reproduction.md
   - id: plan
-    depends_on: [classify]
-    when: nodes.classify.output.issue_type != "bug"
-    command: plan-change
-
+    command: issue-fix-plan
+    depends_on:
+      - reproduce
+    when: nodes.reproduce.output.status == "ready"
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - FIX_PLAN_READY
+            - PLAN_EVIDENCE_INCOMPLETE
+            - PLAN_SCOPE_EXCEEDS_ISSUE
+            - PLAN_CONTRACT_UNRESOLVED
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: fix-plan
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/fix-plan.md
   - id: implement
-    depends_on: [investigate, plan]
-    trigger_rule: one_success
-    command: implement-change
-    model: implementation
+    command: issue-implementation
+    depends_on:
+      - plan
+    when: nodes.plan.output.status == "ready"
     session: resume
     attempts:
       max: 3
-    hooks:
-      after_node:
-        - id: focused-validation
-          bash: ./.takt/profiles/code/tools/validate
-          on_failure:
-            action: retry
-            session: resume
-
-  - id: validate-agent
-    depends_on: [implement]
-    command: validate-change
-    model: review
-
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - IMPLEMENTATION_READY
+            - IMPLEMENTATION_BLOCKED
+            - IMPLEMENTATION_SCOPE_DRIFT
+            - IMPLEMENTATION_TEST_FAILED
+            - IMPLEMENTATION_CONTRACT_BROKEN
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: implementation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/implementation-report.md
   - id: validate
-    depends_on: [validate-agent]
-    bash: ./.takt/profiles/code/tools/validate
-
+    command: change-validation
+    depends_on:
+      - implement
+    when: nodes.implement.output.status == "ready"
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - VALIDATION_PASSED
+            - VALIDATION_FAILED
+            - VALIDATION_ENVIRONMENT_MISSING
+            - ACCEPTANCE_NOT_PROVEN
+            - DIFF_SCOPE_VIOLATION
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: validation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/validation-report.md
+  - id: recover
+    command: workflow-recovery
+    depends_on:
+      - validate
+    when: nodes.validate.output.status != "ready"
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - RECOVERY_APPLIED
+            - RECOVERY_NOT_POSSIBLE
+            - RECOVERY_REQUIRES_HUMAN
+            - RECOVERY_SCOPE_CONFLICT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: recovery-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/recovery-report.md
+  - id: revalidate
+    command: change-validation
+    depends_on:
+      - recover
+    model: review
+    when: nodes.validate.output.status != "ready"
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - VALIDATION_PASSED
+            - VALIDATION_FAILED
+            - VALIDATION_ENVIRONMENT_MISSING
+            - ACCEPTANCE_NOT_PROVEN
+            - DIFF_SCOPE_VIOLATION
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: validation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/validation-report.md
+  - id: validation-gate
+    depends_on:
+      - validate
+      - recover
+      - revalidate
+    trigger_rule: all_done
+    bash: |
+      if [ "${nodes.validate.output.status}" = "ready" ] || [ "${nodes.revalidate.output.status}" = "ready" ]; then
+        exit 0
+      fi
+      printf 'validation failed: initial=%s recovery=%s revalidate=%s
+      '   '${nodes.validate.output.code}' '${nodes.recover.output.code}' '${nodes.revalidate.output.code}' >&2
+      exit 1
   - id: create-pr
-    depends_on: [validate]
-    command: create-pr
-
+    command: pr-finalize
+    depends_on:
+      - validation-gate
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - PR_READY
+            - PR_GIT_STATE_INVALID
+            - PR_DIFF_SCOPE_VIOLATION
+            - PR_VALIDATION_MISSING
+            - PR_PUSH_FAILED
+            - PR_CREATE_FAILED
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: pr-metadata
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/pr.json
   - id: review
-    depends_on: [create-pr]
+    depends_on:
+      - create-pr
     workflow:
       path: smart-review-block.yaml
       isolation: inherit
-
   - id: summary
-    depends_on: [review]
-    command: summary
+    command: workflow-final-summary
+    depends_on:
+      - review
     model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - WORKFLOW_COMPLETE
+            - WORKFLOW_INCOMPLETE
+            - EVIDENCE_INCONSISTENT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: workflow-summary
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/summary.md
+worktree:
+  enabled: true
+  cleanup: on_success

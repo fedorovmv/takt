@@ -632,6 +632,9 @@
         "created_at": {
           "type": "string",
           "format": "date-time"
+        },
+        "call_id": {
+          "type": "string"
         }
       }
     },
@@ -735,6 +738,18 @@
         },
         "result": {
           "$ref": "#/$defs/externalResultState"
+        },
+        "capability_declaration": {
+          "type": "object"
+        },
+        "tool_approval": {
+          "type": "object"
+        },
+        "tool_calls": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          }
         }
       }
     }

@@ -213,3 +213,15 @@ takt command run
 - область видимости данных внутри циклов;
 - схема событий;
 - минимальный контракт артефактов.
+
+
+## Реализовано к v0.1.32-alpha
+
+- локальный MCP control plane без отдельной БД;
+- durable внешний executor узла;
+- `takt-agent-events/v2` с session/tool/artifact/usage/diagnostic lifecycle;
+- blocking tool policy/approval и отдельная отмена вызова для controllable executor;
+- capability declaration adapter/worker;
+- шесть глубоких workflow профиля `code` со строгими JSON-входами, checkpoint artifacts, domain errors, Git decision trees и recovery E2E.
+
+Оставшиеся целевые направления v0.2: authoring diagnostics, локальный daemon, secret protection/OS sandbox, runtime early-exit/backoff и реальный Route DSL baseline.

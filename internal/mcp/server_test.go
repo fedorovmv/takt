@@ -40,7 +40,7 @@ func TestServeStdioSupportsLegacyInitializeAndModernDiscover(t *testing.T) {
 		t.Fatalf("modern protocol = %v", got)
 	}
 	listed := responses["3"]["result"].(map[string]any)["tools"].([]any)
-	if len(listed) != 15 {
+	if len(listed) != 22 {
 		t.Fatalf("tools count = %d", len(listed))
 	}
 	first := listed[0].(map[string]any)["name"]
@@ -286,7 +286,7 @@ nodes:
   - id: delegated
     prompt: Produce a structured result.
     executor: external
-    allowed_tools: []
+    allowed_tools: [read]
     output_format:
       type: object
       properties:
@@ -341,9 +341,25 @@ nodes:
 	if got := public.Nodes["delegated"].External.ClaimToken; got != "" {
 		t.Fatalf("public claim token leaked: %q", got)
 	}
-	if _, err := server.executeTool(context.Background(), "takt.node.event", map[string]any{
+	requestedValue, err := server.executeTool(context.Background(), "takt.node.tool.request", map[string]any{
 		"run_id": started.RunID, "node_id": "delegated", "claim_token": claimed.ClaimToken,
-		"event": map[string]any{"type": "tool.started", "tool": "read", "call_id": "call-1", "input": map[string]any{"path": "README.md"}},
+		"call_id": "call-1", "tool": "read", "input": map[string]any{"path": "README.md"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requested := requestedValue.(*store.ToolCallState)
+	if requested.Status != "allowed" {
+		t.Fatalf("requested tool = %#v", requested)
+	}
+	if _, err := server.executeTool(context.Background(), "takt.node.tool.start", map[string]any{
+		"run_id": started.RunID, "node_id": "delegated", "claim_token": claimed.ClaimToken, "call_id": "call-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.executeTool(context.Background(), "takt.node.tool.complete", map[string]any{
+		"run_id": started.RunID, "node_id": "delegated", "claim_token": claimed.ClaimToken, "call_id": "call-1",
+		"output": map[string]any{"bytes": 12},
 	}); err != nil {
 		t.Fatal(err)
 	}

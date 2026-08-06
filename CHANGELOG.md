@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.32-alpha
+
+- Завершён `takt-agent-events/v2`: session started/resumed, message, tool requested/allowed/denied/started/completed, artifact declared, usage, diagnostic и terminal events.
+- Добавлен `takt-assistant/v1alpha2` с capability declaration, NDJSON stream и двунаправленным `tool.request`/`tool.decision`.
+- Внешний executor поддерживает блокирующую policy/approval до запуска инструмента, отдельную отмену tool call и связь артефакта с `call_id`.
+- MCP worker plane расширен до 22 инструментов. Узел нельзя завершить с незавершёнными tool calls.
+- Шесть основных workflow профиля `code` получили строгие JSON-входы, специализированные фазы, обязательные checkpoint artifacts, domain error codes, Git decision trees и recovery.
+- Добавлен сквозной Git/GitHub contract с настоящим локальным repository, bare remote, fake `gh`, успешным issue flow и validation-recovery flow.
+- Профиль `code` обновлён до 0.9.0, authoring skill — до 0.14.0.
+- Добавлены ADR-045/046 и `docs/46-controlled-agent-events-deep-workflows-v0.1.32.md`.
+
 ## v0.1.31-alpha
 
 - Исправлен конкурентный read-path файлового store: transient state/events revision mismatch перечитывается с bounded backoff, persistent mismatch остаётся `InconsistentError`.

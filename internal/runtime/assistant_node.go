@@ -73,6 +73,10 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 		// its own capabilities when claiming the task. The policy is still
 		// persisted before the hand-off.
 		capabilities = assistant.RequiredCapabilities(policy)
+		if node.ToolApproval != nil {
+			capabilities = append(capabilities, assistant.CapabilityToolControl, assistant.CapabilityAgentEventsV2, assistant.CapabilityToolEvents)
+			capabilities = uniqueStrings(capabilities)
+		}
 	}
 	if state.Nodes[node.ID].Policy == nil {
 		state.Nodes[node.ID].Policy = policyState(policy, capabilities)
@@ -108,11 +112,14 @@ func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, reso
 			outputFormat, _ = json.Marshal(node.OutputFormat)
 		}
 		ns.External = &store.ExternalExecutionState{
-			Status: "pending", Attempt: ns.Attempts, Prompt: resolved.Prompt, Workspace: r.Workspace,
+			Status: "pending", Attempt: ns.Attempts, Prompt: resolved.Prompt, Workspace: r.Workspace, ToolCalls: map[string]*store.ToolCallState{},
 			Assistant:      resolved.AssistantName,
 			RequestedModel: &store.ModelRef{Name: resolved.ModelName, Provider: resolved.Model.Provider, ID: resolved.Model.ID, Params: cloneParams(resolved.Model.Params)},
 			SessionMode:    resolved.SessionMode, SessionID: resolved.SessionID,
 			Policy: policyState(resolved.Policy, resolved.Capabilities), OutputFormat: outputFormat,
+		}
+		if node.ToolApproval != nil {
+			ns.External.ToolApproval = &store.ToolApprovalState{Mode: node.ToolApproval.Mode, Tools: append([]string(nil), node.ToolApproval.Tools...), Message: node.ToolApproval.Message}
 		}
 		state.Status = store.RunWaiting
 		state.Waiting = &store.WaitingState{NodeID: node.ID, Message: "external executor must claim and complete this node", Kind: "external_node"}
@@ -166,4 +173,17 @@ func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, reso
 	default:
 		return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "external executor", Err: fmt.Errorf("unsupported external status %q", external.Status)}
 	}
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }

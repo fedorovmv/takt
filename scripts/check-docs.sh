@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.13.0" \
+  "skills/takt/VERSION|0.14.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -93,6 +93,19 @@ for check in \
   "schemas/run-state.schema.json|externalExecutionState" \
   "skills/takt/references/mcp.md|takt.node.complete" \
   "ARCHITECTURE_DECISIONS.md|ADR-044" \
+  "ARCHITECTURE_DECISIONS.md|ADR-045" \
+  "ARCHITECTURE_DECISIONS.md|ADR-046" \
+  "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|assistant.tool.requested" \
+  "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|scripts/test-deep-code-workflows.sh" \
+  "docs/06-roadmap.md|Приоритет 1. Улучшение authoring" \
+  "docs/06-roadmap.md|Приоритет 2. Опциональный локальный daemon" \
+  "scripts/test-deep-code-workflows.sh|deep code workflows: PASS" \
+  "scripts/test-mcp.sh|takt.node.tool.request" \
+  "schemas/assistant-protocol.schema.json|takt-assistant/v1alpha2" \
+  "schemas/workflow.schema.json|tool_approval" \
+  "schemas/workflow.schema.json|uniqueItems" \
+  "internal/profile/builtin/code/workflows/fix-github-issue.yaml|ISSUE_NOT_REPRODUCED" \
+  "internal/profile/builtin/code/workflows/plan-to-pr.yaml|recovery-report" \
   "docs/03-specification.md|server/discover" \
   "skills/takt/references/mcp.md|takt.run.start" \
   "scripts/test-mcp.sh|local MCP contract: PASS" \
@@ -109,7 +122,7 @@ for check in \
   "scripts/test-child-fanout.sh|governed child fan-out contract: PASS" \
   "schemas/workflow.schema.json|fan_out" \
   "schemas/run-state.schema.json|child_runs" \
-  "internal/profile/builtin/code/VERSION|0.8.1" \
+  "internal/profile/builtin/code/VERSION|0.9.0" \
   "README.md|Динамический fan-out v0.1.28" \
   "docs/12-document-map.md|42-governed-child-fanout-v0.1.28.md" \
   "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \
@@ -131,7 +144,7 @@ for check in \
   "docs/03-specification.md|output_format" \
   "docs/03-specification.md|one_success" \
   "docs/03-specification.md|parallel: true" \
-  "internal/profile/builtin/code/profile.yaml|Smart-routed catalog of 19" \
+  "internal/profile/builtin/code/profile.yaml|Evidence-driven catalog of 19" \
   "docs/03-specification.md|Подключает отдельный \`takt/v1alpha1 Workflow\`" \
   "docs/03-specification.md|отдельного YAML/JSON-файла" \
   "skills/takt/references/workflows.md|## Subworkflow" \
@@ -153,7 +166,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.31-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.32-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \

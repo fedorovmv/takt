@@ -1,4 +1,4 @@
-.PHONY: build test race vet fmt docs contracts pi-contracts opencode-contracts route-e2e route-eval route-benchmark composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract check demo
+.PHONY: build test race vet fmt docs contracts pi-contracts opencode-contracts route-e2e route-eval route-benchmark composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract check demo
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -67,7 +67,11 @@ mcp-contract: build
 external-executor-contract: build
 	./scripts/test-external-executor.sh
 
-check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract docs
+deep-workflow-contract: build
+	go build -o bin/takt-fake-code-agent ./cmd/takt-fake-code-agent
+	./scripts/test-deep-code-workflows.sh
+
+check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract docs
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml

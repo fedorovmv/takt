@@ -9,13 +9,14 @@ type Metadata struct {
 }
 
 type Workflow struct {
-	APIVersion string       `json:"apiVersion"`
-	Kind       string       `json:"kind"`
-	Metadata   Metadata     `json:"metadata"`
-	Defaults   Defaults     `json:"defaults,omitempty"`
-	Nodes      []Node       `json:"nodes"`
-	Hooks      HookSet      `json:"hooks,omitempty"`
-	Worktree   WorktreeSpec `json:"worktree,omitempty"`
+	APIVersion string         `json:"apiVersion"`
+	Kind       string         `json:"kind"`
+	Metadata   Metadata       `json:"metadata"`
+	Defaults   Defaults       `json:"defaults,omitempty"`
+	Nodes      []Node         `json:"nodes"`
+	Hooks      HookSet        `json:"hooks,omitempty"`
+	Worktree   WorktreeSpec   `json:"worktree,omitempty"`
+	Input      *InputContract `json:"input,omitempty"`
 }
 
 type Defaults struct {
@@ -57,10 +58,26 @@ type Node struct {
 	MCP          string            `json:"mcp,omitempty"`
 	Sandbox      *SandboxSpec      `json:"sandbox,omitempty"`
 	Requires     []string          `json:"requires,omitempty"`
+	ToolApproval *ToolApprovalSpec `json:"tool_approval,omitempty"`
 	OutputFormat *OutputFormat     `json:"output_format,omitempty"`
 	OutputType   string            `json:"output_type,omitempty"`
 	OutputMIME   string            `json:"output_mime,omitempty"`
 	OutputPath   string            `json:"output_path,omitempty"`
+}
+
+// InputContract gives a workflow an explicit machine-readable input boundary.
+// JSON inputs use the same strict schema subset as structured node outputs.
+type InputContract struct {
+	Format string        `json:"format"`
+	Schema *OutputFormat `json:"schema,omitempty"`
+}
+
+// ToolApprovalSpec requires a controllable assistant/external worker to stop
+// before selected tool calls and wait for an explicit allow/deny decision.
+type ToolApprovalSpec struct {
+	Mode    string   `json:"mode"`
+	Tools   []string `json:"tools,omitempty"`
+	Message string   `json:"message,omitempty"`
 }
 
 // ScriptSpec runs deterministic project code without an assistant. Path and

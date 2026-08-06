@@ -206,3 +206,23 @@ func jsonNumberIsInteger(value string) bool {
 	}
 	return true
 }
+
+// ValidateWorkflowInput verifies and canonicalizes one workflow input using the
+// same strict JSON subset as output_format. Text and Markdown inputs are
+// returned unchanged.
+func ValidateWorkflowInput(raw string, contract *spec.InputContract) (string, error) {
+	if contract == nil || contract.Format == "" || contract.Format == "text" || contract.Format == "markdown" {
+		return raw, nil
+	}
+	if contract.Format != "json" {
+		return "", fmt.Errorf("unsupported workflow input format %q", contract.Format)
+	}
+	if contract.Schema == nil {
+		return "", fmt.Errorf("JSON workflow input requires schema")
+	}
+	normalized, err := validateAndNormalizeOutput(raw, contract.Schema)
+	if err != nil {
+		return "", fmt.Errorf("workflow input: %w", err)
+	}
+	return normalized, nil
+}

@@ -23,6 +23,23 @@ func Validate(wf *spec.Workflow) error {
 	if err := validateWorktree(wf.Worktree); err != nil {
 		return err
 	}
+	if wf.Input != nil {
+		switch wf.Input.Format {
+		case "text", "markdown":
+			if wf.Input.Schema != nil {
+				return fmt.Errorf("input.schema requires input.format: json")
+			}
+		case "json":
+			if wf.Input.Schema == nil {
+				return fmt.Errorf("input.format json requires input.schema")
+			}
+			if err := validateOutputFormat(*wf.Input.Schema, "input.schema"); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("input.format must be text, markdown, or json")
+		}
+	}
 	return validateNodes(wf.Nodes, "nodes", false)
 }
 
@@ -146,6 +163,20 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			}
 			if n.Command == "" && n.Prompt == "" {
 				return fmt.Errorf("node %q external executor is supported only for command or prompt nodes", n.ID)
+			}
+		}
+		if n.ToolApproval != nil {
+			if n.Command == "" && n.Prompt == "" {
+				return fmt.Errorf("node %q tool_approval is supported only for command or prompt nodes", n.ID)
+			}
+			if n.Executor != "external" {
+				return fmt.Errorf("node %q tool_approval currently requires executor: external", n.ID)
+			}
+			if n.ToolApproval.Mode != "required" {
+				return fmt.Errorf("node %q tool_approval.mode must be required", n.ID)
+			}
+			if err := validateStringSet(n.ToolApproval.Tools, "node "+n.ID+".tool_approval.tools"); err != nil {
+				return err
 			}
 		}
 		if n.Attempts.Max < 0 {

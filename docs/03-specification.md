@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.31-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.32-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -91,11 +91,21 @@ assistants:
 На Unix процесс запускается в отдельной process group; timeout и cancellation завершают процесс и его потомков.
 
 
+## 3.0. Входной контракт workflow
+
+Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`, `uniqueItems`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
+
+Это используется шестью основными процессами профиля `code` 0.9.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+
 ## 3.1. Внешний исполнитель AI-узла
 
-`command` и `prompt` поддерживают `executor: external`. Runtime разрешает команду, шаблоны, model/session и effective policy, затем сохраняет durable external task и переводит Run в `waiting` с `kind: external_node`. Worker получает задачу через MCP, заявляет capabilities и lease, передаёт provider-neutral `assistant.*`/tool events и завершает её через `takt.node.complete` либо `takt.node.fail`. Результат проходит обычные `output_format`, attempts, hooks и artifact capture. Claim token не входит в публичную проекцию Run.
+`command` и `prompt` поддерживают `executor: external`. Runtime разрешает команду, шаблоны, model/session и effective policy, затем сохраняет durable external task и переводит Run в `waiting` с `kind: external_node`. Worker получает задачу через MCP, заявляет capability declaration и lease. Claim token не входит в публичную проекцию Run.
 
-Встроенные adapters используют тот же нормализованный event contract через `assistant.Request.Emit`. Raw stdout/stderr при этом сохраняются отдельно.
+Event protocol v2 использует: `assistant.session.started`, `assistant.session.resumed`, `assistant.message`, `assistant.tool.requested`, `assistant.tool.allowed`, `assistant.tool.denied`, `assistant.tool.started`, `assistant.tool.completed`, `assistant.artifact.declared`, `assistant.usage`, `assistant.diagnostic`, `assistant.completed`, `assistant.failed`. Raw stdout/stderr сохраняются отдельно.
+
+При `tool_approval` worker обязан запросить tool call до фактического запуска. Takt сначала применяет effective node policy, затем при необходимости сохраняет blocking approval. Запуск разрешён только после `allow`. Отмена одного tool call сохраняется отдельно от отмены Run. Артефакт внешнего worker регистрируется через `takt.node.artifact.declare` и связывается с устойчивым `call_id`. Внешний узел нельзя завершить, пока tool call не достиг terminal-состояния `completed|failed|denied|cancelled`. После `takt.node.complete|fail` результат проходит обычные `output_format`, attempts, hooks и artifact semantics.
+
+Встроенные adapters используют тот же нормализованный event contract через `assistant.Request.Emit`, но заявляют только реально доступные capabilities. Наблюдательные tool events OpenCode/Pi не означают pre-execution `tool_control`.
 
 ### Pi assistant
 

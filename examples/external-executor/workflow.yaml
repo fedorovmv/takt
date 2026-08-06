@@ -15,7 +15,11 @@ nodes:
       Return JSON with summary and tests_passed.
     executor: external
     allowed_tools: [read, grep, edit, write, bash]
-    requires: [tool_policy]
+    requires: [tool_policy, tool_control, agent_events_v2, tool_events]
+    tool_approval:
+      mode: required
+      tools: [edit, write, bash]
+      message: "Allow ${tool} for this implementation?"
     output_format:
       type: object
       properties:

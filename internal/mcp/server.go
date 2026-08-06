@@ -389,11 +389,12 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 		return map[string]any{"tasks": tasks}, nil
 	case "takt.node.claim":
 		var in struct {
-			RunID        string   `json:"run_id"`
-			NodeID       string   `json:"node_id"`
-			WorkerID     string   `json:"worker_id"`
-			Capabilities []string `json:"capabilities,omitempty"`
-			LeaseMS      int      `json:"lease_ms,omitempty"`
+			RunID        string                          `json:"run_id"`
+			NodeID       string                          `json:"node_id"`
+			WorkerID     string                          `json:"worker_id"`
+			Capabilities []string                        `json:"capabilities,omitempty"`
+			Declaration  assistant.CapabilityDeclaration `json:"capability_declaration,omitempty"`
+			LeaseMS      int                             `json:"lease_ms,omitempty"`
 		}
 		if err := decodeArguments(args, &in); err != nil {
 			return nil, err
@@ -401,7 +402,7 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 		if in.LeaseMS < 0 || in.LeaseMS > int(time.Hour/time.Millisecond) {
 			return nil, fmt.Errorf("lease_ms must be between 0 and 3600000")
 		}
-		return s.control.ClaimExternal(control.ExternalClaimRequest{RunID: in.RunID, NodeID: in.NodeID, WorkerID: in.WorkerID, Capabilities: in.Capabilities, Lease: time.Duration(in.LeaseMS) * time.Millisecond})
+		return s.control.ClaimExternal(control.ExternalClaimRequest{RunID: in.RunID, NodeID: in.NodeID, WorkerID: in.WorkerID, Capabilities: in.Capabilities, Declaration: in.Declaration, Lease: time.Duration(in.LeaseMS) * time.Millisecond})
 	case "takt.node.event":
 		var in struct {
 			RunID      string          `json:"run_id"`
@@ -417,6 +418,96 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 			return nil, err
 		}
 		return map[string]any{"sequence": sequence}, nil
+	case "takt.node.tool.request":
+		var in struct {
+			RunID      string          `json:"run_id"`
+			NodeID     string          `json:"node_id"`
+			ClaimToken string          `json:"claim_token"`
+			CallID     string          `json:"call_id"`
+			Tool       string          `json:"tool"`
+			Input      json.RawMessage `json:"input,omitempty"`
+			Message    string          `json:"message,omitempty"`
+			WaitMS     int             `json:"wait_ms,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		if in.WaitMS < 0 || in.WaitMS > 30000 {
+			return nil, fmt.Errorf("wait_ms must be between 0 and 30000")
+		}
+		return s.control.RequestExternalTool(ctx, control.ExternalToolRequest{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Tool: in.Tool, Input: in.Input, Message: in.Message, Wait: time.Duration(in.WaitMS) * time.Millisecond})
+	case "takt.node.tool.decide":
+		var in struct {
+			RunID    string `json:"run_id"`
+			NodeID   string `json:"node_id"`
+			CallID   string `json:"call_id"`
+			Decision string `json:"decision"`
+			Reason   string `json:"reason,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.DecideExternalTool(control.ExternalToolDecisionRequest{RunID: in.RunID, NodeID: in.NodeID, CallID: in.CallID, Decision: in.Decision, Reason: in.Reason})
+	case "takt.node.tool.start":
+		var in struct {
+			RunID      string `json:"run_id"`
+			NodeID     string `json:"node_id"`
+			ClaimToken string `json:"claim_token"`
+			CallID     string `json:"call_id"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.StartExternalTool(control.ExternalToolUpdate{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID})
+	case "takt.node.tool.complete":
+		var in struct {
+			RunID      string          `json:"run_id"`
+			NodeID     string          `json:"node_id"`
+			ClaimToken string          `json:"claim_token"`
+			CallID     string          `json:"call_id"`
+			Output     json.RawMessage `json:"output,omitempty"`
+			Failed     bool            `json:"failed,omitempty"`
+			Reason     string          `json:"reason,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.CompleteExternalTool(control.ExternalToolUpdate{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Output: in.Output, Failed: in.Failed, Reason: in.Reason})
+	case "takt.node.tool.get":
+		var in struct {
+			RunID  string `json:"run_id"`
+			NodeID string `json:"node_id"`
+			CallID string `json:"call_id"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.GetExternalTool(in.RunID, in.NodeID, in.CallID)
+	case "takt.node.tool.cancel":
+		var in struct {
+			RunID  string `json:"run_id"`
+			NodeID string `json:"node_id"`
+			CallID string `json:"call_id"`
+			Reason string `json:"reason,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.CancelExternalTool(in.RunID, in.NodeID, in.CallID, in.Reason)
+	case "takt.node.artifact.declare":
+		var in struct {
+			RunID      string `json:"run_id"`
+			NodeID     string `json:"node_id"`
+			ClaimToken string `json:"claim_token"`
+			CallID     string `json:"call_id"`
+			Type       string `json:"type"`
+			MIME       string `json:"mime,omitempty"`
+			Path       string `json:"path"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.DeclareExternalArtifact(control.ExternalArtifactRequest{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Type: in.Type, MIME: in.MIME, Path: in.Path})
 	case "takt.node.complete", "takt.node.fail":
 		var in struct {
 			RunID            string          `json:"run_id"`
@@ -490,6 +581,19 @@ func tools() []tool {
 	integerProp := func(description string, min, max int) map[string]any {
 		return map[string]any{"type": "integer", "description": description, "minimum": min, "maximum": max}
 	}
+	stringArray := func(description string) map[string]any {
+		return map[string]any{"type": "array", "description": description, "items": map[string]any{"type": "string"}, "uniqueItems": true}
+	}
+	capabilityDeclaration := object(map[string]any{
+		"protocol":        stringProp("Agent event protocol, normally takt-agent-events/v2"),
+		"capabilities":    stringArray("Policy and execution capabilities guaranteed by the worker"),
+		"event_types":     stringArray("Normalized event types emitted by the worker"),
+		"session_events":  boolProp("Worker emits session.started/session.resumed"),
+		"tool_events":     boolProp("Worker emits normalized tool lifecycle events"),
+		"tool_control":    boolProp("Worker blocks tool execution until Takt returns allow or deny"),
+		"artifact_events": boolProp("Worker declares tool-produced artifacts"),
+		"usage_events":    boolProp("Worker emits incremental usage updates"),
+	})
 	readOnly := map[string]any{"readOnlyHint": true, "destructiveHint": false}
 	mutating := map[string]any{"readOnlyHint": false}
 	return []tool{
@@ -517,21 +621,48 @@ func tools() []tool {
 		{Name: "takt.node.pending", Title: "List external Takt nodes", Description: "List pending or expired-lease external command/prompt nodes. Omit run_id to inspect all local Runs.", InputSchema: object(map[string]any{
 			"run_id": stringProp("Optional root Run ID"), "recursive": boolProp("Include descendant Runs"),
 		}), Annotations: readOnly},
-		{Name: "takt.node.claim", Title: "Claim external Takt node", Description: "Claim one durable external node with a worker identity, capability attestation and bounded lease.", InputSchema: object(map[string]any{
+		{Name: "takt.node.claim", Title: "Claim external Takt node", Description: "Claim one durable external node with a worker identity, explicit agent-event capability declaration and bounded lease.", InputSchema: object(map[string]any{
 			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "worker_id": stringProp("Stable worker identity"),
-			"capabilities": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "uniqueItems": true},
-			"lease_ms":     integerProp("Claim lease in milliseconds; defaults to 900000", 1, 3600000),
+			"capabilities":           stringArray("Compatibility shorthand for policy capabilities"),
+			"capability_declaration": capabilityDeclaration,
+			"lease_ms":               integerProp("Claim lease in milliseconds; defaults to 900000", 1, 3600000),
 		}, "run_id", "node_id", "worker_id"), Annotations: mutating},
 		{Name: "takt.node.event", Title: "Append external node event", Description: "Append one provider-neutral assistant or tool event under the active claim.", InputSchema: object(map[string]any{
 			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "claim_token": stringProp("Opaque token returned by takt.node.claim"),
 			"event": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"type"}, "properties": map[string]any{
-				"type":    map[string]any{"enum": []string{"started", "message", "tool.started", "tool.completed", "usage", "diagnostic", "completed", "failed"}},
+				"type":    map[string]any{"enum": []string{"session.started", "session.resumed", "message", "usage", "diagnostic", "completed", "failed"}},
 				"message": stringProp("Message or diagnostic"), "tool": stringProp("Tool name"), "call_id": stringProp("Provider tool-call ID"),
 				"input": map[string]any{}, "output": map[string]any{}, "provider": stringProp("Provider ID"), "session_id": stringProp("Provider session ID"),
 				"usage": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"input_tokens": integerProp("Input tokens", 0, int(^uint32(0))), "output_tokens": integerProp("Output tokens", 0, int(^uint32(0))), "cost": map[string]any{"type": "number", "minimum": 0}}},
 				"data":  map[string]any{"type": "object"},
 			}},
 		}, "run_id", "node_id", "claim_token", "event"), Annotations: mutating},
+		{Name: "takt.node.tool.request", Title: "Request external tool call", Description: "Register a tool call, enforce node policy and block for human approval when configured. Returns allowed, denied, cancelled, or waiting_approval.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "claim_token": stringProp("Opaque active claim token"),
+			"call_id": stringProp("Stable provider tool-call ID"), "tool": stringProp("Tool name"), "input": map[string]any{},
+			"session_id": stringProp("Provider session ID"), "wait_ms": integerProp("Wait for a decision, 0 to 30000 milliseconds", 0, 30000),
+		}, "run_id", "node_id", "claim_token", "call_id", "tool"), Annotations: mutating},
+		{Name: "takt.node.tool.decide", Title: "Decide external tool call", Description: "Allow or deny a tool call waiting for blocking approval.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "call_id": stringProp("Tool-call ID"),
+			"decision": map[string]any{"type": "string", "enum": []string{"allow", "deny"}}, "reason": stringProp("Decision reason"),
+		}, "run_id", "node_id", "call_id", "decision"), Annotations: mutating},
+		{Name: "takt.node.tool.start", Title: "Start external tool call", Description: "Mark an allowed tool call as running before execution.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "claim_token": stringProp("Opaque active claim token"), "call_id": stringProp("Tool-call ID"),
+		}, "run_id", "node_id", "claim_token", "call_id"), Annotations: mutating},
+		{Name: "takt.node.tool.complete", Title: "Complete external tool call", Description: "Persist tool output and terminal status under the active claim.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "claim_token": stringProp("Opaque active claim token"), "call_id": stringProp("Tool-call ID"),
+			"output": map[string]any{}, "failed": boolProp("Mark the tool call failed"), "reason": stringProp("Failure or completion reason"),
+		}, "run_id", "node_id", "claim_token", "call_id"), Annotations: mutating},
+		{Name: "takt.node.tool.get", Title: "Get external tool call", Description: "Read durable tool-call status, including cancellation requests.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "call_id": stringProp("Tool-call ID"),
+		}, "run_id", "node_id", "call_id"), Annotations: readOnly},
+		{Name: "takt.node.tool.cancel", Title: "Cancel external tool call", Description: "Cancel a pending tool call or request cooperative cancellation of a running call.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "call_id": stringProp("Tool-call ID"), "reason": stringProp("Cancellation reason"),
+		}, "run_id", "node_id", "call_id"), Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true}},
+		{Name: "takt.node.artifact.declare", Title: "Declare external tool artifact", Description: "Copy a tool-produced file into the Run artifact store and link it to its call_id.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "claim_token": stringProp("Opaque active claim token"), "call_id": stringProp("Tool-call ID"),
+			"type": stringProp("Semantic artifact type"), "mime": stringProp("Artifact MIME"), "path": stringProp("Path inside execution workspace or Run artifact root"),
+		}, "run_id", "node_id", "claim_token", "call_id", "type", "path"), Annotations: mutating},
 		{Name: "takt.node.complete", Title: "Complete external Takt node", Description: "Submit a successful external result and continue the normal Takt retry, output, hook, artifact and parent/child lifecycle.", InputSchema: externalSubmissionSchema(object, stringProp, integerProp), Annotations: mutating},
 		{Name: "takt.node.fail", Title: "Fail external Takt node", Description: "Submit an external failure and continue normal retry and failure handling.", InputSchema: externalSubmissionSchema(object, stringProp, integerProp), Annotations: mutating},
 	}

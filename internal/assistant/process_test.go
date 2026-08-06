@@ -2,6 +2,8 @@ package assistant
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,5 +78,77 @@ func TestProcessOutputLimitIsRaceSafeAcrossStdoutAndStderr(t *testing.T) {
 	// captured streams. The process bytes themselves remain within the shared budget.
 	if len(result.Output) > 129 {
 		t.Fatalf("shared output budget exceeded: got %d bytes", len(result.Output))
+	}
+}
+
+type fixedToolController struct {
+	decision ToolDecision
+}
+
+func (c fixedToolController) Decide(_ context.Context, _ ToolRequest) (ToolDecision, error) {
+	return c.decision, nil
+}
+
+func TestProcessV1Alpha2NegotiatesToolDecisionAndEmitsEvents(t *testing.T) {
+	dir := t.TempDir()
+	script := dir + "/worker.py"
+	code := `import json, sys
+req=json.loads(sys.stdin.readline())
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","capabilities":["tool_control"],"event_types":["tool.requested","tool.allowed","tool.started","tool.completed"],"tool_events":True,"tool_control":True}}), flush=True)
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"tool.request","tool_request":{"call_id":"call-1","tool":"read","input":{"path":"README.md"},"session_id":"session-1"}}), flush=True)
+dec=json.loads(sys.stdin.readline())
+if dec["decision"]["decision"] == "allow":
+  print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"event","event":{"type":"tool.started","tool":"read","call_id":"call-1","session_id":"session-1"}}), flush=True)
+  print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"event","event":{"type":"tool.completed","tool":"read","call_id":"call-1","output":{"ok":True},"session_id":"session-1"}}), flush=True)
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha2","type":"result","status":"completed","output":"done","session":{"id":"session-1","resumed":False},"exit_code":0}}), flush=True)
+`
+	if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: []string{"python3", script}}}
+	var events []Event
+	result, err := p.Run(context.Background(), Request{
+		Prompt: "work", Workspace: dir, Policy: Policy{ToolsRestricted: true, AllowedTools: []string{"read"}},
+		ToolControl: fixedToolController{decision: ToolDecision{Decision: "allow", Reason: "approved"}},
+		Emit:        func(event Event) { events = append(events, event) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Output != "done" || result.SessionID != "session-1" {
+		t.Fatalf("result = %#v", result)
+	}
+	var types []string
+	for _, event := range events {
+		types = append(types, event.Type)
+	}
+	want := []string{EventToolRequested, EventToolAllowed, EventToolStarted, EventToolCompleted}
+	if strings.Join(types, ",") != strings.Join(want, ",") {
+		t.Fatalf("events = %#v, want %#v", types, want)
+	}
+}
+
+func TestProcessV1Alpha2PolicyDeniesBeforeToolStart(t *testing.T) {
+	dir := t.TempDir()
+	script := dir + "/worker.py"
+	code := `import json, sys
+json.loads(sys.stdin.readline())
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","tool_events":True,"tool_control":True}}), flush=True)
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"tool.request","tool_request":{"call_id":"call-1","tool":"write","input":{"path":"x"}}}), flush=True)
+dec=json.loads(sys.stdin.readline())
+assert dec["decision"]["decision"] == "deny"
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha2","type":"result","status":"completed","output":"denied safely","exit_code":0}}), flush=True)
+`
+	if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: []string{"python3", script}}}
+	var events []Event
+	_, err := p.Run(context.Background(), Request{Workspace: dir, Policy: Policy{DeniedTools: []string{"write"}}, Emit: func(event Event) { events = append(events, event) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 || events[0].Type != EventToolRequested || events[1].Type != EventToolDenied {
+		t.Fatalf("events = %#v", events)
 	}
 }

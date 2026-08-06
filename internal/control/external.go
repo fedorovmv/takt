@@ -3,10 +3,14 @@ package control
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -17,21 +21,24 @@ import (
 )
 
 type ExternalTask struct {
-	RunID          string                 `json:"run_id"`
-	NodeID         string                 `json:"node_id"`
-	Status         string                 `json:"status"`
-	Attempt        int                    `json:"attempt"`
-	Prompt         string                 `json:"prompt"`
-	Workspace      string                 `json:"workspace"`
-	Assistant      string                 `json:"assistant,omitempty"`
-	RequestedModel *store.ModelRef        `json:"requested_model,omitempty"`
-	SessionMode    string                 `json:"session_mode,omitempty"`
-	SessionID      string                 `json:"session_id,omitempty"`
-	Policy         *store.NodePolicyState `json:"policy,omitempty"`
-	OutputFormat   json.RawMessage        `json:"output_format,omitempty"`
-	ClaimedBy      string                 `json:"claimed_by,omitempty"`
-	LeaseExpiresAt time.Time              `json:"lease_expires_at,omitempty"`
-	ClaimToken     string                 `json:"claim_token,omitempty"`
+	RunID                 string                          `json:"run_id"`
+	NodeID                string                          `json:"node_id"`
+	Status                string                          `json:"status"`
+	Attempt               int                             `json:"attempt"`
+	Prompt                string                          `json:"prompt"`
+	Workspace             string                          `json:"workspace"`
+	Assistant             string                          `json:"assistant,omitempty"`
+	RequestedModel        *store.ModelRef                 `json:"requested_model,omitempty"`
+	SessionMode           string                          `json:"session_mode,omitempty"`
+	SessionID             string                          `json:"session_id,omitempty"`
+	Policy                *store.NodePolicyState          `json:"policy,omitempty"`
+	OutputFormat          json.RawMessage                 `json:"output_format,omitempty"`
+	ClaimedBy             string                          `json:"claimed_by,omitempty"`
+	LeaseExpiresAt        time.Time                       `json:"lease_expires_at,omitempty"`
+	ClaimToken            string                          `json:"claim_token,omitempty"`
+	CapabilityDeclaration assistant.CapabilityDeclaration `json:"capability_declaration"`
+	ToolApproval          *store.ToolApprovalState        `json:"tool_approval,omitempty"`
+	ToolCalls             map[string]*store.ToolCallState `json:"tool_calls,omitempty"`
 }
 
 type ExternalClaimRequest struct {
@@ -39,6 +46,7 @@ type ExternalClaimRequest struct {
 	NodeID       string
 	WorkerID     string
 	Capabilities []string
+	Declaration  assistant.CapabilityDeclaration
 	Lease        time.Duration
 }
 
@@ -151,8 +159,16 @@ func (s *Service) ClaimExternal(request ExternalClaimRequest) (*ExternalTask, er
 	if external.Status != "pending" && external.Status != "claimed" {
 		return nil, fmt.Errorf("external node %s/%s cannot be claimed in status %s", state.ID, request.NodeID, external.Status)
 	}
-	if err := requireExternalCapabilities(external.Policy, request.Capabilities); err != nil {
+	declaration := request.Declaration
+	if len(declaration.Capabilities) == 0 {
+		declaration.Capabilities = append([]string(nil), request.Capabilities...)
+	}
+	declaration = assistant.NormalizeDeclaration(declaration)
+	if err := requireExternalCapabilities(external.Policy, declaration.Capabilities); err != nil {
 		return nil, err
+	}
+	if external.ToolApproval != nil && !declaration.ToolControl {
+		return nil, fmt.Errorf("external executor must declare tool_control for node %s/%s", state.ID, request.NodeID)
 	}
 	token, err := newClaimToken()
 	if err != nil {
@@ -160,11 +176,13 @@ func (s *Service) ClaimExternal(request ExternalClaimRequest) (*ExternalTask, er
 	}
 	external.Status = "claimed"
 	external.ClaimedBy = request.WorkerID
+	encodedDeclaration, _ := json.Marshal(declaration)
+	external.CapabilityDeclaration = encodedDeclaration
 	external.ClaimToken = token
 	external.LeaseExpiresAt = now.Add(request.Lease)
 	node.Status = store.NodeWaiting
 	if err := st.Commit(state, store.Event{Type: "external_node.claimed", NodeID: request.NodeID, Data: map[string]any{
-		"worker_id": request.WorkerID, "lease_expires_at": external.LeaseExpiresAt, "capabilities": request.Capabilities,
+		"worker_id": request.WorkerID, "lease_expires_at": external.LeaseExpiresAt, "capability_declaration": declaration,
 	}}); err != nil {
 		return nil, err
 	}
@@ -202,16 +220,27 @@ func newClaimToken() (string, error) {
 }
 
 func externalTask(runID, nodeID string, external *store.ExternalExecutionState, token string) ExternalTask {
+	var declaration assistant.CapabilityDeclaration
+	if len(external.CapabilityDeclaration) > 0 {
+		_ = json.Unmarshal(external.CapabilityDeclaration, &declaration)
+	}
 	return ExternalTask{
 		RunID: runID, NodeID: nodeID, Status: external.Status, Attempt: external.Attempt,
 		Prompt: external.Prompt, Workspace: external.Workspace, Assistant: external.Assistant,
 		RequestedModel: external.RequestedModel, SessionMode: external.SessionMode, SessionID: external.SessionID,
 		Policy: external.Policy, OutputFormat: external.OutputFormat, ClaimedBy: external.ClaimedBy,
-		LeaseExpiresAt: external.LeaseExpiresAt, ClaimToken: token,
+		LeaseExpiresAt: external.LeaseExpiresAt, ClaimToken: token, CapabilityDeclaration: declaration,
+		ToolApproval: external.ToolApproval, ToolCalls: cloneToolCalls(external.ToolCalls),
 	}
 }
 
 func (s *Service) AppendExternalEvent(runID, nodeID, claimToken string, event assistant.Event) (uint64, error) {
+	switch event.Type {
+	case assistant.EventToolRequested, assistant.EventToolAllowed, assistant.EventToolDenied, assistant.EventToolStarted, assistant.EventToolCompleted:
+		return 0, fmt.Errorf("tool lifecycle events must use takt.node.tool.* controls")
+	case assistant.EventArtifactDeclared:
+		return 0, fmt.Errorf("artifact declarations must use takt.node.artifact.declare")
+	}
 	if err := assistant.ValidateEvent(event); err != nil {
 		return 0, err
 	}
@@ -228,17 +257,7 @@ func (s *Service) AppendExternalEvent(runID, nodeID, claimToken string, event as
 	if err := verifyExternalClaim(external, claimToken); err != nil {
 		return 0, err
 	}
-	external.LastEventSequence++
-	data := assistant.EventData(event)
-	data["sequence"] = external.LastEventSequence
-	data["source"] = "external"
-	if event.Time.IsZero() {
-		event.Time = time.Now().UTC()
-	}
-	if err := st.Commit(state, store.Event{Time: event.Time, Type: "assistant." + event.Type, NodeID: nodeID, Data: data}); err != nil {
-		return 0, err
-	}
-	return external.LastEventSequence, nil
+	return appendExternalAssistantEvent(st, state, nodeID, external, event)
 }
 
 func (s *Service) CompleteExternal(ctx context.Context, submission ExternalSubmission) (*store.RunState, error) {
@@ -273,6 +292,10 @@ func (s *Service) submitExternal(ctx context.Context, submission ExternalSubmiss
 		_ = release()
 		return nil, err
 	}
+	if err := ensureExternalToolsTerminal(external.ToolCalls); err != nil {
+		_ = release()
+		return nil, err
+	}
 	if len(submission.Structured) > 0 && strings.TrimSpace(submission.Output) == "" {
 		submission.Output = string(submission.Structured)
 	}
@@ -288,7 +311,12 @@ func (s *Service) submitExternal(ctx context.Context, submission ExternalSubmiss
 		ResolvedModel: submission.ResolvedModel, Usage: submission.Usage,
 		ErrorCode: submission.ErrorCode, Error: submission.Error,
 	}
-	finalEvents := make([]assistant.Event, 0, 3)
+	finalEvents := make([]assistant.Event, 0, 4)
+	sessionEvent := assistant.EventSessionStarted
+	if submission.Resumed {
+		sessionEvent = assistant.EventSessionResumed
+	}
+	finalEvents = append(finalEvents, assistant.Event{Type: sessionEvent, SessionID: submission.SessionID})
 	if strings.TrimSpace(submission.Output) != "" {
 		message := submission.Output
 		if len(message) > 64*1024 {
@@ -306,11 +334,7 @@ func (s *Service) submitExternal(ctx context.Context, submission ExternalSubmiss
 	}
 	finalEvents = append(finalEvents, terminalEvent)
 	for _, event := range finalEvents {
-		external.LastEventSequence++
-		data := assistant.EventData(event)
-		data["sequence"] = external.LastEventSequence
-		data["source"] = "external"
-		if err := st.Commit(state, store.Event{Type: "assistant." + event.Type, NodeID: submission.NodeID, Data: data}); err != nil {
+		if _, err := appendExternalAssistantEvent(st, state, submission.NodeID, external, event); err != nil {
 			_ = release()
 			return nil, err
 		}
@@ -366,4 +390,586 @@ func verifyExternalClaim(external *store.ExternalExecutionState, token string) e
 		return fmt.Errorf("external claim lease expired")
 	}
 	return nil
+}
+
+type ExternalToolRequest struct {
+	RunID      string
+	NodeID     string
+	ClaimToken string
+	CallID     string
+	Tool       string
+	Input      json.RawMessage
+	Message    string
+	Wait       time.Duration
+}
+
+type ExternalToolDecisionRequest struct {
+	RunID    string
+	NodeID   string
+	CallID   string
+	Decision string
+	Reason   string
+}
+
+type ExternalToolUpdate struct {
+	RunID      string
+	NodeID     string
+	ClaimToken string
+	CallID     string
+	Output     json.RawMessage
+	Failed     bool
+	Reason     string
+}
+
+type ExternalArtifactRequest struct {
+	RunID      string
+	NodeID     string
+	ClaimToken string
+	CallID     string
+	Type       string
+	MIME       string
+	Path       string
+}
+
+func ensureExternalToolsTerminal(values map[string]*store.ToolCallState) error {
+	for callID, call := range values {
+		if call == nil {
+			continue
+		}
+		switch call.Status {
+		case "completed", "failed", "denied", "cancelled":
+			continue
+		default:
+			return fmt.Errorf("tool call %q is not terminal (status %s)", callID, call.Status)
+		}
+	}
+	return nil
+}
+
+func cloneToolCalls(values map[string]*store.ToolCallState) map[string]*store.ToolCallState {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]*store.ToolCallState, len(values))
+	for id, value := range values {
+		if value == nil {
+			continue
+		}
+		clone := *value
+		clone.Input = append(json.RawMessage(nil), value.Input...)
+		clone.Output = append(json.RawMessage(nil), value.Output...)
+		out[id] = &clone
+	}
+	return out
+}
+
+func (s *Service) RequestExternalTool(ctx context.Context, request ExternalToolRequest) (*store.ToolCallState, error) {
+	if strings.TrimSpace(request.CallID) == "" || strings.TrimSpace(request.Tool) == "" {
+		return nil, fmt.Errorf("call_id and tool are required")
+	}
+	if request.Wait < 0 || request.Wait > 30*time.Second {
+		return nil, fmt.Errorf("wait must be between 0 and 30s")
+	}
+	st := store.FS{Workspace: s.Workspace}
+	state, err := s.createOrReadToolRequest(st, request)
+	if err != nil {
+		return nil, err
+	}
+	if toolDecisionTerminal(state.Status) || request.Wait == 0 {
+		return state, nil
+	}
+	deadline := time.NewTimer(request.Wait)
+	defer deadline.Stop()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-deadline.C:
+			return state, nil
+		case <-ticker.C:
+			_, _, external, loadErr := loadExternalNode(st, request.RunID, request.NodeID)
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			current := external.ToolCalls[request.CallID]
+			if current == nil {
+				return nil, fmt.Errorf("tool call %q disappeared", request.CallID)
+			}
+			state = cloneToolCall(current)
+			if toolDecisionTerminal(state.Status) {
+				return state, nil
+			}
+		}
+	}
+}
+
+func (s *Service) createOrReadToolRequest(st store.FS, request ExternalToolRequest) (*store.ToolCallState, error) {
+	release, err := st.AcquireLock(request.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	state, _, external, err := loadExternalNode(st, request.RunID, request.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	if err := verifyExternalClaim(external, request.ClaimToken); err != nil {
+		return nil, err
+	}
+	if external.ToolCalls == nil {
+		external.ToolCalls = map[string]*store.ToolCallState{}
+	}
+	if existing := external.ToolCalls[request.CallID]; existing != nil {
+		if existing.Tool != request.Tool || string(existing.Input) != string(request.Input) {
+			return nil, fmt.Errorf("tool call %q was already requested with different content", request.CallID)
+		}
+		return cloneToolCall(existing), nil
+	}
+	now := time.Now().UTC()
+	call := &store.ToolCallState{
+		CallID: request.CallID, Tool: request.Tool, Input: append(json.RawMessage(nil), request.Input...),
+		Status: "requested", RequestedAt: now,
+	}
+	external.ToolCalls[request.CallID] = call
+	if _, err := appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+		Type: assistant.EventToolRequested, Tool: request.Tool, CallID: request.CallID, Input: request.Input,
+		Message: request.Message, SessionID: external.SessionID,
+	}); err != nil {
+		return nil, err
+	}
+	if allowed, reason := externalToolPolicy(external.Policy, request.Tool); !allowed {
+		call.Status, call.Decision, call.Reason, call.DecidedAt = "denied", "deny", reason, time.Now().UTC()
+		if _, err := appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+			Type: assistant.EventToolDenied, Tool: request.Tool, CallID: request.CallID,
+			Decision: "deny", Reason: reason, SessionID: external.SessionID,
+		}); err != nil {
+			return nil, err
+		}
+		return cloneToolCall(call), nil
+	}
+	call.ApprovalNeeded = toolApprovalRequired(external.ToolApproval, request.Tool)
+	if call.ApprovalNeeded {
+		call.Status = "waiting_approval"
+		if err := st.Commit(state, store.Event{Type: "tool.approval.requested", NodeID: request.NodeID, Data: map[string]any{
+			"call_id": request.CallID, "tool": request.Tool, "message": toolApprovalMessage(external.ToolApproval, request.Tool),
+		}}); err != nil {
+			return nil, err
+		}
+		return cloneToolCall(call), nil
+	}
+	call.Status, call.Decision, call.DecidedAt = "allowed", "allow", time.Now().UTC()
+	if _, err := appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+		Type: assistant.EventToolAllowed, Tool: request.Tool, CallID: request.CallID,
+		Decision: "allow", Reason: "allowed by node policy", SessionID: external.SessionID,
+	}); err != nil {
+		return nil, err
+	}
+	return cloneToolCall(call), nil
+}
+
+func (s *Service) DecideExternalTool(request ExternalToolDecisionRequest) (*store.ToolCallState, error) {
+	if request.Decision != "allow" && request.Decision != "deny" {
+		return nil, fmt.Errorf("decision must be allow or deny")
+	}
+	st := store.FS{Workspace: s.Workspace}
+	release, err := st.AcquireLock(request.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	state, _, external, err := loadExternalNode(st, request.RunID, request.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	call := external.ToolCalls[request.CallID]
+	if call == nil {
+		return nil, fmt.Errorf("unknown tool call %q", request.CallID)
+	}
+	if call.Status != "waiting_approval" {
+		return nil, fmt.Errorf("tool call %q is not waiting for approval (status %s)", request.CallID, call.Status)
+	}
+	call.Decision, call.Reason, call.DecidedAt = request.Decision, request.Reason, time.Now().UTC()
+	if request.Decision == "allow" {
+		call.Status = "allowed"
+		_, err = appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+			Type: assistant.EventToolAllowed, Tool: call.Tool, CallID: call.CallID,
+			Decision: "allow", Reason: request.Reason, SessionID: external.SessionID,
+		})
+	} else {
+		call.Status = "denied"
+		_, err = appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+			Type: assistant.EventToolDenied, Tool: call.Tool, CallID: call.CallID,
+			Decision: "deny", Reason: request.Reason, SessionID: external.SessionID,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	return cloneToolCall(call), nil
+}
+
+func (s *Service) StartExternalTool(request ExternalToolUpdate) (*store.ToolCallState, error) {
+	return s.updateExternalTool(request, "start")
+}
+
+func (s *Service) CompleteExternalTool(request ExternalToolUpdate) (*store.ToolCallState, error) {
+	return s.updateExternalTool(request, "complete")
+}
+
+func (s *Service) updateExternalTool(request ExternalToolUpdate, action string) (*store.ToolCallState, error) {
+	st := store.FS{Workspace: s.Workspace}
+	release, err := st.AcquireLock(request.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	state, _, external, err := loadExternalNode(st, request.RunID, request.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	if err := verifyExternalClaim(external, request.ClaimToken); err != nil {
+		return nil, err
+	}
+	call := external.ToolCalls[request.CallID]
+	if call == nil {
+		return nil, fmt.Errorf("unknown tool call %q", request.CallID)
+	}
+	now := time.Now().UTC()
+	switch action {
+	case "start":
+		if call.CancelRequested {
+			return nil, fmt.Errorf("tool call %q was cancelled", request.CallID)
+		}
+		if call.Status != "allowed" {
+			return nil, fmt.Errorf("tool call %q cannot start in status %s", request.CallID, call.Status)
+		}
+		call.Status, call.StartedAt = "running", now
+		_, err = appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+			Type: assistant.EventToolStarted, Tool: call.Tool, CallID: call.CallID, Input: call.Input, SessionID: external.SessionID,
+		})
+	case "complete":
+		if call.Status != "running" && call.Status != "cancel_requested" {
+			return nil, fmt.Errorf("tool call %q cannot complete in status %s", request.CallID, call.Status)
+		}
+		call.Output = append(json.RawMessage(nil), request.Output...)
+		call.CompletedAt = now
+		if call.CancelRequested {
+			call.Status, call.Decision = "cancelled", "cancel"
+		} else if request.Failed {
+			call.Status, call.Reason = "failed", request.Reason
+		} else {
+			call.Status = "completed"
+		}
+		_, err = appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+			Type: assistant.EventToolCompleted, Tool: call.Tool, CallID: call.CallID, Output: call.Output,
+			Reason: call.Reason, SessionID: external.SessionID, Data: map[string]any{"status": call.Status},
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	return cloneToolCall(call), nil
+}
+
+func (s *Service) CancelExternalTool(runID, nodeID, callID, reason string) (*store.ToolCallState, error) {
+	st := store.FS{Workspace: s.Workspace}
+	release, err := st.AcquireLock(runID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	state, _, external, err := loadExternalNode(st, runID, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	call := external.ToolCalls[callID]
+	if call == nil {
+		return nil, fmt.Errorf("unknown tool call %q", callID)
+	}
+	if reason == "" {
+		reason = "tool call cancelled by controller"
+	}
+	switch call.Status {
+	case "requested", "waiting_approval", "allowed":
+		call.Status, call.Decision, call.Reason, call.CancelRequested = "cancelled", "cancel", reason, true
+		call.DecidedAt = time.Now().UTC()
+		_, err = appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
+			Type: assistant.EventToolDenied, Tool: call.Tool, CallID: call.CallID,
+			Decision: "cancel", Reason: reason, SessionID: external.SessionID,
+		})
+	case "running", "cancel_requested":
+		call.Status, call.CancelRequested, call.Reason = "cancel_requested", true, reason
+		_, err = appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
+			Type: assistant.EventDiagnostic, Message: reason, CallID: call.CallID,
+			SessionID: external.SessionID, Data: map[string]any{"tool": call.Tool, "tool_cancel_requested": true},
+		})
+	default:
+		return nil, fmt.Errorf("tool call %q is terminal with status %s", callID, call.Status)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return cloneToolCall(call), nil
+}
+
+func (s *Service) GetExternalTool(runID, nodeID, callID string) (*store.ToolCallState, error) {
+	st := store.FS{Workspace: s.Workspace}
+	_, _, external, err := loadExternalNode(st, runID, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	call := external.ToolCalls[callID]
+	if call == nil {
+		return nil, fmt.Errorf("unknown tool call %q", callID)
+	}
+	return cloneToolCall(call), nil
+}
+
+func (s *Service) DeclareExternalArtifact(request ExternalArtifactRequest) (*store.ArtifactRef, error) {
+	if strings.TrimSpace(request.Type) == "" || strings.TrimSpace(request.Path) == "" || strings.TrimSpace(request.CallID) == "" {
+		return nil, fmt.Errorf("call_id, type and path are required")
+	}
+	st := store.FS{Workspace: s.Workspace}
+	release, err := st.AcquireLock(request.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	state, node, external, err := loadExternalNode(st, request.RunID, request.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	if err := verifyExternalClaim(external, request.ClaimToken); err != nil {
+		return nil, err
+	}
+	call := external.ToolCalls[request.CallID]
+	if call == nil {
+		return nil, fmt.Errorf("artifact references unknown tool call %q", request.CallID)
+	}
+	if call.Status != "running" && call.Status != "completed" {
+		return nil, fmt.Errorf("artifact tool call %q must be running or completed", request.CallID)
+	}
+	source, err := secureExternalArtifactPath(request.Path, external.Workspace, st.ArtifactsDir(state.ID))
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(source)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("artifact path is not a regular file")
+	}
+	destinationDir := filepath.Join(st.ArtifactsDir(state.ID), "nodes", safeControlPart(request.NodeID), fmt.Sprintf("%d", external.Attempt), "external")
+	if err := os.MkdirAll(destinationDir, 0o755); err != nil {
+		return nil, err
+	}
+	destination := filepath.Join(destinationDir, safeControlPart(request.CallID)+"-"+filepath.Base(source))
+	if err := copyControlFile(source, destination); err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(destination)
+	if err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(data)
+	mime := request.MIME
+	if mime == "" {
+		mime = "application/octet-stream"
+	}
+	artifact := store.ArtifactRef{
+		ID:   fmt.Sprintf("%s:%s:%d:%s", request.NodeID, request.Type, external.Attempt, request.CallID),
+		Type: request.Type, MIME: mime, Path: destination, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(data)),
+		ProducerRunID: state.ID, ProducerNodeID: request.NodeID, Attempt: external.Attempt, CreatedAt: time.Now().UTC(), CallID: request.CallID,
+	}
+	node.Artifacts = appendControlArtifact(node.Artifacts, artifact)
+	state.Artifacts = appendControlArtifact(state.Artifacts, artifact)
+	_, err = appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+		Type: assistant.EventArtifactDeclared, CallID: request.CallID, SessionID: external.SessionID,
+		Artifact: &assistant.ArtifactDeclaration{ID: artifact.ID, Type: artifact.Type, MIME: artifact.MIME, Path: artifact.Path, SHA256: artifact.SHA256, Size: artifact.Size, CallID: request.CallID},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &artifact, nil
+}
+
+func appendExternalAssistantEvent(st store.FS, state *store.RunState, nodeID string, external *store.ExternalExecutionState, event assistant.Event) (uint64, error) {
+	if event.Time.IsZero() {
+		event.Time = time.Now().UTC()
+	}
+	if err := assistant.ValidateEvent(event); err != nil {
+		return 0, err
+	}
+	external.LastEventSequence++
+	data := assistant.EventData(event)
+	data["sequence"] = external.LastEventSequence
+	data["source"] = "external"
+	if err := st.Commit(state, store.Event{Time: event.Time, Type: "assistant." + event.Type, NodeID: nodeID, Data: data}); err != nil {
+		return 0, err
+	}
+	return external.LastEventSequence, nil
+}
+
+func externalToolPolicy(policy *store.NodePolicyState, tool string) (bool, string) {
+	if policy == nil {
+		return true, ""
+	}
+	for _, denied := range policy.DeniedTools {
+		if denied == tool {
+			return false, "tool is denied by node policy"
+		}
+	}
+	if policy.ToolsRestricted {
+		allowed := false
+		for _, candidate := range policy.AllowedTools {
+			if candidate == tool {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return false, "tool is outside allowed_tools"
+		}
+	}
+	if policy.Filesystem == "read_only" {
+		switch tool {
+		case "write", "edit", "patch", "bash", "shell", "task":
+			return false, "tool conflicts with read_only filesystem policy"
+		}
+	}
+	if policy.Network == "deny" {
+		switch tool {
+		case "web", "http", "fetch", "network", "browser":
+			return false, "tool conflicts with network deny policy"
+		}
+	}
+	return true, ""
+}
+
+func toolApprovalRequired(policy *store.ToolApprovalState, tool string) bool {
+	if policy == nil || policy.Mode != "required" {
+		return false
+	}
+	if len(policy.Tools) == 0 {
+		return true
+	}
+	for _, candidate := range policy.Tools {
+		if candidate == tool {
+			return true
+		}
+	}
+	return false
+}
+
+func toolApprovalMessage(policy *store.ToolApprovalState, tool string) string {
+	if policy != nil && strings.TrimSpace(policy.Message) != "" {
+		return strings.ReplaceAll(policy.Message, "${tool}", tool)
+	}
+	return fmt.Sprintf("Allow tool %s?", tool)
+}
+
+func toolDecisionTerminal(status string) bool {
+	switch status {
+	case "allowed", "denied", "cancelled", "running", "completed", "failed", "cancel_requested":
+		return true
+	default:
+		return false
+	}
+}
+
+func cloneToolCall(value *store.ToolCallState) *store.ToolCallState {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	clone.Input = append(json.RawMessage(nil), value.Input...)
+	clone.Output = append(json.RawMessage(nil), value.Output...)
+	return &clone
+}
+
+func secureExternalArtifactPath(value, workspace, artifactRoot string) (string, error) {
+	candidate := value
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(workspace, candidate)
+	}
+	abs, err := filepath.Abs(candidate)
+	if err != nil {
+		return "", err
+	}
+	resolved := filepath.Clean(abs)
+	if evaluated, evalErr := filepath.EvalSymlinks(resolved); evalErr == nil {
+		resolved = evaluated
+	}
+	for _, root := range []string{workspace, artifactRoot} {
+		rootAbs, rootErr := filepath.Abs(root)
+		if rootErr != nil {
+			continue
+		}
+		if evaluated, evalErr := filepath.EvalSymlinks(rootAbs); evalErr == nil {
+			rootAbs = evaluated
+		}
+		rel, relErr := filepath.Rel(rootAbs, resolved)
+		if relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return resolved, nil
+		}
+	}
+	return "", fmt.Errorf("artifact path %q is outside execution workspace and Run artifacts", value)
+}
+
+func copyControlFile(source, destination string) error {
+	input, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	output, err := os.OpenFile(destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	ok := false
+	defer func() {
+		_ = output.Close()
+		if !ok {
+			_ = os.Remove(destination)
+		}
+	}()
+	if _, err := io.Copy(output, input); err != nil {
+		return err
+	}
+	if err := output.Sync(); err != nil {
+		return err
+	}
+	if err := output.Close(); err != nil {
+		return err
+	}
+	ok = true
+	return nil
+}
+
+func safeControlPart(value string) string {
+	var b strings.Builder
+	for _, r := range value {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	if b.Len() == 0 {
+		return "artifact"
+	}
+	return b.String()
+}
+
+func appendControlArtifact(values []store.ArtifactRef, artifact store.ArtifactRef) []store.ArtifactRef {
+	for i := range values {
+		if values[i].ID == artifact.ID && values[i].ProducerRunID == artifact.ProducerRunID {
+			values[i] = artifact
+			return values
+		}
+	}
+	return append(values, artifact)
 }

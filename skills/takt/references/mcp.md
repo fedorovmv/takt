@@ -12,7 +12,9 @@ takt mcp --workspace . --config .takt/config.yaml
 - `takt.run.start`, `takt.run.get`, `takt.run.resume`;
 - `takt.run.answer`, `takt.run.cancel`;
 - `takt.run.children`, `takt.run.artifacts`, `takt.run.events`;
-- `takt.node.pending`, `takt.node.claim`, `takt.node.event`, `takt.node.complete`, `takt.node.fail`.
+- `takt.node.pending`, `takt.node.claim`, `takt.node.event`;
+- `takt.node.tool.request`, `takt.node.tool.decide`, `takt.node.tool.start`, `takt.node.tool.complete`, `takt.node.tool.get`, `takt.node.tool.cancel`;
+- `takt.node.artifact.declare`, `takt.node.complete`, `takt.node.fail`.
 
 `run.start` detached по умолчанию. Сохрани `run_id`, затем читай `run.get` и `run.events`. Для инкрементального чтения передавай `after_revision` из `next_revision`; `wait_ms` ограничен 30000.
 
@@ -24,4 +26,9 @@ MCP-процесс локальный и доверенный. Не публик
 
 ## Внешний executor узла
 
-Для `command`/`prompt` с `executor: external` агент должен: найти задачу через `takt.node.pending`, заявить её через `takt.node.claim` с фактическими capabilities, передавать tool/usage/diagnostic события через `takt.node.event`, затем вызвать `takt.node.complete` или `takt.node.fail`. Claim token является секретом текущего lease и не должен попадать в сообщения или артефакты.
+Для `command`/`prompt` с `executor: external` агент должен: найти задачу через `takt.node.pending`, заявить её через `takt.node.claim` с фактической capability declaration, передавать message/usage/diagnostic через `takt.node.event`, а инструменты выполнять только через `takt.node.tool.request → decide → start → complete`. Созданный инструментом файл регистрируется через `takt.node.artifact.declare`; затем вызывается `takt.node.complete` или `takt.node.fail`. Claim token является секретом текущего lease и не должен попадать в сообщения или артефакты.
+
+
+## Tool approval
+
+При `tool_approval.mode: required` запрос инструмента блокируется до `takt.node.tool.decide`. Policy применяется раньше approval: запрещённый инструмент сразу получает `denied`. Внешний узел нельзя завершить, пока все tool calls не перешли в `completed`, `failed`, `denied` или `cancelled`.

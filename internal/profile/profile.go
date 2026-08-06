@@ -21,13 +21,14 @@ type Metadata struct {
 }
 
 type Manifest struct {
-	APIVersion string            `json:"apiVersion"`
-	Kind       string            `json:"kind"`
-	Metadata   Metadata          `json:"metadata"`
-	Workflow   string            `json:"workflow"`
-	Workflows  map[string]string `json:"workflows,omitempty"`
-	Config     string            `json:"config"`
-	Input      InputSpec         `json:"input,omitempty"`
+	APIVersion string               `json:"apiVersion"`
+	Kind       string               `json:"kind"`
+	Metadata   Metadata             `json:"metadata"`
+	Workflow   string               `json:"workflow"`
+	Workflows  map[string]string    `json:"workflows,omitempty"`
+	Config     string               `json:"config"`
+	Input      InputSpec            `json:"input,omitempty"`
+	Inputs     map[string]InputSpec `json:"inputs,omitempty"`
 }
 
 type InputSpec struct {
@@ -172,6 +173,14 @@ func Load(path string) (*Resolved, error) {
 			return nil, fmt.Errorf("profile workflow %q path is required", name)
 		}
 	}
+	for name, input := range manifest.Inputs {
+		if _, ok := manifest.Workflows[name]; !ok {
+			return nil, fmt.Errorf("profile input override references unknown workflow %q", name)
+		}
+		if input.Format != "" && input.Format != "text" && input.Format != "markdown" && input.Format != "json" {
+			return nil, fmt.Errorf("profile input %q format must be text, markdown, or json", name)
+		}
+	}
 	dir := filepath.Dir(path)
 	workflowPath, err := secureJoin(dir, manifest.Workflow)
 	if err != nil {
@@ -221,6 +230,18 @@ func secureJoin(base, rel string) (string, error) {
 	return abs, nil
 }
 
+func (r *Resolved) EffectiveInput() InputSpec {
+	if r != nil && r.WorkflowName != "" {
+		if value, ok := r.Manifest.Inputs[r.WorkflowName]; ok {
+			return value
+		}
+	}
+	if r == nil {
+		return InputSpec{}
+	}
+	return r.Manifest.Input
+}
+
 func PrepareInput(spec InputSpec, value string) (string, error) {
 	if value == "" {
 		return "", nil
@@ -228,6 +249,9 @@ func PrepareInput(spec InputSpec, value string) (string, error) {
 	b, err := os.ReadFile(value)
 	if err != nil {
 		return value, nil
+	}
+	if spec.Format == "json" {
+		return string(b), nil
 	}
 	if spec.Format == "markdown" && spec.PreservePath {
 		abs, err := filepath.Abs(value)

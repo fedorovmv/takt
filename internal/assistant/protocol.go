@@ -11,7 +11,29 @@ import (
 	"takt/internal/spec"
 )
 
-const ProtocolV1Alpha1 = "takt-assistant/v1alpha1"
+const (
+	ProtocolV1Alpha1 = "takt-assistant/v1alpha1"
+	ProtocolV1Alpha2 = "takt-assistant/v1alpha2"
+)
+
+// ProtocolStreamMessage is one NDJSON record in v1alpha2. The process receives
+// a ProtocolRequest first, then may emit capabilities, normalized events,
+// blocking tool requests and exactly one final result.
+type ProtocolStreamMessage struct {
+	ProtocolVersion string                 `json:"protocol_version"`
+	Type            string                 `json:"type"`
+	Declaration     *CapabilityDeclaration `json:"declaration,omitempty"`
+	Event           *Event                 `json:"event,omitempty"`
+	ToolRequest     *ToolRequest           `json:"tool_request,omitempty"`
+	Result          *ProtocolResult        `json:"result,omitempty"`
+}
+
+type ProtocolToolDecisionMessage struct {
+	ProtocolVersion string       `json:"protocol_version"`
+	Type            string       `json:"type"`
+	CallID          string       `json:"call_id"`
+	Decision        ToolDecision `json:"decision"`
+}
 
 type ProtocolModel struct {
 	Name     string         `json:"name"`
@@ -138,47 +160,54 @@ func decodeProtocolResult(src []byte, requestedSession ProtocolSessionRequest) (
 		}
 		return ProtocolResult{}, fmt.Errorf("decode assistant result trailing data: %w", err)
 	}
-	if result.ProtocolVersion != ProtocolV1Alpha1 {
-		return ProtocolResult{}, fmt.Errorf("unsupported protocol_version %q", result.ProtocolVersion)
+	if err := validateProtocolResult(result, requestedSession, ProtocolV1Alpha1); err != nil {
+		return ProtocolResult{}, err
+	}
+	return result, nil
+}
+
+func validateProtocolResult(result ProtocolResult, requestedSession ProtocolSessionRequest, expectedVersion string) error {
+	if result.ProtocolVersion != expectedVersion {
+		return fmt.Errorf("unsupported protocol_version %q", result.ProtocolVersion)
 	}
 	if result.Type != "result" {
-		return ProtocolResult{}, fmt.Errorf("assistant result type must be %q", "result")
+		return fmt.Errorf("assistant result type must be %q", "result")
 	}
 	if result.Status != "completed" && result.Status != "failed" {
-		return ProtocolResult{}, fmt.Errorf("assistant result status must be completed or failed")
+		return fmt.Errorf("assistant result status must be completed or failed")
 	}
 	if result.ExitCode == nil {
-		return ProtocolResult{}, fmt.Errorf("assistant result requires exit_code")
+		return fmt.Errorf("assistant result requires exit_code")
 	}
 	if result.Status == "completed" && *result.ExitCode != 0 {
-		return ProtocolResult{}, fmt.Errorf("completed assistant result cannot have exit_code %d", *result.ExitCode)
+		return fmt.Errorf("completed assistant result cannot have exit_code %d", *result.ExitCode)
 	}
 	if result.Status == "failed" && *result.ExitCode == 0 {
-		return ProtocolResult{}, fmt.Errorf("failed assistant result cannot have exit_code 0")
+		return fmt.Errorf("failed assistant result cannot have exit_code 0")
 	}
 	if result.Usage != nil {
 		if result.Usage.InputTokens < 0 {
-			return ProtocolResult{}, fmt.Errorf("assistant result usage.input_tokens cannot be negative")
+			return fmt.Errorf("assistant result usage.input_tokens cannot be negative")
 		}
 		if result.Usage.OutputTokens < 0 {
-			return ProtocolResult{}, fmt.Errorf("assistant result usage.output_tokens cannot be negative")
+			return fmt.Errorf("assistant result usage.output_tokens cannot be negative")
 		}
 		if result.Usage.Cost < 0 {
-			return ProtocolResult{}, fmt.Errorf("assistant result usage.cost cannot be negative")
+			return fmt.Errorf("assistant result usage.cost cannot be negative")
 		}
 	}
 	if requestedSession.Mode == "resume" {
 		if result.Session == nil || !result.Session.Resumed {
-			return ProtocolResult{}, fmt.Errorf("assistant did not resume requested session %q", requestedSession.ID)
+			return fmt.Errorf("assistant did not resume requested session %q", requestedSession.ID)
 		}
 		if requestedSession.ID != "" && result.Session.ID != requestedSession.ID {
-			return ProtocolResult{}, fmt.Errorf("assistant resumed unexpected session %q instead of %q", result.Session.ID, requestedSession.ID)
+			return fmt.Errorf("assistant resumed unexpected session %q instead of %q", result.Session.ID, requestedSession.ID)
 		}
 	}
 	if requestedSession.Mode == "fresh" && result.Session != nil && result.Session.Resumed {
-		return ProtocolResult{}, fmt.Errorf("assistant reported resumed=true for a fresh session")
+		return fmt.Errorf("assistant reported resumed=true for a fresh session")
 	}
-	return result, nil
+	return nil
 }
 
 func protocolPolicy(value Policy) *Policy {

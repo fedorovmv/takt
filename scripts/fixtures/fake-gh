@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+state_dir="${FAKE_GH_STATE_DIR:?FAKE_GH_STATE_DIR is required}"
+mkdir -p "$state_dir"
+case "${1:-} ${2:-}" in
+  "issue view")
+    printf '%s\n' '{"number":1,"title":"Fix fixture behavior","body":"The fixture must update app.txt","state":"OPEN","labels":[{"name":"bug"}]}'
+    ;;
+  "pr view")
+    printf '%s\n' '{"number":1,"title":"Fixture PR","state":"OPEN","baseRefName":"main","headRefName":"fixture-head"}'
+    ;;
+  "pr list")
+    printf '%s\n' '[]'
+    ;;
+  "pr create")
+    count_file="$state_dir/pr-count"
+    count=0
+    [ ! -f "$count_file" ] || count="$(cat "$count_file")"
+    count=$((count+1))
+    printf '%s' "$count" > "$count_file"
+    printf 'https://example.test/acme/repo/pull/%s\n' "$count"
+    ;;
+  "repo view")
+    printf '%s\n' '{"nameWithOwner":"acme/repo"}'
+    ;;
+  *)
+    printf 'unsupported fake gh command:' >&2
+    printf ' %q' "$@" >&2
+    printf '\n' >&2
+    exit 2
+    ;;
+esac

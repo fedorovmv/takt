@@ -90,7 +90,10 @@
       ],
       "properties": {
         "protocol_version": {
-          "const": "takt-assistant/v1alpha1"
+          "enum": [
+            "takt-assistant/v1alpha1",
+            "takt-assistant/v1alpha2"
+          ]
         },
         "type": {
           "const": "request"
@@ -162,7 +165,10 @@
       ],
       "properties": {
         "protocol_version": {
-          "const": "takt-assistant/v1alpha1"
+          "enum": [
+            "takt-assistant/v1alpha1",
+            "takt-assistant/v1alpha2"
+          ]
         },
         "type": {
           "const": "result"
@@ -284,6 +290,228 @@
           "uniqueItems": true
         }
       }
+    },
+    "capabilityDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "takt-agent-events/v2"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "session.started",
+              "session.resumed",
+              "message",
+              "tool.requested",
+              "tool.allowed",
+              "tool.denied",
+              "tool.started",
+              "tool.completed",
+              "artifact.declared",
+              "usage",
+              "diagnostic",
+              "completed",
+              "failed"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "session_events": {
+          "type": "boolean"
+        },
+        "tool_events": {
+          "type": "boolean"
+        },
+        "tool_control": {
+          "type": "boolean"
+        },
+        "artifact_events": {
+          "type": "boolean"
+        },
+        "usage_events": {
+          "type": "boolean"
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "session.started",
+            "session.resumed",
+            "message",
+            "tool.requested",
+            "tool.allowed",
+            "tool.denied",
+            "tool.started",
+            "tool.completed",
+            "artifact.declared",
+            "usage",
+            "diagnostic",
+            "completed",
+            "failed"
+          ]
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "message": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "call_id": {
+          "type": "string"
+        },
+        "input": {},
+        "output": {},
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "artifact": {
+          "type": "object"
+        },
+        "decision": {
+          "enum": [
+            "allow",
+            "deny",
+            "cancel"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      }
+    },
+    "toolRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "call_id",
+        "tool"
+      ],
+      "properties": {
+        "call_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {},
+        "message": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      }
+    },
+    "toolDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision"
+      ],
+      "properties": {
+        "decision": {
+          "enum": [
+            "allow",
+            "deny"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "streamMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol_version",
+        "type"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "takt-assistant/v1alpha2"
+        },
+        "type": {
+          "enum": [
+            "capabilities",
+            "event",
+            "tool.request",
+            "result"
+          ]
+        },
+        "declaration": {
+          "$ref": "#/$defs/capabilityDeclaration"
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        },
+        "tool_request": {
+          "$ref": "#/$defs/toolRequest"
+        },
+        "result": {
+          "$ref": "#/$defs/result"
+        }
+      }
+    },
+    "toolDecisionMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol_version",
+        "type",
+        "call_id",
+        "decision"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "takt-assistant/v1alpha2"
+        },
+        "type": {
+          "const": "tool.decision"
+        },
+        "call_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision": {
+          "$ref": "#/$defs/toolDecision"
+        }
+      }
     }
   },
   "oneOf": [
@@ -292,6 +520,12 @@
     },
     {
       "$ref": "#/$defs/result"
+    },
+    {
+      "$ref": "#/$defs/streamMessage"
+    },
+    {
+      "$ref": "#/$defs/toolDecisionMessage"
     }
   ]
 }

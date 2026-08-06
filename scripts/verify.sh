@@ -9,6 +9,7 @@ go build -o bin/takt ./cmd/takt
 go build -o bin/takt-fake-assistant ./cmd/takt-fake-assistant
 go build -o bin/takt-fake-pi ./cmd/takt-fake-pi
 go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
+go build -o bin/takt-fake-code-agent ./cmd/takt-fake-code-agent
 ./scripts/test-fake-assistant.sh
 ./scripts/test-pi-adapter.sh
 ./scripts/test-opencode-adapter.sh
@@ -24,6 +25,7 @@ go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
 ./scripts/test-script-artifacts.sh
 ./scripts/test-mcp.sh
 ./scripts/test-external-executor.sh
+./scripts/test-deep-code-workflows.sh
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \

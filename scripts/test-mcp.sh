@@ -49,7 +49,10 @@ assert [tool["name"] for tool in tools] == [
     "takt.workflow.list", "takt.workflow.describe", "takt.run.start", "takt.run.get",
     "takt.run.resume", "takt.run.answer", "takt.run.cancel", "takt.run.children",
     "takt.run.artifacts", "takt.run.events", "takt.node.pending", "takt.node.claim",
-    "takt.node.event", "takt.node.complete", "takt.node.fail",
+    "takt.node.event", "takt.node.tool.request", "takt.node.tool.decide",
+    "takt.node.tool.start", "takt.node.tool.complete", "takt.node.tool.get",
+    "takt.node.tool.cancel", "takt.node.artifact.declare", "takt.node.complete",
+    "takt.node.fail",
 ]
 call = responses[4]["result"]
 assert call["isError"] is False, call

@@ -289,3 +289,33 @@ Runtime `command|python|node|go`, source/dependency fingerprints, structured out
 - normalized assistant/tool events;
 - durable external executor одного command/prompt узла через MCP claim/lease/token;
 - устранение известных fan-out и static composition gaps.
+
+
+## Завершено в v0.1.32-alpha
+
+### TAKT-030. Controlled agent event protocol — выполнено
+
+- session started/resumed;
+- tool requested/allowed/denied/started/completed;
+- blocking policy/approval и отмена отдельного tool call;
+- artifact declaration с `call_id`;
+- usage/diagnostic/terminal events;
+- capability declaration и process protocol v1alpha2;
+- MCP worker plane из 22 инструментов.
+
+### TAKT-031. Deep core workflows — выполнено
+
+- строгие JSON-входы для шести основных процессов;
+- специализированные команды и обязательные checkpoint artifacts;
+- domain error codes;
+- Git decision trees;
+- validation/recovery/revalidation;
+- настоящий локальный Git repository, bare remote, fake `gh`;
+- успешный и recovery E2E.
+
+## Активные крупные направления после v0.1.32-alpha
+
+1. Authoring diagnostics, capability validate, output-reference analysis, strict renderer, `always_run`, `idle_timeout`.
+2. Опциональный локальный `takt daemon` на файловом Store.
+3. Runtime security hardening и secret protection.
+4. Реальный Route DSL benchmark.

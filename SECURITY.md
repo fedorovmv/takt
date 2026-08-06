@@ -2,7 +2,7 @@
 
 ## Supported trust model
 
-Takt `v0.1.31-alpha` is a local, single-user, trusted runtime.
+Takt `v0.1.32-alpha` is a local, single-user, trusted runtime.
 
 Trusted inputs:
 
@@ -92,3 +92,11 @@ A future server or untrusted mode requires at minimum:
 `takt mcp` предоставляет тем же локальным полномочиям структурированный интерфейс запуска, approval, cancellation и чтения state/events/artifacts. Он не содержит аутентификации и не является сетевой security boundary. Запускай его только как stdio child process доверенного coding-agent host того же пользователя.
 
 Tool arguments считаются доверенными локальными запросами, но декодируются строго. Artifact content ограничивается по размеру; это ограничение защищает transport от случайного большого ответа, но не выполняет redaction. Содержимое state, events, stdout/stderr и artifacts может включать секреты согласно общему trust model.
+
+## Управляемые tool calls внешнего executor
+
+`tool_approval` и `tool_control` являются сохраняемым управляющим контрактом, но действуют только для adapter, который способен передать запрос до фактического запуска инструмента. OpenCode и Pi в текущих интеграциях публикуют наблюдательные события и не предоставляют этот security boundary.
+
+Claim token внешнего worker является локальным секретом lease. Его нельзя записывать в assistant messages, tool input/output, state-visible diagnostics или artifacts. Controller может отменить отдельный tool call; для уже выполняющегося внешнего действия это cooperative `cancel_requested`, который worker обязан подтвердить terminal-событием. Takt не может принудительно остановить произвольный внешний процесс за пределами своего process group.
+
+Policy/approval не заменяют OS sandbox. Разрешённый tool call всё ещё выполняется с полномочиями внешнего worker и текущего пользователя.

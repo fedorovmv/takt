@@ -2,48 +2,394 @@ apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
   name: plan-to-pr
-  description: Execute an existing plan, validate the implementation, create a PR, run five parallel review perspectives, and self-fix findings.
-worktree:
-  enabled: true
-  cleanup: on_success
-
+  description: Confirm and execute an existing plan with Git safeguards, mandatory evidence, recovery, PR and comprehensive review.
+input:
+  format: json
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      repository:
+        type: string
+      plan_path:
+        type: string
+      base_branch:
+        type: string
+      draft_pr:
+        type: boolean
+      validation_commands:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        uniqueItems: true
+    required:
+      - repository
+      - plan_path
+      - base_branch
+      - draft_pr
+      - validation_commands
 defaults:
   assistant: opencode
   model: implementation
-  session: resume
+  session: fresh
 nodes:
+  - id: git-prepare
+    command: git-prepare
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - GIT_READY
+            - GIT_DIRTY
+            - GIT_BRANCH_MISMATCH
+            - GIT_BASE_MISSING
+            - GIT_REMOTE_MISSING
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: git-state
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/git-state.json
   - id: confirm-plan
-    command: plan-change
+    command: plan-intake
+    depends_on:
+      - git-prepare
+    when: nodes.git-prepare.output.status == "ready"
     model: review
-
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - PLAN_CONFIRMED
+            - PLAN_NOT_FOUND
+            - PLAN_STALE
+            - PLAN_SCOPE_AMBIGUOUS
+            - PLAN_CONTRACT_CONFLICT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: plan-confirmation
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/plan-confirmation.md
   - id: implement
-    depends_on: [confirm-plan]
-    command: implement-change
+    command: plan-implementation
+    depends_on:
+      - git-prepare
+      - confirm-plan
+    when: nodes.confirm-plan.output.status == "ready"
+    session: resume
     attempts:
       max: 3
-    hooks:
-      after_node:
-        - id: validation
-          bash: ./.takt/profiles/code/tools/validate
-          on_failure:
-            action: retry
-            session: resume
-
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - PLAN_IMPLEMENTED
+            - PLAN_IMPLEMENTATION_BLOCKED
+            - PLAN_DEVIATION_REQUIRES_APPROVAL
+            - PLAN_TEST_FAILED
+            - PLAN_CONTRACT_BROKEN
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: implementation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/implementation-report.md
   - id: validate
-    depends_on: [implement]
-    bash: ./.takt/profiles/code/tools/validate
-
+    command: change-validation
+    depends_on:
+      - implement
+    when: nodes.implement.output.status == "ready"
+    model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - VALIDATION_PASSED
+            - VALIDATION_FAILED
+            - VALIDATION_ENVIRONMENT_MISSING
+            - ACCEPTANCE_NOT_PROVEN
+            - DIFF_SCOPE_VIOLATION
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: validation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/validation-report.md
+  - id: recover
+    command: workflow-recovery
+    depends_on:
+      - validate
+    when: nodes.validate.output.status != "ready"
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - RECOVERY_APPLIED
+            - RECOVERY_NOT_POSSIBLE
+            - RECOVERY_REQUIRES_HUMAN
+            - RECOVERY_SCOPE_CONFLICT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: recovery-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/recovery-report.md
+  - id: revalidate
+    command: change-validation
+    depends_on:
+      - recover
+    model: review
+    when: nodes.validate.output.status != "ready"
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - VALIDATION_PASSED
+            - VALIDATION_FAILED
+            - VALIDATION_ENVIRONMENT_MISSING
+            - ACCEPTANCE_NOT_PROVEN
+            - DIFF_SCOPE_VIOLATION
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: validation-report
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/validation-report.md
+  - id: validation-gate
+    depends_on:
+      - validate
+      - recover
+      - revalidate
+    trigger_rule: all_done
+    bash: |
+      if [ "${nodes.validate.output.status}" = "ready" ] || [ "${nodes.revalidate.output.status}" = "ready" ]; then
+        exit 0
+      fi
+      printf 'validation failed: initial=%s recovery=%s revalidate=%s
+      '   '${nodes.validate.output.code}' '${nodes.recover.output.code}' '${nodes.revalidate.output.code}' >&2
+      exit 1
   - id: create-pr
-    depends_on: [validate]
-    command: create-pr
-
+    command: pr-finalize
+    depends_on:
+      - validation-gate
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - PR_READY
+            - PR_GIT_STATE_INVALID
+            - PR_DIFF_SCOPE_VIOLATION
+            - PR_VALIDATION_MISSING
+            - PR_PUSH_FAILED
+            - PR_CREATE_FAILED
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: pr-metadata
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/pr.json
   - id: review
-    depends_on: [create-pr]
+    depends_on:
+      - create-pr
     workflow:
       path: review-block.yaml
       isolation: inherit
-
   - id: summary
-    depends_on: [review]
-    command: summary
+    command: workflow-final-summary
+    depends_on:
+      - review
     model: review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - failed
+        code:
+          type: string
+          enum:
+            - WORKFLOW_COMPLETE
+            - WORKFLOW_INCOMPLETE
+            - EVIDENCE_INCONSISTENT
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          uniqueItems: true
+        artifact_path:
+          type: string
+      required:
+        - status
+        - code
+        - summary
+        - evidence
+        - artifact_path
+    output_type: workflow-summary
+    output_mime: text/markdown
+    output_path: $ARTIFACTS_DIR/summary.md
+worktree:
+  enabled: true
+  cleanup: on_success
