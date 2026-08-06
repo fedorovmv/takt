@@ -53,6 +53,7 @@ assistants:
     capabilities:
       - tool_policy
       - skills
+      - sandbox_filesystem
 CFG
 git -C "$PROJECT" add .takt
 git -C "$PROJECT" commit -m 'add Takt deep workflow profile' >/dev/null

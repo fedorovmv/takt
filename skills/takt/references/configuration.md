@@ -125,6 +125,40 @@ assistants:
 
 Пример нескольких внешних адаптеров находится в `examples/agent-session-adapters/`. Takt не зависит от Kiro CLI и не включает готовые wrappers для каждого стороннего продукта.
 
+
+## Role Contract в trusted BlockPackage
+
+RoleDefinition живёт в пакете Takt, а не в глобальном каталоге agents кодинг-хоста. Роль задаёт `model_profile`, `session`, bounded `context`, path scope и поддерживаемую adapter policy. Блок ссылается на роль и может объявить structured checks:
+
+```yaml
+roles:
+  verifier:
+    model_profile: review
+    session: fresh
+    context:
+      include: [prior_results, signals, scope]
+      max_chars: 42000
+    paths:
+      allowed: ["**"]
+      forbidden: [".git/**", ".takt/**"]
+    policy:
+      sandbox:
+        filesystem: read_only
+
+blocks:
+  review:
+    role: verifier
+    workflow: dynamic-review.yaml
+    output_paths: [summary, approved]
+    checks:
+      - name: independent-review
+        path: approved
+        level: required
+        reaction: repair
+```
+
+`expected` — диагностическая область, `allowed` — допустимая область результата, `protected` требует сохранения усиленной проверки, `forbidden` блокирует результат. Для mutating-role не объявляй вымышленный write sandbox: текущий `sandbox.filesystem` гарантирует только `read_only`; ограниченная запись по путям проверяется Takt по структурированному `changed_files` и будет усилена отдельным OS sandbox в будущем.
+
 ## Приоритет настроек
 
 Для `command` и `prompt`:

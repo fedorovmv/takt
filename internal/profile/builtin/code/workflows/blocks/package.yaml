@@ -2,59 +2,158 @@ apiVersion: takt/v1alpha1
 kind: BlockPackage
 metadata:
   name: code-core
-  version: 0.2.0
+  version: 0.3.0
   scope: builtin
   description: Trusted core blocks for bounded Dynamic Takt engineering plans.
+roles:
+  baseline-observer:
+    purpose: Capture the pre-change state and known failures without modifying project files.
+    model_profile: review
+    session: fresh
+    context:
+      include: [prior_results, signals, scope]
+      max_chars: 32000
+    paths:
+      allowed: ["**"]
+      forbidden: [".git/**", ".takt/**"]
+    policy:
+      sandbox:
+        filesystem: read_only
+  investigator:
+    purpose: Establish evidence and scope without modifying project files.
+    model_profile: implementation
+    session: fresh
+    context:
+      include: [prior_results, signals, scope]
+      max_chars: 32000
+    paths:
+      allowed: ["**"]
+      forbidden: [".git/**", ".takt/**"]
+    policy:
+      sandbox:
+        filesystem: read_only
+  implementer:
+    purpose: Make the smallest complete code change inside the established scope.
+    model_profile: implementation
+    session: fresh
+    context:
+      include: [prior_results, signals, scope]
+      max_chars: 48000
+    paths:
+      allowed: ["**"]
+      protected: ["api/**", "proto/**", "migrations/**", "**/security/**"]
+      forbidden: [".git/**", ".takt/**"]
+  test-designer:
+    purpose: Independently derive and add tests without changing product implementation.
+    model_profile: implementation
+    session: fresh
+    context:
+      include: [prior_results, signals, scope]
+      max_chars: 36000
+    paths:
+      allowed: ["**"]
+      protected: ["api/**", "proto/**", "migrations/**"]
+      forbidden: [".git/**", ".takt/**"]
+  validator:
+    purpose: Execute deterministic checks and classify technical failures independently.
+    model_profile: review
+    session: fresh
+    context:
+      include: [prior_results, signals, scope]
+      max_chars: 40000
+    paths:
+      allowed: ["**"]
+      forbidden: [".git/**", ".takt/**"]
+    policy:
+      sandbox:
+        filesystem: read_only
+  verifier:
+    purpose: Independently judge correctness and regressions from the task, diff and evidence.
+    model_profile: review
+    session: fresh
+    context:
+      include: [prior_results, signals, scope]
+      max_chars: 42000
+    paths:
+      allowed: ["**"]
+      forbidden: [".git/**", ".takt/**"]
+    policy:
+      sandbox:
+        filesystem: read_only
 blocks:
   baseline:
+    role: baseline-observer
     workflow: dynamic-baseline.yaml
     description: Capture the pre-change repository baseline and known failures without modifying the workspace.
     capabilities: [repository.read, shell]
     integrations: [filesystem, git]
     output_paths: [summary, base_ref, passed_checks, known_failures, unavailable_checks, evidence]
   test-design:
+    role: test-designer
     workflow: dynamic-test-design.yaml
     description: Independently design and add regression or contract tests from requested behavior.
     capabilities: [repository.read, repository.write, shell]
     integrations: [filesystem, git]
     output_paths: [summary, changed_files, tests, assumptions]
   discover:
+    role: investigator
     workflow: dynamic-discover.yaml
     description: Inventory files, services, handlers, APIs, or other affected units.
     capabilities: [repository.read]
     integrations: [filesystem]
     output_paths: [summary, items]
   investigate:
+    role: investigator
     workflow: dynamic-investigate.yaml
     description: Investigate one scope or item and return evidence-backed findings.
     capabilities: [repository.read]
     integrations: [filesystem]
     output_paths: [summary, findings, evidence]
   implement:
+    role: implementer
     workflow: dynamic-implement.yaml
     description: Modify code for a bounded objective and report changed files and tests.
     capabilities: [repository.read, repository.write, shell]
     integrations: [filesystem, git]
     output_paths: [summary, changed_files, tests]
   validate:
+    role: validator
     workflow: dynamic-validate.yaml
     description: Run deterministic validation and report checks and issues.
     capabilities: [repository.read, shell]
     integrations: [filesystem, ci]
     output_paths: [summary, passed, checks, issues]
+    checks:
+      - name: deterministic-validation
+        path: passed
+        level: required
+        reaction: repair
   review:
+    role: verifier
     workflow: dynamic-review.yaml
     description: Review completed work and return findings with evidence.
     capabilities: [repository.read]
     integrations: [filesystem]
     output_paths: [summary, approved, findings, evidence]
+    checks:
+      - name: independent-review
+        path: approved
+        level: required
+        reaction: repair
   adversarial-verify:
+    role: verifier
     workflow: dynamic-adversarial-verify.yaml
     description: Independently challenge findings or completed changes.
     capabilities: [repository.read]
     integrations: [filesystem]
     output_paths: [summary, approved, findings, evidence]
+    checks:
+      - name: adversarial-review
+        path: approved
+        level: preferred
+        reaction: warn
   synthesize:
+    role: verifier
     workflow: dynamic-synthesize.yaml
     description: Combine results into a final summary and next actions.
     capabilities: [repository.read]

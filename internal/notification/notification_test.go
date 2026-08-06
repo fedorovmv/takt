@@ -3,6 +3,7 @@ package notification
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,8 +14,20 @@ func TestDispatchDeduplicatesAndAcknowledgesInbox(t *testing.T) {
 	workspace := t.TempDir()
 	dispatcher := Dispatcher{Workspace: workspace}
 	now := time.Now().UTC()
-	state := &store.RunState{ID: "run-notify-complete", Status: store.RunCompleted, WorkflowPath: filepath.Join(workspace, "workflow.yaml"), ConfigPath: filepath.Join(workspace, "config.yaml"), Workspace: workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now}
-	if err := (store.FS{Workspace: workspace}).Save(state); err != nil {
+	state := &store.RunState{ID: "run-notify-complete", Status: store.RunRunning, WorkflowPath: filepath.Join(workspace, "workflow.yaml"), ConfigPath: filepath.Join(workspace, "config.yaml"), Workspace: workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now}
+	st := store.FS{Workspace: workspace}
+	if err := st.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	baseline, err := dispatcher.Dispatch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(baseline) != 0 {
+		t.Fatalf("initial dispatch must establish baseline: %#v", baseline)
+	}
+	state.Status = store.RunCompleted
+	if err := st.Commit(state, store.Event{Type: "test.completed"}); err != nil {
 		t.Fatal(err)
 	}
 	first, err := dispatcher.Dispatch()
@@ -58,9 +71,19 @@ func TestAttentionNotificationIsEmittedOncePerReason(t *testing.T) {
 	workspace := t.TempDir()
 	dispatcher := Dispatcher{Workspace: workspace}
 	now := time.Now().UTC()
-	state := &store.RunState{ID: "run-notify-wait", Status: store.RunWaiting, WorkflowPath: filepath.Join(workspace, "workflow.yaml"), ConfigPath: filepath.Join(workspace, "config.yaml"), Workspace: workspace, Nodes: map[string]*store.NodeState{"approve": {Status: store.NodeWaiting}}, Approvals: map[string]string{}, Waiting: &store.WaitingState{NodeID: "approve", Kind: "approval", Message: "Approve plan"}, CreatedAt: now, UpdatedAt: now}
+	state := &store.RunState{ID: "run-notify-wait", Status: store.RunRunning, WorkflowPath: filepath.Join(workspace, "workflow.yaml"), ConfigPath: filepath.Join(workspace, "config.yaml"), Workspace: workspace, Nodes: map[string]*store.NodeState{"approve": {Status: store.NodePending}}, Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now}
 	st := store.FS{Workspace: workspace}
 	if err := st.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	if items, err := dispatcher.Dispatch(); err != nil || len(items) != 0 {
+		t.Fatalf("initial baseline = %#v, %v", items, err)
+	}
+
+	state.Status = store.RunWaiting
+	state.Nodes["approve"].Status = store.NodeWaiting
+	state.Waiting = &store.WaitingState{NodeID: "approve", Kind: "approval", Message: "Approve plan"}
+	if err := st.Commit(state, store.Event{Type: "approval.requested", NodeID: "approve"}); err != nil {
 		t.Fatal(err)
 	}
 	items, err := dispatcher.Dispatch()
@@ -70,17 +93,46 @@ func TestAttentionNotificationIsEmittedOncePerReason(t *testing.T) {
 	if len(items) != 1 || items[0].Event != "approval.required" || items[0].Reason != "approval" {
 		t.Fatalf("attention notification = %#v", items)
 	}
-	state.Waiting.Kind = "question"
-	state.Waiting.Message = "Choose target"
-	if err := st.Save(state); err != nil {
+	if items, err = dispatcher.Dispatch(); err != nil || len(items) != 0 {
+		t.Fatalf("unchanged attention redelivered = %#v, %v", items, err)
+	}
+
+	// Resolve and enter the same approval again. Revision is part of the key, so
+	// a loop iteration cannot silently reuse the old notification.
+	state.Status = store.RunRunning
+	state.Waiting = nil
+	state.Nodes["approve"].Status = store.NodeRunning
+	if err := st.Commit(state, store.Event{Type: "approval.answered", NodeID: "approve"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dispatcher.Dispatch(); err != nil {
+		t.Fatal(err)
+	}
+	state.Status = store.RunWaiting
+	state.Nodes["approve"].Status = store.NodeWaiting
+	state.Waiting = &store.WaitingState{NodeID: "approve", Kind: "approval", Message: "Approve again"}
+	if err := st.Commit(state, store.Event{Type: "approval.requested", NodeID: "approve"}); err != nil {
 		t.Fatal(err)
 	}
 	items, err = dispatcher.Dispatch()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 1 || items[0].Reason != "question" {
-		t.Fatalf("changed attention reason = %#v", items)
+	if len(items) != 1 || items[0].Event != "approval.required" {
+		t.Fatalf("repeated approval was lost = %#v", items)
+	}
+
+	state.Waiting.Kind = "question"
+	state.Waiting.Message = "Choose target"
+	if err := st.Commit(state, store.Event{Type: "question.requested", NodeID: "approve"}); err != nil {
+		t.Fatal(err)
+	}
+	items, err = dispatcher.Dispatch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Event != "question.required" || items[0].Reason != "question" {
+		t.Fatalf("question attention = %#v", items)
 	}
 }
 
@@ -136,5 +188,34 @@ func TestRecoveryEmitsWorkerLostNotification(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Event != "worker.lost" || items[0].Command == "" {
 		t.Fatalf("worker lost notification = %#v", items)
+	}
+}
+
+func TestProcessSinkTimeoutDoesNotHangDispatcher(t *testing.T) {
+	workspace := t.TempDir()
+	config := `apiVersion: takt/v1alpha1
+kind: NotificationConfig
+sinks:
+  - type: process
+    command: /bin/sh
+    args: [-c, "sleep 5"]
+    timeout: 1s
+`
+	if err := os.MkdirAll(filepath.Join(workspace, ".takt"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".takt", "notifications.yaml"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	item, err := (Dispatcher{Workspace: workspace}).Test("timeout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("notification sink blocked for %s", elapsed)
+	}
+	if got := item.Deliveries["process:0"]; !strings.HasPrefix(got, "failed:") {
+		t.Fatalf("delivery = %q", got)
 	}
 }

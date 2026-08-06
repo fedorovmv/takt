@@ -33,6 +33,8 @@ assistants:
   fixture:
     type: process
     argv: [$ROOT/bin/takt-fake-code-agent]
+    env:
+      FAKE_DYNAMIC_VALIDATE_FAIL_ONCE_FILE: $TMP/project/.takt/plans/.dynamic-validation-fail-once
     capabilities: [tool_policy, skills, mcp, sandbox_filesystem]
 CFG
 git -C "$TMP/project" add .takt/config.yaml
@@ -80,6 +82,36 @@ assert value['route']['route']=='template', value
 controls=value['route']['controls']
 assert controls['baseline'] and controls['independent_tests'] and controls['enhanced_review'], value
 assert value['status']=='completed', value
+PY
+
+touch "$TMP/project/.takt/plans/.dynamic-validation-fail-once"
+"$ROOT/bin/takt" task start 'Implement change with recoverable validation failure' --go \
+  --workspace "$TMP/project" --json > "$TMP/repair.json"
+REPAIR_PLAN_ID="$(python3 - "$TMP/repair.json" <<'PY'
+import json,sys
+value=json.load(open(sys.argv[1]))['result']
+assert value['status']=='completed', value
+print(value['plan_id'])
+PY
+)"
+"$ROOT/bin/takt" task explain "$REPAIR_PLAN_ID" --workspace "$TMP/project" --json > "$TMP/repair-explain.json"
+python3 - "$TMP/repair-explain.json" "$TMP/project" <<'PY'
+import json,sys,pathlib
+value=json.load(open(sys.argv[1]))['result']
+record=value['plan']['record']
+assert record['repair_attempts'].get('validate:deterministic-validation') == 1, record
+checks=record['check_results']
+validation=[c for c in checks if c['name']=='deterministic-validation']
+assert [c['passed'] for c in validation] == [False, True], validation
+assert value['status']=='completed', value
+runs=record['execution_run_ids']
+assert len(runs) >= 2, runs
+workspace=record.get('execution_workspace')
+assert workspace, record
+states=[json.load(open(pathlib.Path(sys.argv[2])/'.takt'/'runs'/rid/'state.json')) for rid in runs]
+assert states[0].get('worktree',{}).get('enabled') is True, states[0]
+assert states[-1].get('execution_workspace') == workspace, (workspace, states[-1])
+assert states[-1].get('worktree') in (None, {}), states[-1]
 PY
 
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \

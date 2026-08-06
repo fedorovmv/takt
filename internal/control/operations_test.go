@@ -437,3 +437,270 @@ nodes:
 		t.Fatalf("abandon marker = %v %q", abandoned, reason)
 	}
 }
+
+func TestResumePausedRejectsNonPausedWithoutClearingMarker(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, workflowPath, "apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: marker-preserve\nnodes:\n  - id: x\n    bash: sleep 1\n")
+	now := time.Now().UTC()
+	state := &store.RunState{ID: "run-marker-preserve", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"x": {Status: store.NodeRunning}}, Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now}
+	st := store.FS{Workspace: workspace}
+	if err := st.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RequestPause(state.ID); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ResumePaused(context.Background(), state.ID, false); err == nil {
+		t.Fatal("resume of a non-paused run unexpectedly succeeded")
+	}
+	requested, err := st.PauseRequested(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !requested {
+		t.Fatal("mistaken resume destroyed durable pause marker")
+	}
+}
+
+func TestPausedParentWaitingForChildStaysPausedAfterChildAnswer(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	childPath := filepath.Join(workspace, "child.yaml")
+	parentPath := filepath.Join(workspace, "parent.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: approval-child
+nodes:
+  - id: approve
+    approval:
+      message: Continue child?
+`)
+	writeControlFile(t, parentPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: approval-parent
+nodes:
+  - id: delegated
+    workflow:
+      path: child.yaml
+      isolation: inherit
+`)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.Start(context.Background(), StartRequest{Selector: parentPath, ConfigPath: configPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := service.GetRun(started.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parent.Status != store.RunWaiting || parent.Waiting == nil || parent.Waiting.Kind != "child_run" || len(parent.ChildRunIDs) != 1 {
+		t.Fatalf("unexpected parent waiting state: %#v", parent)
+	}
+	childID := parent.ChildRunIDs[0]
+	child, err := service.GetRun(childID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Waiting == nil {
+		t.Fatalf("child is not waiting: %#v", child)
+	}
+	if _, err := service.Pause(parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	paused := waitRunStatus(t, service, parent.ID, store.RunPaused, 2*time.Second)
+	if paused.PausedFrom != store.RunWaiting {
+		t.Fatalf("paused_from=%q", paused.PausedFrom)
+	}
+	if _, err := service.Answer(context.Background(), childID, "approve", "yes"); err != nil {
+		t.Fatal(err)
+	}
+	stillPaused, err := service.GetRun(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stillPaused.Status != store.RunPaused || stillPaused.Waiting == nil || stillPaused.Waiting.Kind != "child_run" {
+		t.Fatalf("answer implicitly resumed paused parent: %#v", stillPaused)
+	}
+	if _, err := service.ResumePaused(context.Background(), parent.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	waitRunStatus(t, service, parent.ID, store.RunCompleted, 2*time.Second)
+}
+
+func TestPauseRecheckedBeforeSequentialExternalNodeInSameWave(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+models:
+  demo:
+    provider: test
+    id: demo
+assistants:
+  worker:
+    type: mock
+`)
+	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: pause-same-wave
+nodes:
+  - id: first
+    bash: sleep 0.35
+    attempts:
+      max: 2
+  - id: delegated
+    prompt: do not publish after pause
+    executor: external
+    assistant: worker
+    model: demo
+`)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Detached: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(80 * time.Millisecond)
+	if _, err := service.Pause(started.RunID); err != nil {
+		t.Fatal(err)
+	}
+	state := waitRunStatus(t, service, started.RunID, store.RunPaused, 3*time.Second)
+	if state.Nodes["first"].Status != store.NodeCompleted {
+		t.Fatalf("first=%#v", state.Nodes["first"])
+	}
+	delegated := state.Nodes["delegated"]
+	if delegated == nil || delegated.Status != store.NodePending || delegated.External != nil {
+		t.Fatalf("external node became claimable after pause: %#v", delegated)
+	}
+}
+
+func TestForegroundRecoveryPreservesOperatorPause(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: recover-pausing
+nodes:
+  - id: build
+    bash: "true"
+`)
+	now := time.Now().UTC()
+	state := &store.RunState{ID: "run-recover-pausing", Status: store.RunPausing, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"build": {Status: store.NodeRunning, Attempts: 1}}, Approvals: map[string]string{}, CurrentNode: "build", CurrentNodes: []string{"build"}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now}
+	st := store.FS{Workspace: workspace}
+	if err := st.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RequestPause(state.ID); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.RecoverInterruptedRunsForeground(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Recovered) != 1 || result.Recovered[0] != state.ID {
+		t.Fatalf("result=%#v", result)
+	}
+	paused, err := service.GetRun(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paused.Status != store.RunPaused {
+		t.Fatalf("recovery lost pause: %#v", paused)
+	}
+}
+
+func TestRetryCancelledStartsAtFirstIncompleteAndPreservesExecutionHistory(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: retry-cancelled
+nodes:
+  - id: done
+    bash: "true"
+  - id: pending
+    depends_on: [done]
+    bash: "true"
+`)
+	now := time.Now().UTC()
+	oldExec := store.ExecutionState{Attempt: 1, Status: store.NodeFailed, Error: "old failure", ErrorCode: "old"}
+	state := &store.RunState{ID: "run-retry-cancelled", Status: store.RunCancelled, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"done": {Status: store.NodeCompleted, Attempts: 1, Output: "kept"}, "pending": {Status: store.NodeCancelled, Attempts: 1, Error: "cancelled", Executions: []store.ExecutionState{oldExec}}}, Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now}
+	st := store.FS{Workspace: workspace}
+	if err := st.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Retry(context.Background(), RetryRequest{RunID: state.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != store.RunCompleted {
+		t.Fatalf("result=%#v", result)
+	}
+	if result.Nodes["done"].Attempts != 1 || result.Nodes["done"].Output != "kept" {
+		t.Fatalf("completed branch reran: %#v", result.Nodes["done"])
+	}
+	if len(result.Nodes["pending"].Executions) < 2 || result.Nodes["pending"].Executions[0] != oldExec {
+		t.Fatalf("execution history was lost: %#v", result.Nodes["pending"].Executions)
+	}
+}
+
+func TestForkPersistsSourceFingerprintAndProvenance(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, workflowPath, "apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: fork-source\nnodes:\n  - id: x\n    bash: \"true\"\n")
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Input: "source"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	forked, err := service.Fork(context.Background(), ForkRequest{RunID: started.RunID, Input: "fork input"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forked.Run == nil || forked.Run.RunID == started.RunID {
+		t.Fatalf("fork=%#v", forked)
+	}
+	state, err := service.GetRun(forked.Run.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ForkedFromRunID != started.RunID || state.ForkSourceFingerprint == "" || state.Input != "fork input" {
+		t.Fatalf("fork provenance missing: %#v", state)
+	}
+}

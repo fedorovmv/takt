@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"takt/internal/blockcatalog"
+	"takt/internal/rolecontract"
 	"takt/internal/spec"
 )
 
@@ -20,6 +21,7 @@ type CompileOptions struct {
 	Promoted          bool
 	Catalog           *blockcatalog.Catalog
 	GovernanceContext string
+	Signals           []string
 }
 
 func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workflow, error) {
@@ -33,7 +35,7 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 		Defaults:   spec.Defaults{Assistant: "opencode", Model: "implementation", Session: "fresh"},
 	}
 	for _, phase := range phases {
-		if phase.Uses == "implement" {
+		if phaseRequiresWorktree(options, phase) {
 			wf.Worktree = spec.WorktreeSpec{Enabled: true, Cleanup: "manual"}
 			break
 		}
@@ -55,7 +57,7 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 	}
 	mapIndex := 0
 	for _, phase := range phases {
-		blockPath, blockPolicy, err := resolveBlock(options, phase.Uses)
+		blockPath, blockPolicy, resolvedBlock, err := resolveBlock(options, phase.Uses)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +66,10 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 				blockPath = filepath.ToSlash(rel)
 			}
 		}
-		input := phaseInput(options.Goal, phase, options.Context, options.GovernanceContext, options.Promoted)
+		input, err := phaseInput(options.Goal, phase, options.Context, options.GovernanceContext, options.Promoted, options.Signals, resolvedBlock)
+		if err != nil {
+			return nil, err
+		}
 		node := spec.Node{ID: phase.ID, DependsOn: internalDependencies(phase.DependsOn, phaseSet), WorkflowRun: &spec.WorkflowRunSpec{Path: blockPath, Input: input, Isolation: "inherit", Policy: blockPolicy}}
 		if phase.Strategy == "map" {
 			source, err := RuntimeSource(phase.Source)
@@ -75,7 +80,11 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 			if !phaseSet[sourceID] {
 				return nil, fmt.Errorf("map phase %q source %q crosses a replanning checkpoint; keep producer and map phase in the same segment", phase.ID, sourceID)
 			}
-			node.WorkflowRun.Input = phaseFanOutInput(options.Goal, phase, options.Context, options.GovernanceContext, options.Promoted)
+			fanInput, inputErr := phaseFanOutInput(options.Goal, phase, options.Context, options.GovernanceContext, options.Promoted, options.Signals, resolvedBlock)
+			if inputErr != nil {
+				return nil, inputErr
+			}
+			node.WorkflowRun.Input = fanInput
 			mapIndex++
 			remainingMaps := mapRuns - mapIndex + 1
 			maxItems := remainingMapItems / remainingMaps
@@ -86,6 +95,21 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 	}
 	applySegmentParallelLimit(wf.Nodes, budget.MaxParallel)
 	return wf, nil
+}
+
+func phaseRequiresWorktree(options CompileOptions, phase Phase) bool {
+	if options.Catalog != nil {
+		if block, ok := options.Catalog.Block(phase.Uses); ok {
+			for _, capability := range block.Capabilities {
+				if capability == "repository.write" {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	// Backward-compatible fallback for legacy dynamic plans without a catalog.
+	return phase.Uses == "implement"
 }
 
 func applySegmentParallelLimit(nodes []spec.Node, maxParallel int) {
@@ -109,20 +133,20 @@ func containsDependency(items []string, value string) bool {
 	return false
 }
 
-func resolveBlock(options CompileOptions, name string) (string, *spec.PolicySpec, error) {
+func resolveBlock(options CompileOptions, name string) (string, *spec.PolicySpec, *blockcatalog.ResolvedBlock, error) {
 	if options.Catalog != nil {
 		block, ok := options.Catalog.Block(name)
 		if !ok {
-			return "", nil, fmt.Errorf("trusted block %q is not available", name)
+			return "", nil, nil, fmt.Errorf("trusted block %q is not available", name)
 		}
 		policy := block.Policy
-		return block.WorkflowPath, &policy, nil
+		return block.WorkflowPath, &policy, &block, nil
 	}
 	blockFile, ok := AllowedBlocks[name]
 	if !ok {
-		return "", nil, fmt.Errorf("unsupported block %q", name)
+		return "", nil, nil, fmt.Errorf("unsupported block %q", name)
 	}
-	return filepath.Join(options.BlocksDir, blockFile), nil, nil
+	return filepath.Join(options.BlocksDir, blockFile), nil, nil, nil
 }
 
 func WriteWorkflow(path string, wf *spec.Workflow) error {
@@ -147,16 +171,57 @@ func internalDependencies(deps []string, segment map[string]bool) []string {
 	return out
 }
 
-func phaseInput(goal string, phase Phase, context, governance string, promoted bool) string {
+func phaseInput(goal string, phase Phase, context, governance string, promoted bool, signals []string, block *blockcatalog.ResolvedBlock) (string, error) {
 	if promoted {
 		goal = "${input}"
 	}
-	return fmt.Sprintf("Goal: %s\n\nPhase objective: %s\n\nTrusted package governance:\n%s\n\nPrior dynamic context:\n%s", goal, phase.Objective, governance, context)
+	if block == nil || block.RoleDefinition == nil || block.Role == "" {
+		return fmt.Sprintf("Goal: %s\n\nPhase objective: %s\n\nTrusted package governance:\n%s\n\nPrior dynamic context:\n%s", goal, phase.Objective, governance, context), nil
+	}
+	prior := map[string]string{}
+	if strings.TrimSpace(context) != "" {
+		var decoded struct {
+			Results map[string]string `json:"results"`
+		}
+		if err := json.Unmarshal([]byte(context), &decoded); err == nil && decoded.Results != nil {
+			prior = decoded.Results
+		}
+	}
+	brief, err := rolecontract.Compile(block.Role, *block.RoleDefinition, goal, phase.Objective, signals, prior, block.Checks)
+	if err != nil {
+		return "", fmt.Errorf("compile brief for phase %s: %w", phase.ID, err)
+	}
+	if brief.Context == nil {
+		brief.Context = map[string]any{}
+	}
+	if strings.TrimSpace(governance) != "" {
+		var value any
+		if err := json.Unmarshal([]byte(governance), &value); err == nil {
+			brief.Context["trusted_governance"] = value
+		}
+	}
+	return rolecontract.EncodeBrief(brief), nil
 }
 
-func phaseFanOutInput(goal string, phase Phase, context, governance string, promoted bool) string {
-	base := phaseInput(goal, phase, context, governance, promoted)
-	return base + "\n\nCurrent item (${fanout.index}/${fanout.total}):\n${fanout.item}"
+func phaseFanOutInput(goal string, phase Phase, context, governance string, promoted bool, signals []string, block *blockcatalog.ResolvedBlock) (string, error) {
+	base, err := phaseInput(goal, phase, context, governance, promoted, signals, block)
+	if err != nil {
+		return "", err
+	}
+	if block != nil && block.RoleDefinition != nil && block.Role != "" {
+		var brief rolecontract.Brief
+		if err := json.Unmarshal([]byte(base), &brief); err != nil {
+			return "", err
+		}
+		if brief.Context == nil {
+			brief.Context = map[string]any{}
+		}
+		brief.Context["current_item"] = "${fanout.item}"
+		brief.Context["fanout_index"] = "${fanout.index}"
+		brief.Context["fanout_total"] = "${fanout.total}"
+		return rolecontract.EncodeBrief(brief), nil
+	}
+	return base + "\n\nCurrent item (${fanout.index}/${fanout.total}):\n${fanout.item}", nil
 }
 
 func SafeWorkflowName(value string) string {

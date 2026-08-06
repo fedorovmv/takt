@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.38-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.39-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -59,16 +59,13 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 
 Публичный Task API сокращён до `start|status|respond|stop|explain`. MCP разделён на role-based surfaces: agent видит пять task tools, host и worker — только собственные контракты, полная совместимая поверхность содержит 53 operations. Профиль использует логический `coding-agent`, а `default_assistant` выбирает Pi, OpenCode или внешний `takt-assistant/v1alpha2` adapter для Codex, Oh My Pi, Qwen CLI и других хостов. Полный срез: `52-simple-reliable-agent-neutral-router-v0.1.38.md`; архитектурный proposal: `proposals/001-simple-reliable-agent-neutral-takt.md`.
 
-## Приоритет 1. Role Contract, Brief Compiler и понятные реакции проверок
+## Выполнено в v0.1.39-alpha. Role Contract, Brief Compiler и управляемые проверки
 
-- first-class внутренний RoleDefinition без установки набора пользовательских агентов;
-- context recipe и новый ограниченный brief на каждую попытку;
-- вычисляемые expected/allowed/protected/forbidden paths;
-- реакции `deny|repair|warn` и required/preferred checks;
-- один точный вопрос только при материальной развилке;
-- независимые Code/Test/Verifier sessions только по сигналам риска.
+Trusted `BlockPackage` объявляет внутренние функциональные роли. Перед каждой worker-фазой Takt компилирует bounded `TaskBrief` с новым context recipe и scope `expected|allowed|protected|forbidden`. Required/preferred checks используют реакции `deny|repair|warn`; technical `repair` получает одну автоматическую repair-итерацию и fresh recheck, после чего только повторный отказ требует решения пользователя. Read-only policy применяется как реальная adapter guarantee, а mutating write scope дополнительно проверяется по структурированному результату.
 
-## Приоритет 2. Evidence, baseline и failure routing
+Одновременно закрыты pause/recovery/notification high из v0.1.37 и compact Task API high из v0.1.38. Полный срез: `53-role-brief-controls-v0.1.39.md`.
+
+## Приоритет 1. Evidence, baseline и failure routing
 
 - acceptance-to-evidence mapping и candidate SHA binding;
 - invalidation устаревшего verdict;
@@ -76,7 +73,7 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 - компактные failure codes, park/unpark и безопасный next action;
 - reconciliation внешних side effects перед повтором.
 
-## Приоритет 3. Domain Adapter SDK
+## Приоритет 2. Domain Adapter SDK
 
 - нейтральные capability contracts для SCM, tracker и CI;
 - MCP/process transports;
@@ -85,7 +82,7 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 - fake corporate SCM/tracker/CI для контрактных тестов;
 - использование адаптеров как детерминированных узлов Takt и как разрешённых инструментов worker-сессии.
 
-## Приоритет 4. Полная доставка пакетов
+## Приоритет 3. Полная доставка пакетов
 
 - области `global|project|corporate` с явным приоритетом;
 - `install|update|uninstall|doctor`;
@@ -95,7 +92,7 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 - checksum, подпись и политика источников;
 - команды, scripts, skills, MCP и adapter requirements в одном пакете.
 
-## Приоритет 5. Multi-repo dynamic workflow
+## Приоритет 4. Multi-repo dynamic workflow
 
 - определение затронутых репозиториев;
 - dependency graph;
@@ -103,7 +100,7 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 - несколько change request через нейтральный SCM adapter;
 - интеграционная проверка и общий порядок слияния.
 
-## Приоритет 6. Усиление runtime и безопасность локального исполнения
+## Приоритет 5. Усиление runtime и безопасность локального исполнения
 
 - раннее завершение `one_success` и `all_success` с отменой ненужных детей;
 - нормализованные diagnostics и fingerprints ошибок;

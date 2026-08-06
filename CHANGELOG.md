@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.39-alpha
+
+- Добавлены внутренние `RoleDefinition` и `TaskBrief`: trusted blocks получают функциональную роль, bounded context recipe, scope `expected|allowed|protected|forbidden` и fresh brief на каждую worker/repair-фазу без установки отдельных агентов в кодинг-хост.
+- `BlockPackage` поддерживает structured checks с `required|preferred` и реакциями `deny|repair|warn`. Required `repair` получает одну автоматическую repair-итерацию и fresh recheck; повторный отказ переводит план в `waiting` с одним материальным вопросом.
+- `code-core` получил роли baseline-observer/investigator/implementer/test-designer/validator/verifier; deterministic validation и independent review являются required+repair, adversarial review — preferred+warn. Package обновлён до 0.3.0, профиль `code` — до 0.14.0, Takt skill — до 0.21.0.
+- Закрыты критичные pause defects v0.1.37: durable marker сохраняется через recovery, ошибочный resume не уничтожает pause, paused parent waiting child не оживает от ответа ребёнку, pause перепроверяется перед каждым sequential node и retry-attempt.
+- Notification dispatcher получил реальный `question.required`, устойчивый dedup по waiting identity, sink timeout, межпроцессный dispatch lock, bounded inbox, baseline без ретроспективного спама и deterministic event IDs.
+- Foreground recovery теперь исполняется до следующей durable границы; retry сохраняет per-attempt execution history и корректно работает из `cancelled`; recursive summary терпит ещё не опубликованного child; fork сохраняет source fingerprint/provenance; ошибки persistence operator markers не маскируются.
+- Закрыты compact Task API defects v0.1.38: plan-level `answer` доставляется ожидающему Run/node, `stop` reconcile-ит plan без daemon, пустой answer отклоняется, отсутствующий router использует stable fallback, cancellation не поглощается, `task start` читает файл только через `--file`.
+- `coding-agent` resolution сведён к `assistant.Factory.Resolve`, прямой `takt run` выполняет capability preflight, risk term matching больше не путает `auth/author` и `bug/debug`, пустой MCP surface означает `agent`.
+- Добавлены `schemas/task-brief.schema.json`, расширенная schema `BlockPackage`, ADR-060/061, release note `docs/53-role-brief-controls-v0.1.39.md` и расширенный `scripts/test-simple-reliable-router.sh` с fail-once automatic repair.
+
 ## v0.1.38-alpha
 
 - Добавлен Task Router с маршрутами `workflow|template|dynamic`, схемой `TaskRoute`, детерминированными risk signals и проверяемой компиляцией в один обычный Takt Workflow.

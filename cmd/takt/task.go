@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"takt/internal/control"
@@ -33,19 +34,27 @@ func taskStartCmd(args []string) error {
 	fs := newFlagSet("task start")
 	workspace := fs.String("workspace", ".", "control workspace")
 	profileName := fs.String("profile", "code", "routing profile")
+	goalFile := fs.String("file", "", "read the task goal from a file explicitly")
 	goNow := fs.Bool("go", false, "confirm the preview and start immediately")
 	useDaemon := fs.Bool("daemon", false, "run through the local daemon")
 	socket := fs.String("socket", "", "daemon Unix socket path")
 	jsonOut := fs.Bool("json", true, "JSON output")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--profile": true, "--go": false, "--daemon": false, "--socket": true, "--json": false})); err != nil {
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--profile": true, "--file": true, "--go": false, "--daemon": false, "--socket": true, "--json": false})); err != nil {
 		return err
 	}
 	goal := strings.TrimSpace(strings.Join(fs.Args(), " "))
-	if goal == "" {
-		return fmt.Errorf("usage: takt task start <goal> [--go] [--profile code] [--daemon]")
+	if *goalFile != "" {
+		if goal != "" {
+			return fmt.Errorf("task goal text and --file are mutually exclusive")
+		}
+		raw, err := os.ReadFile(*goalFile)
+		if err != nil {
+			return err
+		}
+		goal = strings.TrimSpace(string(raw))
 	}
-	if raw, err := readInput(goal); err == nil {
-		goal = raw
+	if goal == "" {
+		return fmt.Errorf("usage: takt task start <goal> [--file path] [--go] [--profile code] [--daemon]")
 	}
 	request := control.TaskStartRequest{Goal: goal, Profile: *profileName, Go: *goNow}
 	if *useDaemon {

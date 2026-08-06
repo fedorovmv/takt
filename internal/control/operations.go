@@ -2,6 +2,8 @@ package control
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -285,6 +287,12 @@ func (s *Service) Summary(runID string, recursive bool) (*RunSummary, error) {
 			}
 			seen[id] = true
 			child, loadErr := st.Load(id)
+			if errors.Is(loadErr, os.ErrNotExist) {
+				// Governed child IDs are linked before the child's initial state is
+				// atomically published. A recursive summary is a projection and must
+				// tolerate that short publication window just like runTreeIDs does.
+				continue
+			}
 			if loadErr != nil {
 				return nil, loadErr
 			}
@@ -431,19 +439,21 @@ func (s *Service) ResumePaused(ctx context.Context, runID string, detached bool)
 	if err != nil {
 		return nil, err
 	}
+	if state.Status != store.RunPaused {
+		return nil, fmt.Errorf("run %s is not paused", runID)
+	}
 	ids, err := runTreeIDs(st, state)
 	if err != nil {
 		return nil, err
 	}
+	// Validate first, mutate second. A mistaken resume must never destroy a
+	// durable pause request on the run tree.
 	for _, id := range ids {
 		if err := st.ClearPause(id); err != nil {
 			return nil, err
 		}
 	}
-	if state.Status != store.RunPaused {
-		return nil, fmt.Errorf("run %s is not paused", runID)
-	}
-	if state.PausedFrom == store.RunWaiting && state.Waiting != nil {
+	if state.PausedFrom == store.RunWaiting && state.Waiting != nil && state.Waiting.Kind != "child_run" {
 		release, lockErr := acquireRunLock(st, state.ID)
 		if lockErr != nil {
 			return nil, lockErr
@@ -579,6 +589,9 @@ func (s *Service) Retry(ctx context.Context, request RetryRequest) (*store.RunSt
 	if target == "" {
 		target = failedNodeID(state, wf.Nodes)
 	}
+	if target == "" && state.Status == store.RunCancelled {
+		target = firstIncompleteNodeID(state, wf.Nodes)
+	}
 	if target == "" {
 		return nil, fmt.Errorf("run %s has no failed node to retry", state.ID)
 	}
@@ -602,7 +615,13 @@ func (s *Service) Retry(ctx context.Context, request RetryRequest) (*store.RunSt
 				}
 			}
 		}
-		state.Nodes[node.ID] = &store.NodeState{Status: store.NodePending, Hidden: previous.Hidden, PublicParent: previous.PublicParent}
+		state.Nodes[node.ID] = &store.NodeState{
+			Status:       store.NodePending,
+			Hidden:       previous.Hidden,
+			PublicParent: previous.PublicParent,
+			Executions:   append([]store.ExecutionState(nil), previous.Executions...),
+			Artifacts:    append([]store.ArtifactRef(nil), previous.Artifacts...),
+		}
 	}
 	state.Status = store.RunRunning
 	state.CurrentNode = ""
@@ -733,6 +752,11 @@ func (s *Service) Fork(ctx context.Context, request ForkRequest) (*ForkResult, e
 		if err != nil {
 			return nil, err
 		}
+		result.Record.ForkedFromPlanID = record.ID
+		result.Record.ForkSourceFingerprint = planForkFingerprint(record)
+		if err := (dynamicplan.Store{Workspace: s.Workspace}).Save(result.Record); err != nil {
+			return nil, err
+		}
 		return &ForkResult{SourceRunID: request.RunID, Plan: result}, nil
 	}
 	input := state.Input
@@ -748,10 +772,58 @@ func (s *Service) Fork(ctx context.Context, request ForkRequest) (*ForkResult, e
 	if err != nil {
 		return nil, err
 	}
+	forked, err := st.Load(started.RunID)
+	if err != nil {
+		return nil, err
+	}
+	forked.ForkedFromRunID = state.ID
+	forked.ForkSourceFingerprint = runForkFingerprint(state)
+	if err := st.Commit(forked, store.Event{Type: "run.forked", Data: map[string]any{"source_run_id": state.ID, "source_fingerprint": forked.ForkSourceFingerprint}}); err != nil {
+		return nil, err
+	}
+	started.State = forked.PublicView()
 	return &ForkResult{SourceRunID: request.RunID, Run: started}, nil
 }
 
+func firstIncompleteNodeID(state *store.RunState, nodes []spec.Node) string {
+	for _, node := range nodes {
+		value := state.Nodes[node.ID]
+		if value == nil || (value.Status != store.NodeCompleted && value.Status != store.NodeSkipped) {
+			return node.ID
+		}
+	}
+	return ""
+}
+
+func runForkFingerprint(state *store.RunState) string {
+	if state == nil {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.Join([]string{state.WorkflowFingerprint, state.ConfigFingerprint, state.CommandsFingerprint, fmt.Sprintf("%d", state.Revision)}, "\x00")))
+	return hex.EncodeToString(sum[:])
+}
+
+func planForkFingerprint(record *dynamicplan.Record) string {
+	if record == nil {
+		return ""
+	}
+	plan := latestPlan(record)
+	sum := sha256.Sum256([]byte(record.BlockCatalogFingerprint + "\x00" + dynamicplan.PlanJSON(plan) + "\x00" + fmt.Sprintf("%d", len(record.Revisions))))
+	return hex.EncodeToString(sum[:])
+}
+
 func (s *Service) RecoverInterruptedRuns(ctx context.Context) (*RecoverResult, error) {
+	return s.recoverInterruptedRuns(ctx, true)
+}
+
+// RecoverInterruptedRunsForeground is used by a one-shot CLI process. It does
+// not return until recovered local Runs have reached their next durable boundary;
+// otherwise the CLI exit would immediately orphan the freshly recovered worker.
+func (s *Service) RecoverInterruptedRunsForeground(ctx context.Context) (*RecoverResult, error) {
+	return s.recoverInterruptedRuns(ctx, false)
+}
+
+func (s *Service) recoverInterruptedRuns(ctx context.Context, detached bool) (*RecoverResult, error) {
 	st := store.FS{Workspace: s.Workspace}
 	ids, err := st.ListRunIDs()
 	if err != nil {
@@ -799,6 +871,7 @@ func (s *Service) RecoverInterruptedRuns(ctx context.Context) (*RecoverResult, e
 			continue
 		}
 		current, loadErr := st.Load(state.ID)
+		recovered := false
 		if loadErr == nil && (current.Status == store.RunRunning || current.Status == store.RunPausing) && !processAlive(current.ExecutorPID) {
 			loadErr = recoverRunState(st, current)
 			if loadErr == nil {
@@ -806,12 +879,23 @@ func (s *Service) RecoverInterruptedRuns(ctx context.Context) (*RecoverResult, e
 			}
 			if loadErr == nil {
 				result.Recovered = append(result.Recovered, current.ID)
-				go s.continueRecoveredRun(current.ID)
+				recovered = true
 			}
 		}
-		_ = release()
+		if releaseErr := release(); loadErr == nil && releaseErr != nil {
+			loadErr = releaseErr
+		}
 		if loadErr != nil {
 			return nil, loadErr
+		}
+		if recovered {
+			if detached {
+				go s.continueRecoveredRun(current.ID)
+			} else {
+				if err := s.continueRecoveredRunContext(ctx, current.ID); err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 	return result, nil
@@ -849,13 +933,21 @@ func recoverRunState(st store.FS, state *store.RunState) error {
 }
 
 func (s *Service) continueRecoveredRun(runID string) {
-	state, err := s.Resume(context.Background(), runID)
+	_ = s.continueRecoveredRunContext(context.Background(), runID)
+}
+
+func (s *Service) continueRecoveredRunContext(ctx context.Context, runID string) error {
+	state, err := s.Resume(ctx, runID)
 	if err != nil && !errors.Is(err, runtime.ErrWaiting) && !errors.Is(err, runtime.ErrPaused) {
-		return
+		return err
 	}
 	if state != nil {
-		_, _ = resumeParentChain(context.Background(), store.FS{Workspace: s.Workspace}, state)
+		_, parentErr := resumeParentChain(ctx, store.FS{Workspace: s.Workspace}, state)
+		if parentErr != nil && !errors.Is(parentErr, runtime.ErrWaiting) && !errors.Is(parentErr, runtime.ErrPaused) {
+			return parentErr
+		}
 	}
+	return nil
 }
 
 func processAlive(pid int) bool {

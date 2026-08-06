@@ -369,7 +369,7 @@ func runRecoverCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		value, err := service.RecoverInterruptedRuns(context.Background())
+		value, err := service.RecoverInterruptedRunsForeground(context.Background())
 		if err != nil {
 			return err
 		}

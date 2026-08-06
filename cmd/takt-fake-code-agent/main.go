@@ -121,7 +121,7 @@ func handleGeneric(prompt string) {
 		case strings.Contains(lower, "fixture dynamic audit"):
 			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"dynamic","reason":"fixture requires task-specific decomposition","confidence":0.95,"signals":[],"controls":{"inspect_first":false,"baseline":false,"independent_tests":false,"enhanced_review":false,"max_parallel":2}}`)
 		case strings.Contains(lower, `"goal":"change the public api safely"`) || strings.Contains(lower, `"goal":"изменить публичный api"`):
-			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"template","template":"simple-reliable","reason":"protected fixture change","confidence":0.9,"signals":["public_api"],"controls":{"inspect_first":false,"baseline":true,"independent_tests":true,"enhanced_review":true,"max_parallel":1}}`)
+			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"template","template":"simple-reliable","reason":"protected fixture change","confidence":0.9,"signals":["public_api"],"controls":{"inspect_first":false,"baseline":false,"independent_tests":false,"enhanced_review":false,"max_parallel":1}}`)
 		default:
 			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"template","template":"simple-reliable","reason":"ordinary repository task","confidence":0.9,"signals":[],"controls":{"inspect_first":false,"baseline":false,"independent_tests":false,"enhanced_review":false,"max_parallel":2}}`)
 		}
@@ -156,6 +156,15 @@ func handleGeneric(prompt string) {
 		return
 	}
 	if strings.Contains(lower, "validate the requested result independently") {
+		if marker := strings.TrimSpace(os.Getenv("FAKE_DYNAMIC_VALIDATE_FAIL_ONCE_FILE")); marker != "" {
+			if _, err := os.Stat(marker); err == nil {
+				if removeErr := os.Remove(marker); removeErr != nil {
+					fail(removeErr)
+				}
+				fmt.Print(`{"summary":"fixture validation failed once","passed":false,"checks":["fixture: fail"],"issues":["recoverable fixture failure"]}`)
+				return
+			}
+		}
 		fmt.Print(`{"summary":"fixture validation","passed":true,"checks":["fixture: pass"],"issues":[]}`)
 		return
 	}

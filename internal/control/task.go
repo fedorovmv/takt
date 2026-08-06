@@ -108,10 +108,49 @@ func (s *Service) RespondTask(ctx context.Context, request TaskRespondRequest) (
 				return nil, err
 			}
 			return &TaskView{Reference: reference, Kind: "plan", Status: record.Status, PlanID: reference, RunID: record.CurrentRunID, NeedsInput: record.Status == "waiting" || record.Status == "paused"}, nil
-		case "steer", "answer":
+		case "steer":
 			if strings.TrimSpace(request.Message) == "" {
 				return nil, fmt.Errorf("message is required for %s", action)
 			}
+			if _, err := s.Steer(ctx, SteerRequest{PlanID: reference, Message: request.Message}); err != nil {
+				return nil, err
+			}
+			return s.TaskStatus(reference)
+		case "answer":
+			if strings.TrimSpace(request.Message) == "" {
+				return nil, fmt.Errorf("message is required for answer")
+			}
+			record, err := (dynamicplan.Store{Workspace: s.Workspace}).Load(reference)
+			if err != nil {
+				return nil, err
+			}
+			if record.CurrentRunID != "" {
+				run, runErr := s.GetRun(record.CurrentRunID)
+				if runErr != nil {
+					return nil, runErr
+				}
+				if run.Waiting != nil || run.Status == "paused" {
+					nodeID := strings.TrimSpace(request.NodeID)
+					if nodeID == "" && run.Waiting != nil {
+						nodeID = run.Waiting.NodeID
+					}
+					if nodeID == "" {
+						return nil, fmt.Errorf("run %s is not waiting for a user response", record.CurrentRunID)
+					}
+					if _, err := s.Answer(ctx, record.CurrentRunID, nodeID, request.Message); err != nil {
+						return nil, err
+					}
+					// In foreground mode there is no daemon monitor to reconcile the
+					// plan record after the waiting Run continues or completes.
+					if err := s.AdvanceDynamicPlans(ctx); err != nil {
+						return nil, err
+					}
+					return s.TaskStatus(reference)
+				}
+			}
+			// A plan-level ask_user checkpoint has no waiting Run. Treat the
+			// answer as steering for the replanner, but do not confuse this path
+			// with an approval/question waiting inside a Run.
 			if _, err := s.Steer(ctx, SteerRequest{PlanID: reference, Message: request.Message}); err != nil {
 				return nil, err
 			}
@@ -143,7 +182,7 @@ func (s *Service) RespondTask(ctx context.Context, request TaskRespondRequest) (
 		}
 	case "answer", "go":
 		if strings.TrimSpace(request.Message) == "" {
-			request.Message = "approved"
+			return nil, fmt.Errorf("message is required for %s", action)
 		}
 		state, err := s.GetRun(reference)
 		if err != nil {
@@ -179,6 +218,19 @@ func (s *Service) StopTask(request TaskStopRequest) (*TaskView, error) {
 		}
 		if record.CurrentRunID != "" {
 			if _, err := s.Abandon(record.CurrentRunID, reason); err != nil {
+				return nil, err
+			}
+			// Reconcile explicitly. This path must also work without a daemon
+			// monitor and must not leave the compact task reference permanently
+			// reporting "running" after the underlying Run was abandoned.
+			record, err = st.Load(reference)
+			if err != nil {
+				return nil, err
+			}
+			record.Status = "abandoned"
+			record.LastError = reason
+			record.UpdatedAt = time.Now().UTC()
+			if err := st.Save(record); err != nil {
 				return nil, err
 			}
 		} else {

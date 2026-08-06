@@ -34,6 +34,7 @@ assistants:
     capabilities:
       - tool_policy
       - skills
+      - sandbox_filesystem
 CFG
 "$ROOT/bin/takt" daemon start --workspace "$TMP/project" --json >/dev/null
 

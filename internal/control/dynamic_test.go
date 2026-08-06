@@ -3,12 +3,16 @@ package control
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"takt/internal/blockcatalog"
 	"takt/internal/dynamicplan"
 	"takt/internal/profile"
+	"takt/internal/rolecontract"
 )
 
 func candidateDynamicPlan() dynamicplan.Plan {
@@ -245,5 +249,102 @@ assistants:
 	}
 	if result.Decision != "planned" || !result.RequiresConfirmation {
 		t.Fatalf("plan result = %#v", result)
+	}
+}
+
+func TestSegmentControlsDifferentiateDenyRepairAndWarn(t *testing.T) {
+	implementRole := rolecontract.Definition{Paths: rolecontract.PathScope{Expected: []string{"src/**"}, Allowed: []string{"src/**", "docs/**"}, Protected: []string{"src/security/**"}, Forbidden: []string{".takt/**"}}}
+	catalog := &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{
+		"implement": {Name: "implement", Role: "implementer", RoleDefinition: &implementRole},
+		"validate":  {Name: "validate", Checks: []rolecontract.Check{{Name: "validate", Path: "passed", Level: rolecontract.CheckRequired, Reaction: rolecontract.ReactionRepair}}},
+		"policy":    {Name: "policy", Checks: []rolecontract.Check{{Name: "policy", Path: "allowed", Level: rolecontract.CheckRequired, Reaction: rolecontract.ReactionDeny}}},
+		"quality":   {Name: "quality", Checks: []rolecontract.Check{{Name: "quality", Path: "ideal", Level: rolecontract.CheckPreferred, Reaction: rolecontract.ReactionWarn}}},
+	}}
+	record := &dynamicplan.Record{Results: map[string]string{
+		"implement": `{"changed_files":["src/security/auth.go","docs/note.md"],"summary":"done"}`,
+		"validate":  `{"passed":false}`,
+		"policy":    `{"allowed":false}`,
+		"quality":   `{"ideal":false}`,
+	}}
+	outcome, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "implement", Uses: "implement"}, {ID: "validate", Uses: "validate"}, {ID: "quality", Uses: "quality"}}, catalog, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.DenyReason != "" || len(outcome.RepairFailures) != 1 || outcome.RepairFailures[0].Check != "validate" {
+		t.Fatalf("outcome=%#v", outcome)
+	}
+	if len(record.Warnings) < 2 {
+		t.Fatalf("warnings=%#v", record.Warnings)
+	}
+
+	denied, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "policy", Uses: "policy"}}, catalog, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if denied.DenyReason == "" {
+		t.Fatalf("deny result=%#v", denied)
+	}
+
+	record.Results["implement"] = `{"changed_files":["../escape"],"summary":"bad"}`
+	denied, err = evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "implement", Uses: "implement"}}, catalog, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if denied.DenyReason == "" {
+		t.Fatal("path escape was not denied")
+	}
+}
+
+func TestSegmentControlsDenyUndeclaredWorkspaceChange(t *testing.T) {
+	role := rolecontract.Definition{Paths: rolecontract.PathScope{Allowed: []string{"src/**"}, Forbidden: []string{".takt/**"}}}
+	catalog := &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{
+		"implement": {Name: "implement", Role: "implementer", RoleDefinition: &role},
+	}}
+	record := &dynamicplan.Record{Results: map[string]string{
+		"implement": `{"changed_files":["src/declared.go"]}`,
+	}}
+	outcome, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "implement", Uses: "implement"}}, catalog, []string{"src/declared.go", "src/hidden.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.DenyReason == "" {
+		t.Fatal("actual change omitted from changed_files was not denied")
+	}
+}
+
+func TestDynamicActualChangesUsesOriginalWorktreeBase(t *testing.T) {
+	workspace := t.TempDir()
+	git := func(args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", workspace}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Takt Test", "GIT_AUTHOR_EMAIL=takt@example.invalid", "GIT_COMMITTER_NAME=Takt Test", "GIT_COMMITTER_EMAIL=takt@example.invalid")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	git("init", "-q")
+	if err := os.MkdirAll(filepath.Join(workspace, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "src", "base.go"), []byte("package src\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", ".")
+	git("commit", "-qm", "base")
+	base := strings.TrimSpace(git("rev-parse", "HEAD"))
+	if err := os.WriteFile(filepath.Join(workspace, "src", "base.go"), []byte("package src\n// changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "src", "new.go"), []byte("package src\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	record := &dynamicplan.Record{ExecutionWorkspace: workspace, ExecutionBaseCommit: base}
+	changes, err := (&Service{Workspace: workspace}).dynamicActualChanges(context.Background(), record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 2 || changes[0] != "src/base.go" || changes[1] != "src/new.go" {
+		t.Fatalf("changes=%#v", changes)
 	}
 }

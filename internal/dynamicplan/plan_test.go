@@ -1,9 +1,14 @@
 package dynamicplan
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"takt/internal/blockcatalog"
+	"takt/internal/profile"
+	"takt/internal/rolecontract"
 )
 
 func validPlan() Plan {
@@ -117,5 +122,48 @@ func TestNormalizeTurnsZeroTokenBudgetIntoBoundedDefault(t *testing.T) {
 	}
 	if err := Validate(plan); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCompileTrustedRoleCreatesTaskBriefAndVerifierPolicy(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := profile.Resolve("code", workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := blockcatalog.Load(resolved.BlockPackagePaths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	phases := []Phase{{ID: "implement", Uses: "implement", Objective: "change internal/foo/bar.go", Strategy: "task"}, {ID: "verify", Uses: "review", Objective: "review", DependsOn: []string{"implement"}, Strategy: "task"}}
+	wf, err := Compile(phases, Budget{MaxChildRuns: 8, MaxParallel: 1, MaxIterations: 3, MaxTokens: 10000}, CompileOptions{WorkflowName: "role-brief", Goal: "Fix internal/foo/bar.go", Catalog: catalog, Context: `{"results":{"inspect":"evidence"}}`, Signals: []string{"regression"}, GovernanceContext: catalog.GovernanceJSON()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var brief rolecontract.Brief
+	if err := json.Unmarshal([]byte(wf.Nodes[0].WorkflowRun.Input), &brief); err != nil {
+		t.Fatalf("input is not a TaskBrief: %v\n%s", err, wf.Nodes[0].WorkflowRun.Input)
+	}
+	if brief.Kind != "TaskBrief" || brief.Role != "implementer" || len(brief.Scope.Expected) != 1 {
+		t.Fatalf("brief = %#v", brief)
+	}
+	if wf.Nodes[0].WorkflowRun.Policy != nil && wf.Nodes[0].WorkflowRun.Policy.Sandbox != nil && wf.Nodes[0].WorkflowRun.Policy.Sandbox.Filesystem != "" {
+		t.Fatalf("implement role must not claim unsupported write sandbox guarantees: %#v", wf.Nodes[0].WorkflowRun.Policy)
+	}
+	if wf.Nodes[1].WorkflowRun.Policy == nil || wf.Nodes[1].WorkflowRun.Policy.Sandbox == nil || wf.Nodes[1].WorkflowRun.Policy.Sandbox.Filesystem != "read_only" {
+		t.Fatalf("verifier policy = %#v", wf.Nodes[1].WorkflowRun.Policy)
+	}
+	if !wf.Worktree.Enabled {
+		t.Fatal("repository.write capability must enable a managed worktree")
+	}
+	testOnly, err := Compile([]Phase{{ID: "tests", Uses: "test-design", Objective: "write regression tests", Strategy: "task"}}, Budget{MaxChildRuns: 4, MaxParallel: 1, MaxIterations: 1, MaxTokens: 10000}, CompileOptions{WorkflowName: "test-design-only", Goal: "Add regression tests", Catalog: catalog})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !testOnly.Worktree.Enabled {
+		t.Fatal("test-design repository.write capability must enable a managed worktree without relying on the block name")
 	}
 }

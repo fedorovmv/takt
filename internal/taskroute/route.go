@@ -151,13 +151,50 @@ func InferSignals(goal string) []string {
 	var out []string
 	for _, check := range checks {
 		for _, term := range check.terms {
-			if strings.Contains(text, term) {
+			if containsTerm(text, term) {
 				out = append(out, check.signal)
 				break
 			}
 		}
 	}
 	return uniqueSorted(out)
+}
+
+func containsTerm(text, term string) bool {
+	if strings.ContainsAny(term, " -_/.") || containsNonASCII(term) {
+		return strings.Contains(text, term)
+	}
+	// Short technical tokens such as "auth" and "bug" must not match
+	// "author" or "debug". Treat plain ASCII words as lexical tokens while
+	// retaining substring matching for Russian stems and multi-word phrases.
+	start := 0
+	for {
+		index := strings.Index(text[start:], term)
+		if index < 0 {
+			return false
+		}
+		index += start
+		beforeOK := index == 0 || !asciiWord(text[index-1])
+		after := index + len(term)
+		afterOK := after == len(text) || !asciiWord(text[after])
+		if beforeOK && afterOK {
+			return true
+		}
+		start = index + 1
+	}
+}
+
+func asciiWord(value byte) bool {
+	return (value >= 'a' && value <= 'z') || (value >= '0' && value <= '9') || value == '_'
+}
+
+func containsNonASCII(value string) bool {
+	for _, r := range value {
+		if r > 127 {
+			return true
+		}
+	}
+	return false
 }
 
 func Compile(goal string, route Decision, catalog *blockcatalog.Catalog) (dynamicplan.Plan, error) {

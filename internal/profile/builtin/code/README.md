@@ -1,7 +1,11 @@
-# Takt code profile 0.13.0
+# Takt code profile 0.14.0
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
+
+## Role/Brief contract
+
+Dynamic blocks are bound to internal functional roles. Takt compiles a fresh `TaskBrief` for every worker phase, applies bounded context, path scope and required/preferred checks, and performs one bounded automatic repair for recoverable required-check failures. Users do not install these roles as separate coding-agent definitions.
 ```bash
 takt init code
 takt workflow list code

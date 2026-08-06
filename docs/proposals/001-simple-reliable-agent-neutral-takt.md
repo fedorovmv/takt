@@ -1,7 +1,7 @@
 # Proposal 001. Простой и надёжный Takt для разных кодинг-агентов
 
 **Статус:** принято к поэтапной реализации  
-**Первый реализованный срез:** `v0.1.38-alpha`  
+**Реализованные срезы:** `v0.1.38-alpha`, `v0.1.39-alpha`  
 **Область:** пользовательский запуск задач, маршрутизация, роли, skills, адаптеры кодинг-агентов, MCP-поверхности и автономная эксплуатация
 
 ## 1. Контекст
@@ -517,45 +517,36 @@ Router не должен обучаться на собственных выво
   Oh My Pi, Qwen CLI и других внешних адаптеров;
 - схему `TaskRoute` и сквозной contract test.
 
-## 18. Следующие срезы
+## 18. Реализация в v0.1.39-alpha
 
-### 18.1. Role contract и Brief Compiler
+Второй срез реализует внутренний `RoleDefinition`, bounded `TaskBrief`, scope `expected|allowed|protected|forbidden`, required/preferred checks и реакции `deny|repair|warn`. Required technical failure получает одну автоматическую repair-итерацию с повторной независимой проверкой; повторный отказ переводит процесс в `waiting` с одним материальным вопросом. Read-only роли получают реальную adapter policy. Для mutating-ролей `changed_files` сверяется с фактическим Git diff managed worktree, а automatic repair продолжает тот же execution workspace; это даёт проверяемую границу результата без ложного обещания path-level OS sandbox.
 
-- first-class RoleDefinition;
-- context recipe;
-- новый ограниченный brief на каждую попытку;
-- path/network/credentials policy;
-- независимые Code/Test/Verifier sessions по сигналам риска.
+Одновременно исправлены критичные pause/recovery/notification дефекты v0.1.37 и compact Task API v0.1.38. Полный механизм описан в `docs/53-role-brief-controls-v0.1.39.md`.
 
-### 18.2. Проверки `deny|repair|warn`
+## 19. Следующие срезы
 
-- required и preferred checks;
-- единая классификация результата;
-- автоматическое исправление технических проблем;
-- один точный вопрос при материальной развилке.
-
-### 18.3. Evidence и baseline
+### 19.1. Evidence и baseline
 
 - acceptance-to-evidence mapping;
 - candidate SHA binding;
 - stale verdict invalidation;
 - сравнение новых failures с baseline.
 
-### 18.4. Adapter SDK
+### 19.2. Adapter SDK
 
 - готовые wrappers для востребованных Codex/Oh My Pi/Qwen CLI;
 - общий capability test kit;
 - session/tool event conformance;
 - live smoke на зафиксированных версиях каждого хоста.
 
-### 18.5. Skill proposals и eval loop
+### 19.3. Skill proposals и eval loop
 
 - анализ повторяющихся Run;
 - pending proposals;
 - измерение эффекта после принятия;
 - отсутствие автоматической мутации доверенных пакетов.
 
-## 19. Критерий принятия дальнейших функций
+## 20. Критерий принятия дальнейших функций
 
 Новый механизм добавляется, когда:
 

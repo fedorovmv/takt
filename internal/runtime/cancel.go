@@ -125,11 +125,17 @@ func (r *Runner) abandonState(state *store.RunState, reason string) (*store.RunS
 		return state, err
 	}
 	if value, ok := r.Store.(operatorStore); ok {
-		_ = value.ClearAbandon(state.ID)
-		_ = value.ClearPause(state.ID)
+		if err := value.ClearAbandon(state.ID); err != nil {
+			return state, err
+		}
+		if err := value.ClearPause(state.ID); err != nil {
+			return state, err
+		}
 	}
 	if value, ok := r.Store.(cancellationStore); ok {
-		_ = value.ClearCancel(state.ID)
+		if err := value.ClearCancel(state.ID); err != nil {
+			return state, err
+		}
 	}
 	return state, ErrAbandoned
 }
@@ -175,7 +181,9 @@ func (r *Runner) cancelState(state *store.RunState, reason string) (*store.RunSt
 		return state, err
 	}
 	if value, ok := r.Store.(cancellationStore); ok {
-		_ = value.ClearCancel(state.ID)
+		if err := value.ClearCancel(state.ID); err != nil {
+			return state, err
+		}
 	}
 	return state, context.Canceled
 }

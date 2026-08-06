@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/task-brief.schema.json",
+  "title": "Takt compiled task brief",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "role",
+    "goal",
+    "objective",
+    "scope"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "takt/v1alpha1"
+    },
+    "kind": {
+      "const": "TaskBrief"
+    },
+    "role": {
+      "type": "string",
+      "minLength": 1
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "goal": {
+      "type": "string"
+    },
+    "objective": {
+      "type": "string"
+    },
+    "signals": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "scope": {
+      "$ref": "#/$defs/pathScope"
+    },
+    "context": {
+      "type": "object"
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/check"
+      }
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "pathScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "allowed": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "protected": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "forbidden": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "path",
+        "level",
+        "reaction"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "level": {
+          "enum": [
+            "required",
+            "preferred"
+          ]
+        },
+        "reaction": {
+          "enum": [
+            "deny",
+            "repair",
+            "warn"
+          ]
+        }
+      }
+    }
+  }
+}

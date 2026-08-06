@@ -55,14 +55,15 @@ type Runner struct {
 }
 
 type StartOptions struct {
-	RunID           string
-	ParentRunID     string
-	ParentNodeID    string
-	Worktree        *bool
-	WorktreeBase    string
-	KeepWorktree    bool
-	AllowDirty      bool
-	InheritedPolicy *assistant.Policy
+	RunID              string
+	ParentRunID        string
+	ParentNodeID       string
+	ExecutionWorkspace string
+	Worktree           *bool
+	WorktreeBase       string
+	KeepWorktree       bool
+	AllowDirty         bool
+	InheritedPolicy    *assistant.Policy
 }
 
 func New(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspace string) *Runner {
@@ -144,6 +145,17 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 	}
 	if err := store.ValidateRunID(id); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(options.ExecutionWorkspace) != "" {
+		executionWorkspace, err := filepath.Abs(options.ExecutionWorkspace)
+		if err != nil {
+			return nil, fmt.Errorf("resolve execution workspace: %w", err)
+		}
+		info, err := os.Stat(executionWorkspace)
+		if err != nil || !info.IsDir() {
+			return nil, fmt.Errorf("execution workspace is unavailable at %s", executionWorkspace)
+		}
+		r.SetExecutionWorkspace(executionWorkspace)
 	}
 	worktreeSpec := r.Workflow.Worktree
 	if options.Worktree != nil {
@@ -338,22 +350,27 @@ func (r *Runner) Resume(ctx context.Context, state *store.RunState) (*store.RunS
 	if state.CancelRequested || r.cancellationRequested(state.ID) {
 		return r.cancelState(state, "cancel_requested")
 	}
-	if state.Status == store.RunWaiting && state.Waiting != nil {
+	if state.Waiting != nil {
 		if state.Waiting.Kind != "child_run" {
+			if state.Status == store.RunPaused {
+				return state, ErrPaused
+			}
 			return state, ErrWaiting
 		}
-		if node := state.Nodes[state.Waiting.NodeID]; node != nil {
-			node.Status = store.NodePending
-		}
-		state.Waiting = nil
-	}
-	if value, ok := r.Store.(operatorStore); ok {
-		if err := value.ClearPause(state.ID); err != nil {
-			return state, err
+		// A parent can be paused while it is waiting for a governed child. If the
+		// child finishes while the tree remains paused, explicit resume must be
+		// able to consume that durable child_run suspension instead of leaving the
+		// parent in running+waiting with no executor.
+		if state.Status == store.RunWaiting || (state.Status == store.RunPaused && state.PausedFrom == store.RunWaiting) {
+			if node := state.Nodes[state.Waiting.NodeID]; node != nil {
+				node.Status = store.NodePending
+			}
+			state.Waiting = nil
 		}
 	}
 	state.PauseRequested = false
 	state.PausedAt = nil
+	state.PausedFrom = ""
 	state.Status = store.RunRunning
 	state.CurrentNodes = nil
 	state.Error, state.ErrorCode = "", ""
@@ -376,16 +393,25 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 	}
 	if errors.Is(err, ErrPaused) {
 		now := time.Now().UTC()
+		previousStatus := state.Status
 		state.Status = store.RunPaused
 		state.PauseRequested = false
+		if state.PausedFrom == "" {
+			state.PausedFrom = previousStatus
+		}
 		state.PausedAt = &now
 		state.CurrentNode = ""
 		state.CurrentNodes = nil
-		if value, ok := r.Store.(operatorStore); ok {
-			_ = value.ClearPause(state.ID)
-		}
 		if commitErr := r.commit(state, "run.paused", "", nil); commitErr != nil {
 			return state, commitErr
+		}
+		// Clear the request only after the paused state is durable. If persistence
+		// fails, the marker remains and recovery cannot silently discard an
+		// operator decision.
+		if value, ok := r.Store.(operatorStore); ok {
+			if clearErr := value.ClearPause(state.ID); clearErr != nil {
+				return state, clearErr
+			}
 		}
 		return state, ErrPaused
 	}
@@ -556,6 +582,14 @@ func (r *Runner) executeGraph(ctx context.Context, state *store.RunState, nodes 
 			sequential = append(parallel, sequential...)
 		}
 		for _, node := range sequential {
+			// Safe pause is a scheduling boundary, not merely an outer-loop hint.
+			// Re-check before every sequential launch so a pause that arrives while
+			// an earlier node is finishing cannot publish the next external task or
+			// start another hook/attempt in the same scheduler wave.
+			if r.pauseRequested(state.ID) {
+				state.PauseRequested = true
+				return ErrPaused
+			}
 			progress = true
 			if err := r.runNode(ctx, state, node, previous); err != nil {
 				return err
@@ -592,6 +626,13 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		hooks = spec.HookSet{}
 	}
 	for ns.Attempts < max {
+		// Attempts and before-node hook retries are new work. Honor an operator
+		// pause before consuming the next attempt rather than only at the next
+		// executeGraph iteration.
+		if r.pauseRequested(state.ID) {
+			state.PauseRequested = true
+			return ErrPaused
+		}
 		ns.Attempts++
 		ns.Status = store.NodeRunning
 		ns.Error, ns.ErrorCode = "", ""
@@ -865,9 +906,15 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render approval message", Err: err}
 		}
 		state.Status = store.RunWaiting
-		state.Waiting = &store.WaitingState{NodeID: node.ID, Message: message, Kind: "approval"}
+		kind := "approval"
+		eventType := "approval.requested"
+		if node.Approval.CaptureResponse {
+			kind = "question"
+			eventType = "question.requested"
+		}
+		state.Waiting = &store.WaitingState{NodeID: node.ID, Message: message, Kind: kind}
 		state.Nodes[node.ID].Status = store.NodeWaiting
-		if err := r.commit(state, "approval.requested", node.ID, map[string]any{"message": message}); err != nil {
+		if err := r.commit(state, eventType, node.ID, map[string]any{"message": message}); err != nil {
 			return execResult{}, err
 		}
 		return execResult{}, ErrWaiting

@@ -88,7 +88,7 @@ func NewWithSurface(service *control.Service, in io.Reader, out, errOut io.Write
 		errOut = os.Stderr
 	}
 	if surface == "" {
-		surface = SurfaceAll
+		surface = SurfaceAgent
 	}
 	return &Server{control: service, in: in, out: out, errOut: errOut, surface: surface, calls: map[string]context.CancelFunc{}}
 }

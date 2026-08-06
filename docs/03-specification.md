@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.38-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.39-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -99,7 +99,7 @@ assistants:
 
 Если `protocol` не задан и `{{prompt}}` отсутствует в `argv`, prompt передаётся через stdin.
 
-При `protocol: takt-assistant/v1alpha1` или `takt-assistant/v1alpha2` stdin содержит строгий JSON request envelope, а stdout должен содержать ровно один JSON result envelope. Runtime проверяет версию, type, status, обязательный `exit_code`, отсутствие неизвестных полей, неотрицательные usage-метрики и session resume. OS exit code и `result.exit_code` обязаны совпадать всегда, включая ноль; любое расхождение классифицируется как `protocol`. Невалидный, обрезанный или дополнительный JSON также является `protocol`, а отказ resume не превращается в fresh. Схема находится в `schemas/assistant-protocol.schema.json`.
+При `protocol: takt-assistant/v1alpha1` stdin содержит строгий JSON request envelope, а stdout — ровно один JSON result envelope. `takt-assistant/v1alpha2` использует тот же request boundary, но stdout является NDJSON event stream с ровно одним terminal result event. Runtime проверяет версию, type, status, обязательный `exit_code`, отсутствие неизвестных полей, неотрицательные usage-метрики и session resume. OS exit code и terminal `result.exit_code` обязаны совпадать всегда, включая ноль; расхождение классифицируется как `protocol`. Невалидный, обрезанный или дополнительный terminal result также является `protocol`, а отказ resume не превращается в fresh. Схема находится в `schemas/assistant-protocol.schema.json`.
 
 Переменные окружения process assistant включают `TAKT_RUN_ID`, `TAKT_NODE_ID`, `TAKT_ATTEMPT`, модель, workspace, session и native hooks.
 
@@ -112,7 +112,7 @@ assistants:
 
 Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`/`maxItems`, `uniqueItems`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `minProperties`/`maxProperties`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
 
-Это используется шестью основными процессами профиля `code` 0.13.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+Это используется шестью основными процессами профиля `code` 0.14.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
 
 ## 3.1. Внешний исполнитель AI-узла
 
@@ -170,6 +170,8 @@ Takt передаёт выбранную модель как `<provider>/<id>`, 
 ### Доверенные пакеты блоков
 
 Профиль может объявить `block_packages`: список локальных `takt/v1alpha1 BlockPackage`. Каждый пакет содержит уникальные блоки с относительным workflow path, capabilities, integrations, `output_paths`, required checks и policy, а также templates и governance. Governance объединяет required blocks/checks, allowed integrations, branch rules, change-request template и пределы `max_child_runs|max_parallel|max_iterations|max_tokens`.
+
+Начиная с v0.1.39-alpha пакет также может объявлять внутренние `roles`. Блок связывается с ролью и получает bounded `TaskBrief`, context recipe, `expected|allowed|protected|forbidden` scope и `checks` с `required|preferred` + `deny|repair|warn`. Эти роли не являются глобальными агентами кодинг-хоста. Машиночитаемые схемы: `schemas/block-package.schema.json` и `schemas/task-brief.schema.json`.
 
 Каталог загружается до планирования. Workflow блока проходит обычный Load/Validate, обязан иметь один публичный terminal output и не может запускать governed child Run. Каждый `output_path` обязан существовать в terminal `output_format`; источник `map` должен точно совпасть с объявленным путём типа `array`. Общий fingerprint манифестов и workflow сохраняется в плане и проверяется до execute/replan/promote.
 

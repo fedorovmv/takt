@@ -13,6 +13,7 @@ import (
 
 	"takt/internal/command"
 	"takt/internal/definition"
+	"takt/internal/rolecontract"
 	"takt/internal/spec"
 	"takt/internal/workflow"
 	"takt/internal/yamlmini"
@@ -56,36 +57,42 @@ type Governance struct {
 }
 
 type Block struct {
-	Workflow       string          `json:"workflow"`
-	Description    string          `json:"description,omitempty"`
-	Capabilities   []string        `json:"capabilities,omitempty"`
-	Integrations   []string        `json:"integrations,omitempty"`
-	OutputPaths    []string        `json:"output_paths,omitempty"`
-	RequiredChecks []string        `json:"required_checks,omitempty"`
-	Policy         spec.PolicySpec `json:"policy,omitempty"`
+	Workflow       string               `json:"workflow"`
+	Description    string               `json:"description,omitempty"`
+	Role           string               `json:"role,omitempty"`
+	Capabilities   []string             `json:"capabilities,omitempty"`
+	Integrations   []string             `json:"integrations,omitempty"`
+	OutputPaths    []string             `json:"output_paths,omitempty"`
+	RequiredChecks []string             `json:"required_checks,omitempty"`
+	Checks         []rolecontract.Check `json:"checks,omitempty"`
+	Policy         spec.PolicySpec      `json:"policy,omitempty"`
 }
 
 type Package struct {
-	APIVersion string            `json:"apiVersion"`
-	Kind       string            `json:"kind"`
-	Metadata   Metadata          `json:"metadata"`
-	Blocks     map[string]Block  `json:"blocks"`
-	Templates  map[string]string `json:"templates,omitempty"`
-	Governance Governance        `json:"governance,omitempty"`
+	APIVersion string                             `json:"apiVersion"`
+	Kind       string                             `json:"kind"`
+	Metadata   Metadata                           `json:"metadata"`
+	Blocks     map[string]Block                   `json:"blocks"`
+	Roles      map[string]rolecontract.Definition `json:"roles,omitempty"`
+	Templates  map[string]string                  `json:"templates,omitempty"`
+	Governance Governance                         `json:"governance,omitempty"`
 }
 
 type ResolvedBlock struct {
-	Name           string            `json:"name"`
-	Package        string            `json:"package"`
-	PackageScope   string            `json:"package_scope"`
-	WorkflowPath   string            `json:"workflow_path"`
-	Description    string            `json:"description,omitempty"`
-	Capabilities   []string          `json:"capabilities,omitempty"`
-	Integrations   []string          `json:"integrations,omitempty"`
-	OutputPaths    []string          `json:"output_paths,omitempty"`
-	OutputTypes    map[string]string `json:"output_types,omitempty"`
-	RequiredChecks []string          `json:"required_checks,omitempty"`
-	Policy         spec.PolicySpec   `json:"policy,omitempty"`
+	Name           string                   `json:"name"`
+	Package        string                   `json:"package"`
+	PackageScope   string                   `json:"package_scope"`
+	WorkflowPath   string                   `json:"workflow_path"`
+	Description    string                   `json:"description,omitempty"`
+	Role           string                   `json:"role,omitempty"`
+	RoleDefinition *rolecontract.Definition `json:"role_definition,omitempty"`
+	Capabilities   []string                 `json:"capabilities,omitempty"`
+	Integrations   []string                 `json:"integrations,omitempty"`
+	OutputPaths    []string                 `json:"output_paths,omitempty"`
+	OutputTypes    map[string]string        `json:"output_types,omitempty"`
+	RequiredChecks []string                 `json:"required_checks,omitempty"`
+	Checks         []rolecontract.Check     `json:"checks,omitempty"`
+	Policy         spec.PolicySpec          `json:"policy,omitempty"`
 }
 
 type PackageSummary struct {
@@ -145,6 +152,11 @@ func Load(paths []string) (*Catalog, error) {
 			if err != nil {
 				return nil, fmt.Errorf("validate block workflow %s: %w", workflowPath, err)
 			}
+			if block.Role != "" {
+				if err := validateRoleWorkflowContract(block.Role, pkg.Roles[block.Role], wf); err != nil {
+					return nil, fmt.Errorf("block package %s block %s: %w", pkg.Metadata.Name, name, err)
+				}
+			}
 			if err := validateAtomicBlockWorkflow(wf); err != nil {
 				return nil, fmt.Errorf("block package %s block %s: %w", pkg.Metadata.Name, name, err)
 			}
@@ -163,12 +175,23 @@ func Load(paths []string) (*Catalog, error) {
 			_, _ = hash.Write([]byte(name))
 			_, _ = hash.Write([]byte{0})
 			_, _ = hash.Write([]byte(closure))
-			policy := mergePolicy(pkg.Governance.Policy, block.Policy)
+			var roleDef *rolecontract.Definition
+			policy := pkg.Governance.Policy
+			if block.Role != "" {
+				resolvedRole, ok := pkg.Roles[block.Role]
+				if !ok {
+					return nil, fmt.Errorf("block package %s block %s references unknown role %q", pkg.Metadata.Name, name, block.Role)
+				}
+				copyRole := resolvedRole
+				roleDef = &copyRole
+				policy = mergePolicy(policy, resolvedRole.Policy)
+			}
+			policy = mergePolicy(policy, block.Policy)
 			catalog.Blocks[name] = ResolvedBlock{
 				Name: name, Package: pkg.Metadata.Name, PackageScope: pkg.Metadata.Scope,
-				WorkflowPath: workflowPath, Description: block.Description,
+				WorkflowPath: workflowPath, Description: block.Description, Role: block.Role, RoleDefinition: roleDef,
 				Capabilities: unique(block.Capabilities), Integrations: unique(block.Integrations),
-				OutputPaths: unique(block.OutputPaths), OutputTypes: outputTypes, RequiredChecks: unique(append(append([]string{}, pkg.Governance.RequiredChecks...), block.RequiredChecks...)), Policy: policy,
+				OutputPaths: unique(block.OutputPaths), OutputTypes: outputTypes, RequiredChecks: unique(append(append([]string{}, pkg.Governance.RequiredChecks...), block.RequiredChecks...)), Checks: append([]rolecontract.Check(nil), block.Checks...), Policy: policy,
 			}
 		}
 		for name, value := range pkg.Templates {
@@ -227,6 +250,14 @@ func validatePackage(pkg Package, path string) error {
 	if len(pkg.Blocks) == 0 {
 		return fmt.Errorf("block package %s must declare blocks", path)
 	}
+	for name, role := range pkg.Roles {
+		if !namePattern.MatchString(name) {
+			return fmt.Errorf("block package %s has invalid role name %q", path, name)
+		}
+		if err := rolecontract.ValidateDefinition(name, role); err != nil {
+			return fmt.Errorf("block package %s: %w", path, err)
+		}
+	}
 	var allowedIntegrations map[string]bool
 	if pkg.Governance.AllowedIntegrations != nil {
 		allowedIntegrations = set(*pkg.Governance.AllowedIntegrations)
@@ -237,6 +268,16 @@ func validatePackage(pkg Package, path string) error {
 		}
 		if strings.TrimSpace(block.Workflow) == "" {
 			return fmt.Errorf("block package %s block %s requires workflow", path, name)
+		}
+		if block.Role != "" {
+			if _, ok := pkg.Roles[block.Role]; !ok {
+				return fmt.Errorf("block package %s block %s references unknown role %q", path, name, block.Role)
+			}
+		}
+		for _, check := range block.Checks {
+			if err := rolecontract.ValidateCheck(check); err != nil {
+				return fmt.Errorf("block package %s block %s: %w", path, name, err)
+			}
 		}
 		for _, integration := range block.Integrations {
 			if allowedIntegrations != nil && !allowedIntegrations[integration] {
@@ -355,9 +396,9 @@ func (c *Catalog) PlannerView() map[string]any {
 		block := c.Blocks[name]
 		blocks = append(blocks, map[string]any{
 			"name": name, "package": block.Package, "scope": block.PackageScope,
-			"description": block.Description, "capabilities": block.Capabilities,
+			"description": block.Description, "role": block.Role, "capabilities": block.Capabilities,
 			"integrations": block.Integrations, "output_paths": block.OutputPaths, "output_types": block.OutputTypes,
-			"required_checks": block.RequiredChecks,
+			"required_checks": block.RequiredChecks, "checks": block.Checks,
 		})
 	}
 	return map[string]any{"packages": c.Packages, "blocks": blocks, "templates": c.Templates, "governance": c.Governance, "fingerprint": c.Fingerprint}
@@ -391,6 +432,37 @@ func (c *Catalog) OutputPathType(blockName, path string) (string, bool) {
 	}
 	value, ok := block.OutputTypes[path]
 	return value, ok
+}
+
+func validateRoleWorkflowContract(name string, role rolecontract.Definition, wf *spec.Workflow) error {
+	var visit func([]spec.Node) error
+	visit = func(nodes []spec.Node) error {
+		for _, node := range nodes {
+			if node.Command != "" || node.Prompt != "" {
+				model := node.Model
+				if model == "" {
+					model = wf.Defaults.Model
+				}
+				session := node.Session
+				if session == "" {
+					session = wf.Defaults.Session
+				}
+				if role.ModelProfile != "" && model != role.ModelProfile {
+					return fmt.Errorf("role %s model_profile %q does not match workflow node %s effective model %q", name, role.ModelProfile, node.ID, model)
+				}
+				if role.Session != "" && session != role.Session {
+					return fmt.Errorf("role %s session %q does not match workflow node %s effective session %q", name, role.Session, node.ID, session)
+				}
+			}
+			if node.LoopGroup != nil {
+				if err := visit(node.LoopGroup.Nodes); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	return visit(wf.Nodes)
 }
 
 func validateAtomicBlockWorkflow(wf *spec.Workflow) error {
@@ -540,7 +612,7 @@ func restrictiveSandbox(a, b *spec.SandboxSpec) *spec.SandboxSpec {
 	}
 	out := *a
 	out.Filesystem = stricterValue(a.Filesystem, b.Filesystem, map[string]int{"": 0, "workspace": 1, "read_only": 2, "none": 3})
-	out.Network = stricterValue(a.Network, b.Network, map[string]int{"": 0, "allowed": 1, "none": 2})
+	out.Network = stricterValue(a.Network, b.Network, map[string]int{"": 0, "allowed": 1, "deny": 2})
 	return &out
 }
 

@@ -123,6 +123,8 @@ takt block validate path/to/package.yaml
 
 Корпоративный пакет может объявить required blocks/checks, branch rules, change-request template, allowed integrations, policy и верхние limits. Ограничения нескольких пакетов объединяются в более строгую сторону. После preview изменение package/workflow fingerprint требует нового плана.
 
+Начиная с v0.1.39 пакет может объявлять внутренние `roles`. Не создавай отдельные глобальные agents в Pi/OpenCode/Codex/Qwen CLI ради этих ролей: Takt связывает block с RoleDefinition и перед worker-сессией компилирует bounded `TaskBrief`. Для проверок используй `checks` с `level: required|preferred` и `reaction: deny|repair|warn`. `repair` предназначен для автоматически исправимой технической ошибки, `deny` — для обязательной границы, `warn` — для замечания, которое не должно останавливать обычную задачу.
+
 ## Источники истины
 
 При наличии репозитория Takt используй их в таком порядке:

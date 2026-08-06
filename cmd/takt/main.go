@@ -691,6 +691,9 @@ func runCmd(args []string) error {
 	if err := workflow.ValidateReferences(wf, cfg, resolver); err != nil {
 		return err
 	}
+	if err := runtime.ValidateCapabilities(wf, cfg, wfPath, resolver); err != nil {
+		return fmt.Errorf("capability validation: %w", err)
+	}
 	var inputValue string
 	if resolvedProfile != nil {
 		inputValue, err = profile.PrepareInput(resolvedProfile.EffectiveInput(), *input)

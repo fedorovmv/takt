@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"takt/internal/blockcatalog"
+	"takt/internal/rolecontract"
 )
 
 const (
@@ -73,31 +74,42 @@ type Steering struct {
 }
 
 type Record struct {
-	ID                      string            `json:"id"`
-	Status                  string            `json:"status"`
-	Profile                 string            `json:"profile"`
-	ConfigPath              string            `json:"config_path"`
-	BlockPackagePaths       []string          `json:"block_package_paths,omitempty"`
-	BlockCatalogFingerprint string            `json:"block_catalog_fingerprint,omitempty"`
-	CreatedAt               time.Time         `json:"created_at"`
-	UpdatedAt               time.Time         `json:"updated_at"`
-	RequiresConfirmation    bool              `json:"requires_confirmation"`
-	ConfirmedAt             *time.Time        `json:"confirmed_at,omitempty"`
-	RouterRunID             string            `json:"router_run_id,omitempty"`
-	Route                   json.RawMessage   `json:"route,omitempty"`
-	PlannerRunID            string            `json:"planner_run_id,omitempty"`
-	ReplannerRunIDs         []string          `json:"replanner_run_ids,omitempty"`
-	ExecutionRunIDs         []string          `json:"execution_run_ids,omitempty"`
-	Detached                bool              `json:"detached,omitempty"`
-	CurrentRunID            string            `json:"current_run_id,omitempty"`
-	CurrentSegment          int               `json:"current_segment,omitempty"`
-	PendingSegments         [][]Phase         `json:"pending_segments,omitempty"`
-	CompletedPhases         []string          `json:"completed_phases,omitempty"`
-	Results                 map[string]string `json:"results,omitempty"`
-	Steering                []Steering        `json:"steering,omitempty"`
-	LastError               string            `json:"last_error,omitempty"`
-	PromotedPath            string            `json:"promoted_path,omitempty"`
-	Revisions               []Revision        `json:"revisions"`
+	ID                      string                     `json:"id"`
+	Status                  string                     `json:"status"`
+	Profile                 string                     `json:"profile"`
+	ConfigPath              string                     `json:"config_path"`
+	BlockPackagePaths       []string                   `json:"block_package_paths,omitempty"`
+	BlockCatalogFingerprint string                     `json:"block_catalog_fingerprint,omitempty"`
+	CreatedAt               time.Time                  `json:"created_at"`
+	UpdatedAt               time.Time                  `json:"updated_at"`
+	RequiresConfirmation    bool                       `json:"requires_confirmation"`
+	ConfirmedAt             *time.Time                 `json:"confirmed_at,omitempty"`
+	ForkedFromPlanID        string                     `json:"forked_from_plan_id,omitempty"`
+	ForkSourceFingerprint   string                     `json:"fork_source_fingerprint,omitempty"`
+	RouterRunID             string                     `json:"router_run_id,omitempty"`
+	RouterError             string                     `json:"router_error,omitempty"`
+	Route                   json.RawMessage            `json:"route,omitempty"`
+	PlannerRunID            string                     `json:"planner_run_id,omitempty"`
+	ReplannerRunIDs         []string                   `json:"replanner_run_ids,omitempty"`
+	ExecutionRunIDs         []string                   `json:"execution_run_ids,omitempty"`
+	ExecutionWorkspace      string                     `json:"execution_workspace,omitempty"`
+	ExecutionBaseCommit     string                     `json:"execution_base_commit,omitempty"`
+	ExecutionWorktreeRunID  string                     `json:"execution_worktree_run_id,omitempty"`
+	Detached                bool                       `json:"detached,omitempty"`
+	CurrentRunID            string                     `json:"current_run_id,omitempty"`
+	CurrentSegment          int                        `json:"current_segment,omitempty"`
+	PendingSegments         [][]Phase                  `json:"pending_segments,omitempty"`
+	CompletedPhases         []string                   `json:"completed_phases,omitempty"`
+	Results                 map[string]string          `json:"results,omitempty"`
+	CheckResults            []rolecontract.CheckResult `json:"check_results,omitempty"`
+	Warnings                []string                   `json:"warnings,omitempty"`
+	RepairAttempts          map[string]int             `json:"repair_attempts,omitempty"`
+	RepairGeneration        int                        `json:"repair_generation,omitempty"`
+	DeferredSegments        [][]Phase                  `json:"deferred_segments,omitempty"`
+	Steering                []Steering                 `json:"steering,omitempty"`
+	LastError               string                     `json:"last_error,omitempty"`
+	PromotedPath            string                     `json:"promoted_path,omitempty"`
+	Revisions               []Revision                 `json:"revisions"`
 }
 
 type ReplanDecision struct {

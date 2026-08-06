@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"takt/internal/assistant"
 	"takt/internal/command"
 	"takt/internal/spec"
 )
@@ -100,20 +101,8 @@ func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg 
 }
 
 func assistantConfigured(cfg *spec.Config, name string) bool {
-	if _, ok := cfg.Assistants[name]; ok {
-		return true
-	}
-	if name != "coding-agent" {
-		return false
-	}
-	if cfg.DefaultAssistant != "" {
-		_, ok := cfg.Assistants[cfg.DefaultAssistant]
-		return ok
-	}
-	if _, ok := cfg.Assistants["opencode"]; ok {
-		return true
-	}
-	return len(cfg.Assistants) == 1
+	_, err := (assistant.Factory{Config: cfg}).Resolve(name)
+	return err == nil
 }
 
 // CommandDirsForDefinition returns command directories beside a workflow and

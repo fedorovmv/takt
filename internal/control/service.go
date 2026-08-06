@@ -50,14 +50,15 @@ type WorkflowDescription struct {
 }
 
 type StartRequest struct {
-	Selector     string `json:"selector"`
-	Input        string `json:"input,omitempty"`
-	ConfigPath   string `json:"config_path,omitempty"`
-	Worktree     *bool  `json:"worktree,omitempty"`
-	WorktreeBase string `json:"worktree_base,omitempty"`
-	KeepWorktree bool   `json:"keep_worktree,omitempty"`
-	AllowDirty   bool   `json:"allow_dirty_worktree,omitempty"`
-	Detached     bool   `json:"detached,omitempty"`
+	Selector           string `json:"selector"`
+	Input              string `json:"input,omitempty"`
+	ConfigPath         string `json:"config_path,omitempty"`
+	ExecutionWorkspace string `json:"-"`
+	Worktree           *bool  `json:"worktree,omitempty"`
+	WorktreeBase       string `json:"worktree_base,omitempty"`
+	KeepWorktree       bool   `json:"keep_worktree,omitempty"`
+	AllowDirty         bool   `json:"allow_dirty_worktree,omitempty"`
+	Detached           bool   `json:"detached,omitempty"`
 }
 
 type StartResult struct {
@@ -299,7 +300,7 @@ func (s *Service) prepareStart(request StartRequest) (*preparedStart, error) {
 		return nil, err
 	}
 	return &preparedStart{runner: runner, input: input, options: runtime.StartOptions{
-		RunID: runID, Worktree: request.Worktree, WorktreeBase: request.WorktreeBase,
+		RunID: runID, ExecutionWorkspace: request.ExecutionWorkspace, Worktree: request.Worktree, WorktreeBase: request.WorktreeBase,
 		KeepWorktree: request.KeepWorktree, AllowDirty: request.AllowDirty,
 	}}, nil
 }
@@ -429,7 +430,7 @@ func (s *Service) Answer(ctx context.Context, runID, requestedNodeID, value stri
 		return nil, runErr
 	}
 	root, cascadeErr := resumeParentChain(ctx, st, target)
-	if cascadeErr != nil && !errors.Is(cascadeErr, runtime.ErrWaiting) {
+	if cascadeErr != nil && !errors.Is(cascadeErr, runtime.ErrWaiting) && !errors.Is(cascadeErr, runtime.ErrPaused) {
 		return nil, cascadeErr
 	}
 	return root.PublicView(), nil
@@ -484,6 +485,13 @@ func resumeParentChain(ctx context.Context, st store.FS, child *store.RunState) 
 			_ = release()
 			return current, err
 		}
+		// Answering or completing a child must not implicitly resume an operator-
+		// paused parent. Preserve the tree-level pause; explicit ResumePaused will
+		// later consume the child_run suspension and continue safely.
+		if parent.Status == store.RunPaused {
+			_ = release()
+			return parent, runtime.ErrPaused
+		}
 		runner, err := runnerForState(parent)
 		if err != nil {
 			_ = release()
@@ -492,7 +500,7 @@ func resumeParentChain(ctx context.Context, st store.FS, child *store.RunState) 
 		parent, runErr := runner.Resume(ctx, parent)
 		_ = release()
 		current = parent
-		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
+		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 			return current, runErr
 		}
 	}

@@ -2,6 +2,9 @@ package notification
 
 import (
 	"bufio"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +14,7 @@ import (
 	goruntime "runtime"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"takt/internal/store"
@@ -22,12 +26,14 @@ type Config struct {
 	Kind       string   `json:"kind"`
 	Events     []string `json:"events,omitempty"`
 	Sinks      []Sink   `json:"sinks,omitempty"`
+	InboxLimit int      `json:"inbox_limit,omitempty"`
 }
 
 type Sink struct {
 	Type    string   `json:"type"`
 	Command string   `json:"command,omitempty"`
 	Args    []string `json:"args,omitempty"`
+	Timeout string   `json:"timeout,omitempty"`
 }
 
 type Item struct {
@@ -44,12 +50,14 @@ type Item struct {
 }
 
 type Snapshot struct {
-	Runs map[string]RunSnapshot `json:"runs"`
+	Initialized bool                   `json:"initialized,omitempty"`
+	Runs        map[string]RunSnapshot `json:"runs"`
 }
 
 type RunSnapshot struct {
 	Status          string `json:"status"`
 	AttentionReason string `json:"attention_reason,omitempty"`
+	AttentionKey    string `json:"attention_key,omitempty"`
 	Revision        uint64 `json:"revision"`
 	RecoveryCount   int    `json:"recovery_count,omitempty"`
 }
@@ -66,7 +74,7 @@ func (d Dispatcher) SnapshotPath() string { return filepath.Join(d.Root(), "stat
 func (d Dispatcher) InboxDir() string     { return filepath.Join(d.Root(), "inbox") }
 
 func (d Dispatcher) LoadConfig() (Config, error) {
-	config := Config{APIVersion: "takt/v1alpha1", Kind: "NotificationConfig", Events: []string{"approval.required", "question.required", "tool_approval.required", "attention.required", "run.completed", "run.failed", "run.paused", "run.abandoned", "worker.lost"}}
+	config := Config{APIVersion: "takt/v1alpha1", Kind: "NotificationConfig", Events: []string{"approval.required", "question.required", "tool_approval.required", "attention.required", "run.completed", "run.failed", "run.paused", "run.abandoned", "worker.lost"}, InboxLimit: 500}
 	raw, err := os.ReadFile(d.ConfigPath())
 	if errors.Is(err, os.ErrNotExist) {
 		return config, nil
@@ -80,6 +88,12 @@ func (d Dispatcher) LoadConfig() (Config, error) {
 	if config.Kind != "" && config.Kind != "NotificationConfig" {
 		return Config{}, fmt.Errorf("notification config kind must be NotificationConfig")
 	}
+	if config.InboxLimit == 0 {
+		config.InboxLimit = 500
+	}
+	if config.InboxLimit < 50 || config.InboxLimit > 10000 {
+		return Config{}, fmt.Errorf("notification inbox_limit must be between 50 and 10000")
+	}
 	for i := range config.Sinks {
 		config.Sinks[i].Type = strings.ToLower(strings.TrimSpace(config.Sinks[i].Type))
 		switch config.Sinks[i].Type {
@@ -90,11 +104,19 @@ func (d Dispatcher) LoadConfig() (Config, error) {
 		if config.Sinks[i].Type == "process" && strings.TrimSpace(config.Sinks[i].Command) == "" {
 			return Config{}, fmt.Errorf("process notification sink requires command")
 		}
+		if _, err := notificationTimeout(config.Sinks[i]); err != nil {
+			return Config{}, fmt.Errorf("notification sink %d: %w", i, err)
+		}
 	}
 	return config, nil
 }
 
 func (d Dispatcher) Dispatch() ([]Item, error) {
+	release, err := d.acquireDispatchLock()
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	config, err := d.LoadConfig()
 	if err != nil {
 		return nil, err
@@ -124,33 +146,40 @@ func (d Dispatcher) Dispatch() ([]Item, error) {
 		if loadErr != nil {
 			return nil, loadErr
 		}
-		currentAttention := attentionReason(run)
+		currentAttention, currentAttentionKey := attentionState(run)
 		previous := snapshot.Runs[id]
 		var candidates []Item
-		if previous.Status != run.Status {
+		if snapshot.Initialized && previous.Status != run.Status {
 			event := terminalEvent(run.Status)
 			if event != "" {
-				candidates = append(candidates, newItem(event, run, run.ErrorCode, statusMessage(run)))
+				candidates = append(candidates, newItem(event, run, run.ErrorCode, statusMessage(run), "status:"+run.Status))
 			}
 		}
-		if currentAttention != "" && currentAttention != previous.AttentionReason {
-			candidates = append(candidates, newItem(attentionEvent(currentAttention), run, currentAttention, attentionMessage(run)))
+		if snapshot.Initialized && currentAttention != "" && currentAttentionKey != previous.AttentionKey {
+			candidates = append(candidates, newItem(attentionEvent(currentAttention), run, currentAttention, attentionMessage(run), "attention:"+currentAttentionKey))
 		}
-		if run.RecoveryCount > previous.RecoveryCount {
-			candidates = append(candidates, newItem("worker.lost", run, "worker_lost", fmt.Sprintf("Run %s recovered after losing its executor", run.ID)))
+		if snapshot.Initialized && run.RecoveryCount > previous.RecoveryCount {
+			candidates = append(candidates, newItem("worker.lost", run, "worker_lost", fmt.Sprintf("Run %s recovered after losing its executor", run.ID), fmt.Sprintf("recovery:%d", run.RecoveryCount)))
 		}
 		for _, item := range candidates {
 			if !allowed[item.Event] {
 				continue
 			}
-			if err := d.persistAndDeliver(&item, config.Sinks); err != nil {
+			created, err := d.persistAndDeliver(&item, config.Sinks)
+			if err != nil {
 				return nil, err
 			}
-			emitted = append(emitted, item)
+			if created {
+				emitted = append(emitted, item)
+			}
 		}
-		snapshot.Runs[id] = RunSnapshot{Status: run.Status, AttentionReason: currentAttention, Revision: run.Revision, RecoveryCount: run.RecoveryCount}
+		snapshot.Runs[id] = RunSnapshot{Status: run.Status, AttentionReason: currentAttention, AttentionKey: currentAttentionKey, Revision: run.Revision, RecoveryCount: run.RecoveryCount}
 	}
+	snapshot.Initialized = true
 	if err := d.saveSnapshot(snapshot); err != nil {
+		return nil, err
+	}
+	if err := d.pruneInbox(config.InboxLimit); err != nil {
 		return nil, err
 	}
 	return emitted, nil
@@ -165,7 +194,7 @@ func (d Dispatcher) Test(message string) (*Item, error) {
 		message = "Takt notification test"
 	}
 	item := Item{ID: fmt.Sprintf("notice-%d-test", time.Now().UTC().UnixNano()), Event: "notification.test", Message: message, CreatedAt: time.Now().UTC(), Deliveries: map[string]string{}}
-	if err := d.persistAndDeliver(&item, config.Sinks); err != nil {
+	if _, err := d.persistAndDeliver(&item, config.Sinks); err != nil {
 		return nil, err
 	}
 	return &item, nil
@@ -225,12 +254,18 @@ func (d Dispatcher) Ack(id string) (*Item, error) {
 	return &item, nil
 }
 
-func (d Dispatcher) persistAndDeliver(item *Item, sinks []Sink) error {
+func (d Dispatcher) persistAndDeliver(item *Item, sinks []Sink) (bool, error) {
 	if item.Deliveries == nil {
 		item.Deliveries = map[string]string{}
 	}
 	if err := os.MkdirAll(d.InboxDir(), 0o700); err != nil {
-		return err
+		return false, err
+	}
+	path := filepath.Join(d.InboxDir(), item.ID+".json")
+	if _, err := os.Stat(path); err == nil {
+		return false, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, err
 	}
 	for i, sink := range sinks {
 		key := fmt.Sprintf("%s:%d", sink.Type, i)
@@ -240,7 +275,7 @@ func (d Dispatcher) persistAndDeliver(item *Item, sinks []Sink) error {
 			item.Deliveries[key] = "queued"
 			continue
 		case "desktop":
-			err = deliverDesktop(*item)
+			err = deliverDesktop(sink, *item)
 		case "process":
 			err = deliverProcess(sink, *item)
 		}
@@ -250,7 +285,10 @@ func (d Dispatcher) persistAndDeliver(item *Item, sinks []Sink) error {
 			item.Deliveries[key] = "delivered"
 		}
 	}
-	return writeJSONAtomic(filepath.Join(d.InboxDir(), item.ID+".json"), item, 0o600)
+	if err := writeJSONAtomic(path, item, 0o600); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func deliverProcess(sink Sink, item Item) error {
@@ -258,29 +296,49 @@ func deliverProcess(sink Sink, item Item) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(sink.Command, sink.Args...)
+	timeout, err := notificationTimeout(sink)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, sink.Command, sink.Args...)
+	cmd.WaitDelay = 250 * time.Millisecond
 	cmd.Stdin = strings.NewReader(string(raw) + "\n")
 	output, err := cmd.CombinedOutput()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("notification sink timed out after %s", timeout)
+	}
 	if err != nil {
 		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }
 
-func deliverDesktop(item Item) error {
+func deliverDesktop(sink Sink, item Item) error {
 	title := "Takt: " + item.Event
 	body := item.Message
 	var cmd *exec.Cmd
+	timeout, err := notificationTimeout(sink)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	switch goruntime.GOOS {
 	case "darwin":
 		script := fmt.Sprintf("display notification %s with title %s", appleQuote(body), appleQuote(title))
-		cmd = exec.Command("osascript", "-e", script)
+		cmd = exec.CommandContext(ctx, "osascript", "-e", script)
 	case "linux":
-		cmd = exec.Command("notify-send", title, body)
+		cmd = exec.CommandContext(ctx, "notify-send", title, body)
 	default:
 		return fmt.Errorf("desktop notifications are unsupported on %s", goruntime.GOOS)
 	}
+	cmd.WaitDelay = 250 * time.Millisecond
 	output, err := cmd.CombinedOutput()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("notification sink timed out after %s", timeout)
+	}
 	if err != nil {
 		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
 	}
@@ -291,8 +349,10 @@ func appleQuote(value string) string {
 	return fmt.Sprintf("%q", strings.ReplaceAll(value, "\\", "\\\\"))
 }
 
-func newItem(event string, run *store.RunState, reason, message string) Item {
-	return Item{ID: fmt.Sprintf("notice-%020d-%s", time.Now().UTC().UnixNano(), run.ID), Event: event, RunID: run.ID, Status: run.Status, Reason: reason, Message: message, Command: "takt run summary " + run.ID, CreatedAt: time.Now().UTC(), Deliveries: map[string]string{}}
+func newItem(event string, run *store.RunState, reason, message, dedupe string) Item {
+	sum := sha256.Sum256([]byte(run.ID + "\x00" + event + "\x00" + dedupe))
+	id := "notice-" + hex.EncodeToString(sum[:12])
+	return Item{ID: id, Event: event, RunID: run.ID, Status: run.Status, Reason: reason, Message: message, Command: "takt run summary " + run.ID, CreatedAt: time.Now().UTC(), Deliveries: map[string]string{}}
 }
 
 func attentionEvent(reason string) string {
@@ -330,24 +390,24 @@ func statusMessage(run *store.RunState) string {
 	return fmt.Sprintf("Run %s is %s", run.ID, run.Status)
 }
 
-func attentionReason(run *store.RunState) string {
+func attentionState(run *store.RunState) (string, string) {
 	if run.Status == store.RunWaiting && run.Waiting != nil && run.Waiting.Kind != "child_run" {
 		if run.Waiting.Kind != "" {
-			return run.Waiting.Kind
+			return run.Waiting.Kind, fmt.Sprintf("%s:%s:%d", run.Waiting.Kind, run.Waiting.NodeID, run.Revision)
 		}
-		return "approval"
+		return "approval", fmt.Sprintf("approval:%s:%d", run.Waiting.NodeID, run.Revision)
 	}
-	for _, node := range run.Nodes {
+	for nodeID, node := range run.Nodes {
 		if node == nil || node.External == nil {
 			continue
 		}
 		for _, call := range node.External.ToolCalls {
 			if call != nil && call.ApprovalNeeded && (call.Status == "requested" || call.Status == "waiting") {
-				return "tool_approval"
+				return "tool_approval", fmt.Sprintf("tool_approval:%s:%s:%d", nodeID, call.CallID, run.Revision)
 			}
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func attentionMessage(run *store.RunState) string {
@@ -377,6 +437,77 @@ func (d Dispatcher) loadSnapshot() (Snapshot, error) {
 
 func (d Dispatcher) saveSnapshot(value Snapshot) error {
 	return writeJSONAtomic(d.SnapshotPath(), value, 0o600)
+}
+
+func notificationTimeout(sink Sink) (time.Duration, error) {
+	if strings.TrimSpace(sink.Timeout) == "" {
+		return 10 * time.Second, nil
+	}
+	value, err := time.ParseDuration(sink.Timeout)
+	if err != nil {
+		return 0, fmt.Errorf("invalid timeout %q: %w", sink.Timeout, err)
+	}
+	if value < time.Second || value > 2*time.Minute {
+		return 0, fmt.Errorf("timeout must be between 1s and 2m")
+	}
+	return value, nil
+}
+
+func (d Dispatcher) acquireDispatchLock() (func(), error) {
+	if err := os.MkdirAll(d.Root(), 0o700); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(filepath.Join(d.Root(), ".dispatch.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return func() {
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = file.Close()
+	}, nil
+}
+
+func (d Dispatcher) pruneInbox(limit int) error {
+	if limit <= 0 {
+		return nil
+	}
+	items, err := d.List(false, 0)
+	if err != nil {
+		return err
+	}
+	if len(items) <= limit {
+		return nil
+	}
+	// List is newest-first. Prefer deleting acknowledged entries among the
+	// overflow, then oldest unread entries if the cap is still exceeded.
+	overflow := len(items) - limit
+	remove := make([]Item, 0, overflow)
+	for i := len(items) - 1; i >= 0 && len(remove) < overflow; i-- {
+		if items[i].AcknowledgedAt != nil {
+			remove = append(remove, items[i])
+		}
+	}
+	if len(remove) < overflow {
+		selected := map[string]bool{}
+		for _, item := range remove {
+			selected[item.ID] = true
+		}
+		for i := len(items) - 1; i >= 0 && len(remove) < overflow; i-- {
+			if !selected[items[i].ID] {
+				remove = append(remove, items[i])
+			}
+		}
+	}
+	for _, item := range remove {
+		if err := os.Remove(filepath.Join(d.InboxDir(), item.ID+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeJSONAtomic(path string, value any, mode os.FileMode) error {

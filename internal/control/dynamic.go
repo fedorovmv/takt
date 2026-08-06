@@ -7,13 +7,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"takt/internal/blockcatalog"
 	"takt/internal/dynamicplan"
 	"takt/internal/profile"
+	"takt/internal/rolecontract"
 	"takt/internal/store"
 	"takt/internal/taskroute"
 	"takt/internal/workflow"
@@ -103,6 +106,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 	var plan dynamicplan.Plan
 	var route *taskroute.Decision
 	routerRunID := ""
+	routerError := ""
 	plannerRunID := ""
 	if request.Candidate != nil {
 		plan = *request.Candidate
@@ -112,6 +116,10 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 	} else {
 		route, routerRunID, err = s.routeTask(ctx, resolved, catalog, goal, workflows)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			routerError = err.Error()
 			// Routing is an optimization, not a new availability dependency. An
 			// unavailable or invalid semantic router falls back to the stable
 			// inspect-first template and records the reason in the durable route.
@@ -190,7 +198,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 	record := &dynamicplan.Record{
 		ID: id, Status: "draft", Profile: profileName, ConfigPath: resolved.ConfigPath,
 		CreatedAt: now, UpdatedAt: now, RequiresConfirmation: plan.Decision == "planned",
-		RouterRunID: routerRunID, Route: routeRaw, PlannerRunID: plannerRunID, Results: map[string]string{},
+		RouterRunID: routerRunID, RouterError: routerError, Route: routeRaw, PlannerRunID: plannerRunID, Results: map[string]string{},
 		BlockPackagePaths: append([]string(nil), resolved.BlockPackagePaths...), BlockCatalogFingerprint: catalog.Fingerprint,
 		Revisions: []dynamicplan.Revision{{Number: 1, Reason: "initial plan", CreatedAt: now, Plan: plan}},
 	}
@@ -513,7 +521,7 @@ func (s *Service) PromotePlanWithOptions(planID, name string, options PromotePla
 		}
 	}
 	blocks := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "blocks")
-	wf, err := dynamicplan.Compile(plan.Phases, plan.Budget, dynamicplan.CompileOptions{WorkflowName: name, OutputPath: output, BlocksDir: blocks, Goal: plan.Goal, Promoted: true, Catalog: catalog, GovernanceContext: catalog.GovernanceJSON()})
+	wf, err := dynamicplan.Compile(plan.Phases, plan.Budget, dynamicplan.CompileOptions{WorkflowName: name, OutputPath: output, BlocksDir: blocks, Goal: plan.Goal, Promoted: true, Catalog: catalog, GovernanceContext: catalog.GovernanceJSON(), Signals: routeSignals(record)})
 	if err != nil {
 		return nil, err
 	}
@@ -629,12 +637,50 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 		return fmt.Errorf("current segment %d is outside pending segments", record.CurrentSegment)
 	}
 	segment := record.PendingSegments[record.CurrentSegment]
+	if run.Worktree != nil && run.Worktree.Enabled && strings.TrimSpace(run.ExecutionWorkspace) != "" {
+		if record.ExecutionWorkspace == "" {
+			record.ExecutionWorkspace = run.ExecutionWorkspace
+			record.ExecutionBaseCommit = run.Worktree.BaseCommit
+			record.ExecutionWorktreeRunID = run.ID
+		} else if filepath.Clean(record.ExecutionWorkspace) != filepath.Clean(run.ExecutionWorkspace) {
+			return fmt.Errorf("dynamic plan execution workspace changed from %s to %s", record.ExecutionWorkspace, run.ExecutionWorkspace)
+		}
+	}
 	for _, phase := range segment {
 		if node := run.Nodes[phase.ID]; node != nil {
 			record.Results[phase.ID] = node.Output
 		}
 		if !containsString(record.CompletedPhases, phase.ID) {
 			record.CompletedPhases = append(record.CompletedPhases, phase.ID)
+		}
+	}
+	catalog, err := s.catalogForRecord(record)
+	if err != nil {
+		return err
+	}
+	actualChanges, err := s.dynamicActualChanges(ctx, record)
+	if err != nil {
+		return err
+	}
+	controlOutcome, err := evaluateSegmentControls(record, segment, catalog, actualChanges)
+	if err != nil {
+		return err
+	}
+	if controlOutcome.DenyReason != "" {
+		record.Status = "failed"
+		record.CurrentRunID = ""
+		record.LastError = controlOutcome.DenyReason
+		record.UpdatedAt = time.Now().UTC()
+		return st.Save(record)
+	}
+	if len(controlOutcome.RepairFailures) > 0 {
+		handled, err := s.scheduleAutomaticRepair(ctx, record, segment, controlOutcome.RepairFailures, catalog)
+		if err != nil {
+			return err
+		}
+		if handled {
+			record.UpdatedAt = time.Now().UTC()
+			return st.Save(record)
 		}
 	}
 	if s.exceededTokenBudget(record, latestPlan(record).Budget.MaxTokens) {
@@ -655,6 +701,17 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 	}
 	record.CurrentSegment++
 	if record.CurrentSegment >= len(record.PendingSegments) {
+		if len(record.DeferredSegments) > 0 {
+			record.PendingSegments = record.DeferredSegments
+			record.DeferredSegments = nil
+			record.CurrentSegment = 0
+			record.CurrentRunID = ""
+			if err := s.startDynamicSegment(ctx, record); err != nil {
+				return err
+			}
+			record.UpdatedAt = time.Now().UTC()
+			return st.Save(record)
+		}
 		record.Status = "completed"
 		record.CurrentRunID = ""
 		record.UpdatedAt = time.Now().UTC()
@@ -664,6 +721,232 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 		return err
 	}
 	return st.Save(record)
+}
+
+type segmentControlOutcome struct {
+	DenyReason     string
+	RepairFailures []controlFailure
+}
+
+type controlFailure struct {
+	PhaseID string
+	Block   string
+	Check   string
+	Detail  string
+}
+
+func evaluateSegmentControls(record *dynamicplan.Record, segment []dynamicplan.Phase, catalog *blockcatalog.Catalog, actualChanges []string) (segmentControlOutcome, error) {
+	var outcome segmentControlOutcome
+	if len(actualChanges) > 0 {
+		declared := declaredChanges(record.Results)
+		var undeclared []string
+		for _, path := range actualChanges {
+			if !declared[path] {
+				undeclared = append(undeclared, path)
+			}
+		}
+		if len(undeclared) > 0 {
+			outcome.DenyReason = fmt.Sprintf("execution workspace contains changes not declared by mutating worker outputs: %s", strings.Join(undeclared, ", "))
+			return outcome, nil
+		}
+	}
+	for _, phase := range segment {
+		block, ok := catalog.Block(phase.Uses)
+		if !ok {
+			return outcome, fmt.Errorf("trusted block %q disappeared while evaluating phase %s", phase.Uses, phase.ID)
+		}
+		output := record.Results[phase.ID]
+		if block.RoleDefinition != nil {
+			scopeResult, err := rolecontract.ClassifyChanges(output, block.RoleDefinition.Paths)
+			if err != nil {
+				return outcome, err
+			}
+			if len(scopeResult.Forbidden) > 0 {
+				outcome.DenyReason = fmt.Sprintf("phase %s attempted changes in forbidden scope: %s", phase.ID, strings.Join(scopeResult.Forbidden, ", "))
+				return outcome, nil
+			}
+			if len(scopeResult.OutsideAllowed) > 0 {
+				outcome.DenyReason = fmt.Sprintf("phase %s attempted changes outside the role's allowed scope: %s", phase.ID, strings.Join(scopeResult.OutsideAllowed, ", "))
+				return outcome, nil
+			}
+			if len(scopeResult.Protected) > 0 {
+				record.Warnings = appendUniqueString(record.Warnings, fmt.Sprintf("phase %s touched protected scope %s; verification remains mandatory", phase.ID, strings.Join(scopeResult.Protected, ", ")))
+			}
+			if len(scopeResult.Unexpected) > 0 {
+				record.Warnings = appendUniqueString(record.Warnings, fmt.Sprintf("phase %s changed files outside the expected scope: %s", phase.ID, strings.Join(scopeResult.Unexpected, ", ")))
+			}
+		}
+		results, err := rolecontract.Evaluate(output, block.Checks)
+		if err != nil {
+			return outcome, fmt.Errorf("phase %s checks: %w", phase.ID, err)
+		}
+		for _, result := range results {
+			result.PhaseID = phase.ID
+			record.CheckResults = append(record.CheckResults, result)
+			if result.Passed {
+				continue
+			}
+			if result.Level == rolecontract.CheckPreferred {
+				record.Warnings = appendUniqueString(record.Warnings, fmt.Sprintf("preferred check %s failed in phase %s (%s)", result.Name, phase.ID, result.Detail))
+				continue
+			}
+			switch result.Reaction {
+			case rolecontract.ReactionWarn:
+				record.Warnings = appendUniqueString(record.Warnings, fmt.Sprintf("required check %s failed in phase %s (%s)", result.Name, phase.ID, result.Detail))
+			case rolecontract.ReactionDeny:
+				outcome.DenyReason = fmt.Sprintf("required check %s denied completion in phase %s (%s)", result.Name, phase.ID, result.Detail)
+				return outcome, nil
+			case rolecontract.ReactionRepair:
+				outcome.RepairFailures = append(outcome.RepairFailures, controlFailure{PhaseID: phase.ID, Block: phase.Uses, Check: result.Name, Detail: result.Detail})
+			}
+		}
+	}
+	return outcome, nil
+}
+
+func (s *Service) scheduleAutomaticRepair(ctx context.Context, record *dynamicplan.Record, segment []dynamicplan.Phase, failures []controlFailure, catalog *blockcatalog.Catalog) (bool, error) {
+	if len(failures) == 0 {
+		return false, nil
+	}
+	if record.RepairAttempts == nil {
+		record.RepairAttempts = map[string]int{}
+	}
+	for _, failure := range failures {
+		key := failure.Block + ":" + failure.Check
+		if record.RepairAttempts[key] >= 1 {
+			record.Status = "waiting"
+			record.CurrentRunID = ""
+			record.LastError = fmt.Sprintf("Technical check %s still fails after one automatic repair. Choose a different implementation approach, explicitly accept the remaining risk, or stop the task.", failure.Check)
+			return true, nil
+		}
+	}
+	if _, ok := catalog.Block("implement"); !ok {
+		record.Status = "waiting"
+		record.CurrentRunID = ""
+		record.LastError = "A required technical check failed, but the trusted catalog has no implement block for automatic repair. Choose how to continue."
+		return true, nil
+	}
+	for _, failure := range failures {
+		record.RepairAttempts[failure.Block+":"+failure.Check]++
+	}
+	record.RepairGeneration++
+	gen := record.RepairGeneration
+	var details []string
+	for _, failure := range failures {
+		details = append(details, fmt.Sprintf("%s/%s: %s", failure.PhaseID, failure.Check, failure.Detail))
+	}
+	repair := dynamicplan.Phase{
+		ID:        fmt.Sprintf("auto-repair-%d", gen),
+		Uses:      "implement",
+		Objective: "Repair only the concrete technical failures reported by Takt while preserving the task goal and already successful work. Failures: " + strings.Join(details, "; "),
+		Strategy:  "task",
+	}
+	phases := []dynamicplan.Phase{repair}
+	previous := repair.ID
+	for _, phase := range segment {
+		block, ok := catalog.Block(phase.Uses)
+		if !ok || len(block.Checks) == 0 {
+			continue
+		}
+		id := fmt.Sprintf("recheck-%s-%d", phase.Uses, gen)
+		if len(id) > 63 {
+			id = fmt.Sprintf("recheck-%d-%d", len(phases), gen)
+		}
+		phases = append(phases, dynamicplan.Phase{ID: id, Uses: phase.Uses, Objective: "Re-run this verification independently after the automatic repair: " + phase.Objective, DependsOn: []string{previous}, Strategy: "task"})
+		previous = id
+	}
+	if len(phases) == 1 {
+		record.Status = "waiting"
+		record.CurrentRunID = ""
+		record.LastError = "A required check failed, but no trusted verification block is available for a bounded automatic repair. Choose how to continue."
+		return true, nil
+	}
+	remaining := record.CurrentSegment + 1
+	if remaining < len(record.PendingSegments) {
+		record.DeferredSegments = append([][]dynamicplan.Phase(nil), record.PendingSegments[remaining:]...)
+	} else {
+		record.DeferredSegments = nil
+	}
+	record.PendingSegments = dynamicplan.Segments(phases)
+	record.CurrentSegment = 0
+	record.CurrentRunID = ""
+	record.Status = "running"
+	record.LastError = ""
+	if err := s.startDynamicSegment(ctx, record); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func declaredChanges(results map[string]string) map[string]bool {
+	out := map[string]bool{}
+	for _, output := range results {
+		var value map[string]any
+		if err := json.Unmarshal([]byte(output), &value); err != nil {
+			continue
+		}
+		raw, ok := value["changed_files"].([]any)
+		if !ok {
+			continue
+		}
+		for _, item := range raw {
+			path, ok := item.(string)
+			if !ok {
+				continue
+			}
+			path = filepath.ToSlash(strings.TrimSpace(path))
+			path = strings.TrimPrefix(path, "./")
+			if path != "" {
+				out[path] = true
+			}
+		}
+	}
+	return out
+}
+
+func (s *Service) dynamicActualChanges(ctx context.Context, record *dynamicplan.Record) ([]string, error) {
+	if record == nil || strings.TrimSpace(record.ExecutionWorkspace) == "" || strings.TrimSpace(record.ExecutionBaseCommit) == "" {
+		return nil, nil
+	}
+	workspace := filepath.Clean(record.ExecutionWorkspace)
+	info, err := os.Stat(workspace)
+	if err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("dynamic execution workspace is unavailable at %s", workspace)
+	}
+	changed := map[string]bool{}
+	commands := [][]string{
+		{"-C", workspace, "diff", "--name-only", "-z", record.ExecutionBaseCommit, "--"},
+		{"-C", workspace, "ls-files", "--others", "--exclude-standard", "-z"},
+	}
+	for _, args := range commands {
+		cmd := exec.CommandContext(ctx, "git", args...)
+		raw, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("inspect dynamic execution changes with git %s: %w", strings.Join(args, " "), err)
+		}
+		for _, item := range strings.Split(string(raw), "\x00") {
+			path := filepath.ToSlash(strings.TrimSpace(item))
+			path = strings.TrimPrefix(path, "./")
+			if path != "" {
+				changed[path] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(changed))
+	for path := range changed {
+		out = append(out, path)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func (s *Service) replanAtCheckpoint(ctx context.Context, record *dynamicplan.Record) error {
@@ -785,7 +1068,8 @@ func (s *Service) startDynamicSegment(ctx context.Context, record *dynamicplan.R
 	if err != nil {
 		return err
 	}
-	path := filepath.Join((dynamicplan.Store{Workspace: s.Workspace}).Dir(record.ID), fmt.Sprintf("revision-%03d-segment-%03d.yaml", len(record.Revisions), record.CurrentSegment+1))
+	segmentName := fmt.Sprintf("execution-%03d-revision-%03d-segment-%03d.yaml", len(record.ExecutionRunIDs)+1, len(record.Revisions), record.CurrentSegment+1)
+	path := filepath.Join((dynamicplan.Store{Workspace: s.Workspace}).Dir(record.ID), segmentName)
 	contextRaw, _ := json.Marshal(map[string]any{"goal": plan.Goal, "results": record.Results, "steering": pendingSteering(record)})
 	blocks := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "blocks")
 	segmentBudget := plan.Budget
@@ -796,7 +1080,7 @@ func (s *Service) startDynamicSegment(ctx context.Context, record *dynamicplan.R
 	if segmentBudget.MaxChildRuns < 1 {
 		return fmt.Errorf("dynamic plan run budget exhausted: used %d of %d, segment wrapper requires one additional Run", usedRuns, plan.Budget.MaxChildRuns)
 	}
-	wf, err := dynamicplan.Compile(record.PendingSegments[record.CurrentSegment], segmentBudget, dynamicplan.CompileOptions{WorkflowName: fmt.Sprintf("dynamic-%s-r%d-s%d", strings.TrimPrefix(record.ID, "plan-"), len(record.Revisions), record.CurrentSegment+1), OutputPath: path, BlocksDir: blocks, Goal: plan.Goal, Context: string(contextRaw), Catalog: catalog, GovernanceContext: catalog.GovernanceJSON()})
+	wf, err := dynamicplan.Compile(record.PendingSegments[record.CurrentSegment], segmentBudget, dynamicplan.CompileOptions{WorkflowName: fmt.Sprintf("dynamic-%s-r%d-s%d", strings.TrimPrefix(record.ID, "plan-"), len(record.Revisions), record.CurrentSegment+1), OutputPath: path, BlocksDir: blocks, Goal: plan.Goal, Context: string(contextRaw), Catalog: catalog, GovernanceContext: catalog.GovernanceJSON(), Signals: routeSignals(record)})
 	if err != nil {
 		return err
 	}
@@ -806,7 +1090,13 @@ func (s *Service) startDynamicSegment(ctx context.Context, record *dynamicplan.R
 	if _, err := workflow.Load(path); err != nil {
 		return fmt.Errorf("validate compiled dynamic workflow: %w", err)
 	}
-	started, err := s.Start(ctx, StartRequest{Selector: path, Input: string(contextRaw), ConfigPath: record.ConfigPath, Detached: true})
+	startRequest := StartRequest{Selector: path, Input: string(contextRaw), ConfigPath: record.ConfigPath, Detached: true}
+	if strings.TrimSpace(record.ExecutionWorkspace) != "" {
+		worktree := false
+		startRequest.Worktree = &worktree
+		startRequest.ExecutionWorkspace = record.ExecutionWorkspace
+	}
+	started, err := s.Start(ctx, startRequest)
 	if err != nil {
 		return err
 	}
@@ -852,6 +1142,17 @@ func completedPhaseDefinitions(plan dynamicplan.Plan, completed []string) []dyna
 		}
 	}
 	return out
+}
+
+func routeSignals(record *dynamicplan.Record) []string {
+	if record == nil || len(record.Route) == 0 {
+		return nil
+	}
+	var route taskroute.Decision
+	if err := json.Unmarshal(record.Route, &route); err != nil {
+		return nil
+	}
+	return append([]string(nil), route.Signals...)
 }
 
 func pendingSteering(record *dynamicplan.Record) []string {

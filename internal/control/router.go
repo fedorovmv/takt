@@ -14,7 +14,7 @@ import (
 
 func (s *Service) routeTask(ctx context.Context, resolved *profile.Resolved, catalog *blockcatalog.Catalog, goal string, workflows []WorkflowListEntry) (*taskroute.Decision, string, error) {
 	if resolved == nil || strings.TrimSpace(resolved.RouterPath) == "" {
-		return nil, "", nil
+		return nil, "", fmt.Errorf("semantic router is not configured")
 	}
 	routedWorkflows := make([]WorkflowListEntry, 0, len(workflows))
 	selectors := make([]string, 0, len(workflows))

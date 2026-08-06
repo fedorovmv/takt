@@ -35,6 +35,7 @@ assistants:
     capabilities:
       - tool_policy
       - skills
+      - sandbox_filesystem
 CFG
 
 for file in \

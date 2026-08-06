@@ -115,9 +115,11 @@
 - durable notification inbox, desktop/process sinks, дедупликация и ack;
 - Pi/OpenCode команды runs, attention, pause, resume и result.
 
-### Профиль code 0.13.0
+### Профиль code 0.14.0
 
 - встроенный пакет `code-core` с девятью атомарными блоками Dynamic Takt, включая baseline и independent test-design;
+- внутренние роли `baseline-observer|investigator|implementer|test-designer|validator|verifier` и fresh bounded `TaskBrief` для trusted phases;
+- structured required/preferred checks, реакции `deny|repair|warn` и одна bounded automatic repair-итерация для recoverable technical failures;
 
 - 19 процессов разработки: assist, issue/PR flows, PIV, Ralph, idea/plan-to-PR, reviews, architecture, safe refactoring, PRD, workflow builder, Remotion и conflict resolution;
 - умный роутер как корневой Run с отдельным governed child Run выбранного процесса;
@@ -180,4 +182,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run и Simple Reliable Task Router реализованы к `v0.1.38-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — Role Contract, Brief Compiler и реакции проверок `deny|repair|warn`; затем нейтральный SDK доменных адаптеров SCM/tracker/CI; полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark остаются следующими направлениями.
+Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief и реакции `deny|repair|warn` реализованы к `v0.1.39-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — Evidence/baseline/failure routing; затем нейтральный SDK доменных адаптеров SCM/tracker/CI, полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark.
