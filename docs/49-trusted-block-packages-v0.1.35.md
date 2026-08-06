@@ -143,9 +143,18 @@ governance:
 - список путей пакетов;
 - общий SHA-256 fingerprint каталога.
 
-Изменение манифеста или workflow блока после preview блокирует execute, replan и promote. Новый состав пакетов требует нового плана.
+Fingerprint включает package manifest и транзитивное содержимое, адресуемое блоком: expanded subworkflow, Markdown-команды, script source/dependencies, path skills и MCP-конфигурации. Их изменение после preview блокирует execute, replan и promote. Новый состав пакетов требует нового плана.
 
 Preview показывает требуемые возможности и интеграции наряду с фазами и бюджетами.
+
+## Точные границы governance
+
+- Отсутствующий `allowed_integrations` не добавляет package-level ограничения; явный `allowed_integrations: []` запрещает все интеграции.
+- `max_tokens: 0` в пользовательском `WorkflowPlan` нормализуется в bounded default. Ноль в `BlockPackage.governance.limits` означает, что пакет не добавляет верхнюю границу; итоговый план всё равно обязан иметь положительный лимит. Та же package-семантика применяется к остальным limits.
+- `capabilities` участвуют в preflight, `integrations` — в allowlist каталога. `required_checks`, `branch_rules` и `change_request_template` являются метаданными управления: enforcement появляется только через обязательный block или будущий domain adapter.
+- Профиль без `block_packages` сохраняет статические workflow, но `takt plan` не может построить planned-процесс до явного подключения каталога.
+- `takt block --json` без subcommand эквивалентен `takt block list --json`.
+- Каталог пока перечитывается и пересчитывает fingerprint на `plan.get/preview`; кеш по fingerprint отложен.
 
 ## Исправления Dynamic Takt v0.1.34
 

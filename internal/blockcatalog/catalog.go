@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	"takt/internal/command"
+	"takt/internal/definition"
 	"takt/internal/spec"
 	"takt/internal/workflow"
 	"takt/internal/yamlmini"
@@ -46,7 +48,7 @@ type BranchRules struct {
 type Governance struct {
 	RequiredBlocks        []string        `json:"required_blocks,omitempty"`
 	RequiredChecks        []string        `json:"required_checks,omitempty"`
-	AllowedIntegrations   []string        `json:"allowed_integrations,omitempty"`
+	AllowedIntegrations   *[]string       `json:"allowed_integrations,omitempty"`
 	BranchRules           BranchRules     `json:"branch_rules,omitempty"`
 	ChangeRequestTemplate string          `json:"change_request_template,omitempty"`
 	Policy                spec.PolicySpec `json:"policy,omitempty"`
@@ -139,10 +141,6 @@ func Load(paths []string) (*Catalog, error) {
 			if err != nil {
 				return nil, fmt.Errorf("block package %s block %s: %w", pkg.Metadata.Name, name, err)
 			}
-			workflowRaw, err := os.ReadFile(workflowPath)
-			if err != nil {
-				return nil, fmt.Errorf("read block workflow %s: %w", workflowPath, err)
-			}
 			wf, err := workflow.Load(workflowPath)
 			if err != nil {
 				return nil, fmt.Errorf("validate block workflow %s: %w", workflowPath, err)
@@ -158,8 +156,13 @@ func Load(paths []string) (*Catalog, error) {
 				}
 				outputTypes[outputPath] = outputType
 			}
+			closure, err := definition.ContentClosureFingerprint(wf, workflowPath, blockCommandResolver(workflowPath))
+			if err != nil {
+				return nil, fmt.Errorf("fingerprint block package %s block %s: %w", pkg.Metadata.Name, name, err)
+			}
 			_, _ = hash.Write([]byte(name))
-			_, _ = hash.Write(workflowRaw)
+			_, _ = hash.Write([]byte{0})
+			_, _ = hash.Write([]byte(closure))
 			policy := mergePolicy(pkg.Governance.Policy, block.Policy)
 			catalog.Blocks[name] = ResolvedBlock{
 				Name: name, Package: pkg.Metadata.Name, PackageScope: pkg.Metadata.Scope,
@@ -192,8 +195,8 @@ func Load(paths []string) (*Catalog, error) {
 		block.RequiredChecks = unique(append(block.RequiredChecks, catalog.Governance.RequiredChecks...))
 		catalog.Blocks[name] = block
 	}
-	allowed := set(catalog.Governance.AllowedIntegrations)
-	if len(allowed) > 0 {
+	if catalog.Governance.AllowedIntegrations != nil {
+		allowed := set(*catalog.Governance.AllowedIntegrations)
 		for name, block := range catalog.Blocks {
 			for _, integration := range block.Integrations {
 				if !allowed[integration] {
@@ -224,7 +227,10 @@ func validatePackage(pkg Package, path string) error {
 	if len(pkg.Blocks) == 0 {
 		return fmt.Errorf("block package %s must declare blocks", path)
 	}
-	allowedIntegrations := set(pkg.Governance.AllowedIntegrations)
+	var allowedIntegrations map[string]bool
+	if pkg.Governance.AllowedIntegrations != nil {
+		allowedIntegrations = set(*pkg.Governance.AllowedIntegrations)
+	}
 	for name, block := range pkg.Blocks {
 		if !namePattern.MatchString(name) {
 			return fmt.Errorf("block package %s has invalid block name %q", path, name)
@@ -233,7 +239,7 @@ func validatePackage(pkg Package, path string) error {
 			return fmt.Errorf("block package %s block %s requires workflow", path, name)
 		}
 		for _, integration := range block.Integrations {
-			if len(allowedIntegrations) > 0 && !allowedIntegrations[integration] {
+			if allowedIntegrations != nil && !allowedIntegrations[integration] {
 				return fmt.Errorf("block package %s block %s uses integration %q outside governance.allowed_integrations", path, name, integration)
 			}
 		}
@@ -452,7 +458,7 @@ func terminalOutputNode(wf *spec.Workflow) (spec.Node, error) {
 func mergeGovernance(target *Governance, source Governance) error {
 	target.RequiredBlocks = unique(append(target.RequiredBlocks, source.RequiredBlocks...))
 	target.RequiredChecks = unique(append(target.RequiredChecks, source.RequiredChecks...))
-	target.AllowedIntegrations = intersectRestrictions(target.AllowedIntegrations, source.AllowedIntegrations)
+	target.AllowedIntegrations = intersectOptionalRestrictions(target.AllowedIntegrations, source.AllowedIntegrations)
 	if source.BranchRules != (BranchRules{}) {
 		if target.BranchRules != (BranchRules{}) && target.BranchRules != source.BranchRules {
 			return fmt.Errorf("conflicting branch_rules")
@@ -543,6 +549,39 @@ func stricterValue(a, b string, rank map[string]int) string {
 		return b
 	}
 	return a
+}
+
+func intersectOptionalRestrictions(a, b *[]string) *[]string {
+	if a == nil && b == nil {
+		return nil
+	}
+	if a == nil {
+		values := unique(append([]string(nil), (*b)...))
+		return &values
+	}
+	if b == nil {
+		values := unique(append([]string(nil), (*a)...))
+		return &values
+	}
+	values := intersection(*a, *b)
+	return &values
+}
+
+func blockCommandResolver(workflowPath string) command.Resolver {
+	seen := map[string]bool{}
+	var dirs []string
+	for dir := filepath.Dir(workflowPath); ; dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, "commands")
+		if !seen[candidate] {
+			dirs = append(dirs, candidate)
+			seen[candidate] = true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+	return command.Resolver{Dirs: dirs}
 }
 
 func intersectRestrictions(a, b []string) []string {

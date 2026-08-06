@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.35-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.36-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Локальный `takt daemon` поддерживает фоновые Run и несколько клиентов одного пользователя через Unix socket. Сетевой и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и distributed locking. Эти режимы не поддерживаются.
 
@@ -48,14 +48,15 @@
 - строгий YAML subset с сохранением пустых строк в block scalar, path-aware `did you mean` и authoring diagnostics;
 - расширенный проверяемый `output_format`, статическая диагностика output/artifact references и строгие `${path}`, `${path?}`, `${path:-default}`;
 - именованные workflow профиля, `workflow list/describe` и селектор `profile:name`;
-- профиль `code` 0.11.0 с 19 процессами разработки, умным роутером, семью встроенными доверенными блоками и шестью глубокими workflow со строгими JSON-входами, checkpoint artifacts, domain errors, Git/recovery semantics;
+- профиль `code` 0.12.0 с 19 процессами разработки, умным роутером, семью встроенными доверенными блоками и шестью глубокими workflow со строгими JSON-входами, checkpoint artifacts, domain errors, Git/recovery semantics;
 - управляемые Git worktree: политика workflow, отдельная ветка, безопасное удержание/очистка и `takt worktree list/remove/prune`;
 - parent/child lifecycle с отдельными state/events/artifacts/usage, `takt children`, каскадным `takt cancel` и approval через корневой Run;
 - динамический fan-out governed child Runs из структурированного output: устойчивые child ID, `max_parallel`, resume, ordered aggregation и join policies;
 - script runtime `command|python|node|go|validation` с fingerprints исходника и зависимостей;
 - типизированные артефакты с MIME, SHA-256, producer metadata, CLI `takt artifacts` и передачей parent/child/fan-out;
-- локальный stdio MCP control plane с dual-era `initialize`/`server/discover`, 29 инструментами управления workflow/Run, доверенными блоками, внешними AI-узлами и отдельными tool calls, detached start, indexed revision events и bounded artifact content;
+- локальный stdio MCP control plane с dual-era `initialize`/`server/discover`, 36 инструментами управления workflow/Run, доверенными блоками, внешними AI-узлами и отдельными tool calls, detached start, indexed revision events и bounded artifact content;
 - Dynamic Takt: решение `existing|planned`, ограниченный `WorkflowPlan`, доверенные `BlockPackage`, компиляция в обычные governed child Run, preview/confirmation, полные бюджеты, checkpoint-replanning, steering, plan revisions и продвижение completed-плана в workflow проекта;
+- Coding Agent Host Control: нативные расширения Pi/OpenCode перехватывают `/takt` и дальнейший ввод до основной LLM, восстанавливают managed mode, блокируют обходные tool calls и преждевременный final response;
 - локальный `takt daemon` на Unix socket и файловом Store: background Runs, event subscriptions, MCP proxy, idle enforcement внешних workers и несколько клиентов без БД;
 - event protocol v2: session lifecycle, tool request/allow/deny/start/complete, отдельная отмена tool call, artifact declaration с `call_id`, usage/diagnostic/terminal events и capability declaration;
 - aggregate usage по узлам и отдельные execution records по каждой фактической попытке;
@@ -287,7 +288,7 @@ Dynamic Takt сохраняет fingerprint каталога при preview. И�
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.11.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon, v0.1.34-alpha — Dynamic Takt и coding-agent flow, а v0.1.35-alpha — доверенные корпоративные блоки и исправления бюджетов/исполнения. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.12.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon, v0.1.34-alpha — Dynamic Takt и coding-agent flow, v0.1.35-alpha — доверенные корпоративные блоки и исправления бюджетов/исполнения, а v0.1.36-alpha — строгий host-control Pi/OpenCode. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
 
 Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Отдельный предметный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 
@@ -323,6 +324,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Script-узлы и типизированные артефакты v0.1.29](docs/43-script-nodes-typed-artifacts-v0.1.29.md)
 - [Локальный MCP control plane v0.1.30](docs/44-local-mcp-control-plane-v0.1.30.md)
 - [Доверенные пакеты блоков v0.1.35](docs/49-trusted-block-packages-v0.1.35.md)
+- [Coding Agent Host Control v0.1.36](docs/50-coding-agent-host-control-v0.1.36.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация

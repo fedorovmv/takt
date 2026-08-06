@@ -66,6 +66,8 @@ func run(args []string) error {
 		return executeCmd(args[1:])
 	case "steer":
 		return steerCmd(args[1:])
+	case "host":
+		return hostCmd(args[1:])
 	case "workflow":
 		return workflowCmd(args[1:])
 	case "block":
@@ -1521,5 +1523,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|run|plan|execute|steer|workflow|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
+	return fmt.Errorf("usage: takt <init|validate|run|plan|execute|steer|host|workflow|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
 }

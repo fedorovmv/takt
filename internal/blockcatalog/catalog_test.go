@@ -3,6 +3,7 @@ package blockcatalog_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"takt/internal/blockcatalog"
@@ -110,7 +111,7 @@ metadata:
   name: child
 nodes:
   - id: done
-    bash: echo '{"summary":"ok"}'
+    prompt: return summary
     output_format:
       type: object
       properties:
@@ -126,6 +127,15 @@ nodes:
   - id: child
     workflow:
       path: child.yaml
+  - id: result
+    depends_on: [child]
+    prompt: summarize
+    output_format:
+      type: object
+      properties:
+        summary:
+          type: string
+      required: [summary]
 `
 	pkg := `apiVersion: takt/v1alpha1
 kind: BlockPackage
@@ -136,13 +146,171 @@ metadata:
 blocks:
   nested:
     workflow: parent.yaml
+    output_paths: [summary]
 `
 	for name, content := range map[string]string{"child.yaml": child, "parent.yaml": parent, "package.yaml": pkg} {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := blockcatalog.LoadOne(filepath.Join(root, "package.yaml")); err == nil {
-		t.Fatal("expected governed child Run rejection")
+	if _, err := blockcatalog.LoadOne(filepath.Join(root, "package.yaml")); err == nil || !strings.Contains(err.Error(), "starts governed child Runs") {
+		t.Fatalf("expected governed child Run rejection, got %v", err)
+	}
+}
+
+func TestPackageFingerprintIncludesResolvedCommandContent(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "commands"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workflowPath := filepath.Join(root, "block.yaml")
+	packagePath := filepath.Join(root, "package.yaml")
+	commandPath := filepath.Join(root, "commands", "dynamic-implement.md")
+	mustWriteCatalog(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: command-block
+nodes:
+  - id: result
+    command: dynamic-implement
+    output_format:
+      type: object
+      properties:
+        summary:
+          type: string
+      required: [summary]
+`)
+	mustWriteCatalog(t, packagePath, `apiVersion: takt/v1alpha1
+kind: BlockPackage
+metadata:
+  name: command-package
+  version: 1.0.0
+  scope: project
+blocks:
+  implement:
+    workflow: block.yaml
+    output_paths: [summary]
+`)
+	mustWriteCatalog(t, commandPath, "first implementation command")
+	before, err := blockcatalog.LoadOne(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustWriteCatalog(t, commandPath, "second implementation command")
+	after, err := blockcatalog.LoadOne(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Fingerprint == after.Fingerprint {
+		t.Fatal("command content did not change package fingerprint")
+	}
+}
+
+func TestPackageFingerprintIncludesNestedWorkflowScriptDependency(t *testing.T) {
+	root := t.TempDir()
+	mustWriteCatalog(t, filepath.Join(root, "tool.sh"), "#!/bin/sh\necho ok\n")
+	mustWriteCatalog(t, filepath.Join(root, "dependency.txt"), "first")
+	mustWriteCatalog(t, filepath.Join(root, "child.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child
+nodes:
+  - id: result
+    script:
+      runtime: command
+      path: tool.sh
+      dependencies: [dependency.txt]
+    output_format:
+      type: object
+      properties:
+        summary:
+          type: string
+      required: [summary]
+`)
+	mustWriteCatalog(t, filepath.Join(root, "block.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent
+nodes:
+  - id: child
+    subworkflow:
+      path: child.yaml
+      output_node: result
+  - id: result
+    depends_on: [child]
+    prompt: summarize nested result
+    output_format:
+      type: object
+      properties:
+        summary:
+          type: string
+      required: [summary]
+`)
+	packagePath := filepath.Join(root, "package.yaml")
+	mustWriteCatalog(t, packagePath, `apiVersion: takt/v1alpha1
+kind: BlockPackage
+metadata:
+  name: nested-package
+  version: 1.0.0
+  scope: project
+blocks:
+  inspect:
+    workflow: block.yaml
+    output_paths: [summary]
+`)
+	before, err := blockcatalog.LoadOne(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustWriteCatalog(t, filepath.Join(root, "dependency.txt"), "second")
+	after, err := blockcatalog.LoadOne(packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Fingerprint == after.Fingerprint {
+		t.Fatal("nested script dependency did not change package fingerprint")
+	}
+}
+
+func TestExplicitEmptyAllowedIntegrationsDeniesAll(t *testing.T) {
+	root := t.TempDir()
+	mustWriteCatalog(t, filepath.Join(root, "block.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: block
+nodes:
+  - id: result
+    bash: echo '{"summary":"ok"}'
+    output_format:
+      type: object
+      properties:
+        summary:
+          type: string
+      required: [summary]
+`)
+	path := filepath.Join(root, "package.yaml")
+	mustWriteCatalog(t, path, `apiVersion: takt/v1alpha1
+kind: BlockPackage
+metadata:
+  name: deny-integrations
+  version: 1.0.0
+  scope: project
+blocks:
+  inspect:
+    workflow: block.yaml
+    integrations: [filesystem]
+    output_paths: [summary]
+governance:
+  allowed_integrations: []
+`)
+	if _, err := blockcatalog.LoadOne(path); err == nil || !strings.Contains(err.Error(), "outside governance.allowed_integrations") {
+		t.Fatalf("expected explicit empty integration denial, got %v", err)
+	}
+}
+
+func mustWriteCatalog(t *testing.T, path, value string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

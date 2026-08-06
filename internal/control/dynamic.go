@@ -60,9 +60,11 @@ type PlanView struct {
 }
 
 type ExecutePlanRequest struct {
-	PlanID   string `json:"plan_id"`
-	Confirm  bool   `json:"confirm,omitempty"`
-	Detached bool   `json:"-"`
+	PlanID  string `json:"plan_id"`
+	Confirm bool   `json:"confirm,omitempty"`
+	// Detached is selected by the transport: daemon-backed callers set it to
+	// true, while direct CLI/stdio callers keep foreground execution.
+	Detached bool `json:"-"`
 }
 
 type SteerRequest struct {
@@ -99,8 +101,14 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 		}
 	} else {
 		plannerPath := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "dynamic-plan.yaml")
-		workflows, _ := s.ListWorkflows(profileName)
-		plannerInput, _ := json.Marshal(map[string]any{"goal": goal, "existing_workflows": workflows, "trusted_catalog": catalog.PlannerView()})
+		workflows, err := s.ListWorkflows(profileName)
+		if err != nil {
+			return nil, fmt.Errorf("list workflows for dynamic planner: %w", err)
+		}
+		plannerInput, err := json.Marshal(map[string]any{"goal": goal, "existing_workflows": workflows, "trusted_catalog": catalog.PlannerView()})
+		if err != nil {
+			return nil, fmt.Errorf("encode dynamic planner input: %w", err)
+		}
 		started, startErr := s.Start(ctx, StartRequest{Selector: plannerPath, Input: string(plannerInput), ConfigPath: resolved.ConfigPath})
 		if startErr != nil {
 			return nil, fmt.Errorf("dynamic planner: %w", startErr)
@@ -216,7 +224,7 @@ func (s *Service) ExecutePlan(ctx context.Context, request ExecutePlanRequest) (
 	if _, err := s.catalogForRecord(record); err != nil {
 		return nil, err
 	}
-	if len(record.Revisions) > plan.Budget.MaxIterations {
+	if len(record.Revisions) >= plan.Budget.MaxIterations {
 		return nil, fmt.Errorf("plan %s has %d revisions, exceeding limit %d", record.ID, len(record.Revisions), plan.Budget.MaxIterations)
 	}
 	if s.exceededTokenBudget(record, plan.Budget.MaxTokens) {
@@ -276,28 +284,11 @@ func (s *Service) advanceForegroundPlan(ctx context.Context, record *dynamicplan
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		current, err := st.Load(record.ID)
-		if err != nil {
-			return nil, err
-		}
-		record = current
-		if record.Status != "running" || record.CurrentRunID == "" {
-			return record, nil
-		}
-		run, err := s.GetRun(record.CurrentRunID)
-		if err != nil {
-			return nil, err
-		}
-		if run.Status == store.RunRunning {
-			time.Sleep(20 * time.Millisecond)
-			continue
-		}
-
 		advanceLock, err := st.AcquireAdvanceLock(ctx)
 		if err != nil {
 			return nil, err
 		}
-		current, err = st.Load(record.ID)
+		current, err := st.Load(record.ID)
 		if err != nil {
 			_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
 			return nil, err
@@ -309,13 +300,7 @@ func (s *Service) advanceForegroundPlan(ctx context.Context, record *dynamicplan
 			}
 			return record, nil
 		}
-		if record.CurrentRunID != run.ID {
-			if releaseErr := dynamicplan.ReleaseAdvanceLock(advanceLock); releaseErr != nil {
-				return nil, releaseErr
-			}
-			continue
-		}
-		run, err = s.GetRun(record.CurrentRunID)
+		run, err := s.GetRun(record.CurrentRunID)
 		if err != nil {
 			_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
 			return nil, err
@@ -390,7 +375,7 @@ func (s *Service) Steer(ctx context.Context, request SteerRequest) (*dynamicplan
 		return nil, fmt.Errorf("plan %s cannot be steered from status %s", record.ID, record.Status)
 	}
 	plan := latestPlan(record)
-	if record.Status == "waiting" && len(record.Revisions) >= plan.Budget.MaxIterations {
+	if len(record.Revisions) >= plan.Budget.MaxIterations {
 		return nil, fmt.Errorf("plan revision limit reached: %d of %d", len(record.Revisions), plan.Budget.MaxIterations)
 	}
 	record.Steering = append(record.Steering, dynamicplan.Steering{Message: request.Message, CreatedAt: time.Now().UTC()})
@@ -467,16 +452,29 @@ func (s *Service) PromotePlanWithOptions(planID, name string, options PromotePla
 	}
 	var previous []byte
 	if options.Force {
-		previous, _ = os.ReadFile(output)
+		previous, err = os.ReadFile(output)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read previous promoted workflow: %w", err)
+		}
+		if os.IsNotExist(err) {
+			previous = nil
+		}
 	}
 	if err := dynamicplan.WriteWorkflow(output, wf); err != nil {
 		return nil, err
 	}
 	if _, err := workflow.Load(output); err != nil {
+		var rollbackErr error
 		if len(previous) > 0 {
-			_ = os.WriteFile(output, previous, 0o600)
+			rollbackErr = os.WriteFile(output, previous, 0o600)
 		} else {
-			_ = os.Remove(output)
+			rollbackErr = os.Remove(output)
+			if os.IsNotExist(rollbackErr) {
+				rollbackErr = nil
+			}
+		}
+		if rollbackErr != nil {
+			return nil, fmt.Errorf("validate promoted workflow: %v; rollback failed: %w", err, rollbackErr)
 		}
 		return nil, fmt.Errorf("validate promoted workflow: %w", err)
 	}
@@ -603,7 +601,10 @@ func (s *Service) replanAtCheckpoint(ctx context.Context, record *dynamicplan.Re
 		return err
 	}
 	payload := map[string]any{"goal": plan.Goal, "current_plan": plan, "completed_phases": record.CompletedPhases, "results": record.Results, "remaining_phases": remaining, "remaining_budget": plan.Budget, "steering": pendingSteering(record), "trusted_catalog": catalog.PlannerView()}
-	raw, _ := json.Marshal(payload)
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("encode dynamic replanner input: %w", err)
+	}
 	resolved, err := profile.Resolve(record.Profile, s.Workspace)
 	if err != nil {
 		return err

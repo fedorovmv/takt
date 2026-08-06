@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.36-alpha
+
+- Добавлен Coding Agent Host Control: durable host sessions, CLI/MCP/daemon `host begin|confirm|get|find|guard|release` и строгие уровни `advisory|guarded|strict`.
+- Добавлены нативные расширения Pi и OpenCode: `/takt` перехватывается до основной LLM, дальнейший ввод направляется в steering, mutating tools и преждевременный final response блокируются до terminal-состояния Takt.
+- Fingerprint `BlockPackage` расширен до транзитивного содержимого команд, вложенных workflow, script source/dependencies, path skills и MCP-конфигураций.
+- Явный `allowed_integrations: []` теперь запрещает все интеграции; отсутствие поля не добавляет ограничения. Нулевая граница package limits документирована отдельно от bounded default динамического плана.
+- Исправлены macOS unit expectation, единый revision limit steering для `running|waiting`, foreground locking, обработка ошибок workflow listing/JSON/promote rollback и точный atomic-block contract test.
+- Добавлена миграционная заметка: статические профили без `block_packages` продолжают работать, Dynamic Plan требует явного каталога. `.commandcode/taste/taste.md` остаётся удалённым как мусор предыдущей разработки.
+- Профиль `code` обновлён до 0.12.0, skill — до 0.18.0; MCP расширен до 36 tools; добавлены ADR-053/054 и `docs/50-coding-agent-host-control-v0.1.36.md`.
+
 ## v0.1.35-alpha
 
 - Добавлен минимальный доверенный каталог `BlockPackage` для Dynamic Takt: встроенные, корпоративные и проектные блоки, типизированные выходы, возможности, интеграции, шаблоны и governance.

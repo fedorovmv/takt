@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.35-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.36-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -43,6 +43,10 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 Профиль подключает явный каталог `BlockPackage` со встроенными, корпоративными и проектными блоками. Пакет описывает workflow, типизированные выходы, возможности, интеграции, шаблоны, обязательные проверки, правила веток, шаблон запроса на изменение, security policy и максимальные бюджеты. Ограничения нескольких пакетов объединяются fail-closed, каталог получает fingerprint и становится обязательной границей plan/execute/replan/promote.
 
 Одновременно исправлены foreground-исполнение `takt execute`, обход лимита редакций через steering, macOS artifact path, составные `when`, полный учёт planner/replanner в бюджетах, ограничение параллельных task-фаз, безопасное promote и межпроцессное продвижение планов. Полный архив среза: `49-trusted-block-packages-v0.1.35.md`.
+
+## Выполнено в v0.1.36-alpha. Coding Agent Host Control
+
+Добавлен строгий host-control для Pi и OpenCode: `/takt` и последующий ввод перехватываются до основной LLM, managed session восстанавливается после перезапуска, mutating tools блокируются до исполнения, а final response разрешается только после terminal-состояния Takt. Durable host-session связывает сессию кодинг-агента с Dynamic Plan; CLI/MCP/daemon публикуют begin/confirm/get/find/guard/release. Одновременно fingerprint доверенного пакета расширен до транзитивного содержимого команд, subworkflow, scripts, dependencies, skills и MCP. Полный архив среза: `50-coding-agent-host-control-v0.1.36.md`.
 
 ## Приоритет 1. Domain Adapter SDK
 

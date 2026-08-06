@@ -1,0 +1,9 @@
+{
+  "name": "takt-pi-host-control",
+  "version": "0.1.36-alpha",
+  "private": true,
+  "type": "module",
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}

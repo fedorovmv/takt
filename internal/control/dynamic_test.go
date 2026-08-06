@@ -83,30 +83,34 @@ func TestPromoteCompletedPlanCreatesProjectWorkflow(t *testing.T) {
 }
 
 func TestSteerRejectsPlanAtRevisionLimit(t *testing.T) {
-	workspace := t.TempDir()
-	if _, err := profile.Init("code", workspace, false); err != nil {
-		t.Fatal(err)
-	}
-	service, err := New(workspace, filepath.Join(workspace, ".takt", "config.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan := candidateDynamicPlan()
-	plan.Budget.MaxIterations = 1
-	now := time.Now().UTC()
-	record := &dynamicplan.Record{ID: "plan-limit0123456789", Status: "waiting", Profile: "code", ConfigPath: service.ConfigPath, CreatedAt: now, UpdatedAt: now, Results: map[string]string{}, Revisions: []dynamicplan.Revision{{Number: 1, Reason: "initial", CreatedAt: now, Plan: plan}}}
-	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.Steer(context.Background(), SteerRequest{PlanID: record.ID, Message: "continue"}); err == nil {
-		t.Fatal("expected revision limit error")
-	}
-	loaded, err := (dynamicplan.Store{Workspace: workspace}).Load(record.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(loaded.Steering) != 0 {
-		t.Fatalf("rejected steering was persisted: %#v", loaded.Steering)
+	for _, status := range []string{"waiting", "running"} {
+		t.Run(status, func(t *testing.T) {
+			workspace := t.TempDir()
+			if _, err := profile.Init("code", workspace, false); err != nil {
+				t.Fatal(err)
+			}
+			service, err := New(workspace, filepath.Join(workspace, ".takt", "config.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan := candidateDynamicPlan()
+			plan.Budget.MaxIterations = 1
+			now := time.Now().UTC()
+			record := &dynamicplan.Record{ID: "plan-limit" + status + "12345", Status: status, Profile: "code", ConfigPath: service.ConfigPath, CreatedAt: now, UpdatedAt: now, Results: map[string]string{}, Revisions: []dynamicplan.Revision{{Number: 1, Reason: "initial", CreatedAt: now, Plan: plan}}}
+			if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.Steer(context.Background(), SteerRequest{PlanID: record.ID, Message: "continue"}); err == nil {
+				t.Fatal("expected revision limit error")
+			}
+			loaded, err := (dynamicplan.Store{Workspace: workspace}).Load(record.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(loaded.Steering) != 0 {
+				t.Fatalf("rejected steering was persisted: %#v", loaded.Steering)
+			}
+		})
 	}
 }
 

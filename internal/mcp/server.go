@@ -363,6 +363,55 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 			return nil, err
 		}
 		return s.control.DescribeBlock(in.Profile, in.Name)
+	case "takt.host.begin":
+		var in control.HostBeginRequest
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.BeginHostSession(ctx, in)
+	case "takt.host.confirm":
+		var in control.HostConfirmRequest
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.ConfirmHostSession(ctx, in)
+	case "takt.host.get":
+		var in struct {
+			SessionID string `json:"session_id"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.GetHostSession(in.SessionID)
+	case "takt.host.find":
+		var in struct {
+			Host          string `json:"host"`
+			HostSessionID string `json:"host_session_id"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.FindHostSession(in.Host, in.HostSessionID)
+	case "takt.host.guard_tool":
+		var in control.HostToolGuardRequest
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.GuardHostTool(in)
+	case "takt.host.guard_completion":
+		var in control.HostCompletionGuardRequest
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.GuardHostCompletion(in)
+	case "takt.host.release":
+		var in struct {
+			SessionID string `json:"session_id"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.ReleaseHostSession(in.SessionID)
 	case "takt.plan":
 		var in struct {
 			Goal      string            `json:"goal"`
@@ -726,6 +775,17 @@ func tools() []tool {
 		{Name: "takt.workflow.describe", Title: "Describe a Takt workflow", Description: "Describe the public DAG of a profile selector before starting it.", InputSchema: object(map[string]any{"selector": stringProp("Profile selector such as code:plan-to-pr")}, "selector"), Annotations: readOnly},
 		{Name: "takt.block.list", Title: "List trusted Dynamic Takt blocks", Description: "List explicitly trusted block packages, governance limits, templates and blocks available to a profile.", InputSchema: object(map[string]any{"profile": stringProp("Installed profile, defaults to code")}), Annotations: readOnly},
 		{Name: "takt.block.describe", Title: "Describe trusted Dynamic Takt block", Description: "Describe one trusted block, its package scope, output paths, capabilities, integrations and policy.", InputSchema: object(map[string]any{"profile": stringProp("Installed profile, defaults to code"), "name": stringProp("Trusted block name")}, "name"), Annotations: readOnly},
+		{Name: "takt.host.begin", Title: "Begin managed Takt session", Description: "Bind a coding-agent host session to a Takt plan before the main LLM handles the task. Strict mode requires interception and recovery capabilities.", InputSchema: object(map[string]any{
+			"host": stringProp("Coding-agent host, for example pi or opencode"), "host_session_id": stringProp("Stable host session ID"), "goal": stringProp("User task"), "profile": stringProp("Planning profile"),
+			"enforcement":  map[string]any{"type": "string", "enum": []string{"advisory", "guarded", "strict"}},
+			"capabilities": object(map[string]any{"command_interception": boolProp("Host intercepts /takt before the LLM"), "input_interception": boolProp("Host intercepts later input"), "tool_call_blocking": boolProp("Host blocks tools before execution"), "completion_blocking": boolProp("Host blocks premature completion"), "session_recovery": boolProp("Host restores managed mode")}),
+		}, "host", "host_session_id", "goal"), Annotations: mutating},
+		{Name: "takt.host.confirm", Title: "Confirm managed Takt session", Description: "Confirm preview and start the bound Takt plan.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID"), "confirm": boolProp("Confirm preview and budgets")}, "session_id", "confirm"), Annotations: mutating},
+		{Name: "takt.host.get", Title: "Get managed Takt session", Description: "Read managed host session and bound plan state.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID")}, "session_id"), Annotations: readOnly},
+		{Name: "takt.host.find", Title: "Find managed Takt session", Description: "Recover a durable managed session by coding-agent host and session ID.", InputSchema: object(map[string]any{"host": stringProp("Coding-agent host"), "host_session_id": stringProp("Stable host session ID")}, "host", "host_session_id"), Annotations: readOnly},
+		{Name: "takt.host.guard_tool", Title: "Guard coding-agent tool", Description: "Fail closed on a host tool call while a Takt-managed workflow is active.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID"), "tool": stringProp("Host tool name"), "category": stringProp("Optional host category"), "read_only": boolProp("Host advisory read-only declaration")}, "session_id", "tool"), Annotations: readOnly},
+		{Name: "takt.host.guard_completion", Title: "Guard coding-agent completion", Description: "Block a final response while the bound Takt plan is active.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID"), "kind": map[string]any{"type": "string", "enum": []string{"final", "status", "question"}}}, "session_id", "kind"), Annotations: readOnly},
+		{Name: "takt.host.release", Title: "Release managed Takt session", Description: "Explicitly leave managed mode without cancelling the underlying Takt plan.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID")}, "session_id"), Annotations: mutating},
 		{Name: "takt.plan", Title: "Plan with Dynamic Takt", Description: "Choose an existing workflow or create a bounded task-specific WorkflowPlan from approved blocks. Returns preview, budget and confirmation requirement.", InputSchema: object(map[string]any{
 			"goal": stringProp("Natural-language engineering goal"), "profile": stringProp("Installed profile, defaults to code"), "candidate": map[string]any{"type": "object", "description": "Optional externally proposed WorkflowPlan; Takt still validates it"},
 		}, "goal"), Annotations: mutating},

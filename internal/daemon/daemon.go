@@ -292,6 +292,56 @@ func (s *Server) call(ctx context.Context, method string, raw json.RawMessage) (
 			return nil, err
 		}
 		return s.service.DescribeWorkflow(params.Selector)
+	case "host.begin":
+		var params control.HostBeginRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.BeginHostSession(ctx, params)
+	case "host.confirm":
+		var params control.HostConfirmRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		params.Detached = true
+		return s.service.ConfirmHostSession(ctx, params)
+	case "host.get":
+		var params struct {
+			SessionID string `json:"session_id"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.GetHostSession(params.SessionID)
+	case "host.find":
+		var params struct {
+			Host          string `json:"host"`
+			HostSessionID string `json:"host_session_id"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.FindHostSession(params.Host, params.HostSessionID)
+	case "host.guard_tool":
+		var params control.HostToolGuardRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.GuardHostTool(params)
+	case "host.guard_completion":
+		var params control.HostCompletionGuardRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.GuardHostCompletion(params)
+	case "host.release":
+		var params struct {
+			SessionID string `json:"session_id"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.ReleaseHostSession(params.SessionID)
 	case "plan.create":
 		var params control.PlanRequest
 		if err := decodeParams(raw, &params); err != nil {

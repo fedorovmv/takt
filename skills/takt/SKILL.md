@@ -49,6 +49,12 @@ takt run code --workspace . --input docs/plan.md --json
 
 Для одноразового управления из coding-agent host запускай `takt mcp --workspace .`. Когда Run должен пережить закрытие клиента или к одному workspace подключаются несколько локальных агентов, используй `takt daemon start --workspace .` и `takt mcp --daemon --workspace .`. Сохраняй `run_id`, наблюдай через `takt.run.get/events` либо `takt events --daemon --follow`. Approval подтверждай только при наличии решения пользователя. Полный MCP-контракт: `references/mcp.md`.
 
+## Строгий режим хоста кодинг-агента
+
+Для гарантированного выполнения используй нативную `/takt`-команду из `integrations/coding-agent-host-control/pi` или `integrations/coding-agent-host-control/opencode`. В strict mode команда и последующий пользовательский ввод перехватываются хостом до основной LLM; изменяющие инструменты и final completion основной сессии блокируются, пока durable host session активна. Skill и обычный MCP-вызов без host extension являются только advisory/guarded и не должны называться строгим контролем.
+
+Основная сессия показывает preview, подтверждает запуск, отправляет steering и читает статус/артефакты. Код и shell выполняют только worker-сессии текущих фаз Takt. После перезапуска host extension обязан восстановить managed session через `takt.host.find`.
+
 ## Dynamic Takt из кодинг-агента
 
 Используй Dynamic Takt, когда задача требует отдельного плана, динамической инвентаризации, параллельных исполнителей или пересмотра оставшихся шагов. Основная сессия Pi/OpenCode остаётся пользовательским интерфейсом; Takt планирует и отслеживает Run, а отдельные сессии coding assistant выполняют фазы своими инструментами.

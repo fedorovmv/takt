@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.17.0" \
+  "skills/takt/VERSION|0.18.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -155,7 +155,7 @@ for check in \
   "scripts/test-child-fanout.sh|governed child fan-out contract: PASS" \
   "schemas/workflow.schema.json|fan_out" \
   "schemas/run-state.schema.json|child_runs" \
-  "internal/profile/builtin/code/VERSION|0.11.0" \
+  "internal/profile/builtin/code/VERSION|0.12.0" \
   "README.md|Динамический fan-out v0.1.28" \
   "docs/12-document-map.md|42-governed-child-fanout-v0.1.28.md" \
   "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \
@@ -201,7 +201,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.35-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.36-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \
@@ -271,6 +271,24 @@ for check in \
   "schemas/evaluation-report.schema.json|mixed_execution_identity" \
   "schemas/evaluation-report.schema.json|stdout" \
   "schemas/evaluation-report.schema.json|stderr"
+do
+  file="${check%%|*}"
+  text="${check#*|}"
+  grep -Fq -- "$text" "$file" || {
+    echo "documentation regression: '$text' is missing from $file" >&2
+    exit 1
+  }
+done
+
+for check in \
+  "docs/50-coding-agent-host-control-v0.1.36.md|Coding Agent Host Control" \
+  "docs/50-coding-agent-host-control-v0.1.36.md|strict" \
+  "docs/12-document-map.md|50-coding-agent-host-control-v0.1.36.md" \
+  "ARCHITECTURE_DECISIONS.md|ADR-053" \
+  "ARCHITECTURE_DECISIONS.md|ADR-054" \
+  "integrations/coding-agent-host-control/pi/index.ts|pi.registerCommand" \
+  "integrations/coding-agent-host-control/opencode/index.ts|ctx.session.hook" \
+  "scripts/test-host-control.sh|coding-agent host control contract: PASS"
 do
   file="${check%%|*}"
   text="${check#*|}"

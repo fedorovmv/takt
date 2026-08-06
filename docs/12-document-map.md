@@ -84,6 +84,7 @@
 | Строгий authoring и локальный daemon | `47-authoring-local-daemon-v0.1.33.md` | фактический |
 | Dynamic Takt | `48-dynamic-takt-v0.1.34.md` | фактический |
 | Доверенные пакеты блоков | `49-trusted-block-packages-v0.1.35.md`, `../schemas/block-package.schema.json`, `../examples/corporate-block-package/` | фактический |
+| Coding Agent Host Control | `50-coding-agent-host-control-v0.1.36.md`, `../integrations/coding-agent-host-control/` | фактический |
 | Управляемые agent events и глубокие workflow | `46-controlled-agent-events-deep-workflows-v0.1.32.md` | фактический |
 | Исправления последнего аудита | `16–18-audit-remediation-*.md` | фактический |
 | Fake-assistant protocol suite | `20-fake-assistant-contract-v0.1.6.md` | фактический |
@@ -148,3 +149,5 @@
 - `48-dynamic-takt-v0.1.34.md` — ограниченный WorkflowPlan, checkpoint replanning, coding-agent flow, MCP/CLI и promotion.
 
 - `49-trusted-block-packages-v0.1.35.md` — BlockPackage, корпоративный governance, fingerprint каталога и исправления Dynamic Takt.
+
+- `50-coding-agent-host-control-v0.1.36.md` — строгий managed mode Pi/OpenCode, host sessions, tool/completion gates и исправления v0.1.35.

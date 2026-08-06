@@ -89,7 +89,7 @@
 - MCP `takt.plan`, `takt.plan.get`, `takt.execute`, `takt.run.steer`, `takt.plan.promote`;
 - обновлённый skill для Pi/OpenCode: основная сессия управляет, отдельные worker-сессии исполняют фазы.
 
-### Профиль code 0.11.0
+### Профиль code 0.12.0
 
 - встроенный пакет `code-core` с семью атомарными блоками Dynamic Takt;
 
@@ -152,4 +152,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Dynamic Takt, foreground/daemon execution и минимальный корпоративный каталог доверенных блоков реализованы к `v0.1.35-alpha`. Следующий крупный продуктовый приоритет — нейтральный SDK доменных адаптеров SCM/tracker/CI; полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark остаются следующими направлениями.
+Dynamic Takt, минимальный корпоративный каталог доверенных блоков и строгий Coding Agent Host Control реализованы к `v0.1.36-alpha`. Следующий крупный продуктовый приоритет — нейтральный SDK доменных адаптеров SCM/tracker/CI; полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark остаются следующими направлениями.

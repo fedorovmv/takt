@@ -53,6 +53,36 @@ func Compute(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath strin
 	}, nil
 }
 
+// ContentClosureFingerprint returns one fingerprint for the executable content
+// addressed by a workflow: the expanded workflow definition, nested workflow
+// resources, scripts/dependencies, path skills/MCP files, and resolved Markdown
+// commands. It is used when a trusted block must remain immutable between
+// preview and execution.
+func ContentClosureFingerprint(wf *spec.Workflow, workflowPath string, resolver command.Resolver) (string, error) {
+	definitionBytes, err := workflowDefinitionBytes(workflowPath, wf)
+	if err != nil {
+		return "", err
+	}
+	out := append([]byte(nil), definitionBytes...)
+	names := collectCommands(wf.Nodes)
+	sort.Strings(names)
+	for _, name := range names {
+		cmd, err := resolver.Resolve(name)
+		if err != nil {
+			return "", fmt.Errorf("fingerprint command %q: %w", name, err)
+		}
+		raw, err := os.ReadFile(cmd.Path)
+		if err != nil {
+			return "", fmt.Errorf("fingerprint command %q: %w", name, err)
+		}
+		out = append(out, 0)
+		out = append(out, []byte(cmd.Path)...)
+		out = append(out, 0)
+		out = append(out, raw...)
+	}
+	return sum(out), nil
+}
+
 func Verify(expected Fingerprints, actual Fingerprints) error {
 	if expected.Workflow != "" && expected.Workflow != actual.Workflow {
 		return &ChangedError{Kind: "workflow", Expected: expected.Workflow, Actual: actual.Workflow}

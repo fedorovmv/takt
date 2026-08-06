@@ -208,7 +208,11 @@ func TestResolveArtifactSourcePathUsesExistingSymlinkPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(realRoot, "future", "validation.json")
+	wantRoot, err := filepath.EvalSymlinks(realRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(wantRoot, "future", "validation.json")
 	if resolved != want {
 		t.Fatalf("resolved=%q want=%q", resolved, want)
 	}

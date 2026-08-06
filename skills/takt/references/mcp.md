@@ -54,3 +54,14 @@ takt mcp --daemon --workspace .
 ```
 
 Несколько локальных клиентов одного пользователя могут использовать один Unix socket. Для подписки без MCP используй `takt events <run-id> --daemon --follow`. Daemon не является сетевым сервером и не восстанавливает автоматически произвольный OS-процесс после собственного падения.
+
+## Coding Agent Host Control
+
+- `takt.host.begin` — создать durable managed session до вызова основной LLM;
+- `takt.host.confirm` — подтвердить preview и запустить план;
+- `takt.host.get`, `takt.host.find` — состояние и восстановление;
+- `takt.host.guard_tool` — проверка tool call до исполнения;
+- `takt.host.guard_completion` — запрет преждевременного final;
+- `takt.host.release` — явный выход из managed mode без отмены Run.
+
+Strict mode требует нативного host extension с command/input interception, tool/completion blocking и session recovery.

@@ -309,3 +309,15 @@ Dynamic Takt не обнаруживает блоки автоматически
 Прямой CLI и прямой stdio MCP выполняют Dynamic Plan в процессе вызова до terminal либо устойчивого waiting-состояния. Отсоединённое выполнение доступно только через локальный daemon и явно отражается в записи плана. Это исключает goroutine, которая теряется вместе с завершением короткоживущего CLI-процесса.
 
 `max_child_runs` и `max_tokens` учитывают planner, replanner, segment wrapper, governed phases и fan-out children. `max_parallel` ограничивает одновременно независимые task-фазы и fan-out. Любое перепланирование, включая ответ через steering, проверяет `max_iterations`; steering помечается применённым только после валидного решения. Продвижение планов между daemon и прямым MCP сериализуется межпроцессным file lock.
+
+## ADR-053: Strict workflow starts in the coding-agent host before the main LLM
+
+**Решение.** `/takt` является нативной командой Pi/OpenCode. Host extension создаёт durable host session, перехватывает последующий input до model dispatch, проверяет tool calls до исполнения и блокирует final completion до terminal-состояния Takt. Skill/MCP без этих возможностей могут заявлять только advisory/guarded, но не strict.
+
+**Причина.** После запуска Takt контролирует DAG, но обычная основная LLM могла не вызвать Takt или параллельно изменить код. Enforcement обязан находиться в хосте, которому принадлежат input и tools.
+
+## ADR-054: Trusted package fingerprint covers the transitive executable closure
+
+**Решение.** Fingerprint блока включает package manifest, expanded workflow/subworkflow, разрешённые Markdown-команды, script source и dependencies, path skills и MCP-конфигурации.
+
+**Причина.** Хэш только wrapper workflow не обнаруживает изменение фактической инструкции или исполняемого ресурса после preview.

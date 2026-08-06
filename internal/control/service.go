@@ -31,6 +31,7 @@ type Service struct {
 
 	mu           sync.Mutex
 	dynamicMu    sync.Mutex
+	hostMu       sync.Mutex
 	launchErrors map[string]error
 }
 

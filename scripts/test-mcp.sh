@@ -47,6 +47,8 @@ assert responses[2]["result"]["protocolVersion"] == "2026-07-28"
 tools = responses[3]["result"]["tools"]
 assert [tool["name"] for tool in tools] == [
     "takt.workflow.list", "takt.workflow.describe", "takt.block.list", "takt.block.describe",
+    "takt.host.begin", "takt.host.confirm", "takt.host.get", "takt.host.find",
+    "takt.host.guard_tool", "takt.host.guard_completion", "takt.host.release",
     "takt.plan", "takt.plan.get",
     "takt.execute", "takt.run.steer", "takt.plan.promote", "takt.run.start", "takt.run.get",
     "takt.run.resume", "takt.run.answer", "takt.run.cancel", "takt.run.children",

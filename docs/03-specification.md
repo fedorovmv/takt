@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.35-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.36-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -105,7 +105,7 @@ assistants:
 
 Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`/`maxItems`, `uniqueItems`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `minProperties`/`maxProperties`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
 
-Это используется шестью основными процессами профиля `code` 0.11.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+Это используется шестью основными процессами профиля `code` 0.12.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
 
 ## 3.1. Внешний исполнитель AI-узла
 

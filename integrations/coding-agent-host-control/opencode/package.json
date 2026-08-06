@@ -1,0 +1,10 @@
+{
+  "name": "takt-opencode-host-control",
+  "version": "0.1.36-alpha",
+  "private": true,
+  "type": "module",
+  "exports": "./index.ts",
+  "peerDependencies": {
+    "@opencode-ai/plugin": "next"
+  }
+}
