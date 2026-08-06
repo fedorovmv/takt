@@ -23,6 +23,8 @@ nodes:
       properties:
         reviewers:
           type: array
+          minItems: 1
+          uniqueItems: true
           items:
             type: string
             enum: [code, errors, tests, docs, simplicity]

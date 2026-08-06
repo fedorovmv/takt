@@ -157,6 +157,8 @@ takt artifacts <run-id> --json
 ## Ограничения
 
 - Takt не устанавливает Python/Node dependencies и не создаёт виртуальные окружения;
+- Go runtime запускает один source file через `go run <path>`; `dependencies` участвуют в fingerprint, но не добавляются в команду автоматически;
+- при static `subworkflow` пути script/dependencies/MCP/path skills ребейзятся относительно файла дочернего workflow;
 - артефакты локальны и не загружаются во внешний object storage;
 - повторная регистрация одного type одним producer/attempt заменяет ссылку в агрегированном представлении, при этом события и child history сохраняют фактическое происхождение;
 - secret redaction содержимого артефактов пока отсутствует, поэтому runtime остаётся trusted local.

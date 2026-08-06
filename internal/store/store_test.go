@@ -2,8 +2,10 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -131,5 +133,117 @@ func TestReadEventsUsesRevisionCursorAndLimit(t *testing.T) {
 	}
 	if len(events) != 0 {
 		t.Fatalf("expected no events, got %#v", events)
+	}
+}
+
+func TestLoadRetriesTransientEventStateMismatch(t *testing.T) {
+	fs := FS{Workspace: t.TempDir()}
+	state := &RunState{ID: "run-transient", Status: RunRunning, Nodes: map[string]*NodeState{}, Approvals: map[string]string{}}
+	if err := fs.Commit(state, Event{Type: "run.started"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reproduce the Commit window: the event journal and index have advanced,
+	// while state.json still exposes the previous revision.
+	eventsPath := filepath.Join(fs.RunDir(state.ID), "events.jsonl")
+	events, err := os.ReadFile(eventsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, _ := json.Marshal(Event{RunID: state.ID, Revision: 2, Type: "node.started", Time: time.Now().UTC()})
+	events = append(events, event...)
+	events = append(events, '\n')
+	if err := os.WriteFile(eventsPath, events, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fs.RunDir(state.ID), eventIndexFile), buildEventIndex(events), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	updated := *state
+	updated.Revision = 2
+	go func() {
+		time.Sleep(2 * time.Millisecond)
+		_ = fs.writeStateAtomic(&updated)
+	}()
+	loaded, err := fs.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Revision != 2 {
+		t.Fatalf("revision = %d", loaded.Revision)
+	}
+}
+
+func TestConcurrentLoadDuringCommitDoesNotExposeTransientMismatch(t *testing.T) {
+	fs := FS{Workspace: t.TempDir()}
+	state := &RunState{ID: "run-concurrent", Status: RunRunning, Nodes: map[string]*NodeState{}, Approvals: map[string]string{}}
+	if err := fs.Commit(state, Event{Type: "run.started"}); err != nil {
+		t.Fatal(err)
+	}
+
+	const commits = 120
+	const readers = 6
+	stop := make(chan struct{})
+	errs := make(chan error, readers)
+	var wg sync.WaitGroup
+	for i := 0; i < readers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					if _, err := fs.Load(state.ID); err != nil {
+						var inconsistent *InconsistentError
+						if errors.As(err, &inconsistent) {
+							errs <- err
+							return
+						}
+						errs <- err
+						return
+					}
+				}
+			}
+		}()
+	}
+	for i := 0; i < commits; i++ {
+		if err := fs.Commit(state, Event{Type: "node.progress", Data: map[string]any{"n": i}}); err != nil {
+			close(stop)
+			wg.Wait()
+			t.Fatal(err)
+		}
+	}
+	close(stop)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+}
+
+func TestReadEventsCreatesAndUsesOffsetIndex(t *testing.T) {
+	fs := FS{Workspace: t.TempDir()}
+	state := &RunState{ID: "run-index", Status: RunRunning, Nodes: map[string]*NodeState{}, Approvals: map[string]string{}}
+	for i := 0; i < 5; i++ {
+		if err := fs.Commit(state, Event{Type: "event"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	index, err := os.ReadFile(filepath.Join(fs.RunDir(state.ID), eventIndexFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(index) != 5*8 {
+		t.Fatalf("index size = %d", len(index))
+	}
+	events, err := fs.ReadEvents(state.ID, 4, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Revision != 5 {
+		t.Fatalf("events = %#v", events)
 	}
 }

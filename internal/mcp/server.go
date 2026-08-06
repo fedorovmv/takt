@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"takt/internal/assistant"
 	"takt/internal/control"
 	"takt/internal/store"
 	"takt/internal/version"
@@ -103,7 +103,7 @@ func (s *Server) ServeStdio(ctx context.Context) error {
 			_ = s.write(response{JSONRPC: "2.0", Error: &rpcError{Code: -32600, Message: "JSON-RPC batches are not supported"}})
 			continue
 		}
-		if err := strictUnmarshal(line, &req); err != nil {
+		if err := unmarshalEnvelope(line, &req); err != nil {
 			_ = s.write(response{JSONRPC: "2.0", Error: &rpcError{Code: -32700, Message: "parse error", Data: err.Error()}})
 			continue
 		}
@@ -245,7 +245,7 @@ func serverInfo() map[string]any {
 }
 
 func instructions() string {
-	return "Use takt.workflow.* to discover workflows and takt.run.* to start and govern local Runs. Start is detached by default; poll takt.run.get or takt.run.events with the returned run_id. Approval, cancellation, child Runs and artifacts remain explicit durable handles."
+	return "Use takt.workflow.* to discover workflows, takt.run.* to govern local Runs, and takt.node.* to execute durable external command/prompt nodes. Start is detached by default; poll takt.run.get or takt.run.events with the returned run_id. External workers claim a node with capabilities, stream normalized events, then complete or fail it with the claim token."
 }
 
 func (s *Server) callTool(ctx context.Context, params callParams) map[string]any {
@@ -374,6 +374,75 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 			return nil, fmt.Errorf("wait_ms must be between 0 and 30000")
 		}
 		return s.control.Events(ctx, in.RunID, in.AfterRevision, in.Limit, time.Duration(in.WaitMS)*time.Millisecond)
+	case "takt.node.pending":
+		var in struct {
+			RunID     string `json:"run_id,omitempty"`
+			Recursive bool   `json:"recursive,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		tasks, err := s.control.PendingExternal(in.RunID, in.Recursive)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"tasks": tasks}, nil
+	case "takt.node.claim":
+		var in struct {
+			RunID        string   `json:"run_id"`
+			NodeID       string   `json:"node_id"`
+			WorkerID     string   `json:"worker_id"`
+			Capabilities []string `json:"capabilities,omitempty"`
+			LeaseMS      int      `json:"lease_ms,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		if in.LeaseMS < 0 || in.LeaseMS > int(time.Hour/time.Millisecond) {
+			return nil, fmt.Errorf("lease_ms must be between 0 and 3600000")
+		}
+		return s.control.ClaimExternal(control.ExternalClaimRequest{RunID: in.RunID, NodeID: in.NodeID, WorkerID: in.WorkerID, Capabilities: in.Capabilities, Lease: time.Duration(in.LeaseMS) * time.Millisecond})
+	case "takt.node.event":
+		var in struct {
+			RunID      string          `json:"run_id"`
+			NodeID     string          `json:"node_id"`
+			ClaimToken string          `json:"claim_token"`
+			Event      assistant.Event `json:"event"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		sequence, err := s.control.AppendExternalEvent(in.RunID, in.NodeID, in.ClaimToken, in.Event)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"sequence": sequence}, nil
+	case "takt.node.complete", "takt.node.fail":
+		var in struct {
+			RunID            string          `json:"run_id"`
+			NodeID           string          `json:"node_id"`
+			ClaimToken       string          `json:"claim_token"`
+			Output           string          `json:"output,omitempty"`
+			Structured       json.RawMessage `json:"structured,omitempty"`
+			Stdout           string          `json:"stdout,omitempty"`
+			Stderr           string          `json:"stderr,omitempty"`
+			ExitCode         int             `json:"exit_code,omitempty"`
+			SessionID        string          `json:"session_id,omitempty"`
+			Resumed          bool            `json:"resumed,omitempty"`
+			AssistantVersion string          `json:"assistant_version,omitempty"`
+			ResolvedModel    *store.ModelRef `json:"resolved_model,omitempty"`
+			Usage            *store.Usage    `json:"usage,omitempty"`
+			ErrorCode        string          `json:"error_code,omitempty"`
+			Error            string          `json:"error,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		submission := control.ExternalSubmission{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, Output: in.Output, Structured: in.Structured, Stdout: in.Stdout, Stderr: in.Stderr, ExitCode: in.ExitCode, SessionID: in.SessionID, Resumed: in.Resumed, AssistantVersion: in.AssistantVersion, ResolvedModel: in.ResolvedModel, Usage: in.Usage, ErrorCode: in.ErrorCode, Error: in.Error}
+		if name == "takt.node.fail" {
+			return s.control.FailExternal(ctx, submission)
+		}
+		return s.control.CompleteExternal(ctx, submission)
 	default:
 		return nil, fmt.Errorf("unknown tool %q", name)
 	}
@@ -445,7 +514,39 @@ func tools() []tool {
 			"run_id": stringProp("Run ID"), "after_revision": integerProp("Return events with a greater revision", 0, int(^uint32(0))),
 			"limit": integerProp("Maximum events, defaults to 200", 1, 1000), "wait_ms": integerProp("Long-poll wait, 0 to 30000 milliseconds", 0, 30000),
 		}, "run_id"), Annotations: readOnly},
+		{Name: "takt.node.pending", Title: "List external Takt nodes", Description: "List pending or expired-lease external command/prompt nodes. Omit run_id to inspect all local Runs.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Optional root Run ID"), "recursive": boolProp("Include descendant Runs"),
+		}), Annotations: readOnly},
+		{Name: "takt.node.claim", Title: "Claim external Takt node", Description: "Claim one durable external node with a worker identity, capability attestation and bounded lease.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "worker_id": stringProp("Stable worker identity"),
+			"capabilities": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "uniqueItems": true},
+			"lease_ms":     integerProp("Claim lease in milliseconds; defaults to 900000", 1, 3600000),
+		}, "run_id", "node_id", "worker_id"), Annotations: mutating},
+		{Name: "takt.node.event", Title: "Append external node event", Description: "Append one provider-neutral assistant or tool event under the active claim.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "claim_token": stringProp("Opaque token returned by takt.node.claim"),
+			"event": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"type"}, "properties": map[string]any{
+				"type":    map[string]any{"enum": []string{"started", "message", "tool.started", "tool.completed", "usage", "diagnostic", "completed", "failed"}},
+				"message": stringProp("Message or diagnostic"), "tool": stringProp("Tool name"), "call_id": stringProp("Provider tool-call ID"),
+				"input": map[string]any{}, "output": map[string]any{}, "provider": stringProp("Provider ID"), "session_id": stringProp("Provider session ID"),
+				"usage": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"input_tokens": integerProp("Input tokens", 0, int(^uint32(0))), "output_tokens": integerProp("Output tokens", 0, int(^uint32(0))), "cost": map[string]any{"type": "number", "minimum": 0}}},
+				"data":  map[string]any{"type": "object"},
+			}},
+		}, "run_id", "node_id", "claim_token", "event"), Annotations: mutating},
+		{Name: "takt.node.complete", Title: "Complete external Takt node", Description: "Submit a successful external result and continue the normal Takt retry, output, hook, artifact and parent/child lifecycle.", InputSchema: externalSubmissionSchema(object, stringProp, integerProp), Annotations: mutating},
+		{Name: "takt.node.fail", Title: "Fail external Takt node", Description: "Submit an external failure and continue normal retry and failure handling.", InputSchema: externalSubmissionSchema(object, stringProp, integerProp), Annotations: mutating},
 	}
+}
+
+func externalSubmissionSchema(object func(map[string]any, ...string) map[string]any, stringProp func(string) map[string]any, integerProp func(string, int, int) map[string]any) map[string]any {
+	return object(map[string]any{
+		"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "claim_token": stringProp("Opaque active claim token"),
+		"output": stringProp("Normalized final output"), "structured": map[string]any{}, "stdout": stringProp("Raw provider stdout"), "stderr": stringProp("Raw provider stderr"),
+		"exit_code": integerProp("Provider exit code", -1, 255), "session_id": stringProp("Provider session ID"), "resumed": map[string]any{"type": "boolean"},
+		"assistant_version": stringProp("Executor/provider version"),
+		"resolved_model":    map[string]any{"type": "object", "additionalProperties": true},
+		"usage":             map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"input_tokens": integerProp("Input tokens", 0, int(^uint32(0))), "output_tokens": integerProp("Output tokens", 0, int(^uint32(0))), "cost": map[string]any{"type": "number", "minimum": 0}}},
+		"error_code":        stringProp("Takt execution error kind"), "error": stringProp("Failure message"),
+	}, "run_id", "node_id", "claim_token")
 }
 
 func attachArtifactContent(result map[string]any, maxBytes int) error {
@@ -523,6 +624,21 @@ func validateRequiredStrings(value any) error {
 	return nil
 }
 
+func unmarshalEnvelope(raw []byte, value any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return fmt.Errorf("multiple JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
 func strictUnmarshal(raw []byte, value any) error {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		raw = []byte("{}")
@@ -550,21 +666,20 @@ func invalidParams(err error) *rpcError {
 }
 
 func requestIDKey(raw json.RawMessage) string {
-	if len(raw) == 0 {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
 		return ""
 	}
-	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return string(raw)
+	if trimmed[0] == '"' {
+		var value string
+		if json.Unmarshal(trimmed, &value) == nil {
+			return "s:" + value
+		}
 	}
-	switch typed := value.(type) {
-	case string:
-		return "s:" + typed
-	case float64:
-		return "n:" + strconv.FormatFloat(typed, 'f', -1, 64)
-	default:
-		return string(raw)
-	}
+	// Preserve the exact JSON number representation. Decoding through float64
+	// would collapse distinct identifiers above 2^53 and could cancel another
+	// in-flight request.
+	return "j:" + string(trimmed)
 }
 
 func (s *Server) write(value response) error {

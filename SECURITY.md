@@ -2,7 +2,7 @@
 
 ## Supported trust model
 
-Takt `v0.1.30-alpha` is a local, single-user, trusted runtime.
+Takt `v0.1.31-alpha` is a local, single-user, trusted runtime.
 
 Trusted inputs:
 

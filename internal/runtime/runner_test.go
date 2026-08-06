@@ -1091,3 +1091,64 @@ nodes:
 		t.Fatalf("inherited policy was not persisted on child run: %+v", child.InheritedPolicy)
 	}
 }
+
+func TestAssistantEventsAreNormalizedAndPersisted(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{
+		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "assistant-events"},
+		Defaults: spec.Defaults{Assistant: "demo", Model: "large"},
+		Nodes:    []spec.Node{{ID: "agent", Prompt: "review"}},
+	}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"large": {Provider: "provider-x", ID: "model-x"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+		return adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
+			assistant.Emit(req, assistant.Event{Type: assistant.EventToolStarted, Tool: "read", CallID: "call-1", Input: []byte(`{"path":"main.go"}`)})
+			assistant.Emit(req, assistant.Event{Type: assistant.EventToolCompleted, Tool: "read", CallID: "call-1", Output: []byte(`{"bytes":12}`)})
+			return assistant.Result{Output: "done", Stdout: "raw", ExitCode: 0, SessionID: "session-1", Usage: &assistant.ProtocolUsage{InputTokens: 7, OutputTokens: 2, Cost: 0.01}}, nil
+		}), nil
+	})
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := (store.FS{Workspace: dir}).ReadEvents(state.ID, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var types []string
+	for _, event := range events {
+		if strings.HasPrefix(event.Type, "assistant.") {
+			types = append(types, event.Type)
+		}
+	}
+	want := []string{"assistant.started", "assistant.tool.started", "assistant.tool.completed", "assistant.message", "assistant.usage", "assistant.completed"}
+	if strings.Join(types, ",") != strings.Join(want, ",") {
+		t.Fatalf("assistant event types = %#v, want %#v", types, want)
+	}
+}
+
+func TestPreStartCancellationMarkerIsHonored(t *testing.T) {
+	dir := t.TempDir()
+	runID := "pre-cancelled-run"
+	st := store.FS{Workspace: dir}
+	if err := st.RequestCancel(runID); err != nil {
+		t.Fatal(err)
+	}
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "pre-cancel"}, Nodes: []spec.Node{{ID: "work", Bash: "touch should-not-exist"}}}
+	runner := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	state, err := runner.StartWithOptions(context.Background(), "", StartOptions{RunID: runID})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation, state=%+v err=%v", state, err)
+	}
+	loaded, loadErr := st.Load(runID)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if loaded.Status != store.RunCancelled {
+		t.Fatalf("status = %s", loaded.Status)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "should-not-exist")); !os.IsNotExist(statErr) {
+		t.Fatalf("cancelled run executed work: %v", statErr)
+	}
+}

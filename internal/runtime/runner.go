@@ -143,9 +143,6 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 	if err := store.ValidateRunID(id); err != nil {
 		return nil, err
 	}
-	if value, ok := r.Store.(cancellationStore); ok {
-		_ = value.ClearCancel(id)
-	}
 	worktreeSpec := r.Workflow.Worktree
 	if options.Worktree != nil {
 		worktreeSpec.Enabled = *options.Worktree
@@ -595,6 +592,10 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 			}
 			return ErrWaiting
 		}
+		if err := r.flushAssistantEvents(state, node.ID, result.AssistantEvents, "adapter"); err != nil {
+			cancel()
+			return err
+		}
 		// The node timeout/cancellation covers the whole attempt, including
 		// container nodes such as loop_group. A child graph may finish by
 		// returning a derived error (for example loop exhaustion) after the
@@ -759,6 +760,7 @@ type execResult struct {
 	RequestedModel   *store.ModelRef
 	ResolvedModel    *store.ModelRef
 	Artifacts        []store.ArtifactRef
+	AssistantEvents  []assistant.Event
 }
 
 func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.Node, loopPrevious map[string]store.NodeState) (execResult, error) {
@@ -826,77 +828,48 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "workflow group", Err: fmt.Errorf("unsupported internal mode %q", node.Internal.Mode)}
 		}
 	case node.Command != "" || node.Prompt != "":
-		prompt := node.Prompt
-		assistantName, modelName := node.Assistant, node.Model
-		if node.Command != "" {
-			cmd, err := r.Commands.Resolve(node.Command)
-			if err != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve command", Err: err}
+		resolved, err := r.resolveAssistantNode(state, node, local, feedback, artifacts)
+		if err != nil {
+			return execResult{}, err
+		}
+		if node.Executor == "external" {
+			result, err := r.executeExternalNode(state, node, resolved)
+			if err == nil && node.OutputFormat != nil {
+				normalized, validationErr := validateAndNormalizeOutput(result.Output, node.OutputFormat)
+				if validationErr != nil {
+					return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "validate structured output", Err: validationErr}
+				}
+				result.Output = normalized
 			}
-			prompt = cmd.Body
-			if assistantName == "" {
-				assistantName = cmd.Assistant
-			}
-			if modelName == "" {
-				modelName = cmd.Model
-			}
-		}
-		if assistantName == "" {
-			assistantName = r.Workflow.Defaults.Assistant
-		}
-		if modelName == "" {
-			modelName = r.Workflow.Defaults.Model
-		}
-		if assistantName == "" {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: fmt.Errorf("node %q does not resolve an assistant", node.ID)}
-		}
-		model, ok := r.Config.Models[modelName]
-		if !ok {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve model", Err: fmt.Errorf("node %q references unknown model %q", node.ID, modelName)}
+			return result, err
 		}
 		resolver := r.Assistants
 		if resolver == nil {
 			resolver = assistant.Factory{Config: r.Config}
 		}
-		adapter, err := resolver.Resolve(assistantName)
+		adapter, err := resolver.Resolve(resolved.AssistantName)
 		if err != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: err}
 		}
-		policy, err := resolveNodePolicy(node, r.WorkflowPath, r.inheritedPolicy)
-		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve node policy", Err: err}
+		collector := &assistantEventCollector{}
+		collector.Emit(assistant.Event{Type: assistant.EventStarted, Provider: resolved.Model.Provider, SessionID: resolved.SessionID, Data: map[string]any{"assistant": resolved.AssistantName, "attempt": state.Nodes[node.ID].Attempts}})
+		result, err := adapter.Run(ctx, assistant.Request{
+			RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts,
+			Prompt: resolved.Prompt, Workspace: r.Workspace, ModelName: resolved.ModelName, Model: resolved.Model,
+			SessionMode: resolved.SessionMode, SessionID: resolved.SessionID, NativeHooks: node.NativeHooks, Policy: resolved.Policy,
+			Emit: collector.Emit,
+		})
+		events, eventErr := collectAssistantResultEvents(collector, resolved, result, err)
+		if eventErr != nil && err == nil {
+			err = eventErr
 		}
-		capabilities, err := validateAdapterPolicy(adapter, policy)
-		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "validate assistant capabilities", Err: err}
-		}
-		if state.Nodes[node.ID].Policy == nil {
-			state.Nodes[node.ID].Policy = policyState(policy, capabilities)
-			if state.Nodes[node.ID].Policy != nil {
-				if err := r.commit(state, "node.policy.applied", node.ID, map[string]any{"policy": state.Nodes[node.ID].Policy}); err != nil {
-					return execResult{}, err
-				}
-			}
-		}
-		sessionMode := node.Session
-		if sessionMode == "" {
-			sessionMode = r.Workflow.Defaults.Session
-		}
-		if sessionMode == "" {
-			sessionMode = "fresh"
-		}
-		sessionID := state.Nodes[node.ID].SessionID
-		if sessionMode == "fresh" {
-			sessionID = ""
-		}
-		prompt = renderTemplate(prompt, state, local, feedback, artifacts)
-		result, err := adapter.Run(ctx, assistant.Request{RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts, Prompt: prompt, Workspace: r.Workspace, ModelName: modelName, Model: model, SessionMode: sessionMode, SessionID: sessionID, NativeHooks: node.NativeHooks, Policy: policy})
 		execResult := execResult{
 			Output: result.Output, Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, SessionID: result.SessionID,
 			Resumed: result.Resumed, Truncated: result.Truncated, Usage: result.Usage,
-			Assistant:        assistantName,
+			Assistant:        resolved.AssistantName,
 			AssistantVersion: result.AssistantVersion,
-			RequestedModel:   &store.ModelRef{Name: modelName, Provider: model.Provider, ID: model.ID, Params: cloneParams(model.Params)},
+			AssistantEvents:  events,
+			RequestedModel:   &store.ModelRef{Name: resolved.ModelName, Provider: resolved.Model.Provider, ID: resolved.Model.ID, Params: cloneParams(resolved.Model.Params)},
 		}
 		if result.ResolvedModel != nil {
 			execResult.ResolvedModel = &store.ModelRef{Name: result.ResolvedModel.Name, Provider: result.ResolvedModel.Provider, ID: result.ResolvedModel.ID, Params: cloneParams(result.ResolvedModel.Params)}
@@ -909,6 +882,7 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			execResult.Output = normalized
 		}
 		return execResult, err
+
 	default:
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "execute node", Err: fmt.Errorf("unsupported node %q", node.ID)}
 	}

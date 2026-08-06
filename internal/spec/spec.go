@@ -35,6 +35,7 @@ type Node struct {
 	Assistant    string            `json:"assistant,omitempty"`
 	Model        string            `json:"model,omitempty"`
 	Session      string            `json:"session,omitempty"`
+	Executor     string            `json:"executor,omitempty"`
 	Command      string            `json:"command,omitempty"`
 	Prompt       string            `json:"prompt,omitempty"`
 	Bash         string            `json:"bash,omitempty"`
@@ -109,11 +110,12 @@ type WorkflowRunSpec struct {
 // so a partially completed group can be resumed without recreating finished
 // children.
 type WorkflowFanOutSpec struct {
-	ItemsFrom   string `json:"items_from"`
-	As          string `json:"as,omitempty"`
-	MaxParallel int    `json:"max_parallel,omitempty"`
-	Join        string `json:"join,omitempty"`
-	AllowEmpty  bool   `json:"allow_empty,omitempty"`
+	ItemsFrom       string `json:"items_from"`
+	As              string `json:"as,omitempty"`
+	MaxParallel     int    `json:"max_parallel,omitempty"`
+	Join            string `json:"join,omitempty"`
+	AllowEmpty      bool   `json:"allow_empty,omitempty"`
+	AllowDuplicates bool   `json:"allow_duplicates,omitempty"`
 }
 
 type PolicySpec struct {
@@ -153,6 +155,8 @@ type OutputFormat struct {
 	Required             []string                `json:"required,omitempty"`
 	Enum                 []string                `json:"enum,omitempty"`
 	Items                *OutputFormat           `json:"items,omitempty"`
+	MinItems             int                     `json:"minItems,omitempty"`
+	UniqueItems          bool                    `json:"uniqueItems,omitempty"`
 	AdditionalProperties *bool                   `json:"additionalProperties,omitempty"`
 }
 

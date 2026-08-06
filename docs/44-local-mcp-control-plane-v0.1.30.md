@@ -1,5 +1,8 @@
 # Локальный MCP control plane v0.1.30-alpha
 
+> Продолжение: v0.1.31-alpha устраняет transient torn reads файлового store, добавляет `events.idx`, нормализованные assistant/tool events и инструменты внешнего executor. См. `45-agent-events-external-executor-v0.1.31.md`.
+
+
 ## 1. Назначение среза
 
 Срез закрывает первый крупный пункт roadmap после `v0.1.29-alpha`: кодовый агент может управлять Takt как локальным MCP-сервером, не вызывая CLI-команды вручную и не создавая отдельный сервер, БД или второй runtime.

@@ -17,6 +17,9 @@ type parallelNodeResult struct {
 }
 
 func parallelEligible(node spec.Node) bool {
+	if node.Executor == "external" {
+		return false
+	}
 	if node.Command == "" && node.Prompt == "" && node.Bash == "" && node.Script == nil {
 		return false
 	}
@@ -81,6 +84,9 @@ func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nod
 	for _, node := range nodes {
 		item := byID[node.ID]
 		ns := state.Nodes[node.ID]
+		if err := r.flushAssistantEvents(state, node.ID, item.result.AssistantEvents, "adapter"); err != nil {
+			return err
+		}
 		recordExecution(ns, item.result, item.err)
 		applyExecResult(ns, item.result)
 		mergeRunArtifacts(state, item.result.Artifacts)

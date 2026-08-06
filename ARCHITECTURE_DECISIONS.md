@@ -239,3 +239,11 @@ Filesystem/network policy текущего локального runtime явля
 Run state остаётся явным handle в аргументах tools. Detached start возвращает `run_id`, а события читаются по durable revision cursor; MCP session не становится источником истины. Поддерживаются legacy initialize и stateless discovery, поскольку локальные coding-agent hosts обновляются не одновременно.
 
 Транспорт ограничен stdio и полномочиями текущего процесса. HTTP, daemon, authentication, multi-user use и untrusted workflow не выводятся из факта наличия MCP и требуют отдельной threat model.
+
+## ADR-044. Внешний executor является durable hand-off внутри обычного Run
+
+**Статус:** принято.
+
+`executor: external` не создаёт второй scheduler и не считает MCP-сессию источником истины. Takt до передачи полностью разрешает command/prompt, model/session, policy и output contract, сохраняет задачу в NodeState и приостанавливает обычную попытку. Worker получает bounded lease и opaque token, подтверждает capabilities, пишет нормализованные assistant/tool events и возвращает результат. После submission Takt продолжает прежнюю попытку через обычные retry, hooks, output validation, artifacts и parent/child lifecycle.
+
+Built-in adapters используют тот же provider-neutral event contract. Raw provider streams сохраняются отдельно. Event journal остаётся авторитетным: indexed reads ускоряют polling, а `FS.Load` лечит только кратковременный torn read между atomic renames и по-прежнему отвергает устойчивую несогласованность после сбоя.

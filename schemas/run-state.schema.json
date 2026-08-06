@@ -63,7 +63,8 @@
         "kind": {
           "enum": [
             "approval",
-            "child_run"
+            "child_run",
+            "external_node"
           ]
         },
         "child_run_id": {
@@ -285,6 +286,9 @@
           "items": {
             "$ref": "#/$defs/artifactRef"
           }
+        },
+        "external": {
+          "$ref": "#/$defs/externalExecutionState"
         }
       }
     },
@@ -628,6 +632,109 @@
         "created_at": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "externalResultState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "type": "string"
+        },
+        "structured": {},
+        "stdout": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "resumed": {
+          "type": "boolean"
+        },
+        "assistant_version": {
+          "type": "string"
+        },
+        "resolved_model": {
+          "$ref": "#/$defs/modelRef"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        },
+        "error_code": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "externalExecutionState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "attempt",
+        "prompt",
+        "workspace"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "claimed",
+            "completed",
+            "failed"
+          ]
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": "string"
+        },
+        "assistant": {
+          "type": "string"
+        },
+        "requested_model": {
+          "$ref": "#/$defs/modelRef"
+        },
+        "session_mode": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/policyState"
+        },
+        "output_format": {},
+        "claimed_by": {
+          "type": "string"
+        },
+        "claim_token": {
+          "type": "string"
+        },
+        "lease_expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_event_sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "result": {
+          "$ref": "#/$defs/externalResultState"
         }
       }
     }

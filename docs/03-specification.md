@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.30-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.31-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -15,9 +15,9 @@
 - legacy `initialize` с версиями MCP 2025;
 - stateless `server/discover` с `protocolVersion: 2026-07-28`.
 
-Сервер публикует инструменты `takt.workflow.list`, `takt.workflow.describe`, `takt.run.start`, `takt.run.get`, `takt.run.resume`, `takt.run.answer`, `takt.run.cancel`, `takt.run.children`, `takt.run.artifacts` и `takt.run.events`. `takt.run.start` по умолчанию отсоединяет запуск и возвращает устойчивый `run_id`. События читаются по `revision` cursor, а содержимое артефактов выдаётся только по явному запросу с ограничением размера.
+Сервер публикует инструменты `takt.workflow.list`, `takt.workflow.describe`, `takt.run.start`, `takt.run.get`, `takt.run.resume`, `takt.run.answer`, `takt.run.cancel`, `takt.run.children`, `takt.run.artifacts`, `takt.run.events` и внешний executor-контур `takt.node.pending|claim|event|complete|fail`. `takt.run.start` по умолчанию отсоединяет запуск и возвращает устойчивый `run_id`. События читаются по `revision` cursor, а содержимое артефактов выдаётся только по явному запросу с ограничением размера.
 
-MCP является локальным интерфейсом текущего пользователя. Он не добавляет аутентификацию, sandbox или новые полномочия и не предназначен для сетевой публикации. Полный контракт и ограничения зафиксированы в `44-local-mcp-control-plane-v0.1.30.md`.
+MCP является локальным интерфейсом текущего пользователя. Он не добавляет аутентификацию, sandbox или новые полномочия и не предназначен для сетевой публикации. Полный control contract зафиксирован в `44-local-mcp-control-plane-v0.1.30.md`, а внешний executor и нормализованные события — в `45-agent-events-external-executor-v0.1.31.md`.
 
 ## 2. Файловая структура
 
@@ -90,6 +90,12 @@ assistants:
 
 На Unix процесс запускается в отдельной process group; timeout и cancellation завершают процесс и его потомков.
 
+
+## 3.1. Внешний исполнитель AI-узла
+
+`command` и `prompt` поддерживают `executor: external`. Runtime разрешает команду, шаблоны, model/session и effective policy, затем сохраняет durable external task и переводит Run в `waiting` с `kind: external_node`. Worker получает задачу через MCP, заявляет capabilities и lease, передаёт provider-neutral `assistant.*`/tool events и завершает её через `takt.node.complete` либо `takt.node.fail`. Результат проходит обычные `output_format`, attempts, hooks и artifact capture. Claim token не входит в публичную проекцию Run.
+
+Встроенные adapters используют тот же нормализованный event contract через `assistant.Request.Emit`. Raw stdout/stderr при этом сохраняются отдельно.
 
 ### Pi assistant
 
@@ -395,9 +401,10 @@ Approval ребёнка переводит родителя в `waiting` с `kin
       max_parallel: 5
       join: all_success
       allow_empty: false
+      allow_duplicates: false
 ```
 
-`items_from` должен указывать на JSON-массив в структурированном output upstream-узла. `max_parallel` по умолчанию равен 1 и ограничен 64. `join` принимает `all_success`, `all_done` или `one_success`. Каждый элемент получает отдельный child Run и устойчивую запись в состоянии; completed-дети переиспользуются при resume, а изменение массива внутри попытки отклоняется. В `input` доступны `${fanout.item}`, `${fanout.index}`, `${fanout.total}` и алиас из `as`. Output родительского узла — упорядоченный JSON-массив статусов, outputs, usage и Run ID детей.
+`items_from` должен указывать на JSON-массив в структурированном output upstream-узла. `max_parallel` по умолчанию равен 1 и ограничен 64. `join` принимает `all_success`, `all_done` или `one_success`. Каждый элемент получает отдельный child Run и устойчивую запись в состоянии; completed-дети переиспользуются при resume, а изменение массива внутри попытки отклоняется. В `input` доступны `${fanout.item}`, `${fanout.index}`, `${fanout.total}` и алиас из `as`. Дубли канонических элементов отклоняются по умолчанию; `allow_duplicates: true` является явным разрешением двойного запуска. Output родительского узла — упорядоченный JSON-массив статусов, outputs, usage и Run ID детей. `all_success` и `one_success` пока ожидают terminal-состояния всей группы и не останавливают оставшиеся children досрочно.
 
 ### `foreach`
 

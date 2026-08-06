@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.1.31-alpha
+
+- Исправлен конкурентный read-path файлового store: transient state/events revision mismatch перечитывается с bounded backoff, persistent mismatch остаётся `InconsistentError`.
+- Добавлен индекс `events.idx`; инкрементальный `run.events` читает журнал с нужного byte offset вместо полного сканирования.
+- CLI lifecycle-команды делегируют общему `internal/control.Service`, устраняя дублирование approval, parent resume, children, artifacts и cancellation.
+- JSON-RPC request IDs сохраняются без float64, envelope допускает extension fields и возвращает корректный `-32600` для invalid request.
+- Добавлены нормализованные `assistant.*` и `tool.*` события для встроенных adapters и внешних исполнителей.
+- Добавлен `executor: external` для `command`/`prompt`: durable pending task, capability claim, lease/token, normalized events, complete/fail и продолжение обычных output/retry/hooks/artifact semantics.
+- MCP расширен инструментами `takt.node.pending|claim|event|complete|fail`.
+- Fan-out по умолчанию отклоняет дубли, smart review требует непустой уникальный список, pre-start cancellation marker сохраняется.
+- Static `subworkflow` корректно ребейзит script/dependencies/MCP/path skills; artifact type validation использует один общий контракт.
+- Профиль `code` обновлён до 0.8.1: smart review требует непустой уникальный список перспектив.
+- Authoring skill обновлён до 0.13.0; добавлен contract `scripts/test-external-executor.sh` и документ `docs/45-agent-events-external-executor-v0.1.31.md`.
+
 ## v0.1.30-alpha
 
 - Добавлена команда `takt mcp` — локальный stdio MCP control plane поверх существующих runtime и файлового store.

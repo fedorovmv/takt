@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.30-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.31-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -18,14 +18,11 @@
 
 Реализованы stdio MCP server, dual-era protocol negotiation, workflow list/describe, detached Run start, get/resume/answer/cancel, children, artifacts с содержимым и revision event polling. Реализация использует существующий runtime/store и не вводит daemon, HTTP, Web UI или БД. Полный архив среза: `44-local-mcp-control-plane-v0.1.30.md`.
 
-## Приоритет 1. Агентные события и внешний исполнитель
+## Выполнено в v0.1.31-alpha. Агентные события и внешний исполнитель
 
-- нормализованный поток assistant/tool-call events внутри Run;
-- режим внешнего исполнителя одного узла при сохранении оркестрации в Takt;
-- готовые инструкции подключения MCP для OpenCode, Pi, Codex и Claude Code;
-- опциональный локальный daemon только при необходимости переживать закрытие MCP-клиента.
+Реализованы provider-neutral `assistant.*`/tool-call events, `Request.Emit`, durable `executor: external`, claim с capability attestation и lease/token, MCP tools pending/claim/event/complete/fail и возврат результата в обычные retry/hooks/output/artifact semantics. Одновременно устранён torn-read store при конкурентном polling и добавлен индекс событий. Полный архив среза: `45-agent-events-external-executor-v0.1.31.md`.
 
-## Приоритет 2. Усиление runtime
+## Приоритет 1. Усиление runtime и безопасность локального исполнения
 
 - раннее завершение `one_success` с отменой оставшихся детей;
 - строгий renderer с optional/default values;
@@ -35,7 +32,7 @@
 - защита секретов в state/events;
 - реальный OS sandbox для недоверенных процессов.
 
-## Предметная проверка
+## Приоритет 2. Предметная проверка
 
 Отдельно от системных функций нужен Route DSL benchmark со штатным валидатором и обезличенными реальными заданиями: success@1, final success, число попыток, стоимость и стабильность на неизменных fingerprints.
 

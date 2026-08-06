@@ -94,6 +94,23 @@ func validateOutputValue(value any, schema spec.OutputFormat, path string, requi
 		if !ok {
 			return fmt.Errorf("%s must be an array", path)
 		}
+		if len(array) < schema.MinItems {
+			return fmt.Errorf("%s must contain at least %d items", path, schema.MinItems)
+		}
+		if schema.UniqueItems {
+			seen := map[string]int{}
+			for i, child := range array {
+				encoded, err := json.Marshal(child)
+				if err != nil {
+					return fmt.Errorf("%s[%d] cannot be compared for uniqueness: %w", path, i, err)
+				}
+				key := string(encoded)
+				if previous, exists := seen[key]; exists {
+					return fmt.Errorf("%s[%d] duplicates %s[%d]", path, i, path, previous)
+				}
+				seen[key] = i
+			}
+		}
 		if schema.Items != nil {
 			for i, child := range array {
 				if err := validateOutputValue(child, *schema.Items, fmt.Sprintf("%s[%d]", path, i), true); err != nil {

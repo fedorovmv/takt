@@ -128,3 +128,5 @@
 - `43-script-nodes-typed-artifacts-v0.1.29.md` — script runtime, fingerprints исходников, типизированные артефакты, CLI и parent/child propagation.
 
 - `44-local-mcp-control-plane-v0.1.30.md` — dual-era stdio MCP server, local control service, detached Run lifecycle, events и artifacts.
+
+- `45-agent-events-external-executor-v0.1.31.md` — нормализованные assistant/tool events, durable внешний executor узла и исправление конкурентного store.

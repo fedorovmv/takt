@@ -180,3 +180,16 @@ func TestStructuredOutputRetryPolicyPassesValidationFeedback(t *testing.T) {
 		t.Fatalf("unexpected retried node: %+v", node)
 	}
 }
+
+func TestOutputFormatArrayCardinalityAndUniqueness(t *testing.T) {
+	format := &spec.OutputFormat{Type: "array", MinItems: 1, UniqueItems: true, Items: &spec.OutputFormat{Type: "string"}}
+	if _, err := validateAndNormalizeOutput(`[]`, format); err == nil || !strings.Contains(err.Error(), "at least 1") {
+		t.Fatalf("expected minItems error, got %v", err)
+	}
+	if _, err := validateAndNormalizeOutput(`["code","code"]`, format); err == nil || !strings.Contains(err.Error(), "duplicates") {
+		t.Fatalf("expected uniqueItems error, got %v", err)
+	}
+	if got, err := validateAndNormalizeOutput(`["code","security"]`, format); err != nil || got != `["code","security"]` {
+		t.Fatalf("valid unique array: got=%q err=%v", got, err)
+	}
+}

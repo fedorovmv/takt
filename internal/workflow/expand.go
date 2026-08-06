@@ -370,8 +370,11 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 	node.Bash = rewriteTemplate(node.Bash)
 	if node.Script != nil {
 		node.Script.Inline = rewriteTemplate(node.Script.Inline)
-		node.Script.Path = rewriteTemplate(node.Script.Path)
+		node.Script.Path = rebaseDefinitionPath(rewriteTemplate(node.Script.Path), workflowPath)
 		node.Script.WorkingDir = rewriteTemplate(node.Script.WorkingDir)
+		for index := range node.Script.Dependencies {
+			node.Script.Dependencies[index] = rebaseDefinitionPath(rewriteTemplate(node.Script.Dependencies[index]), workflowPath)
+		}
 		for index := range node.Script.Args {
 			node.Script.Args[index] = rewriteTemplate(node.Script.Args[index])
 		}
@@ -379,6 +382,7 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 			node.Script.Env[key] = rewriteTemplate(value)
 		}
 	}
+	rebaseNodePolicyPaths(node, workflowPath)
 	node.OutputPath = rewriteTemplate(node.OutputPath)
 	if node.Approval != nil {
 		node.Approval.Message = rewriteTemplate(node.Approval.Message)
@@ -420,6 +424,42 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 		return fmt.Errorf("node %q contains unresolved subworkflow input %s", node.ID, unresolved)
 	}
 	return nil
+}
+
+func rebaseDefinitionPath(value, workflowPath string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || filepath.IsAbs(value) || strings.Contains(value, "${") {
+		return value
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(workflowPath), value))
+}
+
+func rebaseNodePolicyPaths(node *spec.Node, workflowPath string) {
+	if strings.TrimSpace(node.MCP) != "" {
+		node.MCP = rebaseDefinitionPath(node.MCP, workflowPath)
+	}
+	rebaseSkillPaths(node.Skills, workflowPath)
+	if node.WorkflowRun != nil && node.WorkflowRun.Policy != nil {
+		if strings.TrimSpace(node.WorkflowRun.Policy.MCP) != "" {
+			node.WorkflowRun.Policy.MCP = rebaseDefinitionPath(node.WorkflowRun.Policy.MCP, workflowPath)
+		}
+		rebaseSkillPaths(node.WorkflowRun.Policy.Skills, workflowPath)
+	}
+}
+
+func rebaseSkillPaths(values *[]string, workflowPath string) {
+	if values == nil {
+		return
+	}
+	for index, value := range *values {
+		if strings.TrimSpace(value) == "" || filepath.IsAbs(value) || strings.Contains(value, "${") {
+			continue
+		}
+		candidate := filepath.Join(filepath.Dir(workflowPath), value)
+		if _, err := os.Stat(candidate); err == nil {
+			(*values)[index] = filepath.Clean(candidate)
+		}
+	}
 }
 
 func unresolvedInput(node *spec.Node) string {

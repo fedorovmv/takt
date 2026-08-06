@@ -1,0 +1,31 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: external-executor-example
+  description: Delegate one structured implementation step to an MCP-connected coding agent.
+defaults:
+  assistant: delegated
+  model: coding
+nodes:
+  - id: implement
+    prompt: |
+      Inspect the workspace and implement the requested change:
+      ${input}
+
+      Return JSON with summary and tests_passed.
+    executor: external
+    allowed_tools: [read, grep, edit, write, bash]
+    requires: [tool_policy]
+    output_format:
+      type: object
+      properties:
+        summary:
+          type: string
+        tests_passed:
+          type: boolean
+      required: [summary, tests_passed]
+    output_type: implementation-report
+    output_mime: application/json
+  - id: report
+    depends_on: [implement]
+    bash: printf '%s' '${nodes.implement.output.summary}'

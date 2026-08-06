@@ -359,3 +359,49 @@ nodes:
 		t.Fatalf("parallel foreach did not cross the shared barrier in input order: %+v", state.Nodes["batch"])
 	}
 }
+
+func TestSubworkflowRebasesScriptPathAndDependencies(t *testing.T) {
+	dir := t.TempDir()
+	childDir := filepath.Join(dir, "nested")
+	if err := os.MkdirAll(filepath.Join(childDir, "tools"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	toolPath := filepath.Join(childDir, "tools", "emit.sh")
+	writeCompositionFile(t, toolPath, "#!/bin/sh\nprintf nested-ok\n")
+	if err := os.Chmod(toolPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCompositionFile(t, filepath.Join(childDir, "tools", "value.txt"), "nested-ok")
+	writeCompositionFile(t, filepath.Join(childDir, "child.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: nested-script
+nodes:
+  - id: run
+    script:
+      runtime: command
+      path: tools/emit.sh
+      dependencies: [tools/value.txt]
+`)
+	parentPath := filepath.Join(dir, "parent.yaml")
+	writeCompositionFile(t, parentPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent-script
+nodes:
+  - id: nested
+    subworkflow:
+      path: nested/child.yaml
+  - id: verify
+    depends_on: [nested]
+    bash: test '${nodes.nested.output}' = nested-ok
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := New(wf, &spec.Config{}, parentPath, "<config>", dir).Start(context.Background(), "")
+	if err != nil || state.Status != store.RunCompleted {
+		t.Fatalf("nested script composition failed: state=%+v err=%v", state, err)
+	}
+}

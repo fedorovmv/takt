@@ -352,6 +352,11 @@
         "output_path": {
           "type": "string",
           "minLength": 1
+        },
+        "executor": {
+          "enum": [
+            "external"
+          ]
         }
       },
       "oneOf": [
@@ -646,6 +651,11 @@
         "output_path": {
           "type": "string",
           "minLength": 1
+        },
+        "executor": {
+          "enum": [
+            "external"
+          ]
         }
       },
       "oneOf": [
@@ -927,6 +937,13 @@
         },
         "additionalProperties": {
           "type": "boolean"
+        },
+        "minItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uniqueItems": {
+          "type": "boolean"
         }
       }
     },
@@ -1104,6 +1121,9 @@
           ]
         },
         "allow_empty": {
+          "type": "boolean"
+        },
+        "allow_duplicates": {
           "type": "boolean"
         }
       }

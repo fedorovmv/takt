@@ -37,11 +37,13 @@
 
 - команда `takt mcp` и stdio JSON-RPC transport без отдельного daemon/БД;
 - legacy initialization `2025-03-26|2025-06-18|2025-11-25` и stateless discovery `2026-07-28`;
-- 10 tools: workflow list/describe, Run start/get/resume/answer/cancel/children/artifacts/events;
+- 15 tools: workflow list/describe, Run start/get/resume/answer/cancel/children/artifacts/events и external node pending/claim/event/complete/fail;
 - detached start с durable `run_id`;
-- revision cursor и bounded long polling событий;
+- indexed revision cursor и bounded long polling событий без полного пересканирования журнала;
 - structured/text tool results, bounded artifact content, request cancellation и strict arguments;
 - MCP использует существующие fingerprints, locks, store и parent/child lifecycle.
+- `executor: external` передаёт один command/prompt узел внешнему worker через durable claim/lease/token, capability preflight, normalized events и обычные retry/hooks/output/artifact semantics.
+- встроенные adapters и внешние workers сохраняют provider-neutral `assistant.started|message|tool.*|usage|diagnostic|completed|failed`.
 
 ### Governed child Runs
 
@@ -60,7 +62,7 @@
 - динамический fan-out из JSON-массива upstream-узла: устойчивые Run ID, `max_parallel`, resume, ordered aggregation, `all_success|all_done|one_success`, выборочная и каскадная отмена;
 - contract suite `scripts/test-child-fanout.sh`.
 
-### Профиль code 0.8.0
+### Профиль code 0.8.1
 
 - 19 процессов разработки: assist, issue/PR flows, PIV, Ralph, idea/plan-to-PR, reviews, architecture, safe refactoring, PRD, workflow builder, Remotion и conflict resolution;
 - умный роутер как корневой Run с отдельным governed child Run выбранного процесса;
@@ -115,4 +117,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Локальный MCP-интерфейс Takt реализован в `v0.1.30-alpha`. Следующий крупный системный приоритет — усиление runtime и потоковый agent protocol и предметный Route DSL benchmark. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.
+Локальный MCP-интерфейс и внешний executor узла реализованы к `v0.1.31-alpha`. Следующий крупный системный приоритет — runtime hardening: early-exit fan-out, strict renderer, diagnostics, secret redaction и реальный OS sandbox; затем предметный Route DSL benchmark. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.

@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.12.0" \
+  "skills/takt/VERSION|0.13.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -85,6 +85,14 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-042" \
   "ARCHITECTURE_DECISIONS.md|ADR-043" \
   "docs/44-local-mcp-control-plane-v0.1.30.md|takt.run.events" \
+  "docs/45-agent-events-external-executor-v0.1.31.md|takt.node.claim" \
+  "docs/45-agent-events-external-executor-v0.1.31.md|events.idx" \
+  "docs/06-roadmap.md|Выполнено в v0.1.31-alpha" \
+  "scripts/test-external-executor.sh|external node executor contract: PASS" \
+  "schemas/workflow.schema.json|executor" \
+  "schemas/run-state.schema.json|externalExecutionState" \
+  "skills/takt/references/mcp.md|takt.node.complete" \
+  "ARCHITECTURE_DECISIONS.md|ADR-044" \
   "docs/03-specification.md|server/discover" \
   "skills/takt/references/mcp.md|takt.run.start" \
   "scripts/test-mcp.sh|local MCP contract: PASS" \
@@ -101,7 +109,7 @@ for check in \
   "scripts/test-child-fanout.sh|governed child fan-out contract: PASS" \
   "schemas/workflow.schema.json|fan_out" \
   "schemas/run-state.schema.json|child_runs" \
-  "internal/profile/builtin/code/VERSION|0.8.0" \
+  "internal/profile/builtin/code/VERSION|0.8.1" \
   "README.md|Динамический fan-out v0.1.28" \
   "docs/12-document-map.md|42-governed-child-fanout-v0.1.28.md" \
   "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \
@@ -145,7 +153,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.30-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.31-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \

@@ -79,6 +79,41 @@ type ExecutionState struct {
 	Usage            *Usage    `json:"usage,omitempty"`
 }
 
+// ExternalExecutionState is a durable hand-off of one command/prompt node to a
+// local MCP client. The claim token is intentionally omitted from PublicView.
+type ExternalExecutionState struct {
+	Status            string               `json:"status"`
+	Attempt           int                  `json:"attempt"`
+	Prompt            string               `json:"prompt"`
+	Workspace         string               `json:"workspace"`
+	Assistant         string               `json:"assistant,omitempty"`
+	RequestedModel    *ModelRef            `json:"requested_model,omitempty"`
+	SessionMode       string               `json:"session_mode,omitempty"`
+	SessionID         string               `json:"session_id,omitempty"`
+	Policy            *NodePolicyState     `json:"policy,omitempty"`
+	OutputFormat      json.RawMessage      `json:"output_format,omitempty"`
+	ClaimedBy         string               `json:"claimed_by,omitempty"`
+	ClaimToken        string               `json:"claim_token,omitempty"`
+	LeaseExpiresAt    time.Time            `json:"lease_expires_at,omitempty"`
+	LastEventSequence uint64               `json:"last_event_sequence,omitempty"`
+	Result            *ExternalResultState `json:"result,omitempty"`
+}
+
+type ExternalResultState struct {
+	Output           string          `json:"output,omitempty"`
+	Structured       json.RawMessage `json:"structured,omitempty"`
+	Stdout           string          `json:"stdout,omitempty"`
+	Stderr           string          `json:"stderr,omitempty"`
+	ExitCode         int             `json:"exit_code,omitempty"`
+	SessionID        string          `json:"session_id,omitempty"`
+	Resumed          bool            `json:"resumed,omitempty"`
+	AssistantVersion string          `json:"assistant_version,omitempty"`
+	ResolvedModel    *ModelRef       `json:"resolved_model,omitempty"`
+	Usage            *Usage          `json:"usage,omitempty"`
+	ErrorCode        string          `json:"error_code,omitempty"`
+	Error            string          `json:"error,omitempty"`
+}
+
 type ChildRunItemState struct {
 	Attempt         int             `json:"attempt"`
 	Index           int             `json:"index"`
@@ -110,35 +145,36 @@ type ArtifactRef struct {
 }
 
 type NodeState struct {
-	Status            string               `json:"status"`
-	Output            string               `json:"output,omitempty"`
-	Stdout            string               `json:"stdout,omitempty"`
-	Stderr            string               `json:"stderr,omitempty"`
-	OutputTruncated   bool                 `json:"output_truncated,omitempty"`
-	Usage             *Usage               `json:"usage,omitempty"`
-	Assistant         string               `json:"assistant,omitempty"`
-	AssistantVersion  string               `json:"assistant_version,omitempty"`
-	RequestedModel    *ModelRef            `json:"requested_model,omitempty"`
-	ResolvedModel     *ModelRef            `json:"resolved_model,omitempty"`
-	ExitCode          int                  `json:"exit_code,omitempty"`
-	Attempts          int                  `json:"attempts,omitempty"`
-	Feedback          string               `json:"feedback,omitempty"`
-	SessionID         string               `json:"session_id,omitempty"`
-	Resumed           bool                 `json:"resumed,omitempty"`
-	ErrorCode         string               `json:"error_code,omitempty"`
-	Error             string               `json:"error,omitempty"`
-	Executions        []ExecutionState     `json:"executions,omitempty"`
-	LoopPrevious      map[string]NodeState `json:"loop_previous,omitempty"`
-	LoopIteration     int                  `json:"loop_iteration,omitempty"`
-	Hidden            bool                 `json:"internal,omitempty"`
-	PublicParent      string               `json:"public_parent,omitempty"`
-	ChildRunID        string               `json:"child_run_id,omitempty"`
-	ChildRunIDs       []string             `json:"child_run_ids,omitempty"`
-	ChildRuns         []ChildRunItemState  `json:"child_runs,omitempty"`
-	FanOutAttempt     int                  `json:"fan_out_attempt,omitempty"`
-	FanOutFingerprint string               `json:"fan_out_fingerprint,omitempty"`
-	Policy            *NodePolicyState     `json:"policy,omitempty"`
-	Artifacts         []ArtifactRef        `json:"artifacts,omitempty"`
+	Status            string                  `json:"status"`
+	Output            string                  `json:"output,omitempty"`
+	Stdout            string                  `json:"stdout,omitempty"`
+	Stderr            string                  `json:"stderr,omitempty"`
+	OutputTruncated   bool                    `json:"output_truncated,omitempty"`
+	Usage             *Usage                  `json:"usage,omitempty"`
+	Assistant         string                  `json:"assistant,omitempty"`
+	AssistantVersion  string                  `json:"assistant_version,omitempty"`
+	RequestedModel    *ModelRef               `json:"requested_model,omitempty"`
+	ResolvedModel     *ModelRef               `json:"resolved_model,omitempty"`
+	ExitCode          int                     `json:"exit_code,omitempty"`
+	Attempts          int                     `json:"attempts,omitempty"`
+	Feedback          string                  `json:"feedback,omitempty"`
+	SessionID         string                  `json:"session_id,omitempty"`
+	Resumed           bool                    `json:"resumed,omitempty"`
+	ErrorCode         string                  `json:"error_code,omitempty"`
+	Error             string                  `json:"error,omitempty"`
+	Executions        []ExecutionState        `json:"executions,omitempty"`
+	LoopPrevious      map[string]NodeState    `json:"loop_previous,omitempty"`
+	LoopIteration     int                     `json:"loop_iteration,omitempty"`
+	Hidden            bool                    `json:"internal,omitempty"`
+	PublicParent      string                  `json:"public_parent,omitempty"`
+	ChildRunID        string                  `json:"child_run_id,omitempty"`
+	ChildRunIDs       []string                `json:"child_run_ids,omitempty"`
+	ChildRuns         []ChildRunItemState     `json:"child_runs,omitempty"`
+	FanOutAttempt     int                     `json:"fan_out_attempt,omitempty"`
+	FanOutFingerprint string                  `json:"fan_out_fingerprint,omitempty"`
+	Policy            *NodePolicyState        `json:"policy,omitempty"`
+	Artifacts         []ArtifactRef           `json:"artifacts,omitempty"`
+	External          *ExternalExecutionState `json:"external,omitempty"`
 }
 
 func (n NodeState) Terminal() bool {
@@ -242,6 +278,11 @@ func (s *RunState) PublicView() *RunState {
 		clone.Hidden = false
 		clone.PublicParent = ""
 		clone.LoopPrevious = publicLoopPrevious(id, node.LoopPrevious)
+		if node.External != nil {
+			external := *node.External
+			external.ClaimToken = ""
+			clone.External = &external
+		}
 		out.Nodes[id] = &clone
 	}
 	if s.Waiting != nil {
@@ -384,6 +425,8 @@ func (f FS) Commit(state *RunState, event Event) error {
 
 	stateTmp := filepath.Join(dir, "state.json.tmp")
 	eventsTmp := filepath.Join(dir, "events.jsonl.tmp")
+	indexTmp := filepath.Join(dir, eventIndexFile+".tmp")
+	indexBytes := buildEventIndex(existing)
 	if err := writeFileSync(stateTmp, stateBytes, 0o644); err != nil {
 		state.Revision, state.UpdatedAt = oldRevision, oldUpdated
 		return err
@@ -393,10 +436,22 @@ func (f FS) Commit(state *RunState, event Event) error {
 		state.Revision, state.UpdatedAt = oldRevision, oldUpdated
 		return err
 	}
-	if err := os.Rename(eventsTmp, eventsPath); err != nil {
+	if err := writeFileSync(indexTmp, indexBytes, 0o644); err != nil {
 		_ = os.Remove(stateTmp)
+		_ = os.Remove(eventsTmp)
 		state.Revision, state.UpdatedAt = oldRevision, oldUpdated
 		return err
+	}
+	if err := os.Rename(eventsTmp, eventsPath); err != nil {
+		_ = os.Remove(stateTmp)
+		_ = os.Remove(indexTmp)
+		state.Revision, state.UpdatedAt = oldRevision, oldUpdated
+		return err
+	}
+	if err := os.Rename(indexTmp, filepath.Join(dir, eventIndexFile)); err != nil {
+		_ = os.Remove(stateTmp)
+		state.Revision, state.UpdatedAt = oldRevision, oldUpdated
+		return &InconsistentError{RunID: state.ID, Err: fmt.Errorf("event revision was committed but event index rename failed: %w", err)}
 	}
 	if err := os.Rename(stateTmp, filepath.Join(dir, "state.json")); err != nil {
 		state.Revision, state.UpdatedAt = oldRevision, oldUpdated
@@ -428,6 +483,39 @@ func (f FS) Load(id string) (*RunState, error) {
 	if err := ValidateRunID(id); err != nil {
 		return nil, err
 	}
+	const attempts = 8
+	var mismatch error
+	for attempt := 0; attempt < attempts; attempt++ {
+		before, err := f.readState(id)
+		if err != nil {
+			return nil, err
+		}
+		lastRevision, err := f.lastEventRevision(id)
+		if err != nil {
+			return nil, err
+		}
+		if before.Revision == lastRevision {
+			return before, nil
+		}
+		// A writer replaces events before state. Re-reading state closes the
+		// common torn-read window without waiting when the second rename has
+		// already completed.
+		after, err := f.readState(id)
+		if err != nil {
+			return nil, err
+		}
+		if after.Revision == lastRevision {
+			return after, nil
+		}
+		mismatch = fmt.Errorf("state revision %d differs from event revision %d", after.Revision, lastRevision)
+		if attempt+1 < attempts {
+			time.Sleep(time.Duration(attempt+1) * time.Millisecond)
+		}
+	}
+	return nil, &InconsistentError{RunID: id, Err: mismatch}
+}
+
+func (f FS) readState(id string) (*RunState, error) {
 	b, err := os.ReadFile(filepath.Join(f.RunDir(id), "state.json"))
 	if err != nil {
 		return nil, err
@@ -438,13 +526,6 @@ func (f FS) Load(id string) (*RunState, error) {
 	}
 	if state.ID != id {
 		return nil, &InconsistentError{RunID: id, Err: fmt.Errorf("state contains run id %q", state.ID)}
-	}
-	lastRevision, err := f.lastEventRevision(id)
-	if err != nil {
-		return nil, err
-	}
-	if state.Revision != lastRevision {
-		return nil, &InconsistentError{RunID: id, Err: fmt.Errorf("state revision %d differs from event revision %d", state.Revision, lastRevision)}
 	}
 	return &state, nil
 }

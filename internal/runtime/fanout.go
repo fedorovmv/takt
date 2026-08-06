@@ -54,6 +54,16 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 	if len(items) == 0 && !fanOut.AllowEmpty {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out items", Err: fmt.Errorf("fan-out source for node %q is empty; set allow_empty: true to accept it", node.ID)}
 	}
+	if !fanOut.AllowDuplicates {
+		seen := map[string]int{}
+		for index, raw := range encodedItems {
+			key := string(raw)
+			if previous, exists := seen[key]; exists {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out items", Err: fmt.Errorf("fan-out source for node %q contains duplicate items at indexes %d and %d; set allow_duplicates: true to run both", node.ID, previous, index)}
+			}
+			seen[key] = index
+		}
+	}
 	nodeState := state.Nodes[node.ID]
 	attempt := nodeState.Attempts
 	if nodeState.FanOutAttempt != attempt {

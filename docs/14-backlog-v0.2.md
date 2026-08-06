@@ -281,3 +281,11 @@ Runtime `command|python|node|go`, source/dependency fingerprints, structured out
 - связь событий с attempt, assistant session и usage;
 - инструкции подключения MCP для основных coding-agent hosts;
 - optional daemon рассматривается только как отдельное решение для переживания закрытия MCP-клиента.
+
+
+## Завершено в v0.1.31-alpha
+
+- конкурентно безопасное чтение file store и indexed event cursor;
+- normalized assistant/tool events;
+- durable external executor одного command/prompt узла через MCP claim/lease/token;
+- устранение известных fan-out и static composition gaps.

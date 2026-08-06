@@ -347,6 +347,14 @@ func workflowDescribeCmd(args []string) error {
 	})
 }
 
+func controlService(workspace string) (*control.Service, error) {
+	abs, err := filepath.Abs(workspace)
+	if err != nil {
+		return nil, err
+	}
+	return control.New(abs, "")
+}
+
 func answerCmd(args []string) error {
 	fs := newFlagSet("answer")
 	workspace := fs.String("workspace", ".", "workspace")
@@ -358,124 +366,15 @@ func answerCmd(args []string) error {
 	if fs.NArg() != 2 {
 		return fmt.Errorf("usage: takt answer <run-id> <node-id> --value text")
 	}
-	absWorkspace, err := filepath.Abs(*workspace)
+	service, err := controlService(*workspace)
 	if err != nil {
 		return err
 	}
-	st := store.FS{Workspace: absWorkspace}
-	target, nodeID, err := resolveApprovalTarget(st, fs.Arg(0), fs.Arg(1))
+	state, err := service.Answer(context.Background(), fs.Arg(0), fs.Arg(1), *value)
 	if err != nil {
 		return err
 	}
-	release, err := st.AcquireLock(target.ID)
-	if err != nil {
-		return err
-	}
-	target, err = st.Load(target.ID)
-	if err != nil {
-		_ = release()
-		return err
-	}
-	runner, err := runnerForState(target)
-	if err != nil {
-		_ = release()
-		return err
-	}
-	if err := runner.VerifyDefinitions(target); err != nil {
-		_ = release()
-		return err
-	}
-	if target.Waiting == nil || target.Waiting.Kind == "child_run" {
-		_ = release()
-		return fmt.Errorf("run %s is not waiting for an approval", target.ID)
-	}
-	if target.Approvals == nil {
-		target.Approvals = map[string]string{}
-	}
-	target.Approvals[nodeID] = *value
-	if ns := target.Nodes[nodeID]; ns != nil {
-		ns.Status = store.NodePending
-	}
-	target.Status = store.RunRunning
-	target.Waiting = nil
-	if err := st.Commit(target, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true}}); err != nil {
-		_ = release()
-		return err
-	}
-	target, runErr := runner.Resume(context.Background(), target)
-	_ = release()
-	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
-		return runErr
-	}
-	root, cascadeErr := resumeParentChain(st, target)
-	if cascadeErr != nil && !errors.Is(cascadeErr, runtime.ErrWaiting) {
-		return cascadeErr
-	}
-	return printResult(*jsonOut, root)
-}
-
-func resolveApprovalTarget(st store.FS, runID, requestedNodeID string) (*store.RunState, string, error) {
-	state, err := st.Load(runID)
-	if err != nil {
-		return nil, "", err
-	}
-	allowed := map[string]bool{requestedNodeID: false}
-	for state.Waiting != nil && state.Waiting.Kind == "child_run" {
-		allowed[state.Waiting.NodeID] = true
-		if node := state.Nodes[state.Waiting.NodeID]; node != nil && node.PublicParent != "" {
-			allowed[node.PublicParent] = true
-		}
-		childIDs := append([]string(nil), state.Waiting.ChildRunIDs...)
-		if len(childIDs) == 0 && state.Waiting.ChildRunID != "" {
-			childIDs = []string{state.Waiting.ChildRunID}
-		}
-		if len(childIDs) != 1 {
-			return nil, "", fmt.Errorf("run %s has %d child runs waiting; answer one child run directly: %s", state.ID, len(childIDs), strings.Join(childIDs, ", "))
-		}
-		state, err = st.Load(childIDs[0])
-		if err != nil {
-			return nil, "", err
-		}
-	}
-	if state.Waiting == nil {
-		return nil, "", fmt.Errorf("run %s is not waiting for approval", state.ID)
-	}
-	nodeID := state.Waiting.NodeID
-	allowed[nodeID] = true
-	if node := state.Nodes[nodeID]; node != nil && node.PublicParent != "" {
-		allowed[node.PublicParent] = true
-	}
-	if !allowed[requestedNodeID] {
-		return nil, "", fmt.Errorf("run is not waiting for approval node %q", requestedNodeID)
-	}
-	return state, nodeID, nil
-}
-
-func resumeParentChain(st store.FS, child *store.RunState) (*store.RunState, error) {
-	current := child
-	for current != nil && current.ParentRunID != "" {
-		release, err := st.AcquireLock(current.ParentRunID)
-		if err != nil {
-			return current, err
-		}
-		parent, err := st.Load(current.ParentRunID)
-		if err != nil {
-			_ = release()
-			return current, err
-		}
-		runner, err := runnerForState(parent)
-		if err != nil {
-			_ = release()
-			return current, err
-		}
-		parent, runErr := runner.Resume(context.Background(), parent)
-		_ = release()
-		current = parent
-		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
-			return current, runErr
-		}
-	}
-	return current, nil
+	return printResult(*jsonOut, state)
 }
 
 func resumeCmd(args []string) error {
@@ -488,57 +387,15 @@ func resumeCmd(args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt resume <run-id>")
 	}
-	absWorkspace, err := filepath.Abs(*workspace)
+	service, err := controlService(*workspace)
 	if err != nil {
 		return err
 	}
-	st := store.FS{Workspace: absWorkspace}
-	release, err := st.AcquireLock(fs.Arg(0))
+	state, err := service.Resume(context.Background(), fs.Arg(0))
 	if err != nil {
 		return err
-	}
-	defer release()
-	state, err := st.Load(fs.Arg(0))
-	if err != nil {
-		return err
-	}
-	runner, err := runnerForState(state)
-	if err != nil {
-		return err
-	}
-	state, runErr := runner.Resume(context.Background(), state)
-	if errors.Is(runErr, runtime.ErrWaiting) {
-		return printResult(*jsonOut, state)
-	}
-	if runErr != nil {
-		return runErr
 	}
 	return printResult(*jsonOut, state)
-}
-
-func runnerForState(state *store.RunState) (*runtime.Runner, error) {
-	wf, err := workflow.Load(state.WorkflowPath)
-	if err != nil {
-		return nil, err
-	}
-	cfg, err := cfgpkg.Load(state.ConfigPath)
-	if err != nil {
-		return nil, err
-	}
-	runner := runtime.New(wf, cfg, state.WorkflowPath, state.ConfigPath, state.Workspace)
-	runner.SetStartOptions(runtime.StartOptionsFromState(state))
-	if state.ExecutionWorkspace != "" {
-		if state.Worktree != nil && state.Worktree.Enabled && !state.Worktree.Removed {
-			if info, statErr := os.Stat(state.ExecutionWorkspace); statErr != nil || !info.IsDir() {
-				return nil, fmt.Errorf("managed worktree for run %s is unavailable at %s", state.ID, state.ExecutionWorkspace)
-			}
-		}
-		runner.SetExecutionWorkspace(state.ExecutionWorkspace)
-	}
-	if err := validateReferences(wf.Nodes, wf.Defaults, cfg, runner.Commands); err != nil {
-		return nil, err
-	}
-	return runner, nil
 }
 
 func statusCmd(args []string) error {
@@ -551,8 +408,11 @@ func statusCmd(args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt status <run-id>")
 	}
-	abs, _ := filepath.Abs(*workspace)
-	state, err := (store.FS{Workspace: abs}).Load(fs.Arg(0))
+	service, err := controlService(*workspace)
+	if err != nil {
+		return err
+	}
+	state, err := service.GetRun(fs.Arg(0))
 	if err != nil {
 		return err
 	}
@@ -569,46 +429,15 @@ func childrenCmd(args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt children <run-id>")
 	}
-	abs, err := filepath.Abs(*workspace)
+	service, err := controlService(*workspace)
 	if err != nil {
 		return err
 	}
-	st := store.FS{Workspace: abs}
-	parent, err := st.Load(fs.Arg(0))
+	children, err := service.Children(fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	fanOutMeta := map[string]map[string]any{}
-	for nodeID, node := range parent.Nodes {
-		if node == nil {
-			continue
-		}
-		for _, item := range node.ChildRuns {
-			var decoded any
-			if err := json.Unmarshal(item.Item, &decoded); err != nil {
-				decoded = string(item.Item)
-			}
-			fanOutMeta[item.RunID] = map[string]any{"node_id": nodeID, "attempt": item.Attempt, "index": item.Index, "item": decoded}
-		}
-	}
-	children := make([]map[string]any, 0, len(parent.ChildRunIDs))
-	for _, id := range parent.ChildRunIDs {
-		child, loadErr := st.Load(id)
-		if loadErr != nil {
-			children = append(children, map[string]any{"id": id, "error": loadErr.Error()})
-			continue
-		}
-		value := map[string]any{
-			"id": child.ID, "status": child.Status, "workflow_path": child.WorkflowPath,
-			"parent_node_id": child.ParentNodeID, "execution_workspace": child.ExecutionWorkspace,
-			"usage": child.Usage,
-		}
-		if meta := fanOutMeta[id]; meta != nil {
-			value["fan_out"] = meta
-		}
-		children = append(children, value)
-	}
-	return printResult(*jsonOut, map[string]any{"run_id": parent.ID, "children": children})
+	return printResult(*jsonOut, children)
 }
 
 func artifactsCmd(args []string) error {
@@ -624,62 +453,15 @@ func artifactsCmd(args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt artifacts <run-id> [--node id] [--type type] [--recursive]")
 	}
-	abs, err := filepath.Abs(*workspace)
+	service, err := controlService(*workspace)
 	if err != nil {
 		return err
 	}
-	st := store.FS{Workspace: abs}
-	root, err := st.Load(fs.Arg(0))
+	result, err := service.Artifacts(fs.Arg(0), control.ArtifactQuery{NodeID: *nodeID, Type: *artifactType, Recursive: *recursive})
 	if err != nil {
 		return err
 	}
-	runs := []*store.RunState{root}
-	if *recursive {
-		queue := append([]string(nil), root.ChildRunIDs...)
-		seen := map[string]bool{root.ID: true}
-		for len(queue) > 0 {
-			id := queue[0]
-			queue = queue[1:]
-			if seen[id] {
-				continue
-			}
-			seen[id] = true
-			child, loadErr := st.Load(id)
-			if loadErr != nil {
-				return loadErr
-			}
-			runs = append(runs, child)
-			queue = append(queue, child.ChildRunIDs...)
-		}
-	}
-	artifacts := make([]store.ArtifactRef, 0)
-	seenArtifacts := map[string]bool{}
-	for _, run := range runs {
-		for _, artifact := range run.Artifacts {
-			if *nodeID != "" && artifact.ProducerNodeID != *nodeID {
-				continue
-			}
-			if *artifactType != "" && artifact.Type != *artifactType {
-				continue
-			}
-			key := artifact.ProducerRunID + "\x00" + artifact.ID
-			if seenArtifacts[key] {
-				continue
-			}
-			seenArtifacts[key] = true
-			artifacts = append(artifacts, artifact)
-		}
-	}
-	sort.Slice(artifacts, func(i, j int) bool {
-		if artifacts[i].ProducerRunID != artifacts[j].ProducerRunID {
-			return artifacts[i].ProducerRunID < artifacts[j].ProducerRunID
-		}
-		if artifacts[i].ProducerNodeID != artifacts[j].ProducerNodeID {
-			return artifacts[i].ProducerNodeID < artifacts[j].ProducerNodeID
-		}
-		return artifacts[i].Type < artifacts[j].Type
-	})
-	return printResult(*jsonOut, map[string]any{"run_id": root.ID, "artifacts": artifacts})
+	return printResult(*jsonOut, result)
 }
 
 func cancelCmd(args []string) error {
@@ -693,91 +475,15 @@ func cancelCmd(args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt cancel <run-id> [--reason text]")
 	}
-	abs, err := filepath.Abs(*workspace)
+	service, err := controlService(*workspace)
 	if err != nil {
 		return err
 	}
-	st := store.FS{Workspace: abs}
-	state, err := st.Load(fs.Arg(0))
+	result, err := service.Cancel(fs.Arg(0), *reason)
 	if err != nil {
 		return err
 	}
-	if state.Status == store.RunCompleted || state.Status == store.RunFailed || state.Status == store.RunCancelled {
-		return fmt.Errorf("cannot cancel terminal run %s with status %s", state.ID, state.Status)
-	}
-	if err := cancelRunTree(st, state, *reason, false); err != nil {
-		return err
-	}
-	state, err = st.Load(state.ID)
-	if err != nil {
-		return err
-	}
-	if state.Status == store.RunWaiting {
-		release, lockErr := st.AcquireLock(state.ID)
-		if lockErr != nil {
-			return lockErr
-		}
-		state, err = st.Load(state.ID)
-		if err == nil {
-			var runner *runtime.Runner
-			runner, err = runnerForState(state)
-			if err == nil {
-				state, _ = runner.Cancel(state, *reason)
-			}
-		}
-		_ = release()
-		if err != nil {
-			return err
-		}
-		root, cascadeErr := resumeParentChain(st, state)
-		if cascadeErr == nil || errors.Is(cascadeErr, runtime.ErrWaiting) {
-			return printResult(*jsonOut, root)
-		}
-		return cascadeErr
-	}
-	return printResult(*jsonOut, map[string]any{"run_id": state.ID, "status": state.Status, "cancel_requested": true, "children": state.ChildRunIDs})
-}
-
-func cancelRunTree(st store.FS, state *store.RunState, reason string, includeSelf bool) error {
-	for _, childID := range state.ChildRunIDs {
-		child, err := st.Load(childID)
-		if err != nil {
-			continue
-		}
-		if err := cancelRunTree(st, child, reason, true); err != nil {
-			return err
-		}
-	}
-	if !includeSelf {
-		return st.RequestCancel(state.ID)
-	}
-	if state.Status == store.RunCompleted || state.Status == store.RunCancelled || state.Status == store.RunFailed {
-		return nil
-	}
-	if err := st.RequestCancel(state.ID); err != nil {
-		return err
-	}
-	if state.Status != store.RunWaiting {
-		return nil
-	}
-	release, err := st.AcquireLock(state.ID)
-	if err != nil {
-		return err
-	}
-	defer release()
-	state, err = st.Load(state.ID)
-	if err != nil {
-		return err
-	}
-	runner, err := runnerForState(state)
-	if err != nil {
-		return err
-	}
-	_, cancelErr := runner.Cancel(state, reason)
-	if cancelErr != nil && !errors.Is(cancelErr, context.Canceled) {
-		return cancelErr
-	}
-	return nil
+	return printResult(*jsonOut, result)
 }
 
 type worktreeListEntry struct {

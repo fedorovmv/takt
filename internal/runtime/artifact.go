@@ -7,20 +7,21 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"takt/internal/artifacttype"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
 
-var artifactTypeRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
-
 func (r *Runner) captureDeclaredArtifact(state *store.RunState, node spec.Node, local map[string]store.NodeState) error {
 	if strings.TrimSpace(node.OutputType) == "" {
 		return nil
+	}
+	if !artifacttype.Valid(node.OutputType) {
+		return fmt.Errorf("output_type must match %s", artifacttype.Pattern)
 	}
 	ns := state.Nodes[node.ID]
 	if ns == nil {

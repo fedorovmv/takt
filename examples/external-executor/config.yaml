@@ -1,0 +1,9 @@
+apiVersion: takt/v1alpha1
+kind: Config
+models:
+  coding:
+    provider: external
+    id: coding-agent
+assistants:
+  delegated:
+    type: mock

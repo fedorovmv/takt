@@ -40,12 +40,12 @@ func TestServeStdioSupportsLegacyInitializeAndModernDiscover(t *testing.T) {
 		t.Fatalf("modern protocol = %v", got)
 	}
 	listed := responses["3"]["result"].(map[string]any)["tools"].([]any)
-	if len(listed) != 10 {
+	if len(listed) != 15 {
 		t.Fatalf("tools count = %d", len(listed))
 	}
 	first := listed[0].(map[string]any)["name"]
 	last := listed[len(listed)-1].(map[string]any)["name"]
-	if first != "takt.workflow.list" || last != "takt.run.events" {
+	if first != "takt.workflow.list" || last != "takt.node.fail" {
 		t.Fatalf("unexpected deterministic tool order: %v ... %v", first, last)
 	}
 }
@@ -224,5 +224,281 @@ func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRequestIDKeyPreservesLargeNumericIDs(t *testing.T) {
+	first := requestIDKey(json.RawMessage("9007199254740992"))
+	second := requestIDKey(json.RawMessage("9007199254740993"))
+	if first == second {
+		t.Fatalf("large request ids collided: %q", first)
+	}
+	if first != "j:9007199254740992" || second != "j:9007199254740993" {
+		t.Fatalf("unexpected keys: %q %q", first, second)
+	}
+}
+
+func TestServeStdioAcceptsEnvelopeExtensionsAndRejectsInvalidEnvelope(t *testing.T) {
+	service, err := control.New(t.TempDir(), ".takt/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := bytes.NewBufferString(
+		`{"jsonrpc":"2.0","id":1,"method":"ping","params":{},"traceparent":"00-test"}` + "\n" +
+			`{"jsonrpc":"2.0","id":2,"params":{}}` + "\n",
+	)
+	var output bytes.Buffer
+	if err := New(service, input, &output, &bytes.Buffer{}).ServeStdio(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	responses := decodeResponses(t, output.Bytes())
+	if responses["1"]["error"] != nil {
+		t.Fatalf("extension field was rejected: %#v", responses["1"])
+	}
+	rpcErr := responses["2"]["error"].(map[string]any)
+	if int(rpcErr["code"].(float64)) != -32600 {
+		t.Fatalf("invalid envelope code = %#v", rpcErr)
+	}
+}
+
+func TestExternalNodeMCPClaimEventsAndCompletion(t *testing.T) {
+	workspace := t.TempDir()
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	configPath := filepath.Join(workspace, "config.yaml")
+	writeFile(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+models:
+  demo:
+    provider: test
+    id: demo
+assistants:
+  worker:
+    type: mock
+`)
+	writeFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: external-mcp-contract
+defaults:
+  assistant: worker
+  model: demo
+nodes:
+  - id: delegated
+    prompt: Produce a structured result.
+    executor: external
+    allowed_tools: []
+    output_format:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]
+    output_type: result
+    output_mime: application/json
+  - id: verify
+    depends_on: [delegated]
+    bash: test '${nodes.delegated.output.ok}' = 'true'
+`)
+	service, err := control.New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(service, nil, nil, nil)
+	startedValue, err := server.executeTool(context.Background(), "takt.run.start", map[string]any{"selector": workflowPath, "config_path": configPath, "detached": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := startedValue.(*control.StartResult)
+	if started.State == nil || started.State.Status != store.RunWaiting || started.State.Waiting == nil || started.State.Waiting.Kind != "external_node" {
+		t.Fatalf("start state = %#v", started.State)
+	}
+	pendingValue, err := server.executeTool(context.Background(), "takt.node.pending", map[string]any{"run_id": started.RunID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks := pendingValue.(map[string]any)["tasks"].([]control.ExternalTask)
+	if len(tasks) != 1 || tasks[0].NodeID != "delegated" {
+		t.Fatalf("tasks = %#v", tasks)
+	}
+	if _, err := server.executeTool(context.Background(), "takt.node.claim", map[string]any{"run_id": started.RunID, "node_id": "delegated", "worker_id": "worker-1"}); err == nil {
+		t.Fatal("expected missing tool_policy capability")
+	}
+	claimedValue, err := server.executeTool(context.Background(), "takt.node.claim", map[string]any{
+		"run_id": started.RunID, "node_id": "delegated", "worker_id": "worker-1", "capabilities": []string{"tool_policy"}, "lease_ms": 60000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed := claimedValue.(*control.ExternalTask)
+	if claimed.ClaimToken == "" {
+		t.Fatal("claim token is empty")
+	}
+	publicValue, err := server.executeTool(context.Background(), "takt.run.get", map[string]any{"run_id": started.RunID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	public := publicValue.(*store.RunState)
+	if got := public.Nodes["delegated"].External.ClaimToken; got != "" {
+		t.Fatalf("public claim token leaked: %q", got)
+	}
+	if _, err := server.executeTool(context.Background(), "takt.node.event", map[string]any{
+		"run_id": started.RunID, "node_id": "delegated", "claim_token": claimed.ClaimToken,
+		"event": map[string]any{"type": "tool.started", "tool": "read", "call_id": "call-1", "input": map[string]any{"path": "README.md"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	completedValue, err := server.executeTool(context.Background(), "takt.node.complete", map[string]any{
+		"run_id": started.RunID, "node_id": "delegated", "claim_token": claimed.ClaimToken,
+		"structured": map[string]any{"ok": true}, "stdout": "raw-provider-stream", "exit_code": 0,
+		"usage": map[string]any{"input_tokens": 10, "output_tokens": 3, "cost": 0.01},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := completedValue.(*store.RunState)
+	if completed.Status != store.RunCompleted {
+		t.Fatalf("completed state = %#v", completed)
+	}
+	if completed.Nodes["delegated"].Stdout != "raw-provider-stream" {
+		t.Fatalf("stdout = %q", completed.Nodes["delegated"].Stdout)
+	}
+	if len(completed.Nodes["delegated"].Artifacts) != 1 || completed.Nodes["delegated"].Artifacts[0].Type != "result" {
+		t.Fatalf("artifacts = %#v", completed.Nodes["delegated"].Artifacts)
+	}
+	eventsValue, err := server.executeTool(context.Background(), "takt.run.events", map[string]any{"run_id": started.RunID, "after_revision": 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := eventsValue.(*control.EventsResult).Events
+	foundTool := false
+	for _, event := range events {
+		if event.Type == "assistant.tool.started" {
+			foundTool = true
+		}
+	}
+	if !foundTool {
+		t.Fatalf("normalized tool event missing: %#v", events)
+	}
+}
+
+func TestExternalNodeFailureRetriesWithFreshClaim(t *testing.T) {
+	workspace := t.TempDir()
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	configPath := filepath.Join(workspace, "config.yaml")
+	writeFile(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+models:
+  demo:
+    provider: test
+    id: demo
+assistants:
+  worker:
+    type: mock
+`)
+	writeFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: external-retry
+defaults:
+  assistant: worker
+  model: demo
+nodes:
+  - id: delegated
+    prompt: retry me
+    executor: external
+    attempts:
+      max: 2
+      retry_on: [exit]
+`)
+	service, err := control.New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(service, nil, nil, nil)
+	startedValue, err := server.executeTool(context.Background(), "takt.run.start", map[string]any{"selector": workflowPath, "config_path": configPath, "detached": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := startedValue.(*control.StartResult).RunID
+	firstValue, err := server.executeTool(context.Background(), "takt.node.claim", map[string]any{"run_id": runID, "node_id": "delegated", "worker_id": "worker-1", "lease_ms": 60000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := firstValue.(*control.ExternalTask)
+	failedValue, err := server.executeTool(context.Background(), "takt.node.fail", map[string]any{"run_id": runID, "node_id": "delegated", "claim_token": first.ClaimToken, "exit_code": 7, "error_code": "exit", "error": "temporary provider failure"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := failedValue.(*store.RunState)
+	if failed.Status != store.RunWaiting || failed.Nodes["delegated"].External.Attempt != 2 {
+		t.Fatalf("retry state = %#v", failed)
+	}
+	secondValue, err := server.executeTool(context.Background(), "takt.node.claim", map[string]any{"run_id": runID, "node_id": "delegated", "worker_id": "worker-2", "lease_ms": 60000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := secondValue.(*control.ExternalTask)
+	if second.ClaimToken == first.ClaimToken || second.Attempt != 2 {
+		t.Fatalf("claim was not renewed: first=%#v second=%#v", first, second)
+	}
+	completedValue, err := server.executeTool(context.Background(), "takt.node.complete", map[string]any{"run_id": runID, "node_id": "delegated", "claim_token": second.ClaimToken, "output": "ok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := completedValue.(*store.RunState)
+	if completed.Status != store.RunCompleted || completed.Nodes["delegated"].Attempts != 2 || len(completed.Nodes["delegated"].Executions) != 2 {
+		t.Fatalf("completed retry state = %#v", completed)
+	}
+}
+
+func TestExternalNodeExpiredLeaseCanBeReclaimed(t *testing.T) {
+	workspace := t.TempDir()
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	configPath := filepath.Join(workspace, "config.yaml")
+	writeFile(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+models:
+  demo:
+    provider: test
+    id: demo
+assistants:
+  worker:
+    type: mock
+`)
+	writeFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: external-lease
+defaults:
+  assistant: worker
+  model: demo
+nodes:
+  - id: delegated
+    prompt: lease
+    executor: external
+`)
+	service, err := control.New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(service, nil, nil, nil)
+	startedValue, err := server.executeTool(context.Background(), "takt.run.start", map[string]any{"selector": workflowPath, "config_path": configPath, "detached": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := startedValue.(*control.StartResult).RunID
+	firstValue, err := server.executeTool(context.Background(), "takt.node.claim", map[string]any{"run_id": runID, "node_id": "delegated", "worker_id": "worker-1", "lease_ms": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := firstValue.(*control.ExternalTask)
+	time.Sleep(10 * time.Millisecond)
+	secondValue, err := server.executeTool(context.Background(), "takt.node.claim", map[string]any{"run_id": runID, "node_id": "delegated", "worker_id": "worker-2", "lease_ms": 60000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := secondValue.(*control.ExternalTask)
+	if second.ClaimToken == first.ClaimToken || second.ClaimedBy != "worker-2" {
+		t.Fatalf("lease was not reclaimed: first=%#v second=%#v", first, second)
 	}
 }

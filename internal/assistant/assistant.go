@@ -20,6 +20,7 @@ type Request struct {
 	NativeHooks json.RawMessage
 	Policy      Policy
 	Metadata    map[string]string
+	Emit        EventSink
 }
 
 type Result struct {

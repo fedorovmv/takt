@@ -329,3 +329,7 @@ workflows:
 ```
 
 `workflow` — default/роутер. Явный селектор `code:piv-loop` выбирает запись из `workflows`. Команды: `takt workflow list code`, `takt workflow describe code:piv-loop`.
+
+## Внешний executor AI-узла
+
+Для передачи одного `command` или `prompt` внешнему coding agent укажи `executor: external`. Takt сохранит resolved prompt/model/session/policy и приостановит Run. Worker обязан использовать MCP-цикл `takt.node.pending → claim → event → complete|fail`; обычные `attempts`, hooks, `output_format` и `output_type` продолжают действовать после submission.

@@ -23,6 +23,7 @@ go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
 ./scripts/test-child-fanout.sh
 ./scripts/test-script-artifacts.sh
 ./scripts/test-mcp.sh
+./scripts/test-external-executor.sh
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \
@@ -53,6 +54,11 @@ go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
 ./bin/takt validate examples/composition/workflow.yaml \
   --config examples/composition/config.yaml \
   --workspace examples/composition \
+  --json >/dev/null
+
+./bin/takt validate examples/external-executor/workflow.yaml \
+  --config examples/external-executor/config.yaml \
+  --workspace . \
   --json >/dev/null
 
 echo 'verification: PASS'

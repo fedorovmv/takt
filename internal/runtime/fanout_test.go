@@ -448,3 +448,80 @@ nodes:
 		t.Fatalf("retry reused child IDs: %+v", node.ChildRuns)
 	}
 }
+
+func TestGovernedChildFanOutRejectsDuplicateItemsByDefault(t *testing.T) {
+	dir := t.TempDir()
+	childPath := filepath.Join(dir, "child.yaml")
+	parentPath := filepath.Join(dir, "parent.yaml")
+	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: duplicate-child
+nodes:
+  - id: run
+    bash: printf '%s' '${input}'
+`)
+	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: duplicate-parent
+nodes:
+  - id: discover
+    bash: printf '["code","code"]'
+  - id: execute
+    depends_on: [discover]
+    workflow:
+      path: child.yaml
+      input: '${fanout.item}'
+      isolation: inherit
+      fan_out:
+        items_from: nodes.discover.output
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := New(wf, &spec.Config{}, parentPath, "<config>", dir).Start(context.Background(), "")
+	if err == nil || !strings.Contains(err.Error(), "duplicate items") || state.Status != store.RunFailed {
+		t.Fatalf("expected duplicate-source failure, state=%+v err=%v", state, err)
+	}
+}
+
+func TestGovernedChildFanOutCanExplicitlyAllowDuplicateItems(t *testing.T) {
+	dir := t.TempDir()
+	childPath := filepath.Join(dir, "child.yaml")
+	parentPath := filepath.Join(dir, "parent.yaml")
+	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: duplicate-child
+nodes:
+  - id: run
+    bash: printf '%s' '${input}'
+`)
+	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: duplicate-parent
+nodes:
+  - id: discover
+    bash: printf '["code","code"]'
+  - id: execute
+    depends_on: [discover]
+    workflow:
+      path: child.yaml
+      input: '${fanout.item}'
+      isolation: inherit
+      fan_out:
+        items_from: nodes.discover.output
+        allow_duplicates: true
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := New(wf, &spec.Config{}, parentPath, "<config>", dir).Start(context.Background(), "")
+	if err != nil || state.Status != store.RunCompleted || len(state.Nodes["execute"].ChildRuns) != 2 {
+		t.Fatalf("explicit duplicate fan-out failed: state=%+v err=%v", state, err)
+	}
+}

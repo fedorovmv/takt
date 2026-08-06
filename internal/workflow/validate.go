@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"takt/internal/artifacttype"
 	"takt/internal/spec"
 )
 
@@ -139,6 +140,14 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 				return err
 			}
 		}
+		if n.Executor != "" {
+			if n.Executor != "external" {
+				return fmt.Errorf("node %q executor must be external", n.ID)
+			}
+			if n.Command == "" && n.Prompt == "" {
+				return fmt.Errorf("node %q external executor is supported only for command or prompt nodes", n.ID)
+			}
+		}
 		if n.Attempts.Max < 0 {
 			return fmt.Errorf("node %q attempts.max cannot be negative", n.ID)
 		}
@@ -223,8 +232,8 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			if n.Command == "" && n.Prompt == "" && n.Bash == "" && n.Script == nil {
 				return fmt.Errorf("node %q typed artifacts are supported only for command, prompt, bash, or script nodes", n.ID)
 			}
-			if !artifactTypeRE.MatchString(n.OutputType) {
-				return fmt.Errorf("node %q output_type must match %s", n.ID, artifactTypeRE.String())
+			if !artifacttype.Valid(n.OutputType) {
+				return fmt.Errorf("node %q output_type must match %s", n.ID, artifacttype.Pattern)
 			}
 			if strings.ContainsAny(n.OutputMIME, "\r\n") {
 				return fmt.Errorf("node %q output_mime must be a single line", n.ID)
@@ -325,7 +334,6 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 
 var fanOutNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 var fanOutSourceRE = regexp.MustCompile(`^nodes\.([A-Za-z0-9_-]+)\.output(?:\.[A-Za-z0-9_.-]+)?$`)
-var artifactTypeRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 var envNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func validateScript(script spec.ScriptSpec, scope string) error {
@@ -401,6 +409,9 @@ func validateOutputFormat(format spec.OutputFormat, path string) error {
 	case "array":
 		if format.Items == nil {
 			return fmt.Errorf("%s array requires items", path)
+		}
+		if format.MinItems < 0 {
+			return fmt.Errorf("%s minItems must not be negative", path)
 		}
 		if err := validateOutputFormat(*format.Items, path+".items"); err != nil {
 			return err
