@@ -133,6 +133,9 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 				if fanOut.MaxParallel < 0 || fanOut.MaxParallel > 64 {
 					return fmt.Errorf("node %q workflow.fan_out.max_parallel must be 0 (default 1) or between 1 and 64", n.ID)
 				}
+				if fanOut.MaxItems < 0 || fanOut.MaxItems > 256 {
+					return fmt.Errorf("node %q workflow.fan_out.max_items must be 0 (unlimited) or between 1 and 256", n.ID)
+				}
 				switch fanOut.Join {
 				case "", "all_success", "all_done", "one_success":
 				default:
@@ -386,17 +389,23 @@ var envNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func validateScript(script spec.ScriptSpec, scope string) error {
 	switch script.Runtime {
-	case "command", "python", "node", "go":
+	case "command", "python", "node", "go", "validation":
 	default:
-		return fmt.Errorf("%s.runtime must be command, python, node, or go", scope)
+		return fmt.Errorf("%s.runtime must be command, python, node, go, or validation", scope)
 	}
 	hasPath := strings.TrimSpace(script.Path) != ""
 	hasInline := strings.TrimSpace(script.Inline) != ""
-	if hasPath == hasInline {
-		return fmt.Errorf("%s must define exactly one of path or inline", scope)
-	}
-	if (script.Runtime == "command" || script.Runtime == "go") && hasInline {
-		return fmt.Errorf("%s runtime command/go requires path", scope)
+	if script.Runtime == "validation" {
+		if hasPath || hasInline || len(script.Args) > 0 || len(script.Dependencies) > 0 {
+			return fmt.Errorf("%s runtime validation reads validation_commands from workflow input and does not accept path, inline, args, or dependencies", scope)
+		}
+	} else {
+		if hasPath == hasInline {
+			return fmt.Errorf("%s must define exactly one of path or inline", scope)
+		}
+		if (script.Runtime == "command" || script.Runtime == "go") && hasInline {
+			return fmt.Errorf("%s runtime command/go requires path", scope)
+		}
 	}
 	for key := range script.Env {
 		if !envNameRE.MatchString(key) {

@@ -2,7 +2,7 @@ apiVersion: takt/v1alpha1
 kind: Profile
 metadata:
   name: code
-  description: Evidence-driven catalog of 19 development workflows with six deep repository processes, governed reviews, recovery paths, typed artifacts, and smart routing
+  description: Evidence-driven catalog of 19 development workflows with Dynamic Takt planning, governed reviews, recovery paths, typed artifacts, and smart routing
 workflow: workflow.yaml
 workflows:
   assist: workflows/assist.yaml

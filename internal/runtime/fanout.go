@@ -51,6 +51,9 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 	if err != nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out items", Err: err}
 	}
+	if fanOut.MaxItems > 0 && len(items) > fanOut.MaxItems {
+		return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "resolve fan-out items", Err: fmt.Errorf("fan-out source for node %q has %d items, exceeding max_items %d", node.ID, len(items), fanOut.MaxItems)}
+	}
 	if len(items) == 0 && !fanOut.AllowEmpty {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out items", Err: fmt.Errorf("fan-out source for node %q is empty; set allow_empty: true to accept it", node.ID)}
 	}
@@ -210,6 +213,10 @@ func (r *Runner) runFanOutChild(ctx context.Context, parent *store.RunState, nod
 	input, renderErr := renderFanOutTemplate(definition.Input, parent, local, feedback, artifacts, item, record.Index, total, definition.FanOut.As)
 	if renderErr != nil {
 		return nil, &execution.Error{Kind: execution.KindInternal, Op: "render fan-out child input", Err: renderErr}
+	}
+	input, renderErr = ValidateWorkflowInput(input, childWorkflow.Input)
+	if renderErr != nil {
+		return nil, &execution.Error{Kind: execution.KindProtocol, Op: "validate fan-out child workflow input", Err: renderErr}
 	}
 	options := StartOptions{RunID: record.RunID, ParentRunID: parent.ID, ParentNodeID: fmt.Sprintf("%s[%d]", node.ID, record.Index)}
 	childPolicy := r.inheritedPolicy

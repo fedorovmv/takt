@@ -1,0 +1,34 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: dynamic-synthesize
+  description: Approved Dynamic Takt block dynamic-synthesize.
+defaults:
+  assistant: opencode
+  model: review
+  session: fresh
+nodes:
+  - id: result
+    command: dynamic-synthesize
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        completed:
+          type: array
+          items:
+            type: string
+        unresolved:
+          type: array
+          items:
+            type: string
+        next_actions:
+          type: array
+          items:
+            type: string
+      required: [summary, completed, unresolved, next_actions]
+    output_type: dynamic-summary
+    output_mime: application/json

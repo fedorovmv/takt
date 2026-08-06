@@ -116,6 +116,38 @@ func main() {
 
 func handleGeneric(prompt string) {
 	lower := strings.ToLower(prompt)
+	if strings.Contains(lower, "bounded planner for dynamic takt") {
+		fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"WorkflowPlan","decision":"planned","goal":"fixture dynamic audit","reason":"fixture needs discovery and synthesis","budget":{"max_child_runs":8,"max_parallel":2,"max_iterations":3,"max_tokens":100000},"phases":[{"id":"inventory","uses":"discover","objective":"discover fixture items","strategy":"task","checkpoint":true},{"id":"summary","uses":"synthesize","objective":"summarize fixture results","depends_on":["inventory"],"strategy":"task"}]}`)
+		return
+	}
+	if strings.Contains(lower, "reassessing a dynamic takt plan") {
+		fmt.Print(`{"action":"continue","reason":"fixture evidence supports the remaining plan","phases":[]}`)
+		return
+	}
+	if strings.Contains(lower, "bounded discovery phase") {
+		fmt.Print(`{"summary":"fixture inventory","items":["item-a","item-b"]}`)
+		return
+	}
+	if strings.Contains(lower, "investigate the requested scope") {
+		fmt.Print(`{"summary":"fixture investigation","findings":["finding"],"evidence":["fixture"]}`)
+		return
+	}
+	if strings.Contains(lower, "implement only the objective") {
+		fmt.Print(`{"summary":"fixture implementation","changed_files":[],"tests":["fixture: pass"]}`)
+		return
+	}
+	if strings.Contains(lower, "validate the requested result independently") {
+		fmt.Print(`{"summary":"fixture validation","passed":true,"checks":["fixture: pass"],"issues":[]}`)
+		return
+	}
+	if strings.Contains(lower, "review or adversarially verify") {
+		fmt.Print(`{"summary":"fixture review","approved":true,"findings":[],"evidence":["fixture"]}`)
+		return
+	}
+	if strings.Contains(lower, "synthesize the dynamic plan results") {
+		fmt.Print(`{"summary":"fixture complete","completed":["inventory"],"unresolved":[],"next_actions":[]}`)
+		return
+	}
 	if strings.Contains(lower, "reviewers") && strings.Contains(lower, "classify") {
 		fmt.Print(`{"reviewers":["code","tests"],"complexity":"small","reason":"fixture"}`)
 		return

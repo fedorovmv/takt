@@ -1,0 +1,32 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: dynamic-review
+  description: Approved Dynamic Takt block dynamic-review.
+defaults:
+  assistant: opencode
+  model: review
+  session: fresh
+nodes:
+  - id: result
+    command: dynamic-review
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        approved:
+          type: boolean
+        findings:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            type: string
+      required: [summary, approved, findings, evidence]
+    output_type: dynamic-review
+    output_mime: application/json

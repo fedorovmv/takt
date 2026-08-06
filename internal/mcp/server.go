@@ -16,6 +16,7 @@ import (
 
 	"takt/internal/assistant"
 	"takt/internal/control"
+	"takt/internal/dynamicplan"
 	"takt/internal/store"
 	"takt/internal/version"
 )
@@ -134,6 +135,28 @@ func (s *Server) ServeStdio(ctx context.Context) error {
 	if s.control == nil {
 		return fmt.Errorf("MCP control service is required")
 	}
+	monitorCtx, stopMonitor := context.WithCancel(ctx)
+	var monitor sync.WaitGroup
+	monitor.Add(1)
+	go func() {
+		defer monitor.Done()
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-monitorCtx.Done():
+				return
+			case <-ticker.C:
+				if err := s.control.AdvanceDynamicPlans(context.Background()); err != nil {
+					fmt.Fprintln(s.errOut, "MCP dynamic plan monitor:", err)
+				}
+			}
+		}
+	}()
+	defer func() {
+		stopMonitor()
+		monitor.Wait()
+	}()
 	scanner := bufio.NewScanner(s.in)
 	scanner.Buffer(make([]byte, 64*1024), 8*1024*1024)
 	var workers sync.WaitGroup
@@ -290,7 +313,7 @@ func serverInfo() map[string]any {
 }
 
 func instructions() string {
-	return "Use takt.workflow.* to discover workflows, takt.run.* to govern local Runs, and takt.node.* to execute durable external command/prompt nodes. Start is detached by default; poll takt.run.get or takt.run.events with the returned run_id. External workers claim a node with capabilities, stream normalized events, then complete or fail it with the claim token."
+	return "Use takt.plan and takt.execute for high-level existing-or-dynamic planning, takt.workflow.* to discover workflows, takt.run.* to govern local Runs, and takt.node.* to execute durable external command/prompt nodes. Start is detached by default; poll takt.run.get or takt.run.events with the returned run_id. External workers claim a node with capabilities, stream normalized events, then complete or fail it with the claim token."
 }
 
 func (s *Server) callTool(ctx context.Context, params callParams) map[string]any {
@@ -323,6 +346,45 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 			return nil, err
 		}
 		return s.control.DescribeWorkflow(in.Selector)
+	case "takt.plan":
+		var in struct {
+			Goal      string            `json:"goal"`
+			Profile   string            `json:"profile,omitempty"`
+			Candidate *dynamicplan.Plan `json:"candidate,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.Plan(ctx, control.PlanRequest{Goal: in.Goal, Profile: in.Profile, Candidate: in.Candidate})
+	case "takt.plan.get":
+		var in struct {
+			PlanID string `json:"plan_id"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.GetPlan(in.PlanID)
+	case "takt.execute":
+		var in control.ExecutePlanRequest
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.ExecutePlan(ctx, in)
+	case "takt.run.steer":
+		var in control.SteerRequest
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.Steer(ctx, in)
+	case "takt.plan.promote":
+		var in struct {
+			PlanID string `json:"plan_id"`
+			Name   string `json:"name"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.PromotePlan(in.PlanID, in.Name)
 	case "takt.run.start":
 		var in struct {
 			Selector     string `json:"selector"`
@@ -644,6 +706,13 @@ func tools() []tool {
 	return []tool{
 		{Name: "takt.workflow.list", Title: "List Takt workflows", Description: "List deterministic workflow selectors published by an installed Takt profile.", InputSchema: object(map[string]any{"profile": stringProp("Installed profile name, for example code")}, "profile"), Annotations: readOnly},
 		{Name: "takt.workflow.describe", Title: "Describe a Takt workflow", Description: "Describe the public DAG of a profile selector before starting it.", InputSchema: object(map[string]any{"selector": stringProp("Profile selector such as code:plan-to-pr")}, "selector"), Annotations: readOnly},
+		{Name: "takt.plan", Title: "Plan with Dynamic Takt", Description: "Choose an existing workflow or create a bounded task-specific WorkflowPlan from approved blocks. Returns preview, budget and confirmation requirement.", InputSchema: object(map[string]any{
+			"goal": stringProp("Natural-language engineering goal"), "profile": stringProp("Installed profile, defaults to code"), "candidate": map[string]any{"type": "object", "description": "Optional externally proposed WorkflowPlan; Takt still validates it"},
+		}, "goal"), Annotations: mutating},
+		{Name: "takt.plan.get", Title: "Get Dynamic Takt plan", Description: "Read plan revisions, current phase segment, execution Runs, steering and promotion state.", InputSchema: object(map[string]any{"plan_id": stringProp("Durable plan ID")}, "plan_id"), Annotations: readOnly},
+		{Name: "takt.execute", Title: "Execute Dynamic Takt plan", Description: "Execute a previewed existing or planned workflow. Planned workflows require explicit confirm=true.", InputSchema: object(map[string]any{"plan_id": stringProp("Durable plan ID"), "confirm": boolProp("Confirm the displayed preview and hard limits")}, "plan_id"), Annotations: mutating},
+		{Name: "takt.run.steer", Title: "Steer Dynamic Takt run", Description: "Queue an instruction for the next replanning checkpoint, or continue a plan waiting for user input.", InputSchema: object(map[string]any{"plan_id": stringProp("Plan ID"), "run_id": stringProp("Any execution Run ID owned by the plan"), "message": stringProp("Concrete steering instruction")}, "message"), Annotations: mutating},
+		{Name: "takt.plan.promote", Title: "Promote successful dynamic plan", Description: "Compile the latest successful plan revision into a validated project workflow under .takt/workflows/generated.", InputSchema: object(map[string]any{"plan_id": stringProp("Completed plan ID"), "name": stringProp("Project workflow name")}, "plan_id", "name"), Annotations: mutating},
 		{Name: "takt.run.start", Title: "Start a Takt Run", Description: "Validate definitions and start a local Takt Run. Detached mode is the default and returns a durable run_id for polling.", InputSchema: object(map[string]any{
 			"selector": stringProp("Profile selector or workflow file path"), "input": stringProp("Input text or a readable input file path"),
 			"config_path": stringProp("Optional config override"), "worktree": boolProp("Force or disable managed Git worktree isolation"),

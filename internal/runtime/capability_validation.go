@@ -96,7 +96,7 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 			return fmt.Errorf("node %q child workflow: %w", node.ID, err)
 		}
 		childResolver := resolver
-		childResolver.Dirs = append([]string{filepath.Join(filepath.Dir(childPath), "commands")}, childResolver.Dirs...)
+		childResolver.Dirs = append(workflow.CommandDirsForDefinition(childPath), childResolver.Dirs...)
 		stack[childPath] = true
 		err = validateCapabilitiesRecursive(child, cfg, childPath, childResolver, childPolicy, stack, depth+1)
 		delete(stack, childPath)

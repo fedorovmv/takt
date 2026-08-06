@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -89,6 +90,15 @@ nodes:
 	if len(events) == 0 {
 		t.Fatal("subscription returned no events")
 	}
+	foundCompleted := false
+	for _, event := range events {
+		if event.Type == "run.completed" {
+			foundCompleted = true
+		}
+	}
+	if !foundCompleted {
+		t.Fatalf("subscription missed run.completed: %#v", events)
+	}
 
 	request := []byte(`{"jsonrpc":"2.0","id":"daemon-mcp","method":"tools/list","params":{}}`)
 	payload, respond, err := client.MCP(context.Background(), request)
@@ -103,7 +113,7 @@ nodes:
 		t.Fatal(err)
 	}
 	result := envelope["result"].(map[string]any)
-	if got := len(result["tools"].([]any)); got != 22 {
+	if got := len(result["tools"].([]any)); got != 27 {
 		t.Fatalf("MCP tools = %d", got)
 	}
 
@@ -216,5 +226,56 @@ nodes:
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("daemon did not stop")
+	}
+}
+
+func TestResolvePathsFallsBackForLongUnixSocketPath(t *testing.T) {
+	base := t.TempDir()
+	workspace := base
+	for len(filepath.Join(workspace, ".takt", "daemon.sock")) <= 130 {
+		workspace = filepath.Join(workspace, "very-long-workspace-segment")
+	}
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := ResolvePaths(workspace, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len([]byte(paths.Socket)) > unixSocketPathLimit {
+		t.Fatalf("fallback socket remains too long: %d %s", len([]byte(paths.Socket)), paths.Socket)
+	}
+	if filepath.Dir(paths.Metadata) != filepath.Join(workspace, ".takt") {
+		t.Fatalf("metadata must remain in workspace: %#v", paths)
+	}
+	configPath := filepath.Join(workspace, ".takt", "config.yaml")
+	writeDaemonFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	server, err := New(Options{Workspace: workspace, ConfigPath: configPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(ctx) }()
+	client, err := NewClient(workspace, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer waitCancel()
+	if _, err := WaitForHealth(waitCtx, client, 20*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolvePathsRejectsLongExplicitSocket(t *testing.T) {
+	workspace := t.TempDir()
+	longSocket := filepath.Join(workspace, strings.Repeat("x", 120))
+	if _, err := ResolvePaths(workspace, longSocket); err == nil {
+		t.Fatal("expected explicit long socket path to be rejected")
 	}
 }

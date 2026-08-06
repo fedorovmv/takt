@@ -33,6 +33,7 @@ nodes:
     depends_on: [generate]
     workflow:
       path: smart-review-block.yaml
+      input: ${input}
       isolation: inherit
 
   - id: summary

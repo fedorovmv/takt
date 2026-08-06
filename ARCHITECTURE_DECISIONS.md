@@ -279,3 +279,15 @@ Renderer является fail-closed: `${path}` обязателен, `${path?}
 `takt daemon` добавляет время жизни процесса, а не второй runtime. CLI, event subscriptions и MCP вызывают общий `control.Service`; состояние, revisions, locks, fingerprints, child lifecycle и artifacts остаются в `.takt/runs`. Daemon слушает только Unix socket с правами текущего пользователя, не открывает TCP и не вводит БД.
 
 Один workspace допускает один daemon через локальный file lock. Concurrent управляющие запросы сериализуются bounded retry на уровне control plane, при этом Store lock остаётся неблокирующим. Daemon гарантирует продолжение после закрытия клиента, но не обещает восстановить выполнявшийся OS-процесс после падения самого daemon; durable waiting/pending состояния остаются доступными для явного resume/reclaim.
+
+## ADR-049. WorkflowPlan является ограниченным планом компиляции
+
+**Статус:** принято.
+
+Dynamic Takt не вводит второй workflow runtime и не разрешает модели генерировать произвольный оркестрационный код. `WorkflowPlan` содержит только цель, бюджеты, зависимости, `task|map`, checkpoint и ссылки на разрешённые workflow-блоки профиля. После проверки каждая редакция компилируется в обычный `takt/v1alpha1 Workflow` с governed child Run и `workflow.fan_out`. Единственным источником исполнительной семантики остаётся существующий scheduler/runtime.
+
+## ADR-050. Перепланирование изменяет только незавершённый хвост
+
+**Статус:** принято.
+
+Dynamic planner вызывается только в явных checkpoint. Решение `replace_remaining` создаёт новую immutable revision и может заменить только ещё не начатые фазы. Завершённые фазы, Run, события, usage и артефакты сохраняются как история и не переписываются моделью. Steering является входом ближайшего checkpoint, а не произвольной мутацией активного DAG.

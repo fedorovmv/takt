@@ -88,7 +88,7 @@ func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg 
 			return fmt.Errorf("node %q child workflow %q has %d terminal nodes; set output_node", n.ID, child.Metadata.Name, len(terminals))
 		}
 		childResolver := resolver
-		childResolver.Dirs = append([]string{filepath.Join(filepath.Dir(path), "commands")}, childResolver.Dirs...)
+		childResolver.Dirs = append(CommandDirsForDefinition(path), childResolver.Dirs...)
 		stack[path] = true
 		err = validateReferencesRecursive(child.Nodes, child.Defaults, cfg, childResolver, stack, depth+1)
 		delete(stack, path)
@@ -97,6 +97,28 @@ func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg 
 		}
 	}
 	return nil
+}
+
+// CommandDirsForDefinition returns command directories beside a workflow and
+// its ancestors. Installed profiles keep workflows under workflows/ while their
+// shared commands live at the profile root, so governed child validation must
+// follow the same lookup model as runtime execution.
+func CommandDirsForDefinition(path string) []string {
+	dir := filepath.Dir(filepath.Clean(path))
+	seen := map[string]bool{}
+	var dirs []string
+	for {
+		commandDir := filepath.Join(dir, "commands")
+		if !seen[commandDir] {
+			dirs = append(dirs, commandDir)
+			seen[commandDir] = true
+		}
+		if filepath.Base(dir) == ".takt" || dir == filepath.Dir(dir) {
+			break
+		}
+		dir = filepath.Dir(dir)
+	}
+	return dirs
 }
 
 // PublicTerminalIDs returns terminal node IDs visible through the public Run view.

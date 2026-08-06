@@ -1,0 +1,31 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: dynamic-implement
+  description: Approved Dynamic Takt block dynamic-implement.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: fresh
+nodes:
+  - id: result
+    command: dynamic-implement
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        changed_files:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        tests:
+          type: array
+          items:
+            type: string
+      required: [summary, changed_files, tests]
+    output_type: dynamic-implementation
+    output_mime: application/json

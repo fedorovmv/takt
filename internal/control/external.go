@@ -35,6 +35,7 @@ type ExternalTask struct {
 	Policy                *store.NodePolicyState          `json:"policy,omitempty"`
 	OutputFormat          json.RawMessage                 `json:"output_format,omitempty"`
 	ClaimedBy             string                          `json:"claimed_by,omitempty"`
+	ClaimedAt             time.Time                       `json:"claimed_at,omitempty"`
 	LeaseExpiresAt        time.Time                       `json:"lease_expires_at,omitempty"`
 	ClaimToken            string                          `json:"claim_token,omitempty"`
 	CapabilityDeclaration assistant.CapabilityDeclaration `json:"capability_declaration"`
@@ -319,7 +320,13 @@ func (s *Service) ExpireIdleExternal(ctx context.Context, now time.Time) ([]stri
 			}
 			last := node.External.LastActivityAt
 			if last.IsZero() {
-				last = node.External.LeaseExpiresAt.Add(-15 * time.Minute)
+				last = node.External.ClaimedAt
+			}
+			// Legacy claimed states did not persist claimed_at. Their original lease
+			// duration cannot be recovered safely, so leave them for normal lease
+			// expiry/reclaim instead of inventing a 15-minute start time.
+			if last.IsZero() {
+				continue
 			}
 			if now.Sub(last) < duration {
 				continue

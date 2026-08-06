@@ -44,6 +44,7 @@ nodes:
     depends_on: [implement]
     workflow:
       path: smart-review-block.yaml
+      input: ${input}
       isolation: inherit
 
   - id: summary

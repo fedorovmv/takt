@@ -1,0 +1,28 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: dynamic-discover
+  description: Approved Dynamic Takt block dynamic-discover.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: fresh
+nodes:
+  - id: result
+    command: dynamic-discover
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        items:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+      required: [summary, items]
+    output_type: dynamic-inventory
+    output_mime: application/json

@@ -58,6 +58,12 @@ func run(args []string) error {
 		return validateCmd(args[1:])
 	case "run":
 		return runCmd(args[1:])
+	case "plan":
+		return planCmd(args[1:])
+	case "execute":
+		return executeCmd(args[1:])
+	case "steer":
+		return steerCmd(args[1:])
 	case "workflow":
 		return workflowCmd(args[1:])
 	case "answer":
@@ -90,6 +96,128 @@ func run(args []string) error {
 	default:
 		return usage()
 	}
+}
+
+func planCmd(args []string) error {
+	if len(args) > 0 && args[0] == "get" {
+		fs := newFlagSet("plan get")
+		workspace := fs.String("workspace", ".", "control workspace")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--workspace": true, "--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt plan get <plan-id> [--workspace dir]")
+		}
+		service, err := control.New(*workspace, ".takt/config.yaml")
+		if err != nil {
+			return err
+		}
+		record, err := service.GetPlan(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, record)
+	}
+	if len(args) > 0 && args[0] == "promote" {
+		fs := newFlagSet("plan promote")
+		workspace := fs.String("workspace", ".", "control workspace")
+		name := fs.String("name", "", "generated workflow name")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--workspace": true, "--name": true, "--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 || strings.TrimSpace(*name) == "" {
+			return fmt.Errorf("usage: takt plan promote <plan-id> --name workflow-name [--workspace dir]")
+		}
+		service, err := control.New(*workspace, ".takt/config.yaml")
+		if err != nil {
+			return err
+		}
+		record, err := service.PromotePlan(fs.Arg(0), *name)
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, record)
+	}
+	fs := newFlagSet("plan")
+	workspace := fs.String("workspace", ".", "control workspace")
+	profileName := fs.String("profile", "code", "planning profile")
+	input := fs.String("input", "", "goal text or readable file")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--profile": true, "--input": true, "--json": false})); err != nil {
+		return err
+	}
+	goal := strings.TrimSpace(*input)
+	if goal == "" {
+		goal = strings.TrimSpace(strings.Join(fs.Args(), " "))
+	}
+	if goal == "" {
+		return fmt.Errorf("usage: takt plan <goal> [--profile code] [--workspace dir]")
+	}
+	if raw, err := readInput(goal); err == nil {
+		goal = raw
+	}
+	service, err := control.New(*workspace, ".takt/config.yaml")
+	if err != nil {
+		return err
+	}
+	result, err := service.Plan(context.Background(), control.PlanRequest{Goal: goal, Profile: *profileName})
+	if err != nil {
+		return err
+	}
+	return printResult(*jsonOut, result)
+}
+
+func executeCmd(args []string) error {
+	fs := newFlagSet("execute")
+	workspace := fs.String("workspace", ".", "control workspace")
+	confirm := fs.Bool("confirm", false, "confirm the preview and hard limits")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--confirm": false, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt execute <plan-id> --confirm [--workspace dir]")
+	}
+	service, err := control.New(*workspace, ".takt/config.yaml")
+	if err != nil {
+		return err
+	}
+	record, err := service.ExecutePlan(context.Background(), control.ExecutePlanRequest{PlanID: fs.Arg(0), Confirm: *confirm})
+	if err != nil {
+		return err
+	}
+	return printResult(*jsonOut, record)
+}
+
+func steerCmd(args []string) error {
+	fs := newFlagSet("steer")
+	workspace := fs.String("workspace", ".", "control workspace")
+	runID := fs.String("run", "", "execution Run ID instead of plan ID")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--run": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() < 2 && *runID == "" {
+		return fmt.Errorf("usage: takt steer <plan-id> <message> [--workspace dir]")
+	}
+	request := control.SteerRequest{RunID: *runID}
+	if *runID != "" {
+		request.Message = strings.TrimSpace(strings.Join(fs.Args(), " "))
+	} else {
+		request.PlanID = fs.Arg(0)
+		request.Message = strings.TrimSpace(strings.Join(fs.Args()[1:], " "))
+	}
+	service, err := control.New(*workspace, ".takt/config.yaml")
+	if err != nil {
+		return err
+	}
+	record, err := service.Steer(context.Background(), request)
+	if err != nil {
+		return err
+	}
+	return printResult(*jsonOut, record)
 }
 
 func mcpCmd(args []string) error {
@@ -1238,7 +1366,7 @@ func wantsJSON(args []string) bool {
 	value := false
 	if len(args) > 0 {
 		switch args[0] {
-		case "run", "answer", "resume", "status", "children", "artifacts", "worktree", "eval":
+		case "run", "plan", "execute", "steer", "answer", "resume", "status", "children", "artifacts", "worktree", "eval":
 			value = true
 		case "command":
 			value = len(args) > 1 && args[1] == "run"
@@ -1295,5 +1423,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|run|workflow|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
+	return fmt.Errorf("usage: takt <init|validate|run|plan|execute|steer|workflow|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
 }

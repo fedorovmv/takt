@@ -67,6 +67,7 @@ nodes:
     depends_on: [create-pr]
     workflow:
       path: review-block.yaml
+      input: ${input}
       isolation: inherit
 
   - id: summary

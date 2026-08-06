@@ -28,7 +28,7 @@
 - portable hooks, retry с feedback, timeout/cancellation, activity-based `idle_timeout`, `allow_failure` и cleanup `always_run`;
 - fingerprints workflow/config/commands/subworkflow/items source;
 - файловые state/events/artifacts, revision consistency и блокировка Run;
-- script runtime `command|python|node|go` с file/inline source, args, env, working directory, timeout/cancellation и structured output;
+- script runtime `command|python|node|go|validation` с file/inline source, args, env, working directory, timeout/cancellation и structured output;
 - fingerprint исходника script и явно объявленных dependencies;
 - типизированные `output_type`/`output_mime`/`output_path` артефакты с SHA-256 и producer metadata;
 - строгий renderer `${path}`/`${path?}`/`${path:-default}` и ссылки `${nodes.<id>.artifacts.<type>.<field>}`;
@@ -41,7 +41,7 @@
 - прямой `takt mcp` и `takt mcp --daemon` через локальный Unix socket;
 - `takt daemon start|status|stop|serve` без БД: background Runs, event subscriptions и несколько клиентов одного пользователя;
 - legacy initialization `2025-03-26|2025-06-18|2025-11-25` и stateless discovery `2026-07-28`;
-- 22 tools: workflow list/describe, Run start/get/resume/answer/cancel/children/artifacts/events, external node pending/claim/event/complete/fail и управляемые tool request/decision/start/complete/get/cancel/artifact declaration;
+- 27 tools: workflow list/describe, Run start/get/resume/answer/cancel/children/artifacts/events, external node pending/claim/event/complete/fail и управляемые tool request/decision/start/complete/get/cancel/artifact declaration;
 - detached start с durable `run_id`;
 - indexed revision cursor и bounded long polling событий без полного пересканирования журнала;
 - structured/text tool results, bounded artifact content, request cancellation и strict arguments;
@@ -71,7 +71,21 @@
 - динамический fan-out из JSON-массива upstream-узла: устойчивые Run ID, `max_parallel`, resume, ordered aggregation, `all_success|all_done|one_success`, выборочная и каскадная отмена;
 - contract suite `scripts/test-child-fanout.sh`.
 
-### Профиль code 0.9.1
+
+### Dynamic Takt
+
+- решение `existing|planned` по естественной цели;
+- ограниченный `WorkflowPlan` с budgets, `task|map`, dependencies и checkpoint;
+- разрешённый каталог блоков `discover|investigate|implement|validate|review|adversarial-verify|synthesize`;
+- компиляция каждого сегмента в обычный Takt Workflow без второго runtime;
+- preview и обязательное подтверждение planned-плана;
+- hard cap child Run/fan-out, parallelism, revisions и token usage на границах фаз;
+- checkpoint replanning с immutable revisions незавершённого хвоста;
+- `takt plan|execute|steer`, phase/run/artifact view и promotion в `.takt/workflows/generated`;
+- MCP `takt.plan`, `takt.plan.get`, `takt.execute`, `takt.run.steer`, `takt.plan.promote`;
+- обновлённый skill для Pi/OpenCode: основная сессия управляет, отдельные worker-сессии исполняют фазы.
+
+### Профиль code 0.10.0
 
 - 19 процессов разработки: assist, issue/PR flows, PIV, Ralph, idea/plan-to-PR, reviews, architecture, safe refactoring, PRD, workflow builder, Remotion и conflict resolution;
 - умный роутер как корневой Run с отдельным governed child Run выбранного процесса;
@@ -132,4 +146,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Authoring preflight, strict renderer, `always_run`, `idle_timeout` и локальный daemon реализованы к `v0.1.33-alpha`. Следующие крупные приоритеты — runtime/security hardening и предметный Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.
+Dynamic Takt и coding-agent flow реализованы к `v0.1.34-alpha`. Следующий крупный продуктовый приоритет — нейтральный SDK доменных адаптеров SCM/tracker/CI; параллельно остаются runtime/security hardening и предметный Route DSL benchmark.

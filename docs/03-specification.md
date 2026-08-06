@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.33-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.34-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -105,7 +105,7 @@ assistants:
 
 Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`/`maxItems`, `uniqueItems`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `minProperties`/`maxProperties`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
 
-Это используется шестью основными процессами профиля `code` 0.9.1: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+Это используется шестью основными процессами профиля `code` 0.10.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
 
 ## 3.1. Внешний исполнитель AI-узла
 
@@ -152,6 +152,13 @@ Takt передаёт выбранную модель как `<provider>/<id>`, 
 При timeout/cancellation итоговая классификация остаётся `timed_out`/`cancelled`. Доступные сообщения о provider retry, соединении и error events сохраняются в raw stdout/stderr, logical output и тексте ошибки узла. Общая проверка attempt context не заменяет более содержательную context-ошибку OpenCode на общее сообщение.
 
 `auto_approve: true` включает OpenCode `--auto` и предназначен только для доверенной рабочей директории.
+
+
+## Dynamic Takt
+
+Высокоуровневый `takt plan`/`takt.plan` возвращает решение `existing|planned`. `planned` использует `takt/v1alpha1 WorkflowPlan`: цель, жёсткие budgets, упорядоченные фазы `task|map`, зависимости, источник map и явные checkpoint. `uses` обязан ссылаться на разрешённый блок профиля. План проходит строгую проверку и компилируется в обычный `takt/v1alpha1 Workflow`; отдельная runtime-семантика для WorkflowPlan отсутствует.
+
+`takt execute` требует подтверждение planned-плана. Перепланировщик вызывается только после checkpoint и возвращает `continue|replace_remaining|finish|ask_user`. `replace_remaining` создаёт новую revision и не изменяет завершённые фазы. `takt steer` сохраняет уточнение до ближайшего checkpoint. Completed planned-план может быть продвинут через `takt plan promote` в `.takt/workflows/generated/` после повторной загрузки и Validate.
 
 ## 4. Markdown-команды
 

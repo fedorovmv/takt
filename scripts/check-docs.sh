@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.15.0" \
+  "skills/takt/VERSION|0.16.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -97,6 +97,16 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-046" \
   "ARCHITECTURE_DECISIONS.md|ADR-047" \
   "ARCHITECTURE_DECISIONS.md|ADR-048" \
+  "ARCHITECTURE_DECISIONS.md|ADR-049" \
+  "ARCHITECTURE_DECISIONS.md|ADR-050" \
+  "docs/48-dynamic-takt-v0.1.34.md|WorkflowPlan" \
+  "docs/48-dynamic-takt-v0.1.34.md|takt.run.steer" \
+  "docs/06-roadmap.md|Выполнено в v0.1.34-alpha" \
+  "skills/takt/SKILL.md|Dynamic Takt из кодинг-агента" \
+  "skills/takt/references/mcp.md|takt.plan.promote" \
+  "schemas/workflow.schema.json|validation" \
+  "schemas/workflow-plan.schema.json|WorkflowPlan" \
+  "scripts/test-dynamic-takt.sh|dynamic Takt contract: PASS" \
   "docs/47-authoring-local-daemon-v0.1.33.md|takt daemon start" \
   "docs/47-authoring-local-daemon-v0.1.33.md|${path:-default}" \
   "scripts/test-authoring.sh|authoring contract: PASS" \
@@ -108,7 +118,7 @@ for check in \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|assistant.tool.requested" \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|scripts/test-deep-code-workflows.sh" \
   "docs/06-roadmap.md|Выполнено в v0.1.33-alpha" \
-  "docs/06-roadmap.md|Приоритет 1. Усиление runtime" \
+  "docs/06-roadmap.md|Приоритет 1. Domain Adapter SDK" \
   "scripts/test-deep-code-workflows.sh|deep code workflows: PASS" \
   "scripts/test-mcp.sh|takt.node.tool.request" \
   "schemas/assistant-protocol.schema.json|takt-assistant/v1alpha2" \
@@ -132,7 +142,7 @@ for check in \
   "scripts/test-child-fanout.sh|governed child fan-out contract: PASS" \
   "schemas/workflow.schema.json|fan_out" \
   "schemas/run-state.schema.json|child_runs" \
-  "internal/profile/builtin/code/VERSION|0.9.1" \
+  "internal/profile/builtin/code/VERSION|0.10.0" \
   "README.md|Динамический fan-out v0.1.28" \
   "docs/12-document-map.md|42-governed-child-fanout-v0.1.28.md" \
   "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \
@@ -178,7 +188,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.33-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.34-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \

@@ -262,6 +262,30 @@ func evalWhen(expr string, state *store.RunState) (bool, error) {
 	if expr == "" {
 		return true, nil
 	}
+	if parts := splitLogicalExpression(expr, "||"); len(parts) > 1 {
+		for _, part := range parts {
+			ok, err := evalWhen(part, state)
+			if err != nil {
+				return false, err
+			}
+			if ok {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	if parts := splitLogicalExpression(expr, "&&"); len(parts) > 1 {
+		for _, part := range parts {
+			ok, err := evalWhen(part, state)
+			if err != nil {
+				return false, err
+			}
+			if !ok {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
 	ops := []string{"==", "!="}
 	for _, op := range ops {
 		if idx := strings.Index(expr, op); idx >= 0 {
@@ -278,6 +302,33 @@ func evalWhen(expr string, state *store.RunState) (bool, error) {
 		}
 	}
 	return false, fmt.Errorf("unsupported when expression %q", expr)
+}
+
+func splitLogicalExpression(expr, operator string) []string {
+	var parts []string
+	start := 0
+	var quote rune
+	for index, r := range expr {
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			quote = r
+			continue
+		}
+		if index+len(operator) <= len(expr) && expr[index:index+len(operator)] == operator {
+			parts = append(parts, strings.TrimSpace(expr[start:index]))
+			start = index + len(operator)
+		}
+	}
+	if start == 0 {
+		return []string{expr}
+	}
+	parts = append(parts, strings.TrimSpace(expr[start:]))
+	return parts
 }
 
 func resolveExprPath(path string, state *store.RunState) (string, error) {

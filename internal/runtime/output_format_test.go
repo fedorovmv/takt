@@ -196,3 +196,18 @@ func TestOutputFormatArrayCardinalityAndUniqueness(t *testing.T) {
 		t.Fatalf("valid unique array: got=%q err=%v", got, err)
 	}
 }
+
+func TestWhenSupportsAndOrExpressions(t *testing.T) {
+	state := &store.RunState{Nodes: map[string]*store.NodeState{
+		"scope": {Status: store.NodeCompleted, Output: `{"status":"ready","code":"OK"}`},
+		"check": {Status: store.NodeCompleted, Output: `{"status":"failed"}`},
+	}}
+	ok, err := evalWhen(`nodes.scope.output.status == "ready" && nodes.scope.output.code == "OK"`, state)
+	if err != nil || !ok {
+		t.Fatalf("and expression: ok=%v err=%v", ok, err)
+	}
+	ok, err = evalWhen(`nodes.check.output.status == "ready" || nodes.scope.output.status == "ready"`, state)
+	if err != nil || !ok {
+		t.Fatalf("or expression: ok=%v err=%v", ok, err)
+	}
+}

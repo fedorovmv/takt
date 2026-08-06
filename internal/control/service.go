@@ -30,6 +30,7 @@ type Service struct {
 	ConfigPath string
 
 	mu           sync.Mutex
+	dynamicMu    sync.Mutex
 	launchErrors map[string]error
 }
 

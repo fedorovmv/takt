@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,7 +24,12 @@ import (
 	"takt/internal/version"
 )
 
-const APIRevision = "takt-daemon/v1alpha1"
+const (
+	APIRevision = "takt-daemon/v1alpha1"
+	// unixSocketPathLimit is conservative across Darwin (104-byte sun_path
+	// including the terminating NUL) and Linux.
+	unixSocketPathLimit = 103
+)
 
 type Paths struct {
 	Socket   string
@@ -38,6 +45,7 @@ func ResolvePaths(workspace, socketOverride string) (Paths, error) {
 	}
 	root := filepath.Join(workspace, ".takt")
 	socket := strings.TrimSpace(socketOverride)
+	explicitSocket := socket != ""
 	if socket == "" {
 		socket = filepath.Join(root, "daemon.sock")
 	} else if !filepath.IsAbs(socket) {
@@ -46,6 +54,17 @@ func ResolvePaths(workspace, socketOverride string) (Paths, error) {
 	socket, err = filepath.Abs(socket)
 	if err != nil {
 		return Paths{}, err
+	}
+	if len([]byte(socket)) > unixSocketPathLimit {
+		if explicitSocket {
+			return Paths{}, fmt.Errorf("daemon Unix socket path is %d bytes; maximum portable length is %d: %s", len([]byte(socket)), unixSocketPathLimit, socket)
+		}
+		hash := sha256.Sum256([]byte(workspace))
+		shortRoot := filepath.Join(os.TempDir(), "takt-daemon", hex.EncodeToString(hash[:8]))
+		socket = filepath.Join(shortRoot, "daemon.sock")
+		if len([]byte(socket)) > unixSocketPathLimit {
+			return Paths{}, fmt.Errorf("temporary daemon Unix socket path is %d bytes; maximum portable length is %d: %s", len([]byte(socket)), unixSocketPathLimit, socket)
+		}
 	}
 	return Paths{Socket: socket, Metadata: filepath.Join(root, "daemon.json"), Lock: filepath.Join(root, "daemon.lock"), Log: filepath.Join(root, "daemon.log")}, nil
 }
@@ -273,6 +292,41 @@ func (s *Server) call(ctx context.Context, method string, raw json.RawMessage) (
 			return nil, err
 		}
 		return s.service.DescribeWorkflow(params.Selector)
+	case "plan.create":
+		var params control.PlanRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.Plan(ctx, params)
+	case "plan.get":
+		var params struct {
+			PlanID string `json:"plan_id"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.GetPlan(params.PlanID)
+	case "plan.execute":
+		var params control.ExecutePlanRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.ExecutePlan(ctx, params)
+	case "plan.steer":
+		var params control.SteerRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.Steer(ctx, params)
+	case "plan.promote":
+		var params struct {
+			PlanID string `json:"plan_id"`
+			Name   string `json:"name"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.PromotePlan(params.PlanID, params.Name)
 	case "run.start":
 		var params control.StartRequest
 		if err := decodeParams(raw, &params); err != nil {
@@ -417,10 +471,33 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		flusher.Flush()
 		state, stateErr := s.service.GetRun(runID)
-		if stateErr == nil && terminalStatus(state.Status) && len(result.Events) < limit {
-			_ = encoder.Encode(map[string]any{"type": "subscription.completed", "run_id": runID, "status": state.Status, "revision": after})
-			flusher.Flush()
-			return
+		if stateErr == nil && terminalStatus(state.Status) {
+			// The state and event journal are committed together, but the terminal
+			// state can become visible after Events returned and before GetRun. Drain
+			// through the terminal state's revision before closing the subscription.
+			for after < state.Revision {
+				drain, drainErr := s.service.Events(r.Context(), runID, after, limit, 0)
+				if drainErr != nil {
+					_ = encoder.Encode(map[string]any{"type": "subscription.error", "error": drainErr.Error()})
+					flusher.Flush()
+					return
+				}
+				if len(drain.Events) == 0 {
+					break
+				}
+				for _, event := range drain.Events {
+					if err := encoder.Encode(event); err != nil {
+						return
+					}
+					after = event.Revision
+				}
+				flusher.Flush()
+			}
+			if after >= state.Revision {
+				_ = encoder.Encode(map[string]any{"type": "subscription.completed", "run_id": runID, "status": state.Status, "revision": after})
+				flusher.Flush()
+				return
+			}
 		}
 		select {
 		case <-r.Context().Done():
@@ -451,6 +528,9 @@ func (s *Server) monitorIdle(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
+			if err := s.service.AdvanceDynamicPlans(context.Background()); err != nil {
+				fmt.Fprintln(s.errOut, "daemon dynamic plan monitor:", err)
+			}
 			if expired, err := s.service.ExpireIdleExternal(context.Background(), now.UTC()); err != nil {
 				fmt.Fprintln(s.errOut, "daemon idle monitor:", err)
 			} else if len(expired) > 0 {

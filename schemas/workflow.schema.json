@@ -1171,6 +1171,11 @@
           "minimum": 0,
           "maximum": 64
         },
+        "max_items": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 256
+        },
         "join": {
           "enum": [
             "all_success",
@@ -1198,7 +1203,8 @@
             "command",
             "python",
             "node",
-            "go"
+            "go",
+            "validation"
           ]
         },
         "path": {
@@ -1239,10 +1245,7 @@
           "if": {
             "properties": {
               "runtime": {
-                "enum": [
-                  "command",
-                  "go"
-                ]
+                "const": "validation"
               }
             },
             "required": [
@@ -1250,38 +1253,79 @@
             ]
           },
           "then": {
-            "required": [
-              "path"
-            ],
             "not": {
-              "required": [
-                "inline"
+              "anyOf": [
+                {
+                  "required": [
+                    "path"
+                  ]
+                },
+                {
+                  "required": [
+                    "inline"
+                  ]
+                },
+                {
+                  "required": [
+                    "args"
+                  ]
+                },
+                {
+                  "required": [
+                    "dependencies"
+                  ]
+                }
               ]
             }
           },
           "else": {
-            "oneOf": [
-              {
-                "required": [
-                  "path"
-                ],
-                "not": {
-                  "required": [
-                    "inline"
+            "if": {
+              "properties": {
+                "runtime": {
+                  "enum": [
+                    "command",
+                    "go"
                   ]
                 }
               },
-              {
+              "required": [
+                "runtime"
+              ]
+            },
+            "then": {
+              "required": [
+                "path"
+              ],
+              "not": {
                 "required": [
                   "inline"
-                ],
-                "not": {
+                ]
+              }
+            },
+            "else": {
+              "oneOf": [
+                {
                   "required": [
                     "path"
-                  ]
+                  ],
+                  "not": {
+                    "required": [
+                      "inline"
+                    ]
+                  }
+                },
+                {
+                  "required": [
+                    "inline"
+                  ],
+                  "not": {
+                    "required": [
+                      "path"
+                    ]
+                  }
                 }
-              }
-            ]
+              ]
+            }
           }
         }
       ]

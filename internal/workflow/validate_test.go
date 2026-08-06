@@ -192,3 +192,21 @@ func TestValidateAllowsOutputFormatForScript(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCommandDirsForDefinitionIncludesProfileAndTaktRoots(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".takt", "profiles", "code", "workflows", "blocks", "review.yaml")
+	dirs := CommandDirsForDefinition(path)
+	wantProfile := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(path))), "commands")
+	wantTakt := filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(path))))), "commands")
+	contains := func(value string) bool {
+		for _, dir := range dirs {
+			if dir == value {
+				return true
+			}
+		}
+		return false
+	}
+	if !contains(wantProfile) || !contains(wantTakt) {
+		t.Fatalf("command dirs %v do not include profile=%s and takt=%s", dirs, wantProfile, wantTakt)
+	}
+}

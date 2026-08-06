@@ -92,7 +92,7 @@ takt daemon stop   --workspace .
 takt daemon serve --workspace .
 ```
 
-Daemon использует Unix socket `.takt/daemon.sock`, metadata `.takt/daemon.json`, lock `.takt/daemon.lock` и log `.takt/daemon.log`. Socket и metadata доступны только текущему пользователю. Один workspace допускает один daemon.
+Daemon обычно использует Unix socket `.takt/daemon.sock`. Если абсолютный путь превышает безопасный Unix `sun_path`, socket переносится в детерминированный `$TMPDIR/takt-daemon/<workspace-hash>/daemon.sock`, а metadata `.takt/daemon.json`, lock `.takt/daemon.lock` и log `.takt/daemon.log`. Socket и metadata доступны только текущему пользователю. Один workspace допускает один daemon.
 
 ### Фоновые Run
 
@@ -109,7 +109,7 @@ takt events <run-id> --daemon --follow
 takt mcp --daemon --workspace .
 ```
 
-Event subscription передаёт NDJSON по revision cursor до terminal-состояния Run. MCP stdio-прокси допускает несколько concurrent JSON-RPC запросов и вызывает тот же daemon control service; отдельная MCP-модель состояния не появляется.
+Event subscription передаёт NDJSON по revision cursor до terminal-состояния Run и перед закрытием дочитывает журнал до revision terminal-state, включая `run.completed`. MCP stdio-прокси допускает несколько concurrent JSON-RPC запросов; ответы могут приходить по готовности, а не в порядке запросов, что разрешено JSON-RPC, и вызывает тот же daemon control service; отдельная MCP-модель состояния не появляется.
 
 ### Несколько клиентов
 

@@ -9,6 +9,7 @@ takt mcp --workspace . --config .takt/config.yaml
 Сервер публикует инструменты:
 
 - `takt.workflow.list`, `takt.workflow.describe`;
+- `takt.plan`, `takt.plan.get`, `takt.execute`, `takt.run.steer`, `takt.plan.promote`;
 - `takt.run.start`, `takt.run.get`, `takt.run.resume`;
 - `takt.run.answer`, `takt.run.cancel`;
 - `takt.run.children`, `takt.run.artifacts`, `takt.run.events`;
@@ -23,6 +24,13 @@ Approval остаётся отдельным решением. Вызывай `r
 `run.artifacts` возвращает checksum и producer metadata. Используй `include_content` только для нужных результатов и задавай ограниченный `max_bytes`.
 
 MCP-процесс локальный и доверенный. Не публикуй его в сеть и не передавай ему workflow от недоверенных пользователей.
+
+
+## Dynamic Takt
+
+`takt.plan` принимает цель и возвращает решение `existing|planned`, preview, жёсткие бюджеты и `plan_id`. Для `planned` выполнение требует отдельного `takt.execute` с подтверждением. `takt.plan.get` возвращает редакции плана, состояние фаз, связанные Run, usage и число артефактов. `takt.run.steer` сохраняет уточнение для ближайшего checkpoint; завершённые фазы не переписываются. `takt.plan.promote` доступен только для успешно завершённого task-specific плана и сохраняет повторно проверенный workflow проекта.
+
+Основная сессия кодинг-агента не выполняет весь граф последовательно. Takt запускает отдельные Pi/OpenCode worker-сессии через обычные assistant nodes или выдаёт `executor: external` задания совместимому worker. Кодинг-агент остаётся интерфейсом пользователя: показывает preview, наблюдает события и артефакты, передаёт approval/steering и публикует итог.
 
 ## Внешний executor узла
 

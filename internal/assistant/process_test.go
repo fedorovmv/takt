@@ -3,7 +3,9 @@ package assistant
 import (
 	"context"
 	"os"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -150,5 +152,35 @@ print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"result","
 	}
 	if len(events) != 2 || events[0].Type != EventToolRequested || events[1].Type != EventToolDenied {
 		t.Fatalf("events = %#v", events)
+	}
+}
+
+func TestProcessV1Alpha2ProtocolErrorTerminatesWorker(t *testing.T) {
+	dir := t.TempDir()
+	script := dir + "/worker.py"
+	pidFile := dir + "/worker.pid"
+	code := `import os, sys, time
+open(sys.argv[1], "w").write(str(os.getpid()))
+print("not-json", flush=True)
+time.sleep(30)
+`
+	if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: []string{"python3", script, pidFile}}}
+	_, err := p.Run(context.Background(), Request{Workspace: dir})
+	if execution.KindOf(err) != execution.KindProtocol {
+		t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+	}
+	raw, readErr := os.ReadFile(pidFile)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	pid, parseErr := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if parseErr != nil {
+		t.Fatal(parseErr)
+	}
+	if killErr := syscall.Kill(pid, 0); killErr == nil {
+		t.Fatalf("worker process %d remains alive after protocol failure", pid)
 	}
 }

@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -98,6 +99,8 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve go script", Err: err}
 		}
 		cmd = exec.CommandContext(ctx, "go", append([]string{"run", path}, args...)...)
+	case "validation":
+		return r.runValidationCommands(ctx, state, node, local, feedback, artifactsDir, workingDir)
 	default:
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "script", Err: fmt.Errorf("unsupported script runtime %q", runtimeName)}
 	}
@@ -139,6 +142,91 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 	}
 	result.ExitCode = -1
 	return result, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "script", Err: err}
+}
+
+type validationCommandResult struct {
+	Command  string `json:"command"`
+	ExitCode int    `json:"exit_code"`
+	Stdout   string `json:"stdout,omitempty"`
+	Stderr   string `json:"stderr,omitempty"`
+}
+
+func (r *Runner) runValidationCommands(ctx context.Context, state *store.RunState, node spec.Node, local map[string]store.NodeState, feedback, artifactsDir, workingDir string) (execResult, error) {
+	var input struct {
+		ValidationCommands []string `json:"validation_commands"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(state.Input)), &input); err != nil {
+		return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "validation commands input", Err: err}
+	}
+	if len(input.ValidationCommands) == 0 {
+		return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "validation commands input", Err: fmt.Errorf("validation_commands must contain at least one command")}
+	}
+	report := struct {
+		Status  string                    `json:"status"`
+		Results []validationCommandResult `json:"results"`
+	}{Status: "ready"}
+	var combinedOut, combinedErr strings.Builder
+	firstFailure := 0
+	for _, raw := range input.ValidationCommands {
+		commandText := strings.TrimSpace(raw)
+		if commandText == "" {
+			return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "validation commands input", Err: fmt.Errorf("validation_commands contains an empty command")}
+		}
+		cmd := exec.CommandContext(ctx, "sh", "-lc", commandText)
+		execution.ConfigureCommand(cmd)
+		cmd.Dir = workingDir
+		cmd.Env = append([]string(nil), os.Environ()...)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		err := cmd.Run()
+		exitCode := 0
+		if err != nil {
+			if ctx.Err() != nil {
+				kind := execution.KindCancelled
+				if ctx.Err() == context.DeadlineExceeded {
+					kind = execution.KindTimedOut
+				}
+				return execResult{}, &execution.Error{Kind: kind, ExitCode: -1, Op: "validation command", Err: ctx.Err()}
+			}
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				exitCode = exitErr.ExitCode()
+			} else {
+				exitCode = -1
+			}
+			if firstFailure == 0 {
+				firstFailure = exitCode
+			}
+			report.Status = "failed"
+		}
+		report.Results = append(report.Results, validationCommandResult{Command: commandText, ExitCode: exitCode, Stdout: strings.TrimSpace(stdout.String()), Stderr: strings.TrimSpace(stderr.String())})
+		combinedOut.WriteString(stdout.String())
+		combinedErr.WriteString(stderr.String())
+	}
+	rawReport, err := json.Marshal(report)
+	if err != nil {
+		return execResult{}, err
+	}
+	if strings.TrimSpace(node.OutputPath) != "" {
+		rendered, renderErr := renderTemplate(node.OutputPath, state, local, feedback, artifactsDir)
+		if renderErr != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render validation artifact path", Err: renderErr}
+		}
+		resolved, resolveErr := r.resolveArtifactSourcePath(rendered, artifactsDir)
+		if resolveErr != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve validation artifact path", Err: resolveErr}
+		}
+		if mkdirErr := os.MkdirAll(filepath.Dir(resolved), 0o755); mkdirErr != nil {
+			return execResult{}, mkdirErr
+		}
+		if writeErr := os.WriteFile(resolved, append(rawReport, '\n'), 0o644); writeErr != nil {
+			return execResult{}, writeErr
+		}
+	}
+	result := execResult{Output: string(rawReport), Stdout: combinedOut.String(), Stderr: combinedErr.String(), ExitCode: firstFailure}
+	if firstFailure != 0 {
+		return result, &execution.Error{Kind: execution.KindExit, ExitCode: firstFailure, Op: "validation commands", Err: fmt.Errorf("one or more validation commands failed")}
+	}
+	return result, nil
 }
 
 // resolveExecutionPath maps a definition-relative control-checkout path into

@@ -176,6 +176,18 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 		_, copyErr := io.Copy(rawErr, stderr)
 		stderrDone <- copyErr
 	}()
+	processFinished := false
+	defer func() {
+		if processFinished {
+			return
+		}
+		_ = stdin.Close()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+		<-stderrDone
+	}()
 
 	protocolRequest := buildProtocolRequest(ctx, req, p.spec, env, time.Now())
 	protocolRequest.ProtocolVersion = ProtocolV1Alpha2
@@ -260,6 +272,7 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 	}
 	waitErr := cmd.Wait()
 	copyErr := <-stderrDone
+	processFinished = true
 	if copyErr != nil {
 		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 stderr", Err: copyErr}
 	}

@@ -725,6 +725,10 @@
         "claimed_by": {
           "type": "string"
         },
+        "claimed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
         "claim_token": {
           "type": "string"
         },

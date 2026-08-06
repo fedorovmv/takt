@@ -52,6 +52,7 @@ nodes:
   - id: classify
     depends_on:
       - scope
+    when: nodes.scope.output.status == "ready"
     command: classify-review
     model: routing
     allowed_tools: []
@@ -91,6 +92,7 @@ nodes:
     depends_on:
       - scope
       - classify
+    when: nodes.scope.output.status == "ready"
     workflow:
       path: review-perspective.yaml
       input: |
@@ -105,6 +107,7 @@ nodes:
         max_parallel: 5
         join: all_success
   - id: synthesize
+    when: nodes.scope.output.status == "ready"
     command: review-synthesis
     depends_on:
       - reviews
@@ -149,7 +152,7 @@ nodes:
     command: review-fix
     depends_on:
       - synthesize
-    when: nodes.synthesize.output.code == "REVIEW_CHANGES_REQUIRED"
+    when: nodes.scope.output.status == "ready" && nodes.synthesize.output.code == "REVIEW_CHANGES_REQUIRED"
     output_format:
       type: object
       additionalProperties: false
@@ -188,6 +191,7 @@ nodes:
     output_mime: text/markdown
     output_path: $ARTIFACTS_DIR/review-fix-report.md
   - id: validate
+    when: nodes.scope.output.status == "ready"
     command: change-validation
     depends_on:
       - synthesize

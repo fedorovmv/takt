@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.34-alpha
+
+- Добавлен Dynamic Takt: решение `existing|planned`, ограниченный `WorkflowPlan`, разрешённые workflow-блоки и компиляция в обычные governed child Run без второго runtime.
+- Добавлены preview/confirmation, бюджеты child Runs/parallel/revisions/tokens, checkpoint replanning, immutable plan revisions и `takt steer`.
+- Добавлены CLI `takt plan|get|promote`, `takt execute`, `takt steer` и MCP `takt.plan|get`, `takt.execute`, `takt.run.steer`, `takt.plan.promote`; MCP plane расширен до 27 tools.
+- `takt plan get` показывает фазы, связанные Run, usage и артефакты; completed planned-план продвигается в `.takt/workflows/generated` после повторной проверки.
+- Добавлен coding-agent skill flow: основная сессия Pi/OpenCode показывает preview и управляет Run, отдельные worker-сессии выполняют фазы.
+- Исправлен daemon на длинных Unix socket paths macOS через hashed `$TMPDIR` fallback; terminal event subscription дочитывает журнал до revision состояния.
+- External claim хранит `claimed_at`; устранена утечка process assistant v1alpha2 на protocol-ошибках; governed child input повторно валидируется после рендеринга.
+- Профиль code выполняет `validation_commands` детерминированным `script.runtime: validation`, получил явные review/approval gates и непустые review inputs; `when` поддерживает `&&`/`||`.
+- Профиль `code` обновлён до 0.10.0, authoring/coding-agent skill — до 0.16.0; добавлены ADR-049/050 и `docs/48-dynamic-takt-v0.1.34.md`.
+
 ## v0.1.33-alpha
 
 - Добавлен authoring preflight: path-aware `did you mean`, capability validation в `takt validate`, статический анализ output/artifact references и `--warnings-as-errors`.

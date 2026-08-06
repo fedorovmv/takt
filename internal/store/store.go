@@ -118,6 +118,7 @@ type ExternalExecutionState struct {
 	ToolCalls             map[string]*ToolCallState `json:"tool_calls,omitempty"`
 	OutputFormat          json.RawMessage           `json:"output_format,omitempty"`
 	ClaimedBy             string                    `json:"claimed_by,omitempty"`
+	ClaimedAt             time.Time                 `json:"claimed_at,omitempty"`
 	ClaimToken            string                    `json:"claim_token,omitempty"`
 	LeaseExpiresAt        time.Time                 `json:"lease_expires_at,omitempty"`
 	IdleTimeout           string                    `json:"idle_timeout,omitempty"`

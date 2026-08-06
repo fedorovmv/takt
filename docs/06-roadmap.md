@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.33-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.34-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -34,7 +34,20 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 
 `takt daemon` использует Unix socket и существующий файловый Store для background Runs, event subscriptions, MCP proxy и нескольких локальных клиентов без БД. Полный архив среза: `47-authoring-local-daemon-v0.1.33.md`.
 
-## Приоритет 1. Усиление runtime и безопасность локального исполнения
+
+## Выполнено в v0.1.34-alpha. Dynamic Takt и coding-agent experience
+
+Реализованы `existing|planned`, ограниченный `WorkflowPlan`, разрешённые блоки, компиляция в обычный Takt Workflow, preview/confirmation, бюджеты, checkpoint replanning, immutable revisions, steering, phase/run/artifact view, MCP/CLI `plan|execute|steer` и promotion успешного плана в workflow проекта. Основная сессия Pi/OpenCode остаётся интерфейсом пользователя, а фазы исполняются отдельными worker-сессиями. Полный архив среза: `48-dynamic-takt-v0.1.34.md`.
+
+## Приоритет 1. Domain Adapter SDK
+
+- нейтральные capability contracts для SCM, tracker и CI;
+- MCP/process transports;
+- типизированные inputs/results/errors, идемпотентность и capability discovery;
+- GitHub/GitLab как эталонные реализации без платформенных имён в workflow;
+- fake corporate SCM/tracker/CI для контрактных тестов.
+
+## Приоритет 2. Усиление runtime и безопасность локального исполнения
 
 - раннее завершение `one_success` и `all_success` с отменой ненужных детей;
 - нормализованные diagnostics и fingerprints ошибок;
@@ -43,7 +56,7 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 - реальный OS sandbox для недоверенных процессов;
 - path-based namespace для вложенных циклов.
 
-## Приоритет 2. Предметная проверка
+## Приоритет 3. Предметная проверка
 
 Отдельно от системных функций нужен Route DSL benchmark со штатным валидатором и обезличенными реальными заданиями: success@1, final success, число попыток, стоимость и стабильность на неизменных fingerprints.
 

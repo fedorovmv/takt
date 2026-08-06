@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.33-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.34-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -389,3 +389,10 @@ Detached start генерирует Run ID до запуска goroutine и во
 `takt.run.events` использует монотонный `Event.Revision` как cursor: ответ содержит только события с revision больше `after_revision`, сохраняет порядок журнала и ограничивает число элементов. `wait_ms` реализует bounded polling и не меняет event store.
 
 JSON-RPC cancellation отменяет контекст текущего MCP-запроса. Отмена самого Run выполняется только явным `takt.run.cancel`, сохраняется в store и каскадируется governed children по общей runtime-семантике.
+
+
+## Dynamic plan revisions
+
+`WorkflowPlan` не исполняется напрямую. Проверенная редакция компилируется в обычные governed workflow-сегменты. Checkpoint отделяет immutable завершённую историю от ещё не начатого хвоста. Steering применяется только планировщиком checkpoint. Новая редакция может заменить оставшиеся фазы, но не статус, output, events, usage или artifacts завершённых Run.
+
+`when` поддерживает сравнения `==`/`!=` и ограниченные логические связки `&&`/`||`; `&&` имеет более высокий приоритет. Выражения не являются общим языком программирования.

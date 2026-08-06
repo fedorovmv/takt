@@ -72,12 +72,53 @@ nodes:
     output_type: review-scope
     output_mime: application/json
     output_path: $ARTIFACTS_DIR/review-scope.json
-  - id: review
+  - id: validation-commands
     depends_on:
       - intake
     when: nodes.intake.output.status == "ready"
+    script:
+      runtime: validation
+    allow_failure: true
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - failed
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              command:
+                type: string
+              exit_code:
+                type: integer
+              stdout:
+                type: string
+              stderr:
+                type: string
+            required:
+              - command
+              - exit_code
+      required:
+        - status
+        - results
+    output_type: validation-command-report
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/validation-commands.json
+  - id: review
+    depends_on:
+      - intake
+      - validation-commands
+    when: nodes.intake.output.status == "ready" && nodes.validation-commands.output.status == "ready"
     workflow:
       path: smart-review-block.yaml
+      input: ${input}
       isolation: inherit
   - id: summary
     command: workflow-final-summary

@@ -142,3 +142,5 @@
 - `46-controlled-agent-events-deep-workflows-v0.1.32.md` — event protocol v2, управляемые tool calls и глубокие шесть workflow с Git/recovery contract.
 
 - `47-authoring-local-daemon-v0.1.33.md` — authoring preflight, строгий renderer, always/idle semantics и локальный Unix-socket daemon.
+
+- `48-dynamic-takt-v0.1.34.md` — ограниченный WorkflowPlan, checkpoint replanning, coding-agent flow, MCP/CLI и promotion.

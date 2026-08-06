@@ -132,6 +132,7 @@ type WorkflowFanOutSpec struct {
 	ItemsFrom       string `json:"items_from"`
 	As              string `json:"as,omitempty"`
 	MaxParallel     int    `json:"max_parallel,omitempty"`
+	MaxItems        int    `json:"max_items,omitempty"`
 	Join            string `json:"join,omitempty"`
 	AllowEmpty      bool   `json:"allow_empty,omitempty"`
 	AllowDuplicates bool   `json:"allow_duplicates,omitempty"`

@@ -295,10 +295,51 @@ nodes:
     output_type: implementation-report
     output_mime: text/markdown
     output_path: $ARTIFACTS_DIR/implementation-report.md
+  - id: validation-commands
+    depends_on:
+      - implement
+    when: nodes.implement.output.status == "ready"
+    script:
+      runtime: validation
+    allow_failure: true
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - failed
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              command:
+                type: string
+              exit_code:
+                type: integer
+              stdout:
+                type: string
+              stderr:
+                type: string
+            required:
+              - command
+              - exit_code
+      required:
+        - status
+        - results
+    output_type: validation-command-report
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/validation-commands.json
   - id: validate
     command: change-validation
     depends_on:
       - implement
+      - validation-commands
+    trigger_rule: all_done
     when: nodes.implement.output.status == "ready"
     model: review
     output_format:
@@ -342,7 +383,9 @@ nodes:
     command: workflow-recovery
     depends_on:
       - validate
-    when: nodes.validate.output.status != "ready"
+      - validation-commands
+    trigger_rule: all_done
+    when: nodes.validation-commands.output.status != "ready" || nodes.validate.output.status != "ready"
     output_format:
       type: object
       additionalProperties: false
@@ -379,12 +422,52 @@ nodes:
     output_type: recovery-report
     output_mime: text/markdown
     output_path: $ARTIFACTS_DIR/recovery-report.md
+  - id: revalidation-commands
+    depends_on:
+      - recover
+    when: nodes.validation-commands.output.status != "ready" || nodes.validate.output.status != "ready"
+    script:
+      runtime: validation
+    allow_failure: true
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - failed
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              command:
+                type: string
+              exit_code:
+                type: integer
+              stdout:
+                type: string
+              stderr:
+                type: string
+            required:
+              - command
+              - exit_code
+      required:
+        - status
+        - results
+    output_type: validation-command-report
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/revalidation-commands.json
   - id: revalidate
     command: change-validation
     depends_on:
-      - recover
+      - revalidation-commands
     model: review
-    when: nodes.validate.output.status != "ready"
+    trigger_rule: all_done
+    when: nodes.validation-commands.output.status != "ready" || nodes.validate.output.status != "ready"
     output_format:
       type: object
       additionalProperties: false
@@ -424,12 +507,14 @@ nodes:
     output_path: $ARTIFACTS_DIR/validation-report.md
   - id: validation-gate
     depends_on:
+      - validation-commands
       - validate
       - recover
+      - revalidation-commands
       - revalidate
     trigger_rule: all_done
     bash: |
-      if [ "${nodes.validate.output.status}" = "ready" ] || [ "${nodes.revalidate.output.status?}" = "ready" ]; then
+      if { [ "${nodes.validation-commands.output.status}" = "ready" ] && [ "${nodes.validate.output.status}" = "ready" ]; } || { [ "${nodes.revalidation-commands.output.status?}" = "ready" ] && [ "${nodes.revalidate.output.status?}" = "ready" ]; }; then
         exit 0
       fi
       printf 'validation failed: initial=%s recovery=%s revalidate=%s
@@ -480,8 +565,10 @@ nodes:
   - id: review
     depends_on:
       - create-pr
+    when: nodes.create-pr.output.status == "ready"
     workflow:
       path: smart-review-block.yaml
+      input: ${input}
       isolation: inherit
   - id: summary
     command: workflow-final-summary

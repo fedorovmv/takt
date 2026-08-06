@@ -91,6 +91,10 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 		if renderErr != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render child workflow input", Err: renderErr}
 		}
+		input, renderErr = ValidateWorkflowInput(input, childWorkflow.Input)
+		if renderErr != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "validate child workflow input", Err: renderErr}
+		}
 		options := StartOptions{RunID: nodeState.ChildRunID, ParentRunID: state.ID, ParentNodeID: node.ID}
 		childPolicy := r.inheritedPolicy
 		if definition.Policy != nil {

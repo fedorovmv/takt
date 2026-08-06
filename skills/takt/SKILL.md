@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, script-узлы, типизированные артефакты, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль, проверить authoring diagnostics или управлять Takt через локальный MCP/daemon.
+description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, script-узлы, типизированные артефакты, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль, проверить authoring diagnostics или управлять Takt через локальный MCP/daemon или запускать Dynamic Takt из основной сессии кодинг-агента.
 ---
 
 # Работа с Takt
@@ -48,6 +48,28 @@ takt run code --workspace . --input docs/plan.md --json
 ## Локальный MCP и daemon
 
 Для одноразового управления из coding-agent host запускай `takt mcp --workspace .`. Когда Run должен пережить закрытие клиента или к одному workspace подключаются несколько локальных агентов, используй `takt daemon start --workspace .` и `takt mcp --daemon --workspace .`. Сохраняй `run_id`, наблюдай через `takt.run.get/events` либо `takt events --daemon --follow`. Approval подтверждай только при наличии решения пользователя. Полный MCP-контракт: `references/mcp.md`.
+
+## Dynamic Takt из кодинг-агента
+
+Используй Dynamic Takt, когда задача требует отдельного плана, динамической инвентаризации, параллельных исполнителей или пересмотра оставшихся шагов. Основная сессия Pi/OpenCode остаётся пользовательским интерфейсом; Takt планирует и отслеживает Run, а отдельные сессии coding assistant выполняют фазы своими инструментами.
+
+Пользовательский путь:
+
+```bash
+takt plan "Проверь совместимость MCP-инструментов" --workspace .
+takt execute <plan-id> --workspace . --confirm
+takt plan get <plan-id> --workspace .
+takt steer <plan-id> "Сложные расхождения только задокументируй" --workspace .
+takt plan promote <plan-id> --name audit-mcp-compatibility --workspace .
+```
+
+Через MCP используй высокоуровневые `takt.plan`, `takt.execute`, `takt.plan.get`, `takt.run.steer` и `takt.plan.promote`. Сначала покажи пользователю preview, бюджеты, требуемые фазы и необходимость подтверждения. `takt.execute` вызывай с `confirm: true` только после явного подтверждения, если политика проекта не разрешает автоматический запуск.
+
+`WorkflowPlan` является ограниченным промежуточным представлением, а не вторым runtime. Он использует только разрешённые блоки `discover`, `investigate`, `implement`, `validate`, `review`, `adversarial-verify`, `synthesize`, после чего компилируется в обычный Takt Workflow с governed child Runs. Перепланирование допускается только в явных checkpoint и создаёт новую revision; выполненные фазы не переписываются.
+
+`steer` сохраняет уточнение для ближайшей контрольной точки. При статусе `waiting` передай пользователю причину и используй steering как ответ. После успешного завершения предлагай `plan promote`: команда обобщает план в проектный workflow и повторно проверяет его до сохранения.
+
+Для простого вопроса или небольшого локального изменения не вызывай Takt автоматически. Основной кодинг-агент выполняет такую задачу напрямую. Dynamic Takt нужен, когда ценность дают отдельное состояние, несколько исполнителей, параллельность, контрольный бюджет или долговременный Run.
 
 ## Источники истины
 
@@ -154,7 +176,7 @@ takt run code --workspace . --input docs/plan.md --json
   output_mime: application/json
 ```
 
-Runtime: `command`, `python`, `node`, `go`. Для Python/Node допустим `inline`; для command/Go нужен исполняемый `path`. Исходник и `dependencies` входят в fingerprint. Takt не устанавливает зависимости runtime автоматически.
+Runtime: `command`, `python`, `node`, `go`, а также специальный `validation` для последовательного исполнения `input.validation_commands`. Для Python/Node допустим `inline`; для command/Go нужен исполняемый `path`. Исходник и `dependencies` входят в fingerprint. Takt не устанавливает зависимости runtime автоматически.
 
 Для файла, созданного AI-узлом или script, укажи:
 

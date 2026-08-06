@@ -28,6 +28,7 @@ go build -o bin/takt-fake-code-agent ./cmd/takt-fake-code-agent
 ./scripts/test-deep-code-workflows.sh
 ./scripts/test-authoring.sh
 ./scripts/test-daemon.sh
+./scripts/test-dynamic-takt.sh
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \

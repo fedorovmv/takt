@@ -1,0 +1,30 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: dynamic-investigate
+  description: Approved Dynamic Takt block dynamic-investigate.
+defaults:
+  assistant: opencode
+  model: implementation
+  session: fresh
+nodes:
+  - id: result
+    command: dynamic-investigate
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        findings:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            type: string
+      required: [summary, findings, evidence]
+    output_type: dynamic-findings
+    output_mime: application/json
