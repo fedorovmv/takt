@@ -11,7 +11,7 @@ Workflow Loader ── Command Resolver ── Config/Model Registry
  │
  ▼
 Runner / Shared DAG Scheduler
- ├── Agent Node ── Assistant Adapter ── Pi/OpenCode/другой CLI
+ ├── Agent Node ── Assistant Adapter ── Pi/OpenCode/Codex/Oh My Pi/Qwen CLI/другой CLI
  ├── Bash Node
  ├── Approval Node
  ├── Loop Group ── тот же DAG Scheduler

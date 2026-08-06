@@ -1,13 +1,14 @@
 # Машиночитаемые схемы
 
-- `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `mock`, `process`, `pi`, `opencode`, Pi-specific `session_dir/project_trust` и OpenCode-specific `agent/auto_approve`, `max_output_bytes` и условные запреты несовместимых полей;
+- `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `default_assistant`, `mock`, `process`, `pi`, `opencode`, Pi-specific `session_dir/project_trust` и OpenCode-specific `agent/auto_approve`, `max_output_bytes` и условные запреты несовместимых полей;
+- `task-route.schema.json` — проверяемое решение Task Router: `workflow|template|dynamic`, сигналы и прогрессивные controls;
 - `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`, `idle_timeout`, `always_run`, расширенный `output_format`, `one_success`, approval в цикле, `foreach.parallel` и governed child `workflow`;
 - `profile.schema.json` — Profile с default workflow и картой именованных `workflows`;
 - `command-frontmatter.schema.json` — frontmatter Markdown-команд;
 - `run-state.schema.json` — состояние Run, parent/child links, pause/abandon/recovery/operator retry, fingerprints, revisions, типизированные Node statuses, execution identity и aggregate usage;
 - `event.schema.json` — JSONL-событие с revision;
 - `notification-config.schema.json` — локальные attention/terminal события и sinks `coding_agent_host|desktop|process`;
-- `assistant-protocol.schema.json` — реализованный JSON-протокол `takt-assistant/v1alpha1` со строгими status/exit и неотрицательным usage;
+- `assistant-protocol.schema.json` — реализованный JSON-протокол `takt-assistant/v1alpha1|v1alpha2` со строгими status/exit и неотрицательным usage;
 - `validation-result.schema.json` — предметно-независимый результат качества `takt-validation/v1alpha1` для benchmark и внешних валидаторов;
 - `evaluation-report.schema.json` — отчёт `takt-evaluation/v1alpha1` с идентичностью стратегии, benchmark, workspace, моделей и метриками качества.
 

@@ -37,7 +37,7 @@ input:
       - draft_pr
       - validation_commands
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: implementation
   session: fresh
 nodes:

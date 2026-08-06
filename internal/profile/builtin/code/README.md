@@ -1,4 +1,4 @@
-# Takt code profile 0.12.0
+# Takt code profile 0.13.0
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -47,6 +47,8 @@ The installed `.takt/config.yaml` contains three model aliases:
 - `review` for investigation and review agents.
 
 All aliases can point to the same provider/model. The split exists so projects can tune cost and reasoning independently.
+
+Every bundled workflow uses the logical assistant `coding-agent`. Select the concrete host once with `default_assistant` in `.takt/config.yaml`. Built-in Pi/OpenCode adapters and compatible `takt-assistant/v1alpha2` process wrappers share the same workflow catalog; Takt has no Kiro CLI dependency.
 
 The validation hook uses `TAKT_VALIDATE_COMMAND` when set, then `scripts/verify.sh`, `make check`, Go tests, or npm tests. Set a project-specific command when automatic detection is insufficient.
 

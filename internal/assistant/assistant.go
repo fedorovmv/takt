@@ -38,10 +38,16 @@ type Result struct {
 	Truncated        bool
 }
 
-type Adapter interface {
+// SessionAdapter is the provider-neutral execution seam used by Takt.
+// Codex, Oh My Pi, Qwen CLI and other coding agents can be connected through
+// a built-in adapter or a process wrapper that implements takt-assistant/v1alpha2.
+type SessionAdapter interface {
 	Run(context.Context, Request) (Result, error)
 	Capabilities() []string
 }
+
+// Adapter is kept as a source-compatible name for existing integrations.
+type Adapter = SessionAdapter
 
 type Resolver interface {
 	Resolve(string) (Adapter, error)
@@ -52,13 +58,17 @@ type Factory struct {
 }
 
 func (f Factory) Resolve(name string) (Adapter, error) {
-	s, ok := f.Config.Assistants[name]
+	resolvedName := name
+	s, ok := f.Config.Assistants[resolvedName]
+	if !ok && name == "coding-agent" {
+		resolvedName, s, ok = f.resolveDefaultAssistant()
+	}
 	if !ok {
 		return nil, &UnknownAssistantError{Name: name}
 	}
 	switch s.Type {
 	case "mock":
-		return Mock{name: name}, nil
+		return Mock{name: resolvedName}, nil
 	case "process":
 		return Process{spec: s}, nil
 	case "pi":
@@ -68,6 +78,27 @@ func (f Factory) Resolve(name string) (Adapter, error) {
 	default:
 		return nil, &UnknownAssistantError{Name: name}
 	}
+}
+
+func (f Factory) resolveDefaultAssistant() (string, spec.AssistantSpec, bool) {
+	if f.Config == nil {
+		return "", spec.AssistantSpec{}, false
+	}
+	if name := f.Config.DefaultAssistant; name != "" {
+		value, ok := f.Config.Assistants[name]
+		return name, value, ok
+	}
+	// Compatibility for code profiles initialized before logical coding-agent
+	// selection was introduced. Existing OpenCode configurations keep working.
+	if value, ok := f.Config.Assistants["opencode"]; ok {
+		return "opencode", value, true
+	}
+	if len(f.Config.Assistants) == 1 {
+		for name, value := range f.Config.Assistants {
+			return name, value, true
+		}
+	}
+	return "", spec.AssistantSpec{}, false
 }
 
 type UnknownAssistantError struct{ Name string }

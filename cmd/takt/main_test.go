@@ -400,3 +400,37 @@ nodes:
 		t.Fatalf("failed status changed: state=%+v err=%v", loaded, loadErr)
 	}
 }
+
+func TestRunCmdResolvesLogicalCodingAgentThroughDefaultAssistant(t *testing.T) {
+	dir := t.TempDir()
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(workflowPath, []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: logical-coding-agent
+nodes:
+  - id: work
+    assistant: coding-agent
+    model: demo
+    prompt: complete the fixture
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: fixture
+models:
+  demo:
+    provider: fixture
+    id: demo
+assistants:
+  fixture:
+    type: mock
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runCmd([]string{workflowPath, "--config", configPath, "--workspace", dir, "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -4,7 +4,7 @@ metadata:
   name: validate-pr
   description: Thoroughly test and compare the pull request base and feature branches, distinguishing regressions from pre-existing failures.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: review
   session: fresh
 nodes:

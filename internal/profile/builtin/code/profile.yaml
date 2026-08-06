@@ -4,6 +4,7 @@ metadata:
   name: code
   description: Evidence-driven catalog of 19 development workflows with Dynamic Takt planning, governed reviews, recovery paths, typed artifacts, and smart routing
 workflow: workflow.yaml
+router: workflows/task-route.yaml
 workflows:
   assist: workflows/assist.yaml
   fix-github-issue: workflows/fix-github-issue.yaml

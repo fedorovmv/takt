@@ -1,5 +1,5 @@
 ---
-assistant: opencode
+assistant: coding-agent
 model: routing
 ---
 

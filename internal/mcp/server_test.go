@@ -43,13 +43,41 @@ func TestServeStdioSupportsLegacyInitializeAndModernDiscover(t *testing.T) {
 		t.Fatalf("modern protocol = %v", got)
 	}
 	listed := responses["3"]["result"].(map[string]any)["tools"].([]any)
-	if len(listed) != 48 {
+	if len(listed) != 53 {
 		t.Fatalf("tools count = %d", len(listed))
 	}
 	first := listed[0].(map[string]any)["name"]
 	last := listed[len(listed)-1].(map[string]any)["name"]
-	if first != "takt.workflow.list" || last != "takt.node.fail" {
+	if first != "takt.task.start" || last != "takt.node.fail" {
 		t.Fatalf("unexpected deterministic tool order: %v ... %v", first, last)
+	}
+}
+
+func TestAgentSurfaceExposesOnlyCompactTaskAPI(t *testing.T) {
+	service, err := control.New(t.TempDir(), ".takt/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewWithSurface(service, nil, nil, nil, SurfaceAgent)
+	tools := tools(SurfaceAgent)
+	want := []string{
+		"takt.task.start",
+		"takt.task.status",
+		"takt.task.respond",
+		"takt.task.stop",
+		"takt.task.explain",
+	}
+	if len(tools) != len(want) {
+		t.Fatalf("agent tools = %d, want %d", len(tools), len(want))
+	}
+	for i, tool := range tools {
+		if tool.Name != want[i] {
+			t.Fatalf("agent tool[%d] = %s, want %s", i, tool.Name, want[i])
+		}
+	}
+	denied := server.callTool(context.Background(), callParams{Name: "takt.run.list", Arguments: map[string]any{}})
+	if denied["isError"] != true {
+		t.Fatalf("operator tool was not denied on agent surface: %#v", denied)
 	}
 }
 

@@ -32,7 +32,7 @@ for message in messages:
     print(json.dumps(message, separators=(",", ":")))
 PY
 
-"$ROOT/bin/takt" mcp --workspace "$TMP" --config "$TMP/config.yaml" \
+"$ROOT/bin/takt" mcp --surface all --workspace "$TMP" --config "$TMP/config.yaml" \
   <"$TMP/requests.jsonl" >"$TMP/responses.jsonl"
 
 python3 - "$TMP/responses.jsonl" <<'PY'
@@ -46,6 +46,7 @@ assert responses[1]["result"]["protocolVersion"] == "2025-11-25"
 assert responses[2]["result"]["protocolVersion"] == "2026-07-28"
 tools = responses[3]["result"]["tools"]
 assert [tool["name"] for tool in tools] == [
+    "takt.task.start", "takt.task.status", "takt.task.respond", "takt.task.stop", "takt.task.explain",
     "takt.workflow.list", "takt.workflow.describe", "takt.block.list", "takt.block.describe",
     "takt.host.begin", "takt.host.confirm", "takt.host.get", "takt.host.find",
     "takt.host.guard_tool", "takt.host.guard_completion", "takt.host.release",
@@ -65,6 +66,20 @@ call = responses[4]["result"]
 assert call["isError"] is False, call
 assert call["structuredContent"]["state"]["status"] == "completed", call
 assert call["structuredContent"]["state"]["nodes"]["complete"]["output"] == "mcp-ok", call
+PY
+
+
+cat >"$TMP/agent-request.jsonl" <<'JSON'
+{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+JSON
+"$ROOT/bin/takt" mcp --workspace "$TMP" --config "$TMP/config.yaml" \
+  <"$TMP/agent-request.jsonl" >"$TMP/agent-response.jsonl"
+python3 - "$TMP/agent-response.jsonl" <<'PY'
+import json,sys
+value=json.loads(open(sys.argv[1], encoding='utf-8').readline())
+assert [tool['name'] for tool in value['result']['tools']] == [
+  'takt.task.start','takt.task.status','takt.task.respond','takt.task.stop','takt.task.explain'
+], value
 PY
 
 echo 'local MCP contract: PASS'

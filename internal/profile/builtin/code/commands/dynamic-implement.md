@@ -1,5 +1,5 @@
 ---
-assistant: opencode
+assistant: coding-agent
 model: implementation
 ---
 Implement only the objective in the input. Use the assigned worktree, preserve unrelated changes, and run the most relevant deterministic checks.

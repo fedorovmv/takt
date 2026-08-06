@@ -15,6 +15,10 @@
     "kind": {
       "const": "Config"
     },
+    "default_assistant": {
+      "type": "string",
+      "minLength": 1
+    },
     "models": {
       "type": "object",
       "additionalProperties": {
@@ -91,7 +95,8 @@
         },
         "protocol": {
           "enum": [
-            "takt-assistant/v1alpha1"
+            "takt-assistant/v1alpha1",
+            "takt-assistant/v1alpha2"
           ]
         },
         "binary": {

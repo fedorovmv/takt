@@ -25,6 +25,7 @@ type Manifest struct {
 	Kind          string               `json:"kind"`
 	Metadata      Metadata             `json:"metadata"`
 	Workflow      string               `json:"workflow"`
+	Router        string               `json:"router,omitempty"`
 	Workflows     map[string]string    `json:"workflows,omitempty"`
 	Config        string               `json:"config"`
 	Input         InputSpec            `json:"input,omitempty"`
@@ -42,6 +43,7 @@ type Resolved struct {
 	WorkflowName      string
 	ManifestPath      string
 	WorkflowPath      string
+	RouterPath        string
 	ConfigPath        string
 	Manifest          Manifest
 	BlockPackagePaths []string
@@ -192,6 +194,13 @@ func Load(path string) (*Resolved, error) {
 	if err != nil {
 		return nil, fmt.Errorf("profile config: %w", err)
 	}
+	routerPath := ""
+	if strings.TrimSpace(manifest.Router) != "" {
+		routerPath, err = secureJoin(dir, manifest.Router)
+		if err != nil {
+			return nil, fmt.Errorf("profile router: %w", err)
+		}
+	}
 	packagePaths := make([]string, 0, len(manifest.BlockPackages))
 	for index, packagePath := range manifest.BlockPackages {
 		if strings.TrimSpace(packagePath) == "" {
@@ -203,7 +212,7 @@ func Load(path string) (*Resolved, error) {
 		}
 		packagePaths = append(packagePaths, resolvedPackage)
 	}
-	return &Resolved{Name: manifest.Metadata.Name, ManifestPath: path, WorkflowPath: workflowPath, ConfigPath: configPath, Manifest: manifest, BlockPackagePaths: packagePaths}, nil
+	return &Resolved{Name: manifest.Metadata.Name, ManifestPath: path, WorkflowPath: workflowPath, RouterPath: routerPath, ConfigPath: configPath, Manifest: manifest, BlockPackagePaths: packagePaths}, nil
 }
 
 func (r *Resolved) SelectWorkflow(name string) (*Resolved, error) {

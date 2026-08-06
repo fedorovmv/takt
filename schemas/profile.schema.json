@@ -102,6 +102,10 @@
         "type": "string",
         "minLength": 1
       }
+    },
+    "router": {
+      "type": "string",
+      "minLength": 1
     }
   }
 }

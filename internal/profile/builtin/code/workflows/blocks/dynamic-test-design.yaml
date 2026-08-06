@@ -1,0 +1,35 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: dynamic-test-design
+  description: Independently design and add regression or contract tests from requested behavior.
+defaults:
+  assistant: coding-agent
+  model: implementation
+  session: fresh
+nodes:
+  - id: result
+    command: dynamic-test-design
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        changed_files:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        tests:
+          type: array
+          items:
+            type: string
+        assumptions:
+          type: array
+          items:
+            type: string
+      required: [summary, changed_files, tests, assumptions]
+    output_type: independent-test-design
+    output_mime: application/json

@@ -4,7 +4,7 @@ metadata:
   name: dynamic-investigate
   description: Approved Dynamic Takt block dynamic-investigate.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: implementation
   session: fresh
 nodes:

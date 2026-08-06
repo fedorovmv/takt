@@ -2,10 +2,22 @@ apiVersion: takt/v1alpha1
 kind: BlockPackage
 metadata:
   name: code-core
-  version: 0.1.0
+  version: 0.2.0
   scope: builtin
   description: Trusted core blocks for bounded Dynamic Takt engineering plans.
 blocks:
+  baseline:
+    workflow: dynamic-baseline.yaml
+    description: Capture the pre-change repository baseline and known failures without modifying the workspace.
+    capabilities: [repository.read, shell]
+    integrations: [filesystem, git]
+    output_paths: [summary, base_ref, passed_checks, known_failures, unavailable_checks, evidence]
+  test-design:
+    workflow: dynamic-test-design.yaml
+    description: Independently design and add regression or contract tests from requested behavior.
+    capabilities: [repository.read, repository.write, shell]
+    integrations: [filesystem, git]
+    output_paths: [summary, changed_files, tests, assumptions]
   discover:
     workflow: dynamic-discover.yaml
     description: Inventory files, services, handlers, APIs, or other affected units.

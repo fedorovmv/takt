@@ -1,6 +1,6 @@
 {
   "name": "takt-pi-host-control",
-  "version": "0.1.37-alpha",
+  "version": "0.1.38-alpha",
   "private": true,
   "type": "module",
   "peerDependencies": {

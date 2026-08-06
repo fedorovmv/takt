@@ -30,7 +30,7 @@ input:
       - validation_commands
       - max_review_rounds
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: implementation
   session: fresh
 nodes:

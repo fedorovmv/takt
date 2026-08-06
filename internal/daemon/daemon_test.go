@@ -113,8 +113,24 @@ nodes:
 		t.Fatal(err)
 	}
 	result := envelope["result"].(map[string]any)
-	if got := len(result["tools"].([]any)); got != 48 {
+	if got := len(result["tools"].([]any)); got != 53 {
 		t.Fatalf("MCP tools = %d", got)
+	}
+
+	agentPayload, agentRespond, err := client.MCPForSurface(context.Background(), request, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !agentRespond {
+		t.Fatal("agent MCP request did not return a response")
+	}
+	var agentEnvelope map[string]any
+	if err := json.Unmarshal(agentPayload, &agentEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	agentResult := agentEnvelope["result"].(map[string]any)
+	if got := len(agentResult["tools"].([]any)); got != 5 {
+		t.Fatalf("agent MCP tools = %d", got)
 	}
 
 	if err := client.Shutdown(context.Background()); err != nil {

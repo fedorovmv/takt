@@ -5,6 +5,7 @@
 ```yaml
 apiVersion: takt/v1alpha1
 kind: Config
+default_assistant: pi
 
 models:
   main:
@@ -22,7 +23,7 @@ assistants:
     max_output_bytes: 10485760
 ```
 
-`models` содержит aliases, на которые ссылаются workflow и Markdown-команды. `provider` и `id` должны поддерживаться выбранным assistant.
+`default_assistant` разрешает логическое имя `coding-agent` в профилях. `models` содержит aliases, на которые ссылаются workflow и Markdown-команды. `provider` и `id` должны поддерживаться выбранным assistant.
 
 ## Несколько моделей
 
@@ -93,7 +94,7 @@ assistants:
       - ./tools/assistant-adapter
       - --model
       - "{{model.id}}"
-    protocol: takt-assistant/v1alpha1
+    protocol: takt-assistant/v1alpha2
     max_output_bytes: 10485760
 ```
 
@@ -105,7 +106,24 @@ assistants:
 - `{{workspace}}`;
 - `{{session.mode}}`, `{{session.id}}`.
 
-Если protocol не задан и `{{prompt}}` отсутствует, prompt передаётся через stdin.
+Если protocol не задан и `{{prompt}}` отсутствует, prompt передаётся через stdin. `v1alpha2` является нейтральной границей `SessionAdapter` для Codex, Oh My Pi, Qwen CLI и других coding-agent wrappers; имена примеров не означают, что wrappers входят в поставку.
+
+## Логический coding-agent
+
+Встроенный профиль `code` ссылается на `assistant: coding-agent`, а конкретный исполнитель выбирается один раз:
+
+```yaml
+default_assistant: qwen
+assistants:
+  qwen:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: [qwen-takt-adapter]
+```
+
+Порядок разрешения: явный assistant с именем `coding-agent`, затем `default_assistant`, затем совместимый legacy fallback `opencode`, затем единственный объявленный assistant. Неоднозначная конфигурация отклоняется. Workflow не меняется при переходе между Pi, OpenCode, Codex, Oh My Pi, Qwen CLI и другим совместимым адаптером.
+
+Пример нескольких внешних адаптеров находится в `examples/agent-session-adapters/`. Takt не зависит от Kiro CLI и не включает готовые wrappers для каждого стороннего продукта.
 
 ## Приоритет настроек
 

@@ -60,6 +60,8 @@ func run(args []string) error {
 		return validateCmd(args[1:])
 	case "run":
 		return runDispatchCmd(args[1:])
+	case "task":
+		return taskCmd(args[1:])
 	case "runs":
 		return runsCmd(args[1:])
 	case "attention":
@@ -332,27 +334,32 @@ func mcpCmd(args []string) error {
 	configPath := fs.String("config", ".takt/config.yaml", "default config path for direct workflow files")
 	useDaemon := fs.Bool("daemon", false, "proxy MCP through the local daemon")
 	socket := fs.String("socket", "", "daemon Unix socket path")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--config": true, "--daemon": false, "--socket": true})); err != nil {
+	surfaceValue := fs.String("surface", "agent", "MCP surface: agent, host, worker, operator, or all")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--config": true, "--daemon": false, "--socket": true, "--surface": true})); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return fmt.Errorf("usage: takt mcp [--daemon] [--workspace dir] [--config path]")
+		return fmt.Errorf("usage: takt mcp [--surface agent|host|worker|operator|all] [--daemon] [--workspace dir] [--config path]")
+	}
+	surface, err := mcp.ParseSurface(*surfaceValue)
+	if err != nil {
+		return err
 	}
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
 			return err
 		}
-		return proxyMCPThroughDaemon(context.Background(), client, os.Stdin, os.Stdout, os.Stderr)
+		return proxyMCPThroughDaemon(context.Background(), client, string(surface), os.Stdin, os.Stdout, os.Stderr)
 	}
 	service, err := control.New(*workspace, *configPath)
 	if err != nil {
 		return err
 	}
-	return mcp.New(service, os.Stdin, os.Stdout, os.Stderr).ServeStdio(context.Background())
+	return mcp.NewWithSurface(service, os.Stdin, os.Stdout, os.Stderr, surface).ServeStdio(context.Background())
 }
 
-func proxyMCPThroughDaemon(ctx context.Context, client *daemon.Client, in io.Reader, out, errOut io.Writer) error {
+func proxyMCPThroughDaemon(ctx context.Context, client *daemon.Client, surface string, in io.Reader, out, errOut io.Writer) error {
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 8*1024*1024)
 	var workers sync.WaitGroup
@@ -368,7 +375,7 @@ func proxyMCPThroughDaemon(ctx context.Context, client *daemon.Client, in io.Rea
 		go func() {
 			defer workers.Done()
 			defer func() { <-sem }()
-			payload, respond, err := client.MCP(ctx, line)
+			payload, respond, err := client.MCPForSurface(ctx, line, surface)
 			if err != nil {
 				fmt.Fprintln(errOut, "daemon MCP request failed:", err)
 				return
@@ -681,7 +688,7 @@ func runCmd(args []string) error {
 		return err
 	}
 	resolver := runtime.New(wf, cfg, wfPath, cfgPath, absWorkspace).Commands
-	if err := validateReferences(wf.Nodes, wf.Defaults, cfg, resolver); err != nil {
+	if err := workflow.ValidateReferences(wf, cfg, resolver); err != nil {
 		return err
 	}
 	var inputValue string
@@ -1533,5 +1540,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|run|runs|attention|notify|plan|execute|steer|host|workflow|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
+	return fmt.Errorf("usage: takt <init|validate|task|run|runs|attention|notify|plan|execute|steer|host|workflow|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
 }

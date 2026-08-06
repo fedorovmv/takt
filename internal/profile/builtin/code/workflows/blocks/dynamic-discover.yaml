@@ -4,7 +4,7 @@ metadata:
   name: dynamic-discover
   description: Approved Dynamic Takt block dynamic-discover.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: implementation
   session: fresh
 nodes:

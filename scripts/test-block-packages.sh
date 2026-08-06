@@ -19,7 +19,7 @@ import json, sys
 catalog = json.load(open(sys.argv[1], encoding="utf-8"))["result"]
 adversarial = json.load(open(sys.argv[2], encoding="utf-8"))["result"]
 corporate = json.load(open(sys.argv[3], encoding="utf-8"))["result"]
-assert len(catalog["blocks"]) == 7, catalog
+assert len(catalog["blocks"]) == 9, catalog
 assert catalog["fingerprint"]
 assert any(p["name"] == "code-core" and p["scope"] == "builtin" for p in catalog["packages"])
 assert adversarial["workflow_path"].endswith("dynamic-adversarial-verify.yaml")
@@ -47,7 +47,7 @@ PY
 python3 - "$TMP/merged.json" <<'PY'
 import json, sys
 catalog = json.load(open(sys.argv[1], encoding="utf-8"))["result"]
-assert len(catalog["blocks"]) == 10, catalog
+assert len(catalog["blocks"]) == 12, catalog
 assert any(p["name"] == "corporate-engineering" and p["scope"] == "corporate" for p in catalog["packages"])
 assert catalog["governance"]["required_blocks"] == ["corp-validate"]
 assert catalog["governance"]["limits"]["max_child_runs"] == 48

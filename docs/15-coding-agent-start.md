@@ -1,26 +1,21 @@
-# Стартовая инструкция для кодового агента
+# Стартовая инструкция для кодинг-агента
 
 ## Контекст
 
-Takt — Go-runtime для оркестрации готовых кодовых агентов, моделей, детерминированных проверок, hooks, loops и approval. Takt не реализует собственный coding-agent tool loop.
-
-Текущая версия предназначена для локального trusted runtime.
+Takt — локальный Go-runtime, который выбирает и исполняет проверяемые процессы поверх готовых кодинг-агентов. Он не реализует собственный LLM tool loop и не зависит от Kiro CLI. Исполнителем может быть Pi, OpenCode, Codex, Oh My Pi, Qwen CLI или другой CLI через совместимый `SessionAdapter`.
 
 ## Перед работой
 
-Сначала прочитай корневой `AGENTS.md`. Для создания или настройки пользовательских workflow используй `skills/takt/SKILL.md`. Затем при необходимости используй расширенный набор документов:
-
 Прочитай:
 
-1. `docs/12-document-map.md`;
-2. `docs/05-implementation-status.md`;
-3. `docs/22-pi-adapter-v0.1.8.md`;
-4. `docs/21-protocol-hardening-v0.1.7.md`;
-5. `docs/20-fake-assistant-contract-v0.1.6.md`;
+1. корневой `AGENTS.md`;
+2. `skills/takt/SKILL.md`;
+3. `docs/52-simple-reliable-agent-neutral-router-v0.1.38.md`;
+4. `docs/proposals/001-simple-reliable-agent-neutral-takt.md`;
+5. `docs/03-specification.md`;
 6. `docs/09-runtime-semantics.md`;
 7. `docs/10-assistant-adapter-spec.md`;
-8. `docs/14-backlog-v0.2.md`;
-9. `ARCHITECTURE_DECISIONS.md`.
+8. `docs/12-document-map.md`.
 
 Проверь исходное состояние:
 
@@ -32,45 +27,62 @@ go build ./cmd/takt
 ./scripts/verify.sh
 ```
 
-## Первая рекомендуемая задача
+## Граница ответственности
 
-Начни с завершения `TAKT-011B`: evaluation runner уже реализован, требуется производственный прогон Route DSL.
+- coding-agent host исполняет LLM turn, инструменты и физический sandbox;
+- host bridge перехватывает `/takt`, показывает preview/status/result и создаёт worker-сессии;
+- Takt выбирает workflow, параметры, roles/skills, политики, бюджеты и terminal transition;
+- все маршруты компилируются в один Workflow и один runtime;
+- основная LLM получает только agent MCP surface из пяти `takt.task.*` tools;
+- host, worker и operator используют отдельные surfaces.
 
-Требования:
+## Подключение исполнителя
 
-- используй `examples/route-dsl-e2e` как базовый контракт;
-- выполни opt-in Pi/OpenCode smoke при доступных credentials;
-- используй `examples/route-dsl-eval` только как инфраструктурный contract suite;
-- для сравнения моделей используй `examples/route-dsl-benchmark`, `--strategy-id`, `--benchmark-id`, fingerprints валидатора и `takt-validation/v1alpha1`;
-- замени минимальный `route-tool` штатным валидатором и сохрани передачу diagnostics в retry;
-- замени синтетические задания реальными обезличенными примерами;
-- не меняй timeout, output limit, fresh/resume и error classification без обновления спецификации и ADR;
-- сохраняй контракт `takt-assistant/v1alpha1` для универсальных process adapters; Pi использует RPC adapter, OpenCode — JSON CLI adapter;
-- не допускай тихого fallback с resume на fresh;
-- сохрани границу: внутренний tool loop остаётся внутри Pi/OpenCode.
+Встроенный профиль использует логическое имя `coding-agent`. Выбери конкретный адаптер в config:
+
+```yaml
+default_assistant: opencode
+```
+
+Для стороннего CLI:
+
+```yaml
+default_assistant: codex
+assistants:
+  codex:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: [codex-takt-adapter]
+```
+
+Пример является контрактом интеграции, а не заявлением о поставке `codex-takt-adapter`. Не допускай тихого fallback с resume на fresh и не приписывай адаптеру capabilities, которых он фактически не обеспечивает.
+
+## Ближайшее развитие
+
+Следующий продуктовый срез после v0.1.38:
+
+1. внутренний Role Contract и Brief Compiler без нового пользовательского YAML;
+2. реакции проверок `deny | repair | warn`;
+3. выборочное усиление baseline, независимых тестов и verifier;
+4. conformance gates и router/authoring evals;
+5. предложения новых skills по повторяющимся Run, только через pending approval.
 
 ## Ограничения
 
-- не добавляй собственные read/write/bash tools для модели;
-- не добавляй общий plugin framework;
-- не меняй `apiVersion` без мигратора;
-- не добавляй Web UI, сервер или БД;
-- не скрывай невозможность resume переходом на fresh;
+- не добавляй второй scheduler или отдельную машину состояний;
+- не выноси выбор workflow и roles в prompt основной модели;
+- не добавляй новый публичный MCP-tool, когда операция относится к host/worker/operator surface;
+- не превращай каждую проверку в блокировку: устранимая техническая проблема должна идти в repair;
+- не скрывай невозможность resume, sandbox или tool interception;
 - не считай текст агента доказательством успеха;
-- не расширяй scope до недоверенных пользователей без threat model и sandbox.
+- не расширяй runtime до недоверенных пользователей без threat model и OS sandbox.
 
 ## Definition of Done
 
 - код отформатирован;
 - unit и contract tests проходят;
-- `go test -race ./...` проходит;
-- `go vet ./...` проходит;
+- `go test -race ./...` и `go vet ./...` проходят;
 - сквозные примеры работают;
 - документация отражает фактическое состояние;
-- изменение сохраняет границу с внешним coding agent.
-
-
-Перед изменением Pi adapter прочитайте `docs/23-pi-rpc-alignment-v0.1.9.md`: `agent_settled` является финальной границей попытки, а usage возвращается как дельта накопленной статистики.
-
-
-Перед изменением OpenCode adapter прочитайте `docs/33-opencode-adapter-v0.1.19.md`: stdout является NDJSON event stream, stderr — диагностикой, resume требует совпадения Session ID, usage суммируется по уникальным `step_finish`.
+- пользовательский путь остаётся простым;
+- изменение сохраняет нейтральную границу с внешним coding agent.

@@ -1,5 +1,5 @@
 ---
-assistant: opencode
+assistant: coding-agent
 model: review
 ---
 Validate the requested result independently. Execute deterministic commands rather than merely recommending them. Do not change code unless the input explicitly requests repair.

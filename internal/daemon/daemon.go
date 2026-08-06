@@ -88,7 +88,7 @@ type Options struct {
 
 type Server struct {
 	service  *control.Service
-	mcp      *mcp.Server
+	mcps     map[mcp.Surface]*mcp.Server
 	paths    Paths
 	metadata Metadata
 	errOut   io.Writer
@@ -111,8 +111,10 @@ func New(options Options) (*Server, error) {
 	if options.ErrOut == nil {
 		options.ErrOut = os.Stderr
 	}
-	server := &Server{service: service, paths: paths, errOut: options.ErrOut, stop: make(chan struct{})}
-	server.mcp = mcp.New(service, nil, nil, options.ErrOut)
+	server := &Server{service: service, paths: paths, errOut: options.ErrOut, stop: make(chan struct{}), mcps: map[mcp.Surface]*mcp.Server{}}
+	for _, surface := range []mcp.Surface{mcp.SurfaceAll, mcp.SurfaceAgent, mcp.SurfaceHost, mcp.SurfaceWorker, mcp.SurfaceOperator} {
+		server.mcps[surface] = mcp.NewWithSurface(service, nil, nil, options.ErrOut, surface)
+	}
 	server.metadata = Metadata{API: APIRevision, PID: os.Getpid(), Workspace: service.Workspace, Socket: paths.Socket, StartedAt: time.Now().UTC(), Version: version.Value}
 	return server, nil
 }
@@ -282,6 +284,42 @@ func decodeParams(raw json.RawMessage, target any) error {
 
 func (s *Server) call(ctx context.Context, method string, raw json.RawMessage) (any, error) {
 	switch method {
+	case "task.start":
+		var params control.TaskStartRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		params.Detached = true
+		return s.service.StartTask(ctx, params)
+	case "task.status":
+		var params struct {
+			Reference string `json:"reference"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.TaskStatus(params.Reference)
+	case "task.respond":
+		var params control.TaskRespondRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		params.Detached = true
+		return s.service.RespondTask(ctx, params)
+	case "task.stop":
+		var params control.TaskStopRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.StopTask(params)
+	case "task.explain":
+		var params struct {
+			Reference string `json:"reference"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.ExplainTask(params.Reference)
 	case "workflow.list":
 		var params struct {
 			Profile string `json:"profile"`
@@ -555,7 +593,21 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		writeHTTPError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	payload, respond := s.mcp.HandleJSON(r.Context(), body)
+	surfaceValue := strings.TrimSpace(r.Header.Get("X-Takt-MCP-Surface"))
+	if surfaceValue == "" {
+		surfaceValue = string(mcp.SurfaceAll)
+	}
+	surface, err := mcp.ParseSurface(surfaceValue)
+	if err != nil {
+		writeHTTPError(w, http.StatusBadRequest, "invalid_surface", err.Error())
+		return
+	}
+	server := s.mcps[surface]
+	if server == nil {
+		writeHTTPError(w, http.StatusBadRequest, "invalid_surface", "MCP surface is unavailable")
+		return
+	}
+	payload, respond := server.HandleJSON(r.Context(), body)
 	if !respond {
 		w.WriteHeader(http.StatusNoContent)
 		return

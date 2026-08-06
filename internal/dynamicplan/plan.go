@@ -19,6 +19,8 @@ const (
 var idPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
 var AllowedBlocks = map[string]string{
+	"baseline":           "dynamic-baseline.yaml",
+	"test-design":        "dynamic-test-design.yaml",
 	"discover":           "dynamic-discover.yaml",
 	"investigate":        "dynamic-investigate.yaml",
 	"implement":          "dynamic-implement.yaml",
@@ -81,6 +83,8 @@ type Record struct {
 	UpdatedAt               time.Time         `json:"updated_at"`
 	RequiresConfirmation    bool              `json:"requires_confirmation"`
 	ConfirmedAt             *time.Time        `json:"confirmed_at,omitempty"`
+	RouterRunID             string            `json:"router_run_id,omitempty"`
+	Route                   json.RawMessage   `json:"route,omitempty"`
 	PlannerRunID            string            `json:"planner_run_id,omitempty"`
 	ReplannerRunIDs         []string          `json:"replanner_run_ids,omitempty"`
 	ExecutionRunIDs         []string          `json:"execution_run_ids,omitempty"`

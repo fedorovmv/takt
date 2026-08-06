@@ -4,7 +4,7 @@ metadata:
   name: review-perspective
   description: Run one isolated, evidence-scoped review perspective and publish a typed finding artifact.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: review
   session: fresh
 nodes:

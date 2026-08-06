@@ -1,4 +1,4 @@
-.PHONY: build test race vet fmt docs contracts pi-contracts opencode-contracts route-e2e route-eval route-benchmark composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract check demo
+.PHONY: build test race vet fmt docs contracts pi-contracts opencode-contracts route-e2e route-eval route-benchmark composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract simple-reliable-contract check demo
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -92,7 +92,11 @@ host-integration-typescript:
 autonomous-run-contract: build
 	./scripts/test-autonomous-runs.sh
 
-check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract dynamic-takt-contract block-package-contract host-control-contract host-integration-typescript autonomous-run-contract docs
+simple-reliable-contract: build
+	go build -o bin/takt-fake-code-agent ./cmd/takt-fake-code-agent
+	./scripts/test-simple-reliable-router.sh
+
+check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract dynamic-takt-contract block-package-contract host-control-contract host-integration-typescript autonomous-run-contract simple-reliable-contract docs
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml

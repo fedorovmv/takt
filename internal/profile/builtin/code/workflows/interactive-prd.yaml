@@ -4,7 +4,7 @@ metadata:
   name: interactive-prd
   description: Build a product requirements document through iterative repository-grounded conversation, human decisions, drafting, and review.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: review
   session: fresh
 nodes:

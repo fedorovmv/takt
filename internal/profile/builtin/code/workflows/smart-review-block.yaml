@@ -4,7 +4,7 @@ metadata:
   name: code-smart-review-block
   description: Evidence-scoped governed review, synthesis, controlled fixes and independent validation.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: review
   session: fresh
 nodes:

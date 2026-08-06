@@ -4,7 +4,7 @@ metadata:
   name: comprehensive-pr-review
   description: Run code, error-handling, test, documentation, and simplicity reviews in parallel, synthesize findings, fix them, and validate.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: review
   session: fresh
 nodes:

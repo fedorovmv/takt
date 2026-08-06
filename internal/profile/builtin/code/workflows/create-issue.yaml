@@ -4,7 +4,7 @@ metadata:
   name: create-issue
   description: Classify a reported problem, gather repository context in parallel, investigate and reproduce it, then create a non-duplicate GitHub issue with evidence.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: review
   session: fresh
 nodes:

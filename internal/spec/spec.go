@@ -242,10 +242,11 @@ type HookDecision struct {
 }
 
 type Config struct {
-	APIVersion string                   `json:"apiVersion"`
-	Kind       string                   `json:"kind"`
-	Models     map[string]ModelSpec     `json:"models,omitempty"`
-	Assistants map[string]AssistantSpec `json:"assistants,omitempty"`
+	APIVersion       string                   `json:"apiVersion"`
+	Kind             string                   `json:"kind"`
+	DefaultAssistant string                   `json:"default_assistant,omitempty"`
+	Models           map[string]ModelSpec     `json:"models,omitempty"`
+	Assistants       map[string]AssistantSpec `json:"assistants,omitempty"`
 }
 
 type ModelSpec struct {

@@ -4,7 +4,7 @@ metadata:
   name: dynamic-replan
   description: Reassess only the unfinished part of a Dynamic Takt plan at an explicit checkpoint.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: routing
   session: fresh
 nodes:

@@ -21,6 +21,11 @@ func Load(path string) (*spec.Config, error) {
 	if cfg.APIVersion != "takt/v1alpha1" || cfg.Kind != "Config" {
 		return nil, fmt.Errorf("config must use apiVersion takt/v1alpha1 and kind Config")
 	}
+	if cfg.DefaultAssistant != "" {
+		if _, ok := cfg.Assistants[cfg.DefaultAssistant]; !ok {
+			return nil, fmt.Errorf("default_assistant %q is not defined in assistants", cfg.DefaultAssistant)
+		}
+	}
 	for name, model := range cfg.Models {
 		if model.Provider == "" || model.ID == "" {
 			return nil, fmt.Errorf("model %q requires provider and id", name)
@@ -52,7 +57,7 @@ func Load(path string) (*spec.Config, error) {
 				return nil, fmt.Errorf("opencode assistant %q does not support session_dir/project_trust", name)
 			}
 		}
-		if assistant.Protocol != "" && assistant.Protocol != "takt-assistant/v1alpha1" {
+		if assistant.Protocol != "" && assistant.Protocol != "takt-assistant/v1alpha1" && assistant.Protocol != "takt-assistant/v1alpha2" {
 			return nil, fmt.Errorf("assistant %q has unsupported protocol %q", name, assistant.Protocol)
 		}
 		if assistant.Type != "process" && assistant.Protocol != "" {

@@ -34,6 +34,7 @@ git -C "$PROJECT" push -u origin main >/dev/null
 cat > "$PROJECT/.takt/config.yaml" <<CFG
 apiVersion: takt/v1alpha1
 kind: Config
+default_assistant: opencode
 models:
   routing:
     provider: fixture

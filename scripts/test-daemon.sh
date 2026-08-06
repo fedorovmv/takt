@@ -74,11 +74,11 @@ assert value["output"] == "daemon-completed", value
 PY
 
 printf '%s\n' '{"jsonrpc":"2.0","id":"daemon-tools","method":"tools/list","params":{}}' \
-  | "$TAKT" mcp --daemon --workspace "$WORK" >"$WORK/mcp.json"
+  | "$TAKT" mcp --daemon --surface all --workspace "$WORK" >"$WORK/mcp.json"
 python3 - "$WORK/mcp.json" <<'PY'
 import json, sys
 value=json.load(open(sys.argv[1]))
-assert len(value["result"]["tools"]) == 48, value
+assert len(value["result"]["tools"]) == 53, value
 PY
 
 "$TAKT" daemon stop --workspace "$WORK" --json >"$WORK/daemon-stop.json"

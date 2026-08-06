@@ -35,7 +35,7 @@ input:
       - validation_commands
       - max_stories
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: implementation
   session: fresh
 nodes:

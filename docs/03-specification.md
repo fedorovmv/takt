@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.37-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.38-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -8,14 +8,14 @@
 
 ## 1.1. Локальный MCP control plane
 
-Команда `takt mcp --workspace <dir> [--config <path>]` запускает одноразовый stdio JSON-RPC/MCP adapter поверх общего control service. `takt mcp --daemon` проксирует тот же stdio-протокол в локальный `takt daemon` через Unix socket. БД и сетевой listener не создаются.
+Команда `takt mcp --surface agent --workspace <dir> [--config <path>]` запускает одноразовый stdio JSON-RPC/MCP adapter поверх общего control service. `takt mcp --daemon` проксирует тот же stdio-протокол в локальный `takt daemon` через Unix socket. БД и сетевой listener не создаются.
 
 Поддерживаются два протокольных входа:
 
 - legacy `initialize` с версиями MCP 2025;
 - stateless `server/discover` с `protocolVersion: 2026-07-28`.
 
-Сервер публикует 48 инструментов: discovery workflow/plan/block, запуск и управление Run, реестр/attention/summary/pause/resume/retry/fork/abandon/recover, artifacts/events, host-control, notifications и внешний executor/tool-call lifecycle. `takt.run.start` по умолчанию отсоединяет запуск и возвращает устойчивый `run_id`. События читаются по `revision` cursor, а содержимое артефактов выдаётся только по явному запросу с ограничением размера.
+Полная совместимая поверхность публикует 53 операции, разделённые на `agent|host|worker|operator|all`. Поверхность `agent` является default и содержит только пять `takt.task.start|status|respond|stop|explain`; host-control, notification delivery и внешний executor/tool-call lifecycle скрыты от основной LLM. `takt.run.start` по умолчанию отсоединяет запуск и возвращает устойчивый `run_id`. События читаются по `revision` cursor, а содержимое артефактов выдаётся только по явному запросу с ограничением размера.
 
 MCP и daemon являются локальными интерфейсами текущего пользователя. Они не добавляют sandbox или новые полномочия и не предназначены для сетевой публикации. Полный control contract зафиксирован в `44-local-mcp-control-plane-v0.1.30.md`, внешний executor и события — в `45-agent-events-external-executor-v0.1.31.md`, а daemon и authoring preflight — в `47-authoring-local-daemon-v0.1.33.md`.
 
@@ -54,6 +54,7 @@ Renderer использует явные формы: `${path}` — обязат�
 ```yaml
 apiVersion: takt/v1alpha1
 kind: Config
+default_assistant: pi
 
 models:
   large:
@@ -76,8 +77,11 @@ assistants:
 Типы assistant:
 
 - `mock` — детерминированная заглушка;
-- `process` — универсальный текстовый или JSON process adapter;
-- `pi` — специализированный adapter для `earendil-works/pi` через `pi --mode rpc`.
+- `process` — универсальный текстовый или JSON process adapter, включая внешние Codex/Oh My Pi/Qwen CLI wrappers;
+- `pi` — специализированный adapter для `earendil-works/pi` через `pi --mode rpc`;
+- `opencode` — специализированный JSON CLI adapter OpenCode.
+
+Профиль может ссылаться на логическое имя `coding-agent`; оно разрешается через `default_assistant`. Ядро Takt не зависит от Kiro CLI.
 
 `process`-адаптер поддерживает шаблоны:
 
@@ -95,7 +99,7 @@ assistants:
 
 Если `protocol` не задан и `{{prompt}}` отсутствует в `argv`, prompt передаётся через stdin.
 
-При `protocol: takt-assistant/v1alpha1` stdin содержит строгий JSON request envelope, а stdout должен содержать ровно один JSON result envelope. Runtime проверяет версию, type, status, обязательный `exit_code`, отсутствие неизвестных полей, неотрицательные usage-метрики и session resume. OS exit code и `result.exit_code` обязаны совпадать всегда, включая ноль; любое расхождение классифицируется как `protocol`. Невалидный, обрезанный или дополнительный JSON также является `protocol`, а отказ resume не превращается в fresh. Схема находится в `schemas/assistant-protocol.schema.json`.
+При `protocol: takt-assistant/v1alpha1` или `takt-assistant/v1alpha2` stdin содержит строгий JSON request envelope, а stdout должен содержать ровно один JSON result envelope. Runtime проверяет версию, type, status, обязательный `exit_code`, отсутствие неизвестных полей, неотрицательные usage-метрики и session resume. OS exit code и `result.exit_code` обязаны совпадать всегда, включая ноль; любое расхождение классифицируется как `protocol`. Невалидный, обрезанный или дополнительный JSON также является `protocol`, а отказ resume не превращается в fresh. Схема находится в `schemas/assistant-protocol.schema.json`.
 
 Переменные окружения process assistant включают `TAKT_RUN_ID`, `TAKT_NODE_ID`, `TAKT_ATTEMPT`, модель, workspace, session и native hooks.
 
@@ -108,7 +112,7 @@ assistants:
 
 Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`/`maxItems`, `uniqueItems`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `minProperties`/`maxProperties`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
 
-Это используется шестью основными процессами профиля `code` 0.12.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+Это используется шестью основными процессами профиля `code` 0.13.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
 
 ## 3.1. Внешний исполнитель AI-узла
 

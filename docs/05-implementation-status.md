@@ -41,7 +41,7 @@
 - прямой `takt mcp` и `takt mcp --daemon` через локальный Unix socket;
 - `takt daemon start|status|stop|serve` без БД: background Runs, event subscriptions, несколько клиентов, recovery потерянных локальных executor и notification dispatch;
 - legacy initialization `2025-03-26|2025-06-18|2025-11-25` и stateless discovery `2026-07-28`;
-- 48 tools: workflow/plan/block discovery, Run start/get/list/attention/summary/pause/resume/retry/fork/abandon/recover, events/artifacts, host-control, notifications, external node lifecycle и управляемые tool calls;
+- 53 internal operations разделены на surfaces; основная LLM видит пять `takt.task.*`, host и external worker получают только собственные протоколы;
 - detached start с durable `run_id`;
 - indexed revision cursor и bounded long polling событий без полного пересканирования журнала;
 - structured/text tool results, bounded artifact content, request cancellation и strict arguments;
@@ -87,7 +87,19 @@
 - checkpoint replanning с immutable revisions незавершённого хвоста;
 - `takt plan|execute|steer`, phase/run/artifact view и promotion в `.takt/workflows/generated`;
 - MCP `takt.plan`, `takt.plan.get`, `takt.execute`, `takt.run.steer`, `takt.plan.promote`;
-- обновлённый skill для Pi/OpenCode: основная сессия управляет, отдельные worker-сессии исполняют фазы.
+- логический `coding-agent`: конкретный Pi/OpenCode/process adapter выбирается через `default_assistant`; отдельные worker-сессии исполняют фазы.
+
+
+### Simple Reliable Task Router
+
+- высокоуровневый `takt task start|status|respond|stop|explain`;
+- route `workflow|template|dynamic` с JSON-схемой и проверкой ссылок;
+- `simple-reliable`: investigate → implement → validate → review;
+- прогрессивные controls baseline, independent tests, enhanced review, inspect checkpoint и max_parallel;
+- детерминированные risk signals могут только усилить controls;
+- invalid/unavailable semantic router даёт durable inspect-first fallback;
+- MCP surfaces `agent|host|worker|operator|all`;
+- `SessionAdapter` и `takt-assistant/v1alpha2` как нейтральная граница Codex/Oh My Pi/Qwen CLI и других wrappers.
 
 ### Coding Agent Host Control и автономные Run
 
@@ -103,9 +115,9 @@
 - durable notification inbox, desktop/process sinks, дедупликация и ack;
 - Pi/OpenCode команды runs, attention, pause, resume и result.
 
-### Профиль code 0.12.0
+### Профиль code 0.13.0
 
-- встроенный пакет `code-core` с семью атомарными блоками Dynamic Takt;
+- встроенный пакет `code-core` с девятью атомарными блоками Dynamic Takt, включая baseline и independent test-design;
 
 - 19 процессов разработки: assist, issue/PR flows, PIV, Ralph, idea/plan-to-PR, reviews, architecture, safe refactoring, PRD, workflow builder, Remotion и conflict resolution;
 - умный роутер как корневой Run с отдельным governed child Run выбранного процесса;
@@ -168,4 +180,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Dynamic Takt, доверенные блоки, host-control core и автономная эксплуатация Run реализованы к `v0.1.37-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — нейтральный SDK доменных адаптеров SCM/tracker/CI; полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark остаются следующими направлениями.
+Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run и Simple Reliable Task Router реализованы к `v0.1.38-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — Role Contract, Brief Compiler и реакции проверок `deny|repair|warn`; затем нейтральный SDK доменных адаптеров SCM/tracker/CI; полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark остаются следующими направлениями.

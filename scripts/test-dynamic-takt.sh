@@ -16,6 +16,7 @@ go build -o "$ROOT/bin/takt-fake-code-agent" "$ROOT/cmd/takt-fake-code-agent"
 cat > "$TMP/project/.takt/config.yaml" <<CFG
 apiVersion: takt/v1alpha1
 kind: Config
+default_assistant: opencode
 models:
   routing:
     provider: fixture
@@ -64,7 +65,7 @@ grep -q 'Dynamic Takt из кодинг-агента' "$ROOT/skills/takt/SKILL.m
 python3 - "$TMP/blocks.json" <<'PY'
 import json,sys
 value=json.load(open(sys.argv[1]))['result']
-assert len(value['blocks'])==7, value
+assert len(value['blocks'])==9, value
 assert any(b['name']=='adversarial-verify' and b['workflow_path'].endswith('dynamic-adversarial-verify.yaml') for b in value['blocks']), value
 assert value['fingerprint'], value
 PY
@@ -94,7 +95,7 @@ PY
 )"
 
 printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"takt.execute\",\"arguments\":{\"plan_id\":\"$PLAN_ID\",\"confirm\":true}}}" \
-  | "$ROOT/bin/takt" mcp --daemon --workspace "$TMP/project" > "$TMP/execute.json"
+  | "$ROOT/bin/takt" mcp --daemon --surface all --workspace "$TMP/project" > "$TMP/execute.json"
 python3 - "$TMP/execute.json" <<'PY'
 import json,sys
 value=json.load(open(sys.argv[1]))

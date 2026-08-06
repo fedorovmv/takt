@@ -51,6 +51,29 @@ assistants:
 	}
 }
 
+func TestLoadProcessProtocolV1Alpha2(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := `apiVersion: takt/v1alpha1
+kind: Config
+assistants:
+  generic-session:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: [agent-session-wrapper]
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Assistants["generic-session"].Protocol != "takt-assistant/v1alpha2" {
+		t.Fatalf("protocol not loaded: %+v", cfg.Assistants["generic-session"])
+	}
+}
+
 func TestLoadRejectsUnknownProcessProtocol(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -213,5 +236,46 @@ assistants:
 	}
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected Pi MCP capability declaration to fail")
+	}
+}
+
+func TestLoadDefaultAssistant(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: codex
+assistants:
+  codex:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: [codex-takt-adapter]
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DefaultAssistant != "codex" {
+		t.Fatalf("default assistant = %q", cfg.DefaultAssistant)
+	}
+}
+
+func TestLoadRejectsUnknownDefaultAssistant(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: missing
+assistants:
+  codex:
+    type: process
+    argv: [codex]
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected unknown default assistant to fail")
 	}
 }

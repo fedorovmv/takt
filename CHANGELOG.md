@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.38-alpha
+
+- Добавлен Task Router с маршрутами `workflow|template|dynamic`, схемой `TaskRoute`, детерминированными risk signals и проверяемой компиляцией в один обычный Takt Workflow.
+- Добавлен стабильный шаблон `simple-reliable`: investigate → implement → validate → review с прогрессивными controls baseline, independent tests, enhanced review, inspect checkpoint и max_parallel.
+- Semantic router больше не является точкой недоступности: protocol/schema/runtime failure приводит к durable `router_fallback` и inspect-first template.
+- Добавлен компактный пользовательский API `takt task start|status|respond|stop|explain` в CLI, daemon и MCP.
+- MCP разделён на `agent|host|worker|operator|all`; основная LLM по умолчанию видит только пять `takt.task.*`, полная совместимая поверхность содержит 53 operations.
+- Профиль `code` использует логический `coding-agent`; `default_assistant` выбирает Pi, OpenCode или внешний process adapter. Старый OpenCode config и конфигурация с одним assistant совместимы.
+- Process config теперь принимает `takt-assistant/v1alpha2`; нейтральный `SessionAdapter` предназначен для Codex, Oh My Pi, Qwen CLI и других coding-agent wrappers без зависимости от Kiro CLI.
+- В `code-core` добавлены trusted blocks `baseline` и `test-design`; версия профиля — 0.13.0, skill — 0.20.0.
+- Добавлены proposal `docs/proposals/001-simple-reliable-agent-neutral-takt.md`, release note `docs/52-simple-reliable-agent-neutral-router-v0.1.38.md` и contract `scripts/test-simple-reliable-router.sh`.
+
 ## v0.1.37-alpha
 
 - Добавлен Autonomous Run Operations: `runs`, `attention`, `run list|summary|watch|pause|resume|retry|fork|abandon|recover` и соответствующий daemon/MCP API.

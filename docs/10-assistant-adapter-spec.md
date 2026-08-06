@@ -4,14 +4,22 @@
 
 ## 1. Назначение
 
-Assistant adapter связывает Takt с готовым кодовым агентом или внешним CLI. Он не реализует агентный цикл, а нормализует запуск, модель, сессию, события и ошибки.
+Session adapter связывает Takt с готовым кодинг-агентом или внешним CLI. Канонический контракт не зависит от Pi, OpenCode, Codex, Oh My Pi, Qwen CLI или другого продукта. Он не реализует агентный цикл, а нормализует запуск, модель, сессию, события и ошибки.
+
+## 1.1. Логический исполнитель
+
+Workflow профиля может использовать `assistant: coding-agent`. Runtime разрешает его через `default_assistant`, сохраняя один и тот же DAG при смене хоста. Встроенные Pi/OpenCode adapters и внешний `process` являются реализациями одного `SessionAdapter`.
+
+Для сторонних кодинг-агентов используется `takt-assistant/v1alpha2`. Takt передаёт нормализованный Request с моделью, workspace, fresh/resume session, политикой и limits и получает поток событий и один terminal Result. Готовая обёртка конкретного CLI является отдельным интеграционным пакетом; ядро Takt не зависит от Kiro CLI и не эмулирует tool loop стороннего агента.
+
+Адаптер может заявлять только фактически обеспеченные capabilities. Отсутствие блокирующего перехвата tool call означает отсутствие `tool_control`; наблюдательные события после исполнения не считаются enforcement.
 
 ## 2. Базовый Go-контракт
 
 Целевой интерфейс:
 
 ```go
-type Adapter interface {
+type SessionAdapter interface {
     Describe(ctx context.Context) Capabilities
     Run(ctx context.Context, req Request, sink EventSink) (Result, error)
 }

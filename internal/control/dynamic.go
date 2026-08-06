@@ -15,6 +15,7 @@ import (
 	"takt/internal/dynamicplan"
 	"takt/internal/profile"
 	"takt/internal/store"
+	"takt/internal/taskroute"
 	"takt/internal/workflow"
 )
 
@@ -30,6 +31,7 @@ type PlanResult struct {
 	ExistingWorkflow     string              `json:"existing_workflow,omitempty"`
 	Preview              string              `json:"preview"`
 	RequiresConfirmation bool                `json:"requires_confirmation"`
+	Route                *taskroute.Decision `json:"route,omitempty"`
 	Record               *dynamicplan.Record `json:"record"`
 }
 
@@ -53,6 +55,7 @@ type PlanRunView struct {
 
 type PlanView struct {
 	Record        *dynamicplan.Record `json:"record"`
+	Route         *taskroute.Decision `json:"route,omitempty"`
 	Preview       string              `json:"preview"`
 	Phases        []PlanPhaseView     `json:"phases,omitempty"`
 	Runs          []PlanRunView       `json:"runs,omitempty"`
@@ -92,7 +95,14 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 	if err != nil {
 		return nil, err
 	}
+	workflows, err := s.ListWorkflows(profileName)
+	if err != nil {
+		return nil, fmt.Errorf("list workflows for task router: %w", err)
+	}
+
 	var plan dynamicplan.Plan
+	var route *taskroute.Decision
+	routerRunID := ""
 	plannerRunID := ""
 	if request.Candidate != nil {
 		plan = *request.Candidate
@@ -100,25 +110,54 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 			plan.Goal = goal
 		}
 	} else {
-		plannerPath := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "dynamic-plan.yaml")
-		workflows, err := s.ListWorkflows(profileName)
+		route, routerRunID, err = s.routeTask(ctx, resolved, catalog, goal, workflows)
 		if err != nil {
-			return nil, fmt.Errorf("list workflows for dynamic planner: %w", err)
+			// Routing is an optimization, not a new availability dependency. An
+			// unavailable or invalid semantic router falls back to the stable
+			// inspect-first template and records the reason in the durable route.
+			route = &taskroute.Decision{
+				Route:      taskroute.RouteTemplate,
+				Template:   taskroute.TemplateSimpleReliable,
+				Reason:     "semantic router unavailable; stable inspect-first fallback selected",
+				Confidence: 0,
+				Signals:    append(taskroute.InferSignals(goal), "router_fallback"),
+				Controls:   taskroute.Controls{InspectFirst: true, MaxParallel: 1},
+			}
+			taskroute.Normalize(route, resolved.Name)
+			err = nil
 		}
-		plannerInput, err := json.Marshal(map[string]any{"goal": goal, "existing_workflows": workflows, "trusted_catalog": catalog.PlannerView()})
-		if err != nil {
-			return nil, fmt.Errorf("encode dynamic planner input: %w", err)
-		}
-		started, startErr := s.Start(ctx, StartRequest{Selector: plannerPath, Input: string(plannerInput), ConfigPath: resolved.ConfigPath})
-		if startErr != nil {
-			return nil, fmt.Errorf("dynamic planner: %w", startErr)
-		}
-		if started.State == nil || started.State.Status != store.RunCompleted {
-			return nil, fmt.Errorf("dynamic planner did not complete")
-		}
-		plannerRunID = started.RunID
-		if err := json.Unmarshal([]byte(started.State.Output), &plan); err != nil {
-			return nil, fmt.Errorf("decode dynamic planner output: %w", err)
+		switch {
+		case route != nil && route.Route == taskroute.RouteWorkflow:
+			plan = dynamicplan.Plan{
+				APIVersion:       dynamicplan.APIVersion,
+				Kind:             dynamicplan.Kind,
+				Decision:         "existing",
+				Goal:             goal,
+				ExistingWorkflow: route.Workflow,
+				Reason:           route.Reason,
+			}
+		case route != nil && route.Route == taskroute.RouteTemplate:
+			plan, err = taskroute.Compile(goal, *route, catalog)
+			if err != nil {
+				return nil, err
+			}
+		default:
+			plannerPath := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "dynamic-plan.yaml")
+			plannerInput, encodeErr := json.Marshal(map[string]any{"goal": goal, "existing_workflows": workflows, "trusted_catalog": catalog.PlannerView()})
+			if encodeErr != nil {
+				return nil, fmt.Errorf("encode dynamic planner input: %w", encodeErr)
+			}
+			started, startErr := s.Start(ctx, StartRequest{Selector: plannerPath, Input: string(plannerInput), ConfigPath: resolved.ConfigPath})
+			if startErr != nil {
+				return nil, fmt.Errorf("dynamic planner: %w", startErr)
+			}
+			if started.State == nil || started.State.Status != store.RunCompleted {
+				return nil, fmt.Errorf("dynamic planner did not complete")
+			}
+			plannerRunID = started.RunID
+			if err := json.Unmarshal([]byte(started.State.Output), &plan); err != nil {
+				return nil, fmt.Errorf("decode dynamic planner output: %w", err)
+			}
 		}
 	}
 	dynamicplan.Normalize(&plan)
@@ -141,10 +180,17 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 		return nil, err
 	}
 	now := time.Now().UTC()
+	var routeRaw json.RawMessage
+	if route != nil {
+		routeRaw, err = json.Marshal(route)
+		if err != nil {
+			return nil, fmt.Errorf("encode task route: %w", err)
+		}
+	}
 	record := &dynamicplan.Record{
 		ID: id, Status: "draft", Profile: profileName, ConfigPath: resolved.ConfigPath,
 		CreatedAt: now, UpdatedAt: now, RequiresConfirmation: plan.Decision == "planned",
-		PlannerRunID: plannerRunID, Results: map[string]string{},
+		RouterRunID: routerRunID, Route: routeRaw, PlannerRunID: plannerRunID, Results: map[string]string{},
 		BlockPackagePaths: append([]string(nil), resolved.BlockPackagePaths...), BlockCatalogFingerprint: catalog.Fingerprint,
 		Revisions: []dynamicplan.Revision{{Number: 1, Reason: "initial plan", CreatedAt: now, Plan: plan}},
 	}
@@ -154,7 +200,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 	if err := (dynamicplan.Store{Workspace: s.Workspace}).Save(record); err != nil {
 		return nil, err
 	}
-	return &PlanResult{PlanID: id, Decision: plan.Decision, ExistingWorkflow: plan.ExistingWorkflow, Preview: dynamicplan.PreviewWithCatalog(plan, catalog), RequiresConfirmation: record.RequiresConfirmation, Record: record}, nil
+	return &PlanResult{PlanID: id, Decision: plan.Decision, ExistingWorkflow: plan.ExistingWorkflow, Preview: dynamicplan.PreviewWithCatalog(plan, catalog), RequiresConfirmation: record.RequiresConfirmation, Route: route, Record: record}, nil
 }
 
 func (s *Service) GetPlan(planID string) (*PlanView, error) {
@@ -163,6 +209,14 @@ func (s *Service) GetPlan(planID string) (*PlanView, error) {
 		return nil, err
 	}
 	plan := latestPlan(record)
+	var route *taskroute.Decision
+	if len(record.Route) > 0 {
+		var decoded taskroute.Decision
+		if err := json.Unmarshal(record.Route, &decoded); err != nil {
+			return nil, fmt.Errorf("decode persisted task route: %w", err)
+		}
+		route = &decoded
+	}
 	catalog, err := s.catalogForRecord(record)
 	if err != nil {
 		return nil, err
@@ -171,7 +225,7 @@ func (s *Service) GetPlan(planID string) (*PlanView, error) {
 	for _, id := range record.CompletedPhases {
 		completed[id] = true
 	}
-	view := &PlanView{Record: record, Preview: dynamicplan.PreviewWithCatalog(plan, catalog)}
+	view := &PlanView{Record: record, Route: route, Preview: dynamicplan.PreviewWithCatalog(plan, catalog)}
 	for _, phase := range plan.Phases {
 		status := "pending"
 		if completed[phase.ID] {

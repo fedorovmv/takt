@@ -13,14 +13,15 @@ PLAN
 "$ROOT/bin/takt" init code --dir "$TMP/project" --json >/dev/null
 "$ROOT/bin/takt" validate code --workspace "$TMP/project" --json >/dev/null
 [ -f "$TMP/project/.takt/profiles/code/profile.yaml" ]
-[ "$(tr -d '[:space:]' < "$TMP/project/.takt/profiles/code/VERSION")" = "0.12.0" ]
+[ "$(tr -d '[:space:]' < "$TMP/project/.takt/profiles/code/VERSION")" = "0.13.0" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/review-block.yaml" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/smart-review-block.yaml" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/blocks/package.yaml" ]
-[ "$(find "$TMP/project/.takt/profiles/code/workflows/blocks" -maxdepth 1 -name 'dynamic-*.yaml' | wc -l | tr -d '[:space:]')" = "7" ]
+[ "$(find "$TMP/project/.takt/profiles/code/workflows/blocks" -maxdepth 1 -name 'dynamic-*.yaml' | wc -l | tr -d '[:space:]')" = "9" ]
+grep -q '^router:' "$TMP/project/.takt/profiles/code/profile.yaml"
 grep -q '^block_packages:' "$TMP/project/.takt/profiles/code/profile.yaml"
-[ "$(find "$TMP/project/.takt/profiles/code/workflows" -maxdepth 1 -name '*.yaml' | wc -l | tr -d '[:space:]')" = "24" ]
-[ "$(find "$TMP/project/.takt/profiles/code/commands" -maxdepth 1 -name '*.md' | wc -l | tr -d '[:space:]')" = "63" ]
+[ "$(find "$TMP/project/.takt/profiles/code/workflows" -maxdepth 1 -name '*.yaml' | wc -l | tr -d '[:space:]')" = "25" ]
+[ "$(find "$TMP/project/.takt/profiles/code/commands" -maxdepth 1 -name '*.md' | wc -l | tr -d '[:space:]')" = "66" ]
 [ -f "$TMP/project/.takt/config.yaml" ]
 [ -x "$TMP/project/.takt/profiles/code/tools/review-perspectives" ]
 grep -q 'format: markdown' "$TMP/project/.takt/profiles/code/profile.yaml"

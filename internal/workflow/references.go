@@ -46,7 +46,7 @@ func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg 
 			if modelName == "" {
 				modelName = defaults.Model
 			}
-			if _, ok := cfg.Assistants[assistantName]; !ok {
+			if !assistantConfigured(cfg, assistantName) {
 				return fmt.Errorf("node %q references unknown assistant %q", n.ID, assistantName)
 			}
 			if _, ok := cfg.Models[modelName]; !ok {
@@ -97,6 +97,23 @@ func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg 
 		}
 	}
 	return nil
+}
+
+func assistantConfigured(cfg *spec.Config, name string) bool {
+	if _, ok := cfg.Assistants[name]; ok {
+		return true
+	}
+	if name != "coding-agent" {
+		return false
+	}
+	if cfg.DefaultAssistant != "" {
+		_, ok := cfg.Assistants[cfg.DefaultAssistant]
+		return ok
+	}
+	if _, ok := cfg.Assistants["opencode"]; ok {
+		return true
+	}
+	return len(cfg.Assistants) == 1
 }
 
 // CommandDirsForDefinition returns command directories beside a workflow and

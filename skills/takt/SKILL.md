@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, script-узлы, типизированные артефакты, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль, проверить authoring diagnostics или управлять Takt через локальный MCP/daemon или запускать Dynamic Takt из основной сессии кодинг-агента.
+description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили разных кодинг-агентов через нейтральный adapter contract. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, script-узлы, типизированные артефакты, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль, проверить authoring diagnostics или управлять Takt через локальный MCP/daemon или запускать Dynamic Takt из основной сессии кодинг-агента.
 ---
 
 # Работа с Takt
@@ -11,7 +11,7 @@ description: Создаёт, устанавливает, изменяет, пр�
 
 1. Найди рабочую директорию и существующие файлы `.takt/`, workflow, config и Markdown-команды.
 2. Если работа идёт в репозитории Takt, прочитай `AGENTS.md`, `docs/03-specification.md` и подходящий пример из `examples/`.
-3. Выбери внешний coding assistant по существующей среде проекта: `pi` или `opencode`. Не меняй assistant без причины.
+3. Выбери фактический coding assistant через `default_assistant`. Используй встроенные Pi/OpenCode adapters либо совместимый process adapter для Codex, Oh My Pi, Qwen CLI и других хостов. Не меняй assistant без причины.
 4. Определи минимальную форму решения:
    - `prompt` — короткая инструкция прямо в узле;
    - `command` — длинный или переиспользуемый prompt в Markdown;
@@ -47,7 +47,7 @@ takt run code --workspace . --input docs/plan.md --json
 
 ## Локальный MCP и daemon
 
-Для одноразового управления из coding-agent host запускай `takt mcp --workspace .`. Когда Run должен пережить закрытие клиента или к одному workspace подключаются несколько локальных агентов, используй `takt daemon start --workspace .` и `takt mcp --daemon --workspace .`. Сохраняй `run_id`, наблюдай через `takt.run.get/events` либо `takt events --daemon --follow`. Approval подтверждай только при наличии решения пользователя. Полный MCP-контракт: `references/mcp.md`.
+Для одноразового управления из coding-agent host запускай `takt mcp --surface agent --workspace .`; это безопасная поверхность из пяти `takt.task.*` операций. Когда Run должен пережить закрытие клиента или к одному workspace подключаются несколько локальных агентов, используй `takt daemon start --workspace .` и `takt mcp --daemon --surface agent --workspace .`. Наблюдай через `takt.task.status/explain`; операторский CLI может использовать `takt run summary`, `takt events --daemon --follow` и полную operator surface. Approval подтверждай только при наличии решения пользователя. Полный MCP-контракт: `references/mcp.md`.
 
 ## Строгий режим хоста кодинг-агента
 
@@ -71,9 +71,23 @@ takt notify list --unread
 
 Pause безопасная: новые узлы и fan-out batches не запускаются, текущая attempt заканчивает границу узла. После daemon restart Takt выполняет PID-based recovery как новую attempt; критичные внешние операции должны быть идемпотентными. Для кодинг-агента используй `/takt-runs`, `/takt-attention`, `/takt-pause`, `/takt-resume`, `/takt-result`.
 
+## Simple Reliable Task Router
+
+Для обычной многошаговой разработки предпочитай компактный task API:
+
+```bash
+takt task start "<задача>" --workspace .
+takt task status <task-id> --workspace .
+takt task explain <task-id> --workspace .
+```
+
+Router внутри Takt выбирает готовый workflow, стабильный `simple-reliable` или bounded Dynamic Plan. Ошибка семантического router не блокирует обычную задачу: используется `simple-reliable + inspect_first`. Дополнительные baseline, independent test design и enhanced review включаются по сигналам риска и не требуют отдельного пользовательского YAML. Все маршруты компилируются в обычный Workflow и исполняются одним scheduler.
+
+Основная LLM через agent MCP видит только `takt.task.start|status|respond|stop|explain`. Host, worker и operator protocols подключаются отдельными surfaces и не должны попадать в её каталог tools.
+
 ## Dynamic Takt из кодинг-агента
 
-Используй Dynamic Takt, когда задача требует отдельного плана, динамической инвентаризации, параллельных исполнителей или пересмотра оставшихся шагов. Основная сессия Pi/OpenCode остаётся пользовательским интерфейсом; Takt планирует и отслеживает Run, а отдельные сессии coding assistant выполняют фазы своими инструментами.
+Используй Dynamic Takt, когда задача требует отдельного плана, динамической инвентаризации, параллельных исполнителей или пересмотра оставшихся шагов. Основная сессия выбранного кодинг-агента остаётся пользовательским интерфейсом; Takt планирует и отслеживает Run, а отдельные worker-сессии выполняют фазы своими штатными инструментами.
 
 Пользовательский путь:
 
@@ -89,7 +103,7 @@ takt plan promote <plan-id> --name audit-mcp-compatibility --workspace .
 
 Через MCP используй высокоуровневые `takt.plan`, `takt.execute`, `takt.plan.get`, `takt.run.steer` и `takt.plan.promote`. Прямой stdio MCP выполняет `takt.execute` до terminal/waiting; MCP через daemon запускает его отсоединённо. Сначала покажи пользователю preview, бюджеты, требуемые фазы и необходимость подтверждения. `takt.execute` вызывай с `confirm: true` только после явного подтверждения, если политика проекта не разрешает автоматический запуск.
 
-`WorkflowPlan` является ограниченным промежуточным представлением, а не вторым runtime. Он использует только блоки из явно подключённых `block_packages`, после чего компилируется в обычный Takt Workflow с governed child Runs. Встроенный пакет содержит `discover`, `investigate`, `implement`, `validate`, `review`, `adversarial-verify`, `synthesize`; корпоративный пакет может сузить политики, бюджеты и разрешённые интеграции либо добавить собственные блоки. Перепланирование допускается только в явных checkpoint и создаёт новую revision; выполненные фазы не переписываются.
+`WorkflowPlan` является ограниченным промежуточным представлением, а не вторым runtime. Он использует только блоки из явно подключённых `block_packages`, после чего компилируется в обычный Takt Workflow с governed child Runs. Встроенный пакет содержит `discover`, `investigate`, `baseline`, `test-design`, `implement`, `validate`, `review`, `adversarial-verify`, `synthesize`; корпоративный пакет может сузить политики, бюджеты и разрешённые интеграции либо добавить собственные блоки. Перепланирование допускается только в явных checkpoint и создаёт новую revision; выполненные фазы не переписываются.
 
 `steer` сохраняет уточнение для ближайшей контрольной точки. При статусе `waiting` передай пользователю причину и используй steering как ответ. После успешного завершения предлагай `plan promote`: команда обобщает план в проектный workflow и повторно проверяет его до сохранения.
 
@@ -345,7 +359,7 @@ takt run .takt/workflows/main.yaml \
   --json
 ```
 
-Не заявляй, что профиль готов, пока `takt validate` не прошёл. Если запуск невозможен из-за отсутствия Pi/OpenCode, credentials, модели или предметного инструмента, явно отдели проверенную структуру от непроверенной внешней интеграции.
+Не заявляй, что профиль готов, пока `takt validate` не прошёл. Если запуск невозможен из-за отсутствия выбранного кодинг-агента, credentials, модели или предметного инструмента, явно отдели проверенную структуру от непроверенной внешней интеграции.
 
 ## Дополнительные материалы
 

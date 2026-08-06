@@ -196,3 +196,54 @@ func TestExecuteRejectsChangedTrustedBlockPackage(t *testing.T) {
 		t.Fatal("expected trusted catalog fingerprint mismatch")
 	}
 }
+
+func TestPlanFallsBackToStableTemplateWhenRouterFails(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(workspace, ".takt", "config.yaml")
+	config := `apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: mock
+models:
+  routing:
+    provider: test
+    id: routing
+  implementation:
+    provider: test
+    id: implementation
+  review:
+    provider: test
+    id: review
+assistants:
+  mock:
+    type: mock
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Plan(context.Background(), PlanRequest{Goal: "Исправить неясный дефект", Profile: "code"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Route == nil || result.Route.Route != "template" {
+		t.Fatalf("route = %#v", result.Route)
+	}
+	foundFallback := false
+	for _, signal := range result.Route.Signals {
+		if signal == "router_fallback" {
+			foundFallback = true
+		}
+	}
+	if !foundFallback || !result.Route.Controls.InspectFirst {
+		t.Fatalf("fallback controls = %#v", result.Route)
+	}
+	if result.Decision != "planned" || !result.RequiresConfirmation {
+		t.Fatalf("plan result = %#v", result)
+	}
+}

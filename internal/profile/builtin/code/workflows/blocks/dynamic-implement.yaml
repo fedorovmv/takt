@@ -4,7 +4,7 @@ metadata:
   name: dynamic-implement
   description: Approved Dynamic Takt block dynamic-implement.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: implementation
   session: fresh
 nodes:

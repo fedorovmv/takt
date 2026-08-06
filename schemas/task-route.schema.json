@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/v1alpha1/task-route.schema.json",
+  "title": "Takt task route",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "route", "reason", "confidence", "signals", "controls"],
+  "properties": {
+    "apiVersion": {"const": "takt/v1alpha1"},
+    "kind": {"const": "TaskRoute"},
+    "route": {"enum": ["workflow", "template", "dynamic"]},
+    "workflow": {"type": "string", "minLength": 1},
+    "template": {"const": "simple-reliable"},
+    "reason": {"type": "string", "minLength": 1},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "signals": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inspect_first", "baseline", "independent_tests", "enhanced_review", "max_parallel"],
+      "properties": {
+        "inspect_first": {"type": "boolean"},
+        "baseline": {"type": "boolean"},
+        "independent_tests": {"type": "boolean"},
+        "enhanced_review": {"type": "boolean"},
+        "max_parallel": {"type": "integer", "minimum": 1, "maximum": 64}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"route": {"const": "workflow"}}, "required": ["route"]},
+      "then": {"required": ["workflow"], "properties": {"template": false}}
+    },
+    {
+      "if": {"properties": {"route": {"const": "template"}}, "required": ["route"]},
+      "then": {"required": ["template"], "properties": {"workflow": false}}
+    },
+    {
+      "if": {"properties": {"route": {"const": "dynamic"}}, "required": ["route"]},
+      "then": {"properties": {"workflow": false, "template": false}}
+    }
+  ]
+}

@@ -32,6 +32,7 @@ type Server struct {
 	in      io.Reader
 	out     io.Writer
 	errOut  io.Writer
+	surface Surface
 
 	writeMu sync.Mutex
 	callsMu sync.Mutex
@@ -73,6 +74,10 @@ type callParams struct {
 }
 
 func New(service *control.Service, in io.Reader, out, errOut io.Writer) *Server {
+	return NewWithSurface(service, in, out, errOut, SurfaceAll)
+}
+
+func NewWithSurface(service *control.Service, in io.Reader, out, errOut io.Writer, surface Surface) *Server {
 	if in == nil {
 		in = os.Stdin
 	}
@@ -82,7 +87,10 @@ func New(service *control.Service, in io.Reader, out, errOut io.Writer) *Server 
 	if errOut == nil {
 		errOut = os.Stderr
 	}
-	return &Server{control: service, in: in, out: out, errOut: errOut, calls: map[string]context.CancelFunc{}}
+	if surface == "" {
+		surface = SurfaceAll
+	}
+	return &Server{control: service, in: in, out: out, errOut: errOut, surface: surface, calls: map[string]context.CancelFunc{}}
 }
 
 // HandleJSON handles one JSON-RPC request without binding the MCP server to a
@@ -244,7 +252,7 @@ func (s *Server) handleRequest(ctx context.Context, req request) (any, *rpcError
 	case "server/discover":
 		return s.discover(), nil
 	case "tools/list":
-		return map[string]any{"tools": tools(), "ttlMs": 5000, "cacheScope": "private"}, nil
+		return map[string]any{"tools": tools(s.surface), "ttlMs": 5000, "cacheScope": "private"}, nil
 	case "tools/call":
 		var params callParams
 		if err := strictUnmarshal(req.Params, &params); err != nil {
@@ -279,7 +287,7 @@ func (s *Server) initialize(raw json.RawMessage) (any, *rpcError) {
 		"protocolVersion": selected,
 		"capabilities":    serverCapabilities(),
 		"serverInfo":      serverInfo(),
-		"instructions":    instructions(),
+		"instructions":    instructions(s.surface),
 	}, nil
 }
 
@@ -287,7 +295,7 @@ func (s *Server) discover() map[string]any {
 	return map[string]any{
 		"protocolVersion": Protocol2026,
 		"capabilities":    serverCapabilities(),
-		"instructions":    instructions(),
+		"instructions":    instructions(s.surface),
 		"_meta": map[string]any{
 			"io.modelcontextprotocol/serverInfo": serverInfo(),
 		},
@@ -313,11 +321,12 @@ func serverInfo() map[string]any {
 	return map[string]any{"name": "takt", "title": "Takt Local Workflow Runtime", "version": version.Value}
 }
 
-func instructions() string {
-	return "Use takt.plan and takt.execute for high-level existing-or-dynamic planning, takt.workflow.* to discover workflows, takt.run.* to govern local Runs, and takt.node.* to execute durable external command/prompt nodes. Start is detached by default; poll takt.run.get or takt.run.events with the returned run_id. External workers claim a node with capabilities, stream normalized events, then complete or fail it with the claim token."
-}
+func instructions(surface Surface) string { return surfaceInstructions(surface) }
 
 func (s *Server) callTool(ctx context.Context, params callParams) map[string]any {
+	if !surfaceAllows(s.surface, params.Name) {
+		return toolError(fmt.Errorf("tool %q is not available on MCP surface %q", params.Name, s.surface))
+	}
 	value, err := s.executeTool(ctx, params.Name, params.Arguments)
 	if err != nil {
 		return toolError(err)
@@ -327,6 +336,52 @@ func (s *Server) callTool(ctx context.Context, params callParams) map[string]any
 
 func (s *Server) executeTool(ctx context.Context, name string, args map[string]any) (any, error) {
 	switch name {
+	case "takt.task.start":
+		var in struct {
+			Goal    string `json:"goal"`
+			Profile string `json:"profile,omitempty"`
+			Go      bool   `json:"go,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.StartTask(ctx, control.TaskStartRequest{Goal: in.Goal, Profile: in.Profile, Go: in.Go, Detached: true})
+	case "takt.task.status":
+		var in struct {
+			Reference string `json:"reference"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.TaskStatus(in.Reference)
+	case "takt.task.respond":
+		var in struct {
+			Reference string `json:"reference"`
+			Action    string `json:"action"`
+			Message   string `json:"message,omitempty"`
+			NodeID    string `json:"node_id,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.RespondTask(ctx, control.TaskRespondRequest{Reference: in.Reference, Action: in.Action, Message: in.Message, NodeID: in.NodeID, Detached: true})
+	case "takt.task.stop":
+		var in struct {
+			Reference string `json:"reference"`
+			Reason    string `json:"reason,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.StopTask(control.TaskStopRequest{Reference: in.Reference, Reason: in.Reason})
+	case "takt.task.explain":
+		var in struct {
+			Reference string `json:"reference"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.ExplainTask(in.Reference)
 	case "takt.workflow.list":
 		var in struct {
 			Profile string `json:"profile"`
@@ -819,7 +874,7 @@ func toolError(err error) map[string]any {
 	}
 }
 
-func tools() []tool {
+func allTools() []tool {
 	object := func(properties map[string]any, required ...string) map[string]any {
 		schema := map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
 		if len(required) > 0 {
@@ -852,6 +907,11 @@ func tools() []tool {
 	readOnly := map[string]any{"readOnlyHint": true, "destructiveHint": false}
 	mutating := map[string]any{"readOnlyHint": false}
 	return []tool{
+		{Name: "takt.task.start", Title: "Start a managed Takt task", Description: "Route a natural-language task to a specialized workflow, the stable simple-reliable template, or bounded dynamic composition. By default returns a preview; go=true confirms and starts it.", InputSchema: object(map[string]any{"goal": stringProp("Natural-language task"), "profile": stringProp("Installed profile, defaults to code"), "go": boolProp("Confirm the preview and start immediately")}, "goal"), Annotations: mutating},
+		{Name: "takt.task.status", Title: "Get managed task status", Description: "Read a compact task view by plan_id or run_id, including whether user input is needed.", InputSchema: object(map[string]any{"reference": stringProp("Plan or Run ID")}, "reference"), Annotations: readOnly},
+		{Name: "takt.task.respond", Title: "Respond to a managed task", Description: "Approve, answer, steer, pause, resume, continue or retry a task without exposing the internal state machine.", InputSchema: object(map[string]any{"reference": stringProp("Plan or Run ID"), "action": map[string]any{"type": "string", "enum": []string{"go", "continue", "answer", "steer", "pause", "resume", "retry"}}, "message": stringProp("Answer or steering text when required"), "node_id": stringProp("Optional waiting or failed node")}, "reference", "action"), Annotations: mutating},
+		{Name: "takt.task.stop", Title: "Stop a managed task", Description: "Abandon a plan or Run while preserving its durable history.", InputSchema: object(map[string]any{"reference": stringProp("Plan or Run ID"), "reason": stringProp("Optional stop reason")}, "reference"), Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true}},
+		{Name: "takt.task.explain", Title: "Explain a managed task", Description: "Return detailed routing, controls, phases, child Runs and evidence only when deeper inspection is requested.", InputSchema: object(map[string]any{"reference": stringProp("Plan or Run ID")}, "reference"), Annotations: readOnly},
 		{Name: "takt.workflow.list", Title: "List Takt workflows", Description: "List deterministic workflow selectors published by an installed Takt profile.", InputSchema: object(map[string]any{"profile": stringProp("Installed profile name, for example code")}, "profile"), Annotations: readOnly},
 		{Name: "takt.workflow.describe", Title: "Describe a Takt workflow", Description: "Describe the public DAG of a profile selector before starting it.", InputSchema: object(map[string]any{"selector": stringProp("Profile selector such as code:plan-to-pr")}, "selector"), Annotations: readOnly},
 		{Name: "takt.block.list", Title: "List trusted Dynamic Takt blocks", Description: "List explicitly trusted block packages, governance limits, templates and blocks available to a profile.", InputSchema: object(map[string]any{"profile": stringProp("Installed profile, defaults to code")}), Annotations: readOnly},
@@ -957,6 +1017,20 @@ func tools() []tool {
 		{Name: "takt.node.complete", Title: "Complete external Takt node", Description: "Submit a successful external result and continue the normal Takt retry, output, hook, artifact and parent/child lifecycle.", InputSchema: externalSubmissionSchema(object, stringProp, integerProp), Annotations: mutating},
 		{Name: "takt.node.fail", Title: "Fail external Takt node", Description: "Submit an external failure and continue normal retry and failure handling.", InputSchema: externalSubmissionSchema(object, stringProp, integerProp), Annotations: mutating},
 	}
+}
+
+func tools(surface Surface) []tool {
+	all := allTools()
+	if surface == SurfaceAll {
+		return all
+	}
+	out := make([]tool, 0, len(all))
+	for _, item := range all {
+		if surfaceAllows(surface, item.Name) {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func externalSubmissionSchema(object func(map[string]any, ...string) map[string]any, stringProp func(string) map[string]any, integerProp func(string, int, int) map[string]any) map[string]any {

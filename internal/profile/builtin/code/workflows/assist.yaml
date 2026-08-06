@@ -4,7 +4,7 @@ metadata:
   name: assist
   description: General repository Q&A, debugging, exploration, CI diagnosis, and one-off implementation work.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: implementation
   session: resume
 nodes:

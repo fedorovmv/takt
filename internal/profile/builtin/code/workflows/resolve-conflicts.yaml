@@ -4,7 +4,7 @@ metadata:
   name: resolve-conflicts
   description: Detect and analyze merge conflicts, resolve both sides intentionally, validate the result, and finish the merge or rebase safely.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: implementation
   session: resume
 nodes:

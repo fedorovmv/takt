@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.37-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.38-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -50,9 +50,33 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 
 ## Выполнено в v0.1.37-alpha. Autonomous Run Operations
 
-Добавлены реестр и история Run, attention queue, агрегированный summary, безопасная пауза на границе узлов и fan-out batches, resume, retry зависимого хвоста, fork и отдельное terminal-состояние abandon. Daemon восстанавливает локальные Run после потери executor PID, помечает attempt как `worker_lost` и продолжает parent chain. Локальный notification dispatcher поддерживает durable coding-agent inbox, desktop и доверенный process sink с дедупликацией и ack. Pi/OpenCode получили команды runs/attention/pause/resume/result. MCP расширен до 48 tools. Полный архив среза: `51-autonomous-run-operations-v0.1.37.md`.
+Добавлены реестр и история Run, attention queue, агрегированный summary, безопасная пауза на границе узлов и fan-out batches, resume, retry зависимого хвоста, fork и отдельное terminal-состояние abandon. Daemon восстанавливает локальные Run после потери executor PID, помечает attempt как `worker_lost` и продолжает parent chain. Локальный notification dispatcher поддерживает durable coding-agent inbox, desktop и доверенный process sink с дедупликацией и ack. Pi/OpenCode получили команды runs/attention/pause/resume/result. MCP полной совместимости содержит 48 tools в этом историческом срезе. Полный архив среза: `51-autonomous-run-operations-v0.1.37.md`.
 
-## Приоритет 1. Domain Adapter SDK
+
+## Выполнено в v0.1.38-alpha. Simple Reliable Task Router и нейтральный coding-agent
+
+Добавлены `TaskRoute`, гибридный router и маршруты `workflow|template|dynamic`. Стабильный `simple-reliable` template выполняет investigate/implement/validate/review и прогрессивно добавляет baseline, independent tests, enhanced review и inspect checkpoint. Отказ semantic router приводит к durable inspect-first fallback.
+
+Публичный Task API сокращён до `start|status|respond|stop|explain`. MCP разделён на role-based surfaces: agent видит пять task tools, host и worker — только собственные контракты, полная совместимая поверхность содержит 53 operations. Профиль использует логический `coding-agent`, а `default_assistant` выбирает Pi, OpenCode или внешний `takt-assistant/v1alpha2` adapter для Codex, Oh My Pi, Qwen CLI и других хостов. Полный срез: `52-simple-reliable-agent-neutral-router-v0.1.38.md`; архитектурный proposal: `proposals/001-simple-reliable-agent-neutral-takt.md`.
+
+## Приоритет 1. Role Contract, Brief Compiler и понятные реакции проверок
+
+- first-class внутренний RoleDefinition без установки набора пользовательских агентов;
+- context recipe и новый ограниченный brief на каждую попытку;
+- вычисляемые expected/allowed/protected/forbidden paths;
+- реакции `deny|repair|warn` и required/preferred checks;
+- один точный вопрос только при материальной развилке;
+- независимые Code/Test/Verifier sessions только по сигналам риска.
+
+## Приоритет 2. Evidence, baseline и failure routing
+
+- acceptance-to-evidence mapping и candidate SHA binding;
+- invalidation устаревшего verdict;
+- сравнение новых failures с baseline;
+- компактные failure codes, park/unpark и безопасный next action;
+- reconciliation внешних side effects перед повтором.
+
+## Приоритет 3. Domain Adapter SDK
 
 - нейтральные capability contracts для SCM, tracker и CI;
 - MCP/process transports;
@@ -61,7 +85,7 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 - fake corporate SCM/tracker/CI для контрактных тестов;
 - использование адаптеров как детерминированных узлов Takt и как разрешённых инструментов worker-сессии.
 
-## Приоритет 2. Полная доставка пакетов
+## Приоритет 4. Полная доставка пакетов
 
 - области `global|project|corporate` с явным приоритетом;
 - `install|update|uninstall|doctor`;
@@ -71,7 +95,7 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 - checksum, подпись и политика источников;
 - команды, scripts, skills, MCP и adapter requirements в одном пакете.
 
-## Приоритет 3. Multi-repo dynamic workflow
+## Приоритет 5. Multi-repo dynamic workflow
 
 - определение затронутых репозиториев;
 - dependency graph;
@@ -79,7 +103,7 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 - несколько change request через нейтральный SCM adapter;
 - интеграционная проверка и общий порядок слияния.
 
-## Приоритет 4. Усиление runtime и безопасность локального исполнения
+## Приоритет 6. Усиление runtime и безопасность локального исполнения
 
 - раннее завершение `one_success` и `all_success` с отменой ненужных детей;
 - нормализованные diagnostics и fingerprints ошибок;

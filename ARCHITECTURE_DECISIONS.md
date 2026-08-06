@@ -336,3 +336,46 @@ Dynamic Takt не обнаруживает блоки автоматически
 **Статус:** принято.
 
 При старте daemon обнаруживает `running|pausing` Run, чей `executor_pid` больше не существует. Текущая execution record получает `worker_lost`, consumed attempt возвращается, node становится `pending`, recovery count увеличивается, а дочерние Run восстанавливаются раньше родителей. Это не продолжение того же provider-процесса и не exactly-once гарантия. Критичные внешние операции обязаны использовать идемпотентные адаптеры, ключи операции или отдельные детерминированные узлы.
+
+## ADR-057. Task Router компилирует все маршруты в один runtime
+
+**Статус:** принято.
+
+Пользовательская задача сначала получает `TaskRoute`: готовый workflow,
+стабильный `simple-reliable` template или bounded Dynamic Plan. Любой результат
+после проверки компилируется в обычный `takt/v1alpha1 Workflow` и исполняется
+существующим scheduler. Отдельные runtime для Autopilot, TaskRunner и dynamic
+composition не вводятся.
+
+Semantic router является оптимизацией выбора, а не обязательной зависимостью.
+Его ошибка приводит к inspect-first варианту стабильного шаблона. Модель не
+может добавлять неизвестные workflow/blocks, ослаблять детерминированные controls
+или расширять governance.
+
+## ADR-058. Профиль зависит от логического coding-agent, а не от продукта
+
+**Статус:** принято.
+
+Workflow и Markdown-команды встроенного профиля используют имя
+`coding-agent`. `.takt/config.yaml` связывает его с конкретным assistant через
+`default_assistant`. Pi и OpenCode остаются встроенными адаптерами; Codex, Oh My
+Pi, Qwen CLI и другие хосты подключаются внешней обёрткой по
+`takt-assistant/v1alpha2` либо будущим прямым адаптером.
+
+Каноническая граница называется `SessionAdapter`. Она не предполагает Kiro CLI,
+ACP или иной единственный provider protocol. Существующее имя `Adapter`
+сохраняется как совместимый alias.
+
+## ADR-059. MCP публикует разные поверхности для разных ролей
+
+**Статус:** принято.
+
+Операции agent, host, external worker и operator не публикуются одной основной
+LLM. `agent` surface содержит только пять высокоуровневых `takt.task.*`; host
+получает managed-session guards, worker — node/tool lifecycle, operator — явное
+управление workflow/plan/Run/block/notifications. `all` сохраняется для
+совместимости и диагностики.
+
+Surface фиксируется при создании MCP-подключения или daemon-запроса. Tool call
+не может изменить роль. Внутренние операции остаются гранулярными; сокращение
+внешнего интерфейса не достигается объединением действий с разной семантикой.

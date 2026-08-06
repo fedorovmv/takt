@@ -116,6 +116,25 @@ func main() {
 
 func handleGeneric(prompt string) {
 	lower := strings.ToLower(prompt)
+	if strings.Contains(lower, "semantic task router for takt") {
+		switch {
+		case strings.Contains(lower, "fixture dynamic audit"):
+			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"dynamic","reason":"fixture requires task-specific decomposition","confidence":0.95,"signals":[],"controls":{"inspect_first":false,"baseline":false,"independent_tests":false,"enhanced_review":false,"max_parallel":2}}`)
+		case strings.Contains(lower, `"goal":"change the public api safely"`) || strings.Contains(lower, `"goal":"изменить публичный api"`):
+			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"template","template":"simple-reliable","reason":"protected fixture change","confidence":0.9,"signals":["public_api"],"controls":{"inspect_first":false,"baseline":true,"independent_tests":true,"enhanced_review":true,"max_parallel":1}}`)
+		default:
+			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"template","template":"simple-reliable","reason":"ordinary repository task","confidence":0.9,"signals":[],"controls":{"inspect_first":false,"baseline":false,"independent_tests":false,"enhanced_review":false,"max_parallel":2}}`)
+		}
+		return
+	}
+	if strings.Contains(lower, "capture the unchanged repository baseline") {
+		fmt.Print(`{"summary":"fixture baseline","base_ref":"fixture-base","passed_checks":["fixture"],"known_failures":[],"unavailable_checks":[],"evidence":["fixture"]}`)
+		return
+	}
+	if strings.Contains(lower, "design and add independent tests") {
+		fmt.Print(`{"summary":"fixture independent tests","changed_files":[],"tests":["fixture: pass"],"assumptions":[]}`)
+		return
+	}
 	if strings.Contains(lower, "bounded planner for dynamic takt") {
 		fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"WorkflowPlan","decision":"planned","goal":"fixture dynamic audit","reason":"fixture needs discovery and synthesis","budget":{"max_child_runs":8,"max_parallel":2,"max_iterations":3,"max_tokens":100000},"phases":[{"id":"inventory","uses":"discover","objective":"discover fixture items","strategy":"task","checkpoint":true},{"id":"summary","uses":"synthesize","objective":"summarize fixture results","depends_on":["inventory"],"strategy":"task"}]}`)
 		return

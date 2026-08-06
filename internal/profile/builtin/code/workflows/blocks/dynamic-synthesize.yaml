@@ -4,7 +4,7 @@ metadata:
   name: dynamic-synthesize
   description: Approved Dynamic Takt block dynamic-synthesize.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: review
   session: fresh
 nodes:

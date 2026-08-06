@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.19.0" \
+  "skills/takt/VERSION|0.20.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -103,6 +103,21 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-052" \
   "ARCHITECTURE_DECISIONS.md|ADR-055" \
   "ARCHITECTURE_DECISIONS.md|ADR-056" \
+  "ARCHITECTURE_DECISIONS.md|ADR-057" \
+  "ARCHITECTURE_DECISIONS.md|ADR-058" \
+  "ARCHITECTURE_DECISIONS.md|ADR-059" \
+  "docs/52-simple-reliable-agent-neutral-router-v0.1.38.md|Simple Reliable Router" \
+  "docs/proposals/001-simple-reliable-agent-neutral-takt.md|Takt не зависит от Kiro CLI" \
+  "docs/06-roadmap.md|Выполнено в v0.1.38-alpha" \
+  "scripts/test-simple-reliable-router.sh|simple reliable task router contract: PASS" \
+  "schemas/task-route.schema.json|Takt task route" \
+  "schemas/config.schema.json|default_assistant" \
+  "skills/takt/references/mcp.md|takt.task.start" \
+  "skills/takt/references/mcp.md|--surface agent" \
+  "skills/takt/references/configuration.md|Логический coding-agent" \
+  "README.md|Simple Reliable Task Router" \
+  "internal/profile/builtin/code/workflows/task-route.yaml|route" \
+  "examples/agent-session-adapters/README.md|Kiro CLI" \
   "docs/51-autonomous-run-operations-v0.1.37.md|takt run pause" \
   "docs/51-autonomous-run-operations-v0.1.37.md|takt.notify.list" \
   "docs/06-roadmap.md|Выполнено в v0.1.37-alpha" \
@@ -144,7 +159,7 @@ for check in \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|assistant.tool.requested" \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|scripts/test-deep-code-workflows.sh" \
   "docs/06-roadmap.md|Выполнено в v0.1.33-alpha" \
-  "docs/06-roadmap.md|Приоритет 1. Domain Adapter SDK" \
+  "docs/06-roadmap.md|Приоритет 1. Role Contract" \
   "scripts/test-deep-code-workflows.sh|deep code workflows: PASS" \
   "scripts/test-mcp.sh|takt.node.tool.request" \
   "schemas/assistant-protocol.schema.json|takt-assistant/v1alpha2" \
@@ -168,7 +183,7 @@ for check in \
   "scripts/test-child-fanout.sh|governed child fan-out contract: PASS" \
   "schemas/workflow.schema.json|fan_out" \
   "schemas/run-state.schema.json|child_runs" \
-  "internal/profile/builtin/code/VERSION|0.12.0" \
+  "internal/profile/builtin/code/VERSION|0.13.0" \
   "README.md|Динамический fan-out v0.1.28" \
   "docs/12-document-map.md|42-governed-child-fanout-v0.1.28.md" \
   "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \
@@ -214,7 +229,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.37-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.38-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \
@@ -237,7 +252,7 @@ for check in \
   "docs/12-document-map.md|34-opencode-provider-diagnostics-v0.1.20.md" \
   "docs/14-backlog-v0.2.md|TAKT-008. Fake assistant protocol suite — выполнено" \
   "docs/14-backlog-v0.2.md|TAKT-009. Specialized Pi adapter — выполнено" \
-  "docs/15-coding-agent-start.md|takt-assistant/v1alpha1" \
+  "docs/15-coding-agent-start.md|takt-assistant/v1alpha2" \
   "docs/20-fake-assistant-contract-v0.1.6.md|OS exit code" \
   "docs/21-protocol-hardening-v0.1.7.md|обязаны совпадать всегда" \
   "docs/22-pi-adapter-v0.1.8.md|pi --mode rpc" \

@@ -9,6 +9,8 @@
 1. `docs/01-project.md`;
 1. `docs/05-implementation-status.md`;
 1. `skills/takt/SKILL.md`;
+1. `docs/52-simple-reliable-agent-neutral-router-v0.1.38.md`;
+1. `docs/proposals/001-simple-reliable-agent-neutral-takt.md`;
 1. `docs/51-autonomous-run-operations-v0.1.37.md`;
 1. `docs/50-coding-agent-host-control-v0.1.36.md`;
 1. `docs/49-trusted-block-packages-v0.1.35.md`;
@@ -88,6 +90,7 @@
 | Dynamic Takt | `48-dynamic-takt-v0.1.34.md` | фактический |
 | Доверенные пакеты блоков | `49-trusted-block-packages-v0.1.35.md`, `../schemas/block-package.schema.json`, `../examples/corporate-block-package/` | фактический |
 | Coding Agent Host Control | `50-coding-agent-host-control-v0.1.36.md`, `../integrations/coding-agent-host-control/` | Go strict-core фактический; bundled Pi/OpenCode guarded до live smoke |
+| Task Router, compact Task API и agent-neutral adapter | `52-simple-reliable-agent-neutral-router-v0.1.38.md`, `proposals/001-simple-reliable-agent-neutral-takt.md` | фактический срез и принятый proposal |
 | Автономная эксплуатация Run | `51-autonomous-run-operations-v0.1.37.md` | фактический |
 | Управляемые agent events и глубокие workflow | `46-controlled-agent-events-deep-workflows-v0.1.32.md` | фактический |
 | Исправления последнего аудита | `16–18-audit-remediation-*.md` | фактический |
@@ -155,5 +158,9 @@
 - `49-trusted-block-packages-v0.1.35.md` — BlockPackage, корпоративный governance, fingerprint каталога и исправления Dynamic Takt.
 
 - `50-coding-agent-host-control-v0.1.36.md` — host-control core, guarded Pi/OpenCode integrations и исправления v0.1.35.
+
+- `52-simple-reliable-agent-neutral-router-v0.1.38.md` — Task Router, simple-reliable, MCP surfaces и логический coding-agent.
+
+- `proposals/001-simple-reliable-agent-neutral-takt.md` — сводное развитие после анализа надёжных flow и KiroCrew.
 
 - `51-autonomous-run-operations-v0.1.37.md` — реестр Run, attention, pause/resume/retry/fork/abandon, recovery, notifications и summary.

@@ -1,5 +1,5 @@
 ---
-assistant: opencode
+assistant: coding-agent
 model: routing
 ---
 You are reassessing a Dynamic Takt plan at an explicit checkpoint. The checkpoint JSON includes the trusted block catalog. Completed phases and their results are immutable. Change only unfinished work.

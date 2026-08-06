@@ -4,7 +4,7 @@ metadata:
   name: dynamic-plan
   description: Decide whether an existing workflow fits or produce a bounded task-specific WorkflowPlan from approved blocks.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: routing
   session: fresh
 nodes:

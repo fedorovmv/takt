@@ -50,7 +50,7 @@ YAML
 python3 - "$ROOT/bin/takt" "$TMP" "$TMP/workflow.yaml" "$TMP/config.yaml" <<'PY'
 import json, os, subprocess, sys
 binary, workspace, workflow, config = sys.argv[1:]
-p = subprocess.Popen([binary, "mcp", "--workspace", workspace, "--config", config], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+p = subprocess.Popen([binary, "mcp", "--surface", "all", "--workspace", workspace, "--config", config], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 next_id = 1
 def call(name, arguments, expect_error=False):
     global next_id

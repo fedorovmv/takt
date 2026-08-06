@@ -4,7 +4,7 @@ metadata:
   name: code-router
   description: Smart router for the complete code workflow catalog; classifies the request and executes exactly one specialized workflow as a separately governed child Run.
 defaults:
-  assistant: opencode
+  assistant: coding-agent
   model: implementation
   session: fresh
 nodes:

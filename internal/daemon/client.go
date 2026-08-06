@@ -90,8 +90,13 @@ func mustRaw(value any) json.RawMessage {
 }
 
 func (c *Client) MCP(ctx context.Context, raw []byte) ([]byte, bool, error) {
+	return c.MCPForSurface(ctx, raw, "all")
+}
+
+func (c *Client) MCPForSurface(ctx context.Context, raw []byte, surface string) ([]byte, bool, error) {
 	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://takt/mcp", bytes.NewReader(raw))
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Takt-MCP-Surface", surface)
 	response, err := c.http.Do(request)
 	if err != nil {
 		return nil, false, err

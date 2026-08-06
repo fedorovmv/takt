@@ -1,0 +1,37 @@
+apiVersion: takt/v1alpha1
+kind: Config
+
+# The code profile refers only to the logical name "coding-agent". Select the
+# concrete host adapter here. The commands below are examples of wrappers; they
+# are not bundled by Takt.
+default_assistant: codex
+
+models:
+  routing:
+    provider: local
+    id: routing-model
+  implementation:
+    provider: local
+    id: coding-model
+  review:
+    provider: local
+    id: review-model
+
+assistants:
+  codex:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: [codex-takt-adapter]
+    capabilities: [tool_policy, skills, mcp, sandbox_filesystem]
+
+  ohmypi:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: [ohmypi-takt-adapter]
+    capabilities: [tool_policy, skills, sandbox_filesystem]
+
+  qwen:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: [qwen-takt-adapter]
+    capabilities: [tool_policy, skills, mcp, sandbox_filesystem]
