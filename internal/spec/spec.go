@@ -49,7 +49,9 @@ type Node struct {
 	Internal     *InternalNodeSpec `json:"-"`
 	Attempts     AttemptsSpec      `json:"attempts,omitempty"`
 	AllowFailure bool              `json:"allow_failure,omitempty"`
+	AlwaysRun    bool              `json:"always_run,omitempty"`
 	Timeout      string            `json:"timeout,omitempty"`
+	IdleTimeout  string            `json:"idle_timeout,omitempty"`
 	Hooks        HookSet           `json:"hooks,omitempty"`
 	NativeHooks  json.RawMessage   `json:"native_hooks,omitempty"`
 	AllowedTools *[]string         `json:"allowed_tools,omitempty"`
@@ -168,12 +170,21 @@ type SandboxSpec struct {
 // machine-readable workflow decisions.
 type OutputFormat struct {
 	Type                 string                  `json:"type"`
+	Description          string                  `json:"description,omitempty"`
 	Properties           map[string]OutputFormat `json:"properties,omitempty"`
 	Required             []string                `json:"required,omitempty"`
 	Enum                 []string                `json:"enum,omitempty"`
 	Items                *OutputFormat           `json:"items,omitempty"`
 	MinItems             int                     `json:"minItems,omitempty"`
+	MaxItems             int                     `json:"maxItems,omitempty"`
 	UniqueItems          bool                    `json:"uniqueItems,omitempty"`
+	MinLength            int                     `json:"minLength,omitempty"`
+	MaxLength            int                     `json:"maxLength,omitempty"`
+	Pattern              string                  `json:"pattern,omitempty"`
+	Minimum              *float64                `json:"minimum,omitempty"`
+	Maximum              *float64                `json:"maximum,omitempty"`
+	MinProperties        int                     `json:"minProperties,omitempty"`
+	MaxProperties        int                     `json:"maxProperties,omitempty"`
 	AdditionalProperties *bool                   `json:"additionalProperties,omitempty"`
 }
 

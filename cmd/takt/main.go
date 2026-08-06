@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,14 +9,20 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
+	"takt/internal/authoring"
 	"takt/internal/command"
 	cfgpkg "takt/internal/config"
 	"takt/internal/control"
+	"takt/internal/daemon"
 	"takt/internal/definition"
 	"takt/internal/evaluation"
 	"takt/internal/gitworktree"
@@ -73,6 +80,10 @@ func run(args []string) error {
 		return evalCmd(args[1:])
 	case "mcp":
 		return mcpCmd(args[1:])
+	case "daemon":
+		return daemonCmd(args[1:])
+	case "events":
+		return eventsCmd(args[1:])
 	case "version":
 		fmt.Println("takt v" + version.Value)
 		return nil
@@ -85,17 +96,243 @@ func mcpCmd(args []string) error {
 	fs := newFlagSet("mcp")
 	workspace := fs.String("workspace", ".", "control workspace")
 	configPath := fs.String("config", ".takt/config.yaml", "default config path for direct workflow files")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--config": true})); err != nil {
+	useDaemon := fs.Bool("daemon", false, "proxy MCP through the local daemon")
+	socket := fs.String("socket", "", "daemon Unix socket path")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--config": true, "--daemon": false, "--socket": true})); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return fmt.Errorf("usage: takt mcp [--workspace dir] [--config path]")
+		return fmt.Errorf("usage: takt mcp [--daemon] [--workspace dir] [--config path]")
+	}
+	if *useDaemon {
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		return proxyMCPThroughDaemon(context.Background(), client, os.Stdin, os.Stdout, os.Stderr)
 	}
 	service, err := control.New(*workspace, *configPath)
 	if err != nil {
 		return err
 	}
 	return mcp.New(service, os.Stdin, os.Stdout, os.Stderr).ServeStdio(context.Background())
+}
+
+func proxyMCPThroughDaemon(ctx context.Context, client *daemon.Client, in io.Reader, out, errOut io.Writer) error {
+	scanner := bufio.NewScanner(in)
+	scanner.Buffer(make([]byte, 64*1024), 8*1024*1024)
+	var workers sync.WaitGroup
+	var writeMu sync.Mutex
+	sem := make(chan struct{}, 64)
+	for scanner.Scan() {
+		line := append([]byte(nil), scanner.Bytes()...)
+		if len(strings.TrimSpace(string(line))) == 0 {
+			continue
+		}
+		sem <- struct{}{}
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			defer func() { <-sem }()
+			payload, respond, err := client.MCP(ctx, line)
+			if err != nil {
+				fmt.Fprintln(errOut, "daemon MCP request failed:", err)
+				return
+			}
+			if !respond {
+				return
+			}
+			writeMu.Lock()
+			defer writeMu.Unlock()
+			_, _ = out.Write(append(payload, '\n'))
+		}()
+	}
+	workers.Wait()
+	return scanner.Err()
+}
+
+func daemonCmd(args []string) error {
+	subcommand := "serve"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		subcommand = args[0]
+		args = args[1:]
+	}
+	fs := newFlagSet("daemon " + subcommand)
+	workspace := fs.String("workspace", ".", "control workspace")
+	configPath := fs.String("config", ".takt/config.yaml", "default config path")
+	socket := fs.String("socket", "", "daemon Unix socket path")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--config": true, "--socket": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("usage: takt daemon [serve|start|status|stop] [--workspace dir]")
+	}
+	switch subcommand {
+	case "serve":
+		server, err := daemon.New(daemon.Options{Workspace: *workspace, ConfigPath: *configPath, SocketPath: *socket, ErrOut: os.Stderr})
+		if err != nil {
+			return err
+		}
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer cancel()
+		return server.Serve(ctx)
+	case "start":
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		if metadata, healthErr := client.Health(ctx); healthErr == nil {
+			cancel()
+			return printResult(*jsonOut, map[string]any{"started": false, "already_running": true, "daemon": metadata})
+		}
+		cancel()
+		paths := client.Paths()
+		if err := os.MkdirAll(filepath.Dir(paths.Log), 0o700); err != nil {
+			return err
+		}
+		logFile, err := os.OpenFile(paths.Log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		executable, err := os.Executable()
+		if err != nil {
+			_ = logFile.Close()
+			return err
+		}
+		childArgs := []string{"daemon", "serve", "--workspace", *workspace, "--config", *configPath}
+		if *socket != "" {
+			childArgs = append(childArgs, "--socket", *socket)
+		}
+		command := exec.Command(executable, childArgs...)
+		command.Stdin = nil
+		command.Stdout = logFile
+		command.Stderr = logFile
+		command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		if err := command.Start(); err != nil {
+			_ = logFile.Close()
+			return err
+		}
+		_ = command.Process.Release()
+		_ = logFile.Close()
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer waitCancel()
+		metadata, err := daemon.WaitForHealth(waitCtx, client, 50*time.Millisecond)
+		if err != nil {
+			return fmt.Errorf("start daemon: %w; see %s", err, paths.Log)
+		}
+		return printResult(*jsonOut, map[string]any{"started": true, "daemon": metadata, "log": paths.Log})
+	case "status":
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		metadata, err := client.Health(ctx)
+		if err != nil {
+			return fmt.Errorf("daemon is not running: %w", err)
+		}
+		return printResult(*jsonOut, map[string]any{"running": true, "daemon": metadata})
+	case "stop":
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := client.Shutdown(ctx); err != nil {
+			return err
+		}
+		deadline := time.NewTimer(5 * time.Second)
+		defer deadline.Stop()
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			probeCtx, probeCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			_, healthErr := client.Health(probeCtx)
+			probeCancel()
+			if healthErr != nil {
+				return printResult(*jsonOut, map[string]any{"stopped": true})
+			}
+			select {
+			case <-deadline.C:
+				return fmt.Errorf("daemon did not stop")
+			case <-ticker.C:
+			}
+		}
+	default:
+		return fmt.Errorf("usage: takt daemon [serve|start|status|stop] [--workspace dir]")
+	}
+}
+
+func eventsCmd(args []string) error {
+	fs := newFlagSet("events")
+	workspace := fs.String("workspace", ".", "workspace")
+	useDaemon := fs.Bool("daemon", false, "subscribe through the local daemon")
+	socket := fs.String("socket", "", "daemon Unix socket path")
+	after := fs.Uint64("after", 0, "read events after this revision")
+	limit := fs.Int("limit", 200, "maximum events per batch")
+	follow := fs.Bool("follow", false, "follow until the Run becomes terminal")
+	jsonOut := fs.Bool("json", true, "JSON lines output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--daemon": false, "--socket": true, "--after": true, "--limit": true, "--follow": false, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt events <run-id> [--follow] [--daemon]")
+	}
+	runID := fs.Arg(0)
+	printEvent := func(event store.Event) error {
+		if *jsonOut {
+			raw, err := json.Marshal(event)
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(raw))
+			return nil
+		}
+		fmt.Printf("%d\t%s\t%s\n", event.Revision, event.Type, event.NodeID)
+		return nil
+	}
+	if *useDaemon && *follow {
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		return client.Subscribe(context.Background(), runID, *after, *limit, printEvent)
+	}
+	service, err := controlService(*workspace)
+	if err != nil {
+		return err
+	}
+	cursor := *after
+	for {
+		wait := time.Duration(0)
+		if *follow {
+			wait = 30 * time.Second
+		}
+		result, err := service.Events(context.Background(), runID, cursor, *limit, wait)
+		if err != nil {
+			return err
+		}
+		for _, event := range result.Events {
+			if err := printEvent(event); err != nil {
+				return err
+			}
+			cursor = event.Revision
+		}
+		if !*follow {
+			return nil
+		}
+		state, err := service.GetRun(runID)
+		if err != nil {
+			return err
+		}
+		if (state.Status == store.RunCompleted || state.Status == store.RunFailed || state.Status == store.RunCancelled) && len(result.Events) == 0 {
+			return nil
+		}
+	}
 }
 
 func initCmd(args []string) error {
@@ -125,7 +362,8 @@ func validateCmd(args []string) error {
 	configPath := fs.String("config", ".takt/config.yaml", "config path")
 	workspace := fs.String("workspace", ".", "workspace")
 	jsonOut := fs.Bool("json", false, "JSON output")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--config": true, "--workspace": true, "--json": false})); err != nil {
+	warningsAsErrors := fs.Bool("warnings-as-errors", false, "treat authoring warnings as validation errors")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--config": true, "--workspace": true, "--json": false, "--warnings-as-errors": false})); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -150,11 +388,27 @@ func validateCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	resolver := runtime.New(wf, cfg, wfPath, cfgPath, absWorkspace).Commands
-	if err := validateReferences(wf.Nodes, wf.Defaults, cfg, resolver); err != nil {
+	runner := runtime.New(wf, cfg, wfPath, cfgPath, absWorkspace)
+	resolver := runner.Commands
+	if err := workflow.ValidateReferences(wf, cfg, resolver); err != nil {
 		return err
 	}
-	return printResult(*jsonOut, map[string]any{"valid": true, "workflow": wf.Metadata.Name})
+	if err := runtime.ValidateCapabilities(wf, cfg, wfPath, resolver); err != nil {
+		return fmt.Errorf("capability validation: %w", err)
+	}
+	diagnostics := authoring.Analyze(wf, resolver)
+	if *warningsAsErrors {
+		for index := range diagnostics {
+			if diagnostics[index].Severity == "warning" {
+				diagnostics[index].Severity = "error"
+				diagnostics[index].Code = "warning_as_error." + diagnostics[index].Code
+			}
+		}
+	}
+	if authoring.HasErrors(diagnostics) {
+		return &authoring.Error{Diagnostics: diagnostics}
+	}
+	return printResult(*jsonOut, map[string]any{"valid": true, "workflow": wf.Metadata.Name, "diagnostics": diagnostics})
 }
 
 func runCmd(args []string) error {
@@ -168,7 +422,9 @@ func runCmd(args []string) error {
 	allowDirtyWorktree := fs.Bool("allow-dirty-worktree", false, "start from committed HEAD even when the control workspace is dirty")
 	worktreeBase := fs.String("worktree-base", "", "Git revision used as the worktree base")
 	jsonOut := fs.Bool("json", true, "JSON output")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--config": true, "--workspace": true, "--input": true, "--worktree": false, "--no-worktree": false, "--keep-worktree": false, "--allow-dirty-worktree": false, "--worktree-base": true, "--json": false})); err != nil {
+	useDaemon := fs.Bool("daemon", false, "run in the local daemon")
+	socket := fs.String("socket", "", "daemon Unix socket path")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--config": true, "--workspace": true, "--input": true, "--worktree": false, "--no-worktree": false, "--keep-worktree": false, "--allow-dirty-worktree": false, "--worktree-base": true, "--json": false, "--daemon": false, "--socket": true})); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -218,6 +474,21 @@ func runCmd(args []string) error {
 	if flagPresent(args, "--no-worktree") {
 		value := false
 		worktreeOverride = &value
+	}
+	if *useDaemon {
+		client, err := daemon.NewClient(absWorkspace, *socket)
+		if err != nil {
+			return err
+		}
+		request := control.StartRequest{Selector: fs.Arg(0), Input: *input, Worktree: worktreeOverride, WorktreeBase: *worktreeBase, KeepWorktree: *keepWorktree, AllowDirty: *allowDirtyWorktree, Detached: true}
+		if flagPresent(args, "--config") {
+			request.ConfigPath = *configPath
+		}
+		var result control.StartResult
+		if err := client.Call(context.Background(), "run.start", request, &result); err != nil {
+			return err
+		}
+		return printResult(*jsonOut, result)
 	}
 	runner := runtime.New(wf, cfg, wfPath, cfgPath, absWorkspace)
 	state, runErr := runner.StartWithOptions(context.Background(), inputValue, runtime.StartOptions{
@@ -1007,6 +1278,11 @@ func printErrorJSON(err error) error {
 		code = "store_inconsistent"
 		details["run_id"] = inconsistent.RunID
 	}
+	var authoringErr *authoring.Error
+	if errors.As(err, &authoringErr) {
+		code = "authoring_validation_failed"
+		details["diagnostics"] = authoringErr.Diagnostics
+	}
 	payload := map[string]any{"ok": false, "error": map[string]any{
 		"code": code, "message": err.Error(), "retryable": retryable, "details": details,
 	}}
@@ -1019,5 +1295,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|run|workflow|answer|resume|status|children|artifacts|cancel|worktree|command|eval|mcp|version>")
+	return fmt.Errorf("usage: takt <init|validate|run|workflow|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
 }

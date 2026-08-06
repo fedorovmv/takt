@@ -35,8 +35,10 @@ go build -o bin/takt ./cmd/takt
 Pi adapter и Route DSL contract suites — выполнено
 → evaluation identity и quality contract — выполнено
 → локальный MCP control plane — выполнено
-→ нормализованные agent/tool-call events и внешний исполнитель узла
-→ инструкции подключения MCP для основных coding-agent hosts
+→ нормализованные agent/tool-call events и внешний исполнитель узла — выполнено
+→ глубокие шесть workflow — выполнено
+→ authoring preflight и локальный daemon — выполнено
+→ runtime security hardening
 → baseline на реальном Pi, штатном validator и обезличенных заданиях
 → сравнение моделей и стратегий на одинаковых fingerprints
 ```
@@ -87,6 +89,8 @@ go build ./cmd/takt-fake-pi
 ./scripts/test-takt-skill.sh
 ./scripts/test-script-artifacts.sh
 ./scripts/test-mcp.sh
+./scripts/test-authoring.sh
+./scripts/test-daemon.sh
 ./scripts/check-docs.sh
 ./scripts/verify.sh
 ```

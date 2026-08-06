@@ -740,10 +740,14 @@ func attemptContextError(ctx context.Context, op string) error {
 		return nil
 	}
 	kind := execution.KindCancelled
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	cause := context.Cause(ctx)
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(cause, ErrIdleTimeout) {
 		kind = execution.KindTimedOut
 	}
-	return &execution.Error{Kind: kind, ExitCode: -1, Op: op, Err: ctx.Err()}
+	if cause == nil {
+		cause = ctx.Err()
+	}
+	return &execution.Error{Kind: kind, ExitCode: -1, Op: op, Err: cause}
 }
 
 type execResult struct {
@@ -772,7 +776,11 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 	feedback := state.Nodes[node.ID].Feedback
 	switch {
 	case node.Bash != "":
-		return runBash(ctx, r.Workspace, renderTemplate(node.Bash, state, local, feedback, artifacts))
+		rendered, err := renderTemplate(node.Bash, state, local, feedback, artifacts)
+		if err != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render bash node", Err: err}
+		}
+		return runBash(ctx, r.Workspace, rendered)
 	case node.Script != nil:
 		result, err := r.runScript(ctx, state, node, local, feedback, artifacts)
 		if err == nil && node.OutputFormat != nil {
@@ -791,7 +799,10 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			}
 			return execResult{Output: output, Stdout: output, ExitCode: 0}, nil
 		}
-		message := renderTemplate(node.Approval.Message, state, local, feedback, artifacts)
+		message, err := renderTemplate(node.Approval.Message, state, local, feedback, artifacts)
+		if err != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render approval message", Err: err}
+		}
 		state.Status = store.RunWaiting
 		state.Waiting = &store.WaitingState{NodeID: node.ID, Message: message, Kind: "approval"}
 		state.Nodes[node.ID].Status = store.NodeWaiting
@@ -843,6 +854,12 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			}
 			return result, err
 		}
+		idle, idleErr := newIdleMonitor(ctx, node.IdleTimeout)
+		if idleErr != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "node idle timeout", Err: idleErr}
+		}
+		defer idle.Close()
+		ctx = idle.Context()
 		resolver := r.Assistants
 		if resolver == nil {
 			resolver = assistant.Factory{Config: r.Config}
@@ -851,7 +868,7 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		if err != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: err}
 		}
-		collector := &assistantEventCollector{}
+		collector := &assistantEventCollector{onEvent: idle.Touch}
 		sessionEvent := assistant.EventSessionStarted
 		if resolved.SessionMode == "resume" && resolved.SessionID != "" {
 			sessionEvent = assistant.EventSessionResumed
@@ -863,6 +880,9 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			SessionMode: resolved.SessionMode, SessionID: resolved.SessionID, NativeHooks: node.NativeHooks, Policy: resolved.Policy,
 			Emit: collector.Emit,
 		})
+		if errors.Is(context.Cause(ctx), ErrIdleTimeout) {
+			err = &execution.Error{Kind: execution.KindTimedOut, ExitCode: -1, Op: "assistant idle timeout", Err: ErrIdleTimeout}
+		}
 		events, eventErr := collectAssistantResultEvents(collector, resolved, result, err)
 		if eventErr != nil && err == nil {
 			err = eventErr
@@ -980,7 +1000,11 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 
 func (r *Runner) runHooks(ctx context.Context, state *store.RunState, node spec.Node, hooks []spec.HookSpec, local map[string]store.NodeState) (string, string, error) {
 	for _, hook := range hooks {
-		result, err := runBash(ctx, r.Workspace, renderTemplate(hook.Bash, state, local, state.Nodes[node.ID].Feedback, r.Store.ArtifactsDir(state.ID)))
+		rendered, renderErr := renderTemplate(hook.Bash, state, local, state.Nodes[node.ID].Feedback, r.Store.ArtifactsDir(state.ID))
+		if renderErr != nil {
+			return "fail", renderErr.Error(), &execution.Error{Kind: execution.KindInternal, Op: "render hook", Err: renderErr}
+		}
+		result, err := runBash(ctx, r.Workspace, rendered)
 		if err == nil && result.ExitCode == 0 {
 			continue
 		}
@@ -1217,7 +1241,9 @@ func dependenciesReady(node spec.Node, states map[string]*store.NodeState) (read
 		return false, false
 	}
 	rule := node.TriggerRule
-	if rule == "" {
+	if node.AlwaysRun {
+		rule = "all_done"
+	} else if rule == "" {
 		rule = "all_success"
 	}
 	switch rule {

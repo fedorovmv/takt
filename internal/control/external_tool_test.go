@@ -200,3 +200,62 @@ func mustWriteControlTest(t *testing.T, path, value string) {
 		t.Fatal(err)
 	}
 }
+
+func TestExternalIdleTimeoutFailsClaimedNode(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	mustWriteControlTest(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+models:
+  demo:
+    provider: test
+    id: demo
+assistants:
+  worker:
+    type: mock
+`)
+	mustWriteControlTest(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: external-idle
+
+defaults:
+  assistant: worker
+  model: demo
+nodes:
+  - id: delegated
+    prompt: wait forever
+    executor: external
+    idle_timeout: 40ms
+`)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim.ClaimToken == "" {
+		t.Fatal("claim token is empty")
+	}
+	expired, err := service.ExpireIdleExternal(context.Background(), time.Now().Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(expired) != 1 {
+		t.Fatalf("expired = %#v", expired)
+	}
+	state, err := service.GetRun(started.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunFailed || state.ErrorCode != "timed_out" {
+		t.Fatalf("state = %#v", state)
+	}
+}

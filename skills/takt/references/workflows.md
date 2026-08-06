@@ -37,6 +37,10 @@ nodes:
   timeout: 20m
 ```
 
+`always_run: true` используй для cleanup/finally-узла после terminal-состояния всех зависимостей. Не сочетай его с `when` или другим `trigger_rule`: итоговая ошибка основного графа сохраняется.
+
+`idle_timeout` доступен `command`/`prompt` и измеряет отсутствие нормализованных событий assistant. Общий `timeout` остаётся верхней границей попытки. Для `executor: external` автоматический expiry требует живого `takt daemon`.
+
 Поддерживаемые `trigger_rule`:
 
 - `all_success` — все зависимости `completed`;
@@ -145,6 +149,8 @@ worktree:
 Approval, `subworkflow`, `foreach` и governed `workflow` разрешены внутри `loop_group`; `until.node` использует публичный ID контейнера. Approval сохраняет активную итерацию и после ответа продолжает её. Вложенный `loop_group` остаётся запрещён.
 
 ## Проверяемый JSON output
+
+Шаблоны fail-closed: `${path}` обязателен, `${path?}` возвращает пустую строку при отсутствии, `${path:-default}` задаёт fallback. `takt validate` заранее проверяет upstream output/artifact references, когда producer schema это позволяет.
 
 Для `command` и `prompt` доступен `output_format`:
 

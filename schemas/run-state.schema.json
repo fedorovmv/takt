@@ -732,6 +732,13 @@
           "type": "string",
           "format": "date-time"
         },
+        "idle_timeout": {
+          "type": "string"
+        },
+        "last_activity_at": {
+          "type": "string",
+          "format": "date-time"
+        },
         "last_event_sequence": {
           "type": "integer",
           "minimum": 0

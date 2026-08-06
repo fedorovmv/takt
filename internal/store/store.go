@@ -120,6 +120,8 @@ type ExternalExecutionState struct {
 	ClaimedBy             string                    `json:"claimed_by,omitempty"`
 	ClaimToken            string                    `json:"claim_token,omitempty"`
 	LeaseExpiresAt        time.Time                 `json:"lease_expires_at,omitempty"`
+	IdleTimeout           string                    `json:"idle_timeout,omitempty"`
+	LastActivityAt        time.Time                 `json:"last_activity_at,omitempty"`
 	LastEventSequence     uint64                    `json:"last_event_sequence,omitempty"`
 	Result                *ExternalResultState      `json:"result,omitempty"`
 }

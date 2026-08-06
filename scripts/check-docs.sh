@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.14.0" \
+  "skills/takt/VERSION|0.15.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -95,10 +95,20 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-044" \
   "ARCHITECTURE_DECISIONS.md|ADR-045" \
   "ARCHITECTURE_DECISIONS.md|ADR-046" \
+  "ARCHITECTURE_DECISIONS.md|ADR-047" \
+  "ARCHITECTURE_DECISIONS.md|ADR-048" \
+  "docs/47-authoring-local-daemon-v0.1.33.md|takt daemon start" \
+  "docs/47-authoring-local-daemon-v0.1.33.md|${path:-default}" \
+  "scripts/test-authoring.sh|authoring contract: PASS" \
+  "scripts/test-daemon.sh|daemon contract: PASS" \
+  "schemas/workflow.schema.json|always_run" \
+  "schemas/workflow.schema.json|idle_timeout" \
+  "skills/takt/SKILL.md|--warnings-as-errors" \
+  "SECURITY.md|Локальный daemon" \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|assistant.tool.requested" \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|scripts/test-deep-code-workflows.sh" \
-  "docs/06-roadmap.md|Приоритет 1. Улучшение authoring" \
-  "docs/06-roadmap.md|Приоритет 2. Опциональный локальный daemon" \
+  "docs/06-roadmap.md|Выполнено в v0.1.33-alpha" \
+  "docs/06-roadmap.md|Приоритет 1. Усиление runtime" \
   "scripts/test-deep-code-workflows.sh|deep code workflows: PASS" \
   "scripts/test-mcp.sh|takt.node.tool.request" \
   "schemas/assistant-protocol.schema.json|takt-assistant/v1alpha2" \
@@ -109,7 +119,7 @@ for check in \
   "docs/03-specification.md|server/discover" \
   "skills/takt/references/mcp.md|takt.run.start" \
   "scripts/test-mcp.sh|local MCP contract: PASS" \
-  "README.md|Локальное управление через MCP" \
+  "README.md|Локальное управление через MCP и daemon" \
   "docs/43-script-nodes-typed-artifacts-v0.1.29.md|Script-узел" \
   "docs/43-script-nodes-typed-artifacts-v0.1.29.md|takt artifacts" \
   "scripts/test-script-artifacts.sh|script and typed artifact contract: PASS" \
@@ -122,7 +132,7 @@ for check in \
   "scripts/test-child-fanout.sh|governed child fan-out contract: PASS" \
   "schemas/workflow.schema.json|fan_out" \
   "schemas/run-state.schema.json|child_runs" \
-  "internal/profile/builtin/code/VERSION|0.9.0" \
+  "internal/profile/builtin/code/VERSION|0.9.1" \
   "README.md|Динамический fan-out v0.1.28" \
   "docs/12-document-map.md|42-governed-child-fanout-v0.1.28.md" \
   "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \
@@ -160,13 +170,15 @@ for check in \
   "skills/takt/references/configuration.md|Assistant opencode" \
   "skills/takt/assets/validated-agent-profile/.takt/workflows/opencode.yaml|assistant: opencode" \
   "examples/opencode-smoke/workflow.yaml|assistant: opencode" \
+  "examples/authoring-daemon/workflow.yaml|always_run: true" \
+  "examples/authoring-daemon/README.md|takt daemon start" \
   "scripts/test-opencode-adapter.sh|OpenCode adapter contract suite: PASS" \
   "docs/03-specification.md|allow_failure" \
   "docs/03-specification.md|родительский \`loop_group\`" \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.32-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.33-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \
@@ -239,7 +251,7 @@ for check in \
 do
   file="${check%%|*}"
   text="${check#*|}"
-  grep -Fq "$text" "$file" || {
+  grep -Fq -- "$text" "$file" || {
     echo "documentation regression: '$text' is missing from $file" >&2
     exit 1
   }

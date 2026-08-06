@@ -302,6 +302,10 @@
         "allow_failure": {
           "type": "boolean"
         },
+        "always_run": {
+          "type": "boolean",
+          "description": "Run after dependencies become terminal even if one failed or was cancelled; equivalent to trigger_rule: all_done."
+        },
         "hooks": {
           "$ref": "#/$defs/hooks"
         },
@@ -309,6 +313,10 @@
         "timeout": {
           "type": "string",
           "description": "Go duration, for example 30s or 5m"
+        },
+        "idle_timeout": {
+          "type": "string",
+          "description": "Maximum time without normalized assistant activity; Go duration such as 30s or 5m."
         },
         "subworkflow": {
           "$ref": "#/$defs/subworkflow"
@@ -604,6 +612,10 @@
         "allow_failure": {
           "type": "boolean"
         },
+        "always_run": {
+          "type": "boolean",
+          "description": "Run after dependencies become terminal even if one failed or was cancelled; equivalent to trigger_rule: all_done."
+        },
         "hooks": {
           "$ref": "#/$defs/hooks"
         },
@@ -611,6 +623,10 @@
         "timeout": {
           "type": "string",
           "description": "Go duration, for example 30s or 5m"
+        },
+        "idle_timeout": {
+          "type": "string",
+          "description": "Maximum time without normalized assistant activity; Go duration such as 30s or 5m."
         },
         "subworkflow": {
           "$ref": "#/$defs/subworkflow"
@@ -920,6 +936,9 @@
             "integer"
           ]
         },
+        "description": {
+          "type": "string"
+        },
         "properties": {
           "type": "object",
           "additionalProperties": {
@@ -947,12 +966,42 @@
         "additionalProperties": {
           "type": "boolean"
         },
+        "minProperties": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxProperties": {
+          "type": "integer",
+          "minimum": 0
+        },
         "minItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxItems": {
           "type": "integer",
           "minimum": 0
         },
         "uniqueItems": {
           "type": "boolean"
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pattern": {
+          "type": "string",
+          "format": "regex"
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
         }
       }
     },

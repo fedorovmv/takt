@@ -13,12 +13,16 @@ import (
 const maxNormalizedMessageBytes = 64 * 1024
 
 type assistantEventCollector struct {
-	mu     sync.Mutex
-	events []assistant.Event
-	err    error
+	mu      sync.Mutex
+	events  []assistant.Event
+	err     error
+	onEvent func()
 }
 
 func (c *assistantEventCollector) Emit(event assistant.Event) {
+	if c.onEvent != nil {
+		c.onEvent()
+	}
 	if event.Time.IsZero() {
 		event.Time = time.Now().UTC()
 	}

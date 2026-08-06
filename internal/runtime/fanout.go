@@ -207,7 +207,10 @@ func (r *Runner) runFanOutChild(ctx context.Context, parent *store.RunState, nod
 		return childRunner.Resume(ctx, childState)
 	}
 
-	input := renderFanOutTemplate(definition.Input, parent, local, feedback, artifacts, item, record.Index, total, definition.FanOut.As)
+	input, renderErr := renderFanOutTemplate(definition.Input, parent, local, feedback, artifacts, item, record.Index, total, definition.FanOut.As)
+	if renderErr != nil {
+		return nil, &execution.Error{Kind: execution.KindInternal, Op: "render fan-out child input", Err: renderErr}
+	}
 	options := StartOptions{RunID: record.RunID, ParentRunID: parent.ID, ParentNodeID: fmt.Sprintf("%s[%d]", node.ID, record.Index)}
 	childPolicy := r.inheritedPolicy
 	if definition.Policy != nil {
@@ -292,48 +295,56 @@ func resolveFanOutItems(path string, state *store.RunState) ([]any, []json.RawMe
 	return items, encoded, hex.EncodeToString(hash[:]), nil
 }
 
-func renderFanOutTemplate(src string, state *store.RunState, local map[string]store.NodeState, feedback, artifacts string, item any, index, total int, alias string) string {
+func renderFanOutTemplate(src string, state *store.RunState, local map[string]store.NodeState, feedback, artifacts string, item any, index, total int, alias string) (string, error) {
 	if alias == "" {
 		alias = "item"
 	}
-	src = variableRE.ReplaceAllStringFunc(src, func(token string) string {
-		key := strings.TrimSuffix(strings.TrimPrefix(token, "${"), "}")
+	extra := func(key string) (string, bool) {
 		switch key {
 		case "fanout.index":
-			return strconv.Itoa(index)
+			return strconv.Itoa(index), true
 		case "fanout.total":
-			return strconv.Itoa(total)
+			return strconv.Itoa(total), true
 		case "fanout.item", alias:
-			return fanOutValueString(item)
+			return fanOutValueString(item), true
 		}
 		if strings.HasPrefix(key, "fanout.item.") {
-			return fanOutPathString(item, strings.Split(strings.TrimPrefix(key, "fanout.item."), "."))
+			return fanOutPathLookup(item, strings.Split(strings.TrimPrefix(key, "fanout.item."), "."))
 		}
 		if strings.HasPrefix(key, alias+".") {
-			return fanOutPathString(item, strings.Split(strings.TrimPrefix(key, alias+"."), "."))
+			return fanOutPathLookup(item, strings.Split(strings.TrimPrefix(key, alias+"."), "."))
 		}
-		return token
-	})
-	return renderTemplate(src, state, local, feedback, artifacts)
+		return "", false
+	}
+	return renderTemplateWithResolver(src, state, local, feedback, artifacts, extra)
 }
 
 func fanOutPathString(value any, path []string) string {
+	result, _ := fanOutPathLookup(value, path)
+	return result
+}
+
+func fanOutPathLookup(value any, path []string) (string, bool) {
 	current := value
 	for _, part := range path {
 		switch typed := current.(type) {
 		case map[string]any:
-			current = typed[part]
+			var ok bool
+			current, ok = typed[part]
+			if !ok {
+				return "", false
+			}
 		case []any:
 			index, err := strconv.Atoi(part)
 			if err != nil || index < 0 || index >= len(typed) {
-				return ""
+				return "", false
 			}
 			current = typed[index]
 		default:
-			return ""
+			return "", false
 		}
 	}
-	return fanOutValueString(current)
+	return fanOutValueString(current), true
 }
 
 func fanOutValueString(value any) string {

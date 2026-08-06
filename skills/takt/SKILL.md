@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, script-узлы, типизированные артефакты, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль или управлять Takt через локальный MCP control plane.
+description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, script-узлы, типизированные артефакты, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль, проверить authoring diagnostics или управлять Takt через локальный MCP/daemon.
 ---
 
 # Работа с Takt
@@ -24,9 +24,11 @@ description: Создаёт, устанавливает, изменяет, пр�
    - `workflow` — когда этапу нужен отдельный Run ID, state/events/artifacts/usage, cancellation или собственная worktree-политика;
    - `foreach` — для явно заданного inline-списка или внешнего YAML/JSON-массива, без скрытого разбора Markdown;
    - `output_type`/`output_mime`/`output_path` — для результата, который должен стать проверяемым артефактом и передаваться между Run.
-   - `allowed_tools`/`denied_tools`, `skills`, `mcp`, `sandbox`, `requires` — для проверяемых ограничений AI-узла; явный `allowed_tools: []` означает отсутствие инструментов.
+   - `allowed_tools`/`denied_tools`, `skills`, `mcp`, `sandbox`, `requires` — для проверяемых ограничений AI-узла; явный `allowed_tools: []` означает отсутствие инструментов;
+   - `always_run` — только для cleanup/finally после terminal dependencies;
+   - `idle_timeout` — для AI-узла, который обязан регулярно публиковать activity events.
 5. Сначала используй существующие model aliases и assistants из config. Новые добавляй только при необходимости.
-6. Внеси минимальные изменения и проверь их командой `takt validate`.
+6. Внеси минимальные изменения и проверь их командой `takt validate`; для CI используй `--warnings-as-errors`.
 7. Если пользователь просит рабочий запуск и среда готова, выполни `takt run`; при `waiting` покажи запрос approval и продолжи через `takt answer` только после ответа пользователя.
 8. В ответе перечисли изменённые файлы, фактически выбранные assistant/model и выполненные проверки.
 
@@ -43,9 +45,9 @@ takt run code --workspace . --input docs/plan.md --json
 
 Профиль хранится в `.takt/profiles/code/`. Markdown-файл остаётся авторитетным планом: Takt передаёт агенту его путь и содержимое, но не преобразует его в обязательный JSON/YAML список задач. Формализованные входные адаптеры должны оставаться расширением, а не условием работы профиля.
 
-## Локальный MCP control plane
+## Локальный MCP и daemon
 
-Для управления Takt из coding-agent host запускай `takt mcp --workspace .`. Сначала используй `takt.workflow.list/describe`, затем `takt.run.start`; сохрани `run_id` и наблюдай через `takt.run.get/events`. Approval подтверждай `takt.run.answer` только при наличии решения пользователя. Полный контракт: `references/mcp.md`.
+Для одноразового управления из coding-agent host запускай `takt mcp --workspace .`. Когда Run должен пережить закрытие клиента или к одному workspace подключаются несколько локальных агентов, используй `takt daemon start --workspace .` и `takt mcp --daemon --workspace .`. Сохраняй `run_id`, наблюдай через `takt.run.get/events` либо `takt events --daemon --follow`. Approval подтверждай только при наличии решения пользователя. Полный MCP-контракт: `references/mcp.md`.
 
 ## Источники истины
 
@@ -80,6 +82,8 @@ takt run code --workspace . --input docs/plan.md --json
 - Неподдерживаемая capability должна завершать узел до вызова модели; не описывай ограничения только в prompt.
 - Filesystem/network policy текущей версии является assistant-enforced и не заменяет OS sandbox.
 - Значимые файлы публикуй через `output_type` и `output_path`; downstream использует `${nodes.<id>.artifacts.<type>.path}`, а не временный путь producer.
+- Обязательная шаблонная ссылка записывается `${path}` и должна разрешиться; отсутствие допускай только явно через `${path?}` или `${path:-default}`.
+- `takt validate` проверяет output/artifact references и adapter capabilities до Run; не откладывай эти ошибки до модели.
 - Не добавляй `system_prompt`, `user_prompt`, автоматический model fallback или иные поля, которых нет в текущем контракте.
 
 ## Переиспользование workflow
@@ -164,7 +168,7 @@ output_path: $ARTIFACTS_DIR/plan.md
 
 ## Структурированный вывод и умный роутер
 
-Для классификации, маршрутизации и других машинных решений задавай `output_format`. Он поддерживает небольшой JSON-Schema-подобный subset: `object`, `array`, `string`, `boolean`, `number`, `integer`, `properties`, `required`, `enum`, `items`, `additionalProperties`.
+Для классификации, маршрутизации и других машинных решений задавай `output_format`. Он поддерживает проверяемый JSON-Schema-подобный subset: базовые типы, `properties`, `required`, `enum`, `items`, `additionalProperties`, min/max для массивов, строк, чисел и объектов, а также `pattern`.
 
 ```yaml
 - id: route

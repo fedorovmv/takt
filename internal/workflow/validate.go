@@ -209,6 +209,23 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 				return fmt.Errorf("node %q has invalid timeout %q", n.ID, n.Timeout)
 			}
 		}
+		if n.IdleTimeout != "" {
+			duration, err := time.ParseDuration(n.IdleTimeout)
+			if err != nil || duration <= 0 {
+				return fmt.Errorf("node %q has invalid idle_timeout %q", n.ID, n.IdleTimeout)
+			}
+			if n.Command == "" && n.Prompt == "" {
+				return fmt.Errorf("node %q idle_timeout is supported only for command or prompt nodes", n.ID)
+			}
+		}
+		if n.AlwaysRun {
+			if n.TriggerRule != "" && n.TriggerRule != "all_done" {
+				return fmt.Errorf("node %q always_run is incompatible with trigger_rule %q; omit trigger_rule or use all_done", n.ID, n.TriggerRule)
+			}
+			if n.When != "" {
+				return fmt.Errorf("node %q always_run is incompatible with when; use an explicit all_done node without always_run when conditional cleanup is required", n.ID)
+			}
+		}
 		if n.AllowedTools != nil || len(n.DeniedTools) > 0 || n.Skills != nil || n.MCP != "" || n.Sandbox != nil || len(n.Requires) > 0 {
 			if n.Command == "" && n.Prompt == "" {
 				return fmt.Errorf("node %q assistant policies are supported only for command or prompt nodes", n.ID)
@@ -427,6 +444,12 @@ func nodeDependsOn(nodeID, target string, byID map[string]spec.Node, seen map[st
 func validateOutputFormat(format spec.OutputFormat, path string) error {
 	switch format.Type {
 	case "object":
+		if format.MinProperties < 0 || format.MaxProperties < 0 {
+			return fmt.Errorf("%s minProperties/maxProperties must not be negative", path)
+		}
+		if format.MaxProperties > 0 && format.MinProperties > format.MaxProperties {
+			return fmt.Errorf("%s minProperties must not exceed maxProperties", path)
+		}
 		for _, name := range format.Required {
 			if _, ok := format.Properties[name]; !ok {
 				return fmt.Errorf("%s requires unknown property %q", path, name)
@@ -441,15 +464,46 @@ func validateOutputFormat(format spec.OutputFormat, path string) error {
 		if format.Items == nil {
 			return fmt.Errorf("%s array requires items", path)
 		}
-		if format.MinItems < 0 {
-			return fmt.Errorf("%s minItems must not be negative", path)
+		if format.MinItems < 0 || format.MaxItems < 0 {
+			return fmt.Errorf("%s minItems/maxItems must not be negative", path)
+		}
+		if format.MaxItems > 0 && format.MinItems > format.MaxItems {
+			return fmt.Errorf("%s minItems must not exceed maxItems", path)
 		}
 		if err := validateOutputFormat(*format.Items, path+".items"); err != nil {
 			return err
 		}
-	case "string", "boolean", "number", "integer":
+	case "string":
+		if format.MinLength < 0 || format.MaxLength < 0 {
+			return fmt.Errorf("%s minLength/maxLength must not be negative", path)
+		}
+		if format.MaxLength > 0 && format.MinLength > format.MaxLength {
+			return fmt.Errorf("%s minLength must not exceed maxLength", path)
+		}
+		if format.Pattern != "" {
+			if _, err := regexp.Compile(format.Pattern); err != nil {
+				return fmt.Errorf("%s pattern is invalid: %w", path, err)
+			}
+		}
+	case "number", "integer":
+		if format.Minimum != nil && format.Maximum != nil && *format.Minimum > *format.Maximum {
+			return fmt.Errorf("%s minimum must not exceed maximum", path)
+		}
+	case "boolean":
 	default:
 		return fmt.Errorf("%s has unsupported type %q", path, format.Type)
+	}
+	if format.Type != "array" && (format.MinItems != 0 || format.MaxItems != 0 || format.UniqueItems || format.Items != nil) {
+		return fmt.Errorf("%s array constraints require type array", path)
+	}
+	if format.Type != "string" && (format.MinLength != 0 || format.MaxLength != 0 || format.Pattern != "") {
+		return fmt.Errorf("%s string constraints require type string", path)
+	}
+	if format.Type != "number" && format.Type != "integer" && (format.Minimum != nil || format.Maximum != nil) {
+		return fmt.Errorf("%s numeric constraints require type number or integer", path)
+	}
+	if format.Type != "object" && (format.MinProperties != 0 || format.MaxProperties != 0 || len(format.Properties) > 0 || len(format.Required) > 0 || format.AdditionalProperties != nil) {
+		return fmt.Errorf("%s object constraints require type object", path)
 	}
 	if len(format.Enum) > 0 && format.Type != "string" {
 		return fmt.Errorf("%s enum is supported only for string", path)

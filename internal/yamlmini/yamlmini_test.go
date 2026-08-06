@@ -69,3 +69,13 @@ func TestUnknownFieldsRemainStrict(t *testing.T) {
 		t.Fatal("expected unknown-field error")
 	}
 }
+
+func TestUnknownFieldSuggestsNearestKnownField(t *testing.T) {
+	var got struct {
+		IdleTimeout string `json:"idle_timeout"`
+	}
+	err := Unmarshal([]byte("idle_timout: 10s\n"), &got)
+	if err == nil || err.Error() != `unknown field "idle_timout" at $; did you mean "idle_timeout"?` {
+		t.Fatalf("error = %v", err)
+	}
+}

@@ -1,6 +1,6 @@
 # Спецификация адаптеров исполнителей
 
-Статус: process-протокол, Pi RPC adapter и OpenCode CLI adapter реализованы и покрыты контрактными наборами. Capability discovery и потоковый EventSink остаются целевыми возможностями v0.2.
+Статус: process-протокол v1alpha1/v1alpha2, Pi RPC adapter, OpenCode CLI adapter, capability declaration и нормализованный EventSink реализованы и покрыты контрактными наборами.
 
 ## 1. Назначение
 
@@ -94,9 +94,15 @@ Adapter публикует список строковых capabilities:
 - `sandbox_network`;
 - дополнительные adapter-specific names.
 
-Runtime выводит обязательный набор из effective node policy и `requires`. Запуск отклоняется до вызова процесса, если capability отсутствует. Встроенные Pi/OpenCode не могут объявить через config зарезервированную возможность, которую adapter фактически не реализует. Универсальный `process` объявляет поддерживаемые гарантии явно, поскольку их исполняет внешний adapter.
+Runtime выводит обязательный набор из effective node policy и `requires`. `takt validate` выполняет этот preflight для локальных adapters; запуск повторяет проверку до процесса. Для `executor: external` worker подтверждает declaration при claim. Если capability отсутствует, выполнение отклоняется. Встроенные Pi/OpenCode не могут объявить через config зарезервированную возможность, которую adapter фактически не реализует. Универсальный `process` объявляет поддерживаемые гарантии явно, поскольку их исполняет внешний adapter.
 
 `allowed_tools: []` и `skills: []` являются заданными пустыми allowlists, а не отсутствием политики. Эффективная политика передаётся в `Request.Policy`, process protocol и `TAKT_POLICY_JSON`; фактически применённая политика и capabilities сохраняются в состоянии узла.
+
+## 3.1. Activity и idle timeout
+
+Нормализованное событие через `Request.Emit` считается activity signal и сбрасывает `idle_timeout` AI-узла. Adapter обязан публиковать события только после фактического прогресса; искусственный heartbeat скрывает зависание и нарушает контракт. Общий `timeout` остаётся независимой верхней границей попытки.
+
+Для внешнего executor activity сохраняется в `ExternalExecutionState.last_activity_at`, а expiry выполняет локальный daemon. Blocking tool approval приостанавливает idle expiry, потому что worker ожидает внешнее решение, а не завис.
 
 ## 4. Process transport
 

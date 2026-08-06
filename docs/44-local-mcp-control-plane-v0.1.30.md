@@ -1,5 +1,7 @@
 # Локальный MCP control plane v0.1.30-alpha
 
+
+> Историческая заметка: в v0.1.30 daemon ещё отсутствовал. Локальный `takt daemon` добавлен в v0.1.33-alpha; актуальный контракт описан в `47-authoring-local-daemon-v0.1.33.md`.
 > Продолжение: v0.1.31-alpha устраняет transient torn reads файлового store, добавляет `events.idx`, нормализованные assistant/tool events и инструменты внешнего executor. См. `45-agent-events-external-executor-v0.1.31.md`.
 
 

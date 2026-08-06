@@ -1,4 +1,4 @@
-# Результаты проверок — v0.1.32-alpha
+# Результаты проверок — v0.1.33-alpha
 
 Дата проверки: 2026-08-06.
 
@@ -9,56 +9,53 @@
 - GNU Bash `5.2.37`;
 - Python `3.13.5`;
 - Node `22.16.0`;
-- локальные deterministic adapters и изолированный fake GitHub CLI;
+- локальные детерминированные adapters, временные Git-репозитории и изолированный fake GitHub CLI;
 - реальный macOS runner в этой среде недоступен.
 
 В CI сохраняется матрица `ubuntu-latest` / `macos-latest`. Фактический macOS PASS в этом отчёте не заявляется.
 
-## Agent event protocol v2
+## Строгий authoring
 
 | Контракт | Результат |
 |---|---|
-| единые `assistant.session.started` и `assistant.session.resumed` | PASS |
-| `tool.requested → allowed/denied → started → completed` | PASS |
-| policy проверяется до разрешения и запуска инструмента | PASS |
-| обязательное approval блокирует tool call | PASS |
-| отдельная отмена до старта и cooperative `cancel_requested` во время работы | PASS |
-| внешний узел нельзя завершить с незакрытым tool call | PASS |
-| `assistant.artifact.declared` содержит provenance и `call_id` | PASS |
-| нормализованные usage/diagnostic/completed/failed events | PASS |
-| raw stdout/stderr не заменяются нормализованными событиями | PASS |
-| capability declaration adapter/worker и fail-closed `tool_control` | PASS |
-| двусторонний process protocol `takt-assistant/v1alpha2` | PASS |
-| OpenCode/Pi честно остаются observational adapters | PASS |
+| неизвестные YAML/JSON-поля отклоняются с путём и `did you mean` для близкой опечатки | PASS |
+| `takt validate` проверяет effective capabilities локальных adapters до создания Run | PASS |
+| governed child workflow и `loop_group` участвуют в рекурсивном capability preflight | PASS |
+| ссылки `${nodes.*}` проверяются по направлению зависимостей и `output_format` | PASS |
+| loop-узел может ссылаться на upstream-узел контейнера; добавлена отдельная регрессия | PASS |
+| approval, artifact, fan-out и loop references получают предметную диагностику | PASS |
+| `${path}` fail-closed, `${path?}` optional, `${path:-default}` использует fallback | PASS |
+| предупреждения можно перевести в ошибки через `--warnings-as-errors` | PASS |
+| расширенные ограничения JSON Schema проверяются при validate и на результате | PASS |
+| `always_run` выполняет cleanup после failed dependency, не меняя итог failed Run | PASS |
+| `idle_timeout` сбрасывается activity events и завершается как `timed_out` | PASS |
+| противоречивые `always_run`, `trigger_rule`, `when`, timeout/idle_timeout диагностируются заранее | PASS |
 
-## MCP control и worker plane
+## Локальный daemon
 
 | Контракт | Результат |
 |---|---|
-| 22 MCP tools в детерминированном порядке | PASS |
-| durable external node, claim token, lease и capability attestation | PASS |
-| tool request/decision/start/get/complete/cancel | PASS |
-| защищённое объявление артефакта внешним worker | PASS |
-| structured completion проходит обычные output/retry/artifact semantics | PASS |
-| сквозной stdio MCP-сеанс с blocking approval | PASS |
-| преждевременное завершение узла отклоняется | PASS |
+| `takt daemon start/status/stop/serve` поверх Unix socket | PASS |
+| один daemon на workspace, lock и stale-socket recovery | PASS |
+| background Run продолжает работу после завершения запускающего CLI | PASS |
+| несколько локальных клиентов используют один control service | PASS |
+| event subscription передаёт NDJSON по revision cursor до terminal-состояния | PASS |
+| `takt mcp --daemon` проксирует полный локальный MCP control/worker plane | PASS |
+| claimed external worker обслуживается daemon и получает activity-based idle timeout | PASS |
+| незавершённые tool calls закрываются при idle expiry, узел становится `timed_out` | PASS |
+| monitor goroutine завершается до shutdown и не обращается к удалённому workspace | PASS |
+| короткие конкурирующие изменения Run повторяют transient lock с ограниченным ожиданием | PASS |
+| Store остаётся файловым, неблокирующим и без БД | PASS |
 
-## Шесть глубоких workflow
+## Совместимость существующих процессов
 
-Проверка выполняется на временном настоящем Git-репозитории с bare remote, process adapter и изолированным fake `gh`.
-
-| Сценарий | Результат |
+| Контракт | Результат |
 |---|---|
-| `fix-github-issue`: intake → root cause → reproduction → plan → implementation → validation → push/PR | PASS |
-| `idea-to-pr`: research → typed plan → approval/resume → implementation → validation → PR | PASS |
-| `plan-to-pr`: первая validation падает → recovery → revalidation → PR | PASS |
-| `smart-pr-review`: intake существующего fake PR → governed reviewers → synthesis | PASS |
-| `piv-loop`: exploration → plan approval → implementation → validation/review/acceptance | PASS |
-| `ralph-dag`: backlog → story loop → validation → push/PR | PASS |
-| checkpoint `blocked` останавливает plan/implementation/validation/PR и не изменяет Git | PASS |
-| некорректный JSON input отклоняется до assistant/Git | PASS |
-| обязательные типизированные artifacts и domain codes | PASS |
-| строгие JSON-входы без неизвестных полей | PASS |
+| шесть глубоких workflow профиля `code` проходят Git fixture | PASS |
+| условные recovery/revalidation references переведены на явные optional expressions | PASS |
+| profile `code` 0.9.1 и authoring skill 0.15.0 | PASS |
+| Route DSL, включая ссылку loop-команды на upstream контейнера, проходит strict validate | PASS |
+| worktree, governed child Runs, fan-out, policies, scripts/artifacts и MCP | PASS |
 
 ## Полный шлюз рабочего дерева
 
@@ -75,7 +72,7 @@ OpenCode adapter contracts                 PASS
 Route DSL end-to-end/evaluation/isolation  PASS
 workflow composition                       PASS
 Takt authoring skill                       PASS
-code profile 0.9.0                         PASS
+code profile 0.9.1                         PASS
 Git worktree lifecycle                     PASS
 governed child Runs                        PASS
 node capability policies                   PASS
@@ -84,23 +81,22 @@ script and typed artifacts                 PASS
 local MCP control plane                    PASS
 external controlled executor               PASS
 deep six-workflow Git fixture              PASS
+authoring contract                         PASS
+daemon contract                            PASS
 documentation and examples                 PASS
-scripts/verify.sh                           PASS
-verification: PASS                         PASS
-exit code                                  0
 ```
 
-Полный `scripts/verify.sh` запущен отдельным непрерывным процессом после окончательных изменений и завершился с кодом `0`. Разбиение тестов из-за ограничения времени одного tool-вызова не использовалось.
+Прямой race-вызов через ограниченный tool-сеанс был остановлен по времени после успешных пакетов до `internal/profile`; оставшиеся пакеты были выполнены отдельной неизменённой группой и прошли. Затем стандартный `scripts/verify.sh`, включающий полный `go test -race ./...`, был запущен одним отсоединённым процессом и завершился с кодом `0` и строкой `verification: PASS`. Он выполнялся на окончательном рабочем дереве после исправления статического анализа loop-scope.
 
 ## Что не проверялось
 
+- фактическая GitHub Actions job на macOS;
 - реальные сетевые вызовы GitHub;
 - реальные сеансы Claude, Codex, OpenCode и Pi;
-- перехват tool call через OpenCode/Pi: их текущие интерфейсы позволяют только наблюдательные события;
-- фактическая GitHub Actions job на macOS;
-- удалённый worker и сетевой transport;
-- продолжение после завершения процесса через `takt daemon`: daemon относится к следующему направлению;
-- системный OS sandbox и redaction секретов.
+- TCP, удалённые workers и многопользовательская авторизация: daemon намеренно Unix-only;
+- продолжение работающего локального OS-процесса после падения или перезапуска самого daemon;
+- системный OS sandbox, redaction секретов и distributed locking;
+- полноценный Route DSL benchmark на обезличенных реальных заданиях.
 
 ## Проверка поставляемого архива
 
@@ -108,18 +104,20 @@ exit code                                  0
 
 ```text
 sha256sum -c MANIFEST.sha256              PASS
-VERSION=0.1.32-alpha                      PASS
-profile code VERSION=0.9.0                PASS
-skill VERSION=0.14.0                      PASS
+VERSION=0.1.33-alpha                      PASS
+profile code VERSION=0.9.1                PASS
+skill VERSION=0.15.0                      PASS
 go vet ./...                              PASS
-go test ./... -count=1                    PASS
-go test -race ./... -count=1              PASS
+go test ./...                             PASS
+go test -race ./...                       PASS
 все adapter/runtime/MCP contracts         PASS
-семь deep-workflow Git scenarios          PASS
+deep six-workflow Git fixture             PASS
+authoring contract                        PASS
+daemon contract                           PASS
 documentation and examples                PASS
 scripts/verify.sh                          PASS
 verification: PASS                        PASS
 exit code                                 0
 ```
 
-После добавления этого фактического результата изменились только `TEST_RESULTS.md` и `MANIFEST.sha256`. Финальный ZIP был пересобран детерминированно, распакован в новый чистый каталог и повторно прошёл тот же полный `scripts/verify.sh` с кодом `0`. После этой проверки исходный код и функциональные файлы не изменялись.
+После добавления этого фактического результата изменились только `TEST_RESULTS.md` и `MANIFEST.sha256`. Финальный ZIP пересобран детерминированно, распакован в ещё один чистый каталог и повторно прошёл тот же полный `scripts/verify.sh` с кодом `0`; после этой проверки исходный код и функциональные файлы не изменялись.

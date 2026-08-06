@@ -44,7 +44,10 @@ func (r *Runner) captureDeclaredArtifact(state *store.RunState, node spec.Node, 
 	var data []byte
 	var filename string
 	if strings.TrimSpace(node.OutputPath) != "" {
-		rendered := renderTemplate(node.OutputPath, state, local, ns.Feedback, r.Store.ArtifactsDir(state.ID))
+		rendered, err := renderTemplate(node.OutputPath, state, local, ns.Feedback, r.Store.ArtifactsDir(state.ID))
+		if err != nil {
+			return fmt.Errorf("render artifact output_path: %w", err)
+		}
 		resolved, err := r.resolveArtifactSourcePath(rendered, r.Store.ArtifactsDir(state.ID))
 		if err != nil {
 			return err

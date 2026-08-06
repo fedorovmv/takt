@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"takt/internal/authoring"
 	cfgpkg "takt/internal/config"
 	"takt/internal/profile"
 	"takt/internal/runtime"
@@ -264,6 +265,13 @@ func (s *Service) prepareStart(request StartRequest) (*preparedStart, error) {
 	if err := workflow.ValidateReferences(wf, cfg, runner.Commands); err != nil {
 		return nil, err
 	}
+	if err := runtime.ValidateCapabilities(wf, cfg, wfPath, runner.Commands); err != nil {
+		return nil, fmt.Errorf("capability validation: %w", err)
+	}
+	diagnostics := authoring.Analyze(wf, runner.Commands)
+	if authoring.HasErrors(diagnostics) {
+		return nil, &authoring.Error{Diagnostics: diagnostics}
+	}
 	input := request.Input
 	inputCandidate := request.Input
 	if request.Input != "" && !filepath.IsAbs(inputCandidate) {
@@ -349,7 +357,7 @@ func (s *Service) GetRun(runID string) (*store.RunState, error) {
 
 func (s *Service) Resume(ctx context.Context, runID string) (*store.RunState, error) {
 	st := store.FS{Workspace: s.Workspace}
-	release, err := st.AcquireLock(runID)
+	release, err := acquireRunLock(st, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +383,7 @@ func (s *Service) Answer(ctx context.Context, runID, requestedNodeID, value stri
 	if err != nil {
 		return nil, err
 	}
-	release, err := st.AcquireLock(target.ID)
+	release, err := acquireRunLock(st, target.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +470,7 @@ func resolveApprovalTarget(st store.FS, runID, requestedNodeID string) (*store.R
 func resumeParentChain(ctx context.Context, st store.FS, child *store.RunState) (*store.RunState, error) {
 	current := child
 	for current != nil && current.ParentRunID != "" {
-		release, err := st.AcquireLock(current.ParentRunID)
+		release, err := acquireRunLock(st, current.ParentRunID)
 		if err != nil {
 			return current, err
 		}
@@ -531,7 +539,7 @@ func (s *Service) Cancel(runID, reason string) (any, error) {
 		return nil, err
 	}
 	if state.Status == store.RunWaiting {
-		release, lockErr := st.AcquireLock(state.ID)
+		release, lockErr := acquireRunLock(st, state.ID)
 		if lockErr != nil {
 			return nil, lockErr
 		}
@@ -582,7 +590,7 @@ func cancelRunTree(st store.FS, state *store.RunState, reason string, includeSel
 	if state.Status != store.RunWaiting {
 		return nil
 	}
-	release, err := st.AcquireLock(state.ID)
+	release, err := acquireRunLock(st, state.ID)
 	if err != nil {
 		return err
 	}

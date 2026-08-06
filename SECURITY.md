@@ -2,7 +2,7 @@
 
 ## Supported trust model
 
-Takt `v0.1.32-alpha` is a local, single-user, trusted runtime.
+Takt `v0.1.33-alpha` is a local, single-user, trusted runtime. `takt daemon` allows several clients owned by the same OS user but does not create a multi-user trust boundary.
 
 Trusted inputs:
 
@@ -19,7 +19,7 @@ The current version must not be exposed as a service that accepts these values f
 
 - strict unknown-field validation;
 - safe Run ID format;
-- per-Run lock for `answer` and `resume`;
+- per-Run lock for control mutations, with bounded serialization for concurrent CLI/MCP/daemon clients;
 - definition fingerprints before resume;
 - timeout and output limit for process assistants;
 - Unix process-group termination on context cancellation;
@@ -92,6 +92,14 @@ A future server or untrusted mode requires at minimum:
 `takt mcp` предоставляет тем же локальным полномочиям структурированный интерфейс запуска, approval, cancellation и чтения state/events/artifacts. Он не содержит аутентификации и не является сетевой security boundary. Запускай его только как stdio child process доверенного coding-agent host того же пользователя.
 
 Tool arguments считаются доверенными локальными запросами, но декодируются строго. Artifact content ограничивается по размеру; это ограничение защищает transport от случайного большого ответа, но не выполняет redaction. Содержимое state, events, stdout/stderr и artifacts может включать секреты согласно общему trust model.
+
+## Локальный daemon
+
+`takt daemon` слушает только Unix socket в `.takt/daemon.sock`; socket, metadata и log создаются для текущего пользователя. Любой процесс с доступом к socket получает полномочия локального CLI над workspace: запуск, чтение output/artifacts, approval, cancellation и внешний worker control. Это механизм локальной координации, а не аутентификация.
+
+Не публикуй socket через TCP proxy и не размещай workspace в каталоге с доступом недоверенных пользователей. Daemon переживает закрытие клиента, но не является supervisor для crash-recovery произвольного OS-процесса. После завершения daemon исполнявшийся subprocess прекращается вместе с ним; durable waiting/pending state остаётся для явного resume/reclaim.
+
+`idle_timeout` внешнего executor выполняется daemon. Он закрывает незавершённые tool calls и сохраняет timeout transition, но не может принудительно остановить сторонний процесс worker, который находится вне process group Takt.
 
 ## Управляемые tool calls внешнего executor
 

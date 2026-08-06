@@ -123,7 +123,7 @@ prepare input
 - проверяемый `output_format`, JSON-пути и approval внутри `loop_group`;
 - параллельные DAG-волны простых независимых узлов;
 - governed child Run, parent/child approval-resume, cancellation tree и worktree isolation;
-- ограничения инструментов/MCP/skills/sandbox, динамический fan-out, script/artifacts, local MCP, event protocol v2 и внешний executor реализованы в v0.1.27–v0.1.32-alpha.
+- ограничения инструментов/MCP/skills/sandbox, динамический fan-out, script/artifacts, local MCP, event protocol v2 и внешний executor реализованы в v0.1.27–v0.1.32-alpha; authoring preflight и локальный daemon — в v0.1.33-alpha.
 
 ## 7. Проверка универсальности
 

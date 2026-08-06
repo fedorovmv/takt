@@ -4,13 +4,15 @@
 
 ### Форматы и загрузка
 
-- workflow/config/profile в YAML и JSON со строгим decode неизвестных полей;
+- workflow/config/profile в YAML и JSON со строгим decode неизвестных полей и path-aware `did you mean`;
 - документированный YAML subset с block scalar;
 - JSON Schemas для config, workflow, profile, state, events, Markdown-команд и assistant protocol;
 - проверка ссылок, ID, циклов DAG, рекурсии structural и governed workflow и глубины композиции 16;
 - именованный каталог workflow в профиле и селектор `profile:workflow`;
 - `takt workflow list` и `takt workflow describe`;
-- проверяемый JSON `output_format` для `command`, `prompt` и `script`.
+- расширенный проверяемый JSON `output_format` для `command`, `prompt` и `script`;
+- authoring diagnostics: output/artifact references, dependency direction, suspicious combinations и `--warnings-as-errors`;
+- capability preflight выполняется уже в `takt validate`, включая governed child definitions.
 
 ### Runtime
 
@@ -23,25 +25,29 @@
 - детерминированный массив результатов `foreach` в порядке входа независимо от порядка завершения;
 - публичная проекция Run без внутренних `__`-ID;
 - defaults `assistant`, `model`, `session` на structural container;
-- portable hooks, retry с feedback, timeout/cancellation, `allow_failure`;
+- portable hooks, retry с feedback, timeout/cancellation, activity-based `idle_timeout`, `allow_failure` и cleanup `always_run`;
 - fingerprints workflow/config/commands/subworkflow/items source;
 - файловые state/events/artifacts, revision consistency и блокировка Run;
 - script runtime `command|python|node|go` с file/inline source, args, env, working directory, timeout/cancellation и structured output;
 - fingerprint исходника script и явно объявленных dependencies;
 - типизированные `output_type`/`output_mime`/`output_path` артефакты с SHA-256 и producer metadata;
-- ссылки `${nodes.<id>.artifacts.<type>.<field>}`, CLI `takt artifacts` и передача артефактов parent/child/fan-out;
+- строгий renderer `${path}`/`${path?}`/`${path:-default}` и ссылки `${nodes.<id>.artifacts.<type>.<field>}`;
+- CLI `takt artifacts` и передача артефактов parent/child/fan-out;
 - управляемая Git worktree isolation с отдельной веткой, control/execution workspace, safe cleanup и resume;
 - CLI `worktree list/remove/prune` и persisted Run overrides.
 
-### Локальный MCP control plane и управляемый worker lifecycle
+### Локальный MCP, daemon и управляемый worker lifecycle
 
-- команда `takt mcp` и stdio JSON-RPC transport без отдельного daemon/БД;
+- прямой `takt mcp` и `takt mcp --daemon` через локальный Unix socket;
+- `takt daemon start|status|stop|serve` без БД: background Runs, event subscriptions и несколько клиентов одного пользователя;
 - legacy initialization `2025-03-26|2025-06-18|2025-11-25` и stateless discovery `2026-07-28`;
 - 22 tools: workflow list/describe, Run start/get/resume/answer/cancel/children/artifacts/events, external node pending/claim/event/complete/fail и управляемые tool request/decision/start/complete/get/cancel/artifact declaration;
 - detached start с durable `run_id`;
 - indexed revision cursor и bounded long polling событий без полного пересканирования журнала;
 - structured/text tool results, bounded artifact content, request cancellation и strict arguments;
-- MCP использует существующие fingerprints, locks, store и parent/child lifecycle.
+- MCP и daemon используют существующие fingerprints, locks, store и parent/child lifecycle;
+- concurrent control mutations сериализуются bounded retry, а daemon shutdown ожидает monitor goroutines;
+- claimed external `idle_timeout` обслуживается daemon и закрывает зависшие tool calls как cancelled перед `timed_out`.
 - `executor: external` передаёт один command/prompt узел внешнему worker через durable claim/lease/token, capability preflight, normalized events и обычные retry/hooks/output/artifact semantics.
 - event protocol v2 сохраняет `assistant.session.started|session.resumed|message|tool.requested|tool.allowed|tool.denied|tool.started|tool.completed|artifact.declared|usage|diagnostic|completed|failed`;
 - capability declaration различает наблюдательные events и настоящий `tool_control`; OpenCode/Pi не заявляют pre-execution interception;
@@ -65,7 +71,7 @@
 - динамический fan-out из JSON-массива upstream-узла: устойчивые Run ID, `max_parallel`, resume, ordered aggregation, `all_success|all_done|one_success`, выборочная и каскадная отмена;
 - contract suite `scripts/test-child-fanout.sh`.
 
-### Профиль code 0.9.0
+### Профиль code 0.9.1
 
 - 19 процессов разработки: assist, issue/PR flows, PIV, Ralph, idea/plan-to-PR, reviews, architecture, safe refactoring, PRD, workflow builder, Remotion и conflict resolution;
 - умный роутер как корневой Run с отдельным governed child Run выбранного процесса;
@@ -94,7 +100,8 @@
 
 ### CLI
 
-- `init`, `validate`, `run`, `answer`, `resume`, `status`, `children`, `cancel`, `command run`;
+- `init`, `validate`, `run`, `answer`, `resume`, `status`, `children`, `cancel`, `events`, `command run`;
+- `validate --warnings-as-errors`; `run --daemon`; `mcp --daemon`; `daemon start|status|stop|serve`;
 - `worktree list`, `worktree remove`, `worktree prune`;
 - `workflow list`, `workflow describe`;
 - `artifacts` с фильтрацией по узлу/типу и рекурсивным обходом child Runs;
@@ -107,22 +114,22 @@
 - `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` structural-группы задаются внутри дочернего workflow;
 - вложенные `loop_group` запрещены до path-based namespace;
 - `items_from` является статическим compile-time источником, а не output предыдущего узла;
-- язык условий и `output_format` — намеренно небольшой проверяемый subset;
-- process protocol не передаёт потоковые tool events;
+- язык условий и `output_format` остаются проверяемым subset, а не полной JSON Schema;
+- process protocol v1alpha1 не передаёт потоковые tool events; v1alpha2 передаёт;
 - native hooks передаются adapter, но не исполняются ядром.
 
 ## Отличия от полной платформы Archon
 
-Все 19 пользовательских процессов, роутер, managed worktree и governed child Run lifecycle перенесены. На уровне инфраструктуры пока отсутствуют:
+Все 19 пользовательских процессов, роутер, managed worktree, governed child Run lifecycle и локальный daemon реализованы. На уровне инфраструктуры отсутствуют:
 
-- server/Web UI, БД, message adapters, notifications и проверка подключённой GitHub identity — proposal для будущего нелокального режима.
+- удалённый server/Web UI, БД, message adapters, notifications и многопользовательская авторизация — proposal для будущего нелокального режима.
 
 Tool/skills/MCP policy теперь является контрактом ядра и adapters. Filesystem/network policy остаётся assistant-enforced и не заменяет OS sandbox.
 
 ## Текущая граница безопасности
 
-Текущая версия — локальный однопользовательский trusted runtime. Workflow, config, Markdown-команды, shell, assistants и workspace считаются доверенными. Separate child Run и Git worktree являются границами lifecycle/изменений, но не sandbox. Server/untrusted scope требует sandbox, path/network policy, secret redaction, авторизацию и отдельную threat model.
+Текущая версия — локальный однопользовательский trusted runtime. Daemon расширяет время жизни и число локальных клиентов, но не меняет trust boundary. Workflow, config, Markdown-команды, shell, assistants и workspace считаются доверенными. Separate child Run и Git worktree являются границами lifecycle/изменений, но не sandbox. Server/untrusted scope требует sandbox, path/network policy, secret redaction, авторизацию и отдельную threat model.
 
 ## Ближайший целевой срез
 
-Локальный MCP, event protocol v2, управляемый внешний executor и глубокие шесть workflow реализованы к `v0.1.32-alpha`. Следующие крупные приоритеты — authoring diagnostics/strict renderer, опциональный локальный daemon, затем runtime security hardening и предметный Route DSL benchmark. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.
+Authoring preflight, strict renderer, `always_run`, `idle_timeout` и локальный daemon реализованы к `v0.1.33-alpha`. Следующие крупные приоритеты — runtime/security hardening и предметный Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.

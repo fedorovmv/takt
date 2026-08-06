@@ -1,10 +1,10 @@
 # Архитектура
 
 ```text
-CLI
+CLI / MCP / Local Daemon
  │
  ▼
-Control Workspace / Run Store ── Git Worktree Manager ── Execution Workspace
+Control Service / Control Workspace / Run Store ── Git Worktree Manager ── Execution Workspace
  │
  ▼
 Workflow Loader ── Command Resolver ── Config/Model Registry
@@ -35,13 +35,16 @@ Runner / Shared DAG Scheduler
 - `internal/assistant` — адаптеры `mock`, универсальный `process` и специализированные `pi` и `opencode`;
 - `internal/definition` — fingerprints workflow/config/commands;
 - `internal/workflow` — загрузка и статическая проверка DAG;
+- `internal/authoring` — diagnostics для templates, output/artifact references и несовместимых параметров;
+- `internal/control` — общий lifecycle API для CLI, MCP и daemon;
+- `internal/daemon` — локальный Unix-socket процесс для background Runs и subscriptions;
 - `internal/runtime` — общий scheduler, hooks, loops, approval, governed child lifecycle, cancellation tree и итог Run;
 - `internal/store` — revisioned state/event store, parent/child links, durable cancel markers, aggregate usage и lock Run;
 - `internal/evaluation` — изолированный запуск наборов заданий и агрегация метрик из RunState.
 
 ## Граница с кодовым агентом
 
-Takt не получает отдельные вызовы `read_file`, `write_file` и MCP tools. Агентный запуск является одной операцией. Детальные события появятся только в specialized adapter при наличии соответствующей capability.
+Takt не реализует собственный tool loop. Встроенные adapters публикуют нормализованные session/message/tool/usage/diagnostic events в пределах доступных возможностей. Полный блокирующий tool lifecycle обеспечивают controllable process/external executors; OpenCode/Pi остаются наблюдательными интеграциями.
 
 ## Семантика выполнения
 
@@ -88,6 +91,12 @@ Workflow definitions, config, commands, Run state, events, locks и artifacts п
 ## Evaluation
 
 `takt eval run` выполняет каждый Markdown-case в отдельной копии workspace template. Перед запуском evaluation вычисляет strategy fingerprint из workflow/config/commands и benchmark fingerprint из набора заданий, копируемого workspace template, quality/generation nodes и валидатора. Предметный validator остаётся частью workflow и возвращает `takt-validation/v1alpha1`; evaluation сохраняет assistant/version/requested/resolved model и агрегирует attempts, duration, usage, approvals, errors, diagnostics и метрики качества.
+
+## Authoring и локальный daemon
+
+Authoring preflight выполняется до создания Run: loader предлагает `did you mean`, capability validator проверяет фактические adapters, а analyzer проверяет template/output/artifact references. Renderer остаётся частью runtime и повторяет fail-closed проверку при фактическом выполнении.
+
+`takt daemon` владеет тем же `control.Service`, что CLI/MCP, и добавляет только время жизни процесса и Unix-socket transport. Store, scheduler и модель Run не дублируются. Background Run переживает закрытие клиента, event stream использует revision cursor, а concurrent control mutations сериализуются per-Run lock. БД не требуется.
 
 ## Scope безопасности
 

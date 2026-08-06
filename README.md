@@ -6,16 +6,16 @@
 
 ## Область применения текущей версии
 
-`v0.1.32-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.33-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
-Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
+Локальный `takt daemon` поддерживает фоновые Run и несколько клиентов одного пользователя через Unix socket. Сетевой и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и distributed locking. Эти режимы не поддерживаются.
 
 ## Что уже работает
 
 - конфигурация моделей и исполнителей;
 - Markdown-команды с frontmatter;
 - workflow в YAML или JSON;
-- DAG с параллельным выполнением независимых узлов, `depends_on`, `when` и `trigger_rule`;
+- DAG с параллельным выполнением независимых узлов, `depends_on`, `when`, `trigger_rule` и cleanup-семантикой `always_run`;
 - единая семантика корневого DAG и дочернего DAG `loop_group`;
 - узлы `command`, `prompt`, `bash`, `script`, `approval`, `loop_group`, `subworkflow`, `foreach`, `workflow`;
 - reusable `subworkflow` компилируется в тот же DAG, а `workflow` запускает отдельный governed child Run;
@@ -29,7 +29,7 @@
 - разделение ненулевого exit code, ошибки запуска, timeout и cancellation;
 - `allow_failure`, разрешающий только ненулевой exit code;
 - `all_done` после неуспешной зависимости;
-- timeout всей попытки узла, включая portable hooks;
+- timeout всей попытки узла, включая portable hooks, и activity-based `idle_timeout` для AI-узлов;
 - timeout/cancellation родительского `loop_group` сохраняют `timed_out`/`cancelled`;
 - общий thread-safe лимит stdout/stderr process assistant;
 - approval с сохранением состояния и продолжением через `takt answer`, включая повторные решения внутри `loop_group`;
@@ -45,16 +45,17 @@
 - OpenCode CLI adapter через `opencode run --format json`, с model/agent/variant mapping, проверенным resume, per-step usage, сохранением provider diagnostics при timeout/cancellation и contract suite;
 - полное совпадение OS exit code и envelope `exit_code`, включая ноль;
 - единый JSON envelope CLI для успеха и ошибок;
-- строгий YAML subset с сохранением пустых строк в block scalar;
-- проверяемый `output_format` для JSON-решений и обращение к вложенным полям результата в `when` и шаблонах;
+- строгий YAML subset с сохранением пустых строк в block scalar, path-aware `did you mean` и authoring diagnostics;
+- расширенный проверяемый `output_format`, статическая диагностика output/artifact references и строгие `${path}`, `${path?}`, `${path:-default}`;
 - именованные workflow профиля, `workflow list/describe` и селектор `profile:name`;
-- профиль `code` 0.9.0 с 19 процессами разработки, умным роутером и шестью глубокими workflow со строгими JSON-входами, checkpoint artifacts, domain errors, Git/recovery semantics;
+- профиль `code` 0.9.1 с 19 процессами разработки, умным роутером и шестью глубокими workflow со строгими JSON-входами, checkpoint artifacts, domain errors, Git/recovery semantics;
 - управляемые Git worktree: политика workflow, отдельная ветка, безопасное удержание/очистка и `takt worktree list/remove/prune`;
 - parent/child lifecycle с отдельными state/events/artifacts/usage, `takt children`, каскадным `takt cancel` и approval через корневой Run;
 - динамический fan-out governed child Runs из структурированного output: устойчивые child ID, `max_parallel`, resume, ordered aggregation и join policies;
 - script runtime `command|python|node|go` с fingerprints исходника и зависимостей;
 - типизированные артефакты с MIME, SHA-256, producer metadata, CLI `takt artifacts` и передачей parent/child/fan-out;
 - локальный stdio MCP control plane с dual-era `initialize`/`server/discover`, 22 инструментами управления workflow/Run, внешними AI-узлами и отдельными tool calls, detached start, indexed revision events и bounded artifact content;
+- локальный `takt daemon` на Unix socket и файловом Store: background Runs, event subscriptions, MCP proxy, idle enforcement внешних workers и несколько клиентов без БД;
 - event protocol v2: session lifecycle, tool request/allow/deny/start/complete, отдельная отмена tool call, artifact declaration с `call_id`, usage/diagnostic/terminal events и capability declaration;
 - aggregate usage по узлам и отдельные execution records по каждой фактической попытке;
 - `takt eval run/report` для воспроизводимой оценки каталогов заданий с fingerprints стратегии, benchmark, workspace и валидатора, версией assistant, requested/resolved model и предметными метриками качества;
@@ -116,15 +117,27 @@ make check
 
 
 
-## Локальное управление через MCP
+## Локальное управление через MCP и daemon
+
+Одноразовый stdio MCP:
 
 ```bash
 takt mcp --workspace . --config .takt/config.yaml
 ```
 
+Фоновый локальный процесс:
+
+```bash
+takt daemon start --workspace .
+takt run workflow.yaml --workspace . --daemon --json
+takt events <run-id> --workspace . --daemon --follow
+takt mcp --workspace . --daemon
+takt daemon stop --workspace .
+```
+
 Сервер работает по stdio и публикует `takt.workflow.list/describe`, `takt.run.start/get/resume/answer/cancel/children/artifacts/events`, `takt.node.pending/claim/event/complete/fail` и управляемый lifecycle `takt.node.tool.request/decide/start/complete/get/cancel` вместе с `takt.node.artifact.declare`. `run.start` по умолчанию возвращает durable `run_id` после принятия запуска; состояние и поток событий читаются отдельными вызовами по revision cursor. Поддерживаются legacy initialization до `2025-11-25` и stateless discovery `2026-07-28`.
 
-MCP использует тот же файловый store, locks, fingerprints, governed children и worktree lifecycle, что CLI. Это локальный интерфейс текущего пользователя, а не сетевой сервер. Подробности: [Локальный MCP control plane v0.1.30](docs/44-local-mcp-control-plane-v0.1.30.md), [внешний executor v0.1.31](docs/45-agent-events-external-executor-v0.1.31.md) и [управляемые события и глубокие workflow v0.1.32](docs/46-controlled-agent-events-deep-workflows-v0.1.32.md).
+Прямой MCP и daemon используют тот же файловый store, locks, fingerprints, governed children и worktree lifecycle, что CLI. Daemon слушает только Unix socket текущего пользователя, переживает закрытие клиента, но не является сетевым или многопользовательским сервером. Подробности: [Локальный MCP control plane v0.1.30](docs/44-local-mcp-control-plane-v0.1.30.md), [внешний executor v0.1.31](docs/45-agent-events-external-executor-v0.1.31.md) и [управляемые события и глубокие workflow v0.1.32](docs/46-controlled-agent-events-deep-workflows-v0.1.32.md), а также [authoring/daemon v0.1.33](docs/47-authoring-local-daemon-v0.1.33.md).
 
 ## Профиль code: 19 процессов, умный роутер и глубокие workflow
 
@@ -246,7 +259,7 @@ takt artifacts <run-id> --type plan --recursive
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.9.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, а v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow. Server, Web UI и БД остаются proposal-направлением для возможного выхода за локальный trusted runtime.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.9.1 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, а v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
 
 Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Отдельный предметный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 

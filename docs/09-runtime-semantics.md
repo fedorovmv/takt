@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.32-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.33-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -301,11 +301,10 @@ Flag parser не печатает дополнительный текст в std
 
 ## 17. Оставшаяся семантика v0.2
 
-- строгие неизвестные template variables;
-- normalized assistant protocol;
-- session resume без тихого fallback;
-- расширение `output_format` до более полного JSON Schema;
-- schema version, attempt и correlation ID как отдельные поля event.
+- дальнейшее приближение `output_format` к полному JSON Schema без скрытого принятия неподдерживаемых keywords;
+- schema version, attempt и correlation ID как отдельные поля всех системных event;
+- error fingerprints и единый каталог machine-readable diagnostics;
+- retry backoff и раннее завершение fan-out.
 
 
 ## Композиция workflow
@@ -371,11 +370,21 @@ Only a clean successful `on_success` worktree is removed automatically. An uncha
 Adapter публикует capabilities. Если хотя бы одна необходимая capability отсутствует, узел завершается до запуска процесса. Эффективная политика и список capabilities сохраняются в `NodeState.policy`; inherited policy сохраняется в child Run. Policy resources входят в definition fingerprint.
 
 
+## Authoring, always_run и idle_timeout
+
+Workflow загружается fail-closed. Неизвестные поля получают path-aware подсказку; обязательная `${path}` должна разрешиться, `${path?}` допускает отсутствие, `${path:-default}` подставляет fallback. До Run статически проверяются upstream output/artifact references и capabilities локальных adapters.
+
+`always_run` ждёт terminal-состояния всех зависимостей и затем становится runnable независимо от их успеха. Cleanup не меняет итог failed Run на completed. `idle_timeout` измеряет отсутствие нормализованной assistant activity, а не полное wall-clock время попытки; общий `timeout` остаётся верхней границей. Blocking tool approval не считается зависанием внешнего worker.
+
+## Local daemon semantics
+
+Daemon является дополнительным владельцем времени жизни `control.Service`. Unix socket, metadata и lock лежат в `.takt/`; файловый Store остаётся источником истины. Concurrent clients не пишут state напрямую и используют bounded ожидание per-Run lock. Event subscription передаёт события после revision как NDJSON. Shutdown прекращает daemon и ожидает служебные monitor goroutines; активные дочерние OS-процессы не считаются restartable jobs.
+
 ## MCP control-plane semantics
 
 MCP adapter не создаёт альтернативную модель состояния. Каждый tool вызывает общий local control service и использует тот же `Runner`, `FS`, lock, fingerprint, child lifecycle и worktree policy, что CLI.
 
-Detached start генерирует Run ID до запуска goroutine и возвращает его только после появления durable state либо ранней ошибки запуска. Жизненный цикл выполняется внутри процесса `takt mcp`; завершение host-процесса не является durable daemon semantics.
+Detached start генерирует Run ID до запуска goroutine и возвращает его после появления durable state либо ранней ошибки запуска. При прямом `takt mcp` жизненный цикл ограничен процессом MCP. При `takt daemon` Run принадлежит отдельному локальному процессу и продолжается после закрытия клиента; daemon restart не восстанавливает произвольный уже выполнявшийся OS-процесс автоматически.
 
 `takt.run.events` использует монотонный `Event.Revision` как cursor: ответ содержит только события с revision больше `after_revision`, сохраняет порядок журнала и ограничивает число элементов. `wait_ms` реализует bounded polling и не меняет event store.
 

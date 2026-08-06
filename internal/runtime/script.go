@@ -21,7 +21,10 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 	}
 	workingDir := r.Workspace
 	if definition.WorkingDir != "" {
-		rendered := renderTemplate(definition.WorkingDir, state, local, feedback, artifactsDir)
+		rendered, err := renderTemplate(definition.WorkingDir, state, local, feedback, artifactsDir)
+		if err != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render script working_directory", Err: err}
+		}
 		resolved, err := r.resolveExecutionPath(rendered)
 		if err != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve script working_directory", Err: err}
@@ -30,22 +33,38 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 	}
 	args := make([]string, len(definition.Args))
 	for index, value := range definition.Args {
-		args[index] = renderTemplate(value, state, local, feedback, artifactsDir)
+		rendered, err := renderTemplate(value, state, local, feedback, artifactsDir)
+		if err != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render script argument", Err: err}
+		}
+		args[index] = rendered
 	}
 	var cmd *exec.Cmd
 	runtimeName := strings.TrimSpace(definition.Runtime)
 	switch runtimeName {
 	case "command":
-		path, err := r.resolveExecutionPath(renderTemplate(definition.Path, state, local, feedback, artifactsDir))
+		renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
+		if renderErr != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render command script path", Err: renderErr}
+		}
+		path, err := r.resolveExecutionPath(renderedPath)
 		if err != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve command script", Err: err}
 		}
 		cmd = exec.CommandContext(ctx, path, args...)
 	case "python":
 		if definition.Inline != "" {
-			cmd = exec.CommandContext(ctx, "python3", append([]string{"-c", renderTemplate(definition.Inline, state, local, feedback, artifactsDir)}, args...)...)
+			inline, renderErr := renderTemplate(definition.Inline, state, local, feedback, artifactsDir)
+			if renderErr != nil {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render python inline script", Err: renderErr}
+			}
+			cmd = exec.CommandContext(ctx, "python3", append([]string{"-c", inline}, args...)...)
 		} else {
-			path, err := r.resolveExecutionPath(renderTemplate(definition.Path, state, local, feedback, artifactsDir))
+			renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
+			if renderErr != nil {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render python script path", Err: renderErr}
+			}
+			path, err := r.resolveExecutionPath(renderedPath)
 			if err != nil {
 				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve python script", Err: err}
 			}
@@ -53,16 +72,28 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		}
 	case "node":
 		if definition.Inline != "" {
-			cmd = exec.CommandContext(ctx, "node", append([]string{"-e", renderTemplate(definition.Inline, state, local, feedback, artifactsDir)}, args...)...)
+			inline, renderErr := renderTemplate(definition.Inline, state, local, feedback, artifactsDir)
+			if renderErr != nil {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render node inline script", Err: renderErr}
+			}
+			cmd = exec.CommandContext(ctx, "node", append([]string{"-e", inline}, args...)...)
 		} else {
-			path, err := r.resolveExecutionPath(renderTemplate(definition.Path, state, local, feedback, artifactsDir))
+			renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
+			if renderErr != nil {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render node script path", Err: renderErr}
+			}
+			path, err := r.resolveExecutionPath(renderedPath)
 			if err != nil {
 				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve node script", Err: err}
 			}
 			cmd = exec.CommandContext(ctx, "node", append([]string{path}, args...)...)
 		}
 	case "go":
-		path, err := r.resolveExecutionPath(renderTemplate(definition.Path, state, local, feedback, artifactsDir))
+		renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
+		if renderErr != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render go script path", Err: renderErr}
+		}
+		path, err := r.resolveExecutionPath(renderedPath)
 		if err != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve go script", Err: err}
 		}
@@ -81,7 +112,11 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		"TAKT_ARTIFACTS_DIR="+artifactsDir,
 	)
 	for key, value := range definition.Env {
-		cmd.Env = append(cmd.Env, key+"="+renderTemplate(value, state, local, feedback, artifactsDir))
+		rendered, err := renderTemplate(value, state, local, feedback, artifactsDir)
+		if err != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render script environment", Err: err}
+		}
+		cmd.Env = append(cmd.Env, key+"="+rendered)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

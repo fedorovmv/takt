@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"takt/internal/assistant"
 	"takt/internal/execution"
@@ -97,8 +98,12 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 	if sessionMode == "fresh" {
 		sessionID = ""
 	}
+	renderedPrompt, err := renderTemplate(prompt, state, local, feedback, artifacts)
+	if err != nil {
+		return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindInternal, Op: "render assistant prompt", Err: err}
+	}
 	return resolvedAssistantNode{
-		Prompt: renderTemplate(prompt, state, local, feedback, artifacts), AssistantName: assistantName,
+		Prompt: renderedPrompt, AssistantName: assistantName,
 		ModelName: modelName, Model: model, Policy: policy, Capabilities: capabilities,
 		SessionMode: sessionMode, SessionID: sessionID,
 	}, nil
@@ -113,6 +118,7 @@ func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, reso
 		}
 		ns.External = &store.ExternalExecutionState{
 			Status: "pending", Attempt: ns.Attempts, Prompt: resolved.Prompt, Workspace: r.Workspace, ToolCalls: map[string]*store.ToolCallState{},
+			IdleTimeout: node.IdleTimeout, LastActivityAt: time.Now().UTC(),
 			Assistant:      resolved.AssistantName,
 			RequestedModel: &store.ModelRef{Name: resolved.ModelName, Provider: resolved.Model.Provider, ID: resolved.Model.ID, Params: cloneParams(resolved.Model.Params)},
 			SessionMode:    resolved.SessionMode, SessionID: resolved.SessionID,

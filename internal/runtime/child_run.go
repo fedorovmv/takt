@@ -87,7 +87,10 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 	childRunner.Store = r.Store
 	childRunner.Assistants = r.Assistants
 	if childState == nil {
-		input := renderTemplate(definition.Input, state, local, feedback, artifacts)
+		input, renderErr := renderTemplate(definition.Input, state, local, feedback, artifacts)
+		if renderErr != nil {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render child workflow input", Err: renderErr}
+		}
 		options := StartOptions{RunID: nodeState.ChildRunID, ParentRunID: state.ID, ParentNodeID: node.ID}
 		childPolicy := r.inheritedPolicy
 		if definition.Policy != nil {

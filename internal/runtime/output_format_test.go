@@ -121,7 +121,10 @@ func TestJSONOutputFieldsAreAvailableToConditionsAndTemplates(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("unexpected condition result ok=%v err=%v", ok, err)
 	}
-	got := renderTemplate("${nodes.route.output.details.level}", state, nil, "", "")
+	got, err := renderTemplate("${nodes.route.output.details.level}", state, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got != "full" {
 		t.Fatalf("unexpected rendered JSON field %q", got)
 	}

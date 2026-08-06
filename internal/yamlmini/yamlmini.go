@@ -3,6 +3,7 @@ package yamlmini
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -26,9 +27,18 @@ func Unmarshal(data []byte, out any) error {
 		return fmt.Errorf("empty document")
 	}
 	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		var value any
 		dec := json.NewDecoder(strings.NewReader(trimmed))
-		dec.DisallowUnknownFields()
-		return dec.Decode(out)
+		dec.UseNumber()
+		if err := dec.Decode(&value); err != nil {
+			return err
+		}
+		if err := validateKnownFields(value, reflect.TypeOf(out).Elem(), "$"); err != nil {
+			return err
+		}
+		typed := json.NewDecoder(strings.NewReader(trimmed))
+		typed.DisallowUnknownFields()
+		return typed.Decode(out)
 	}
 	lines, err := tokenize(string(data))
 	if err != nil {
@@ -46,6 +56,9 @@ func Unmarshal(data []byte, out any) error {
 	p.skipIgnorable()
 	if p.pos != len(p.lines) {
 		return fmt.Errorf("unexpected content at line %d", p.lines[p.pos].num)
+	}
+	if err := validateKnownFields(value, reflect.TypeOf(out).Elem(), "$"); err != nil {
+		return err
 	}
 	encoded, err := json.Marshal(value)
 	if err != nil {

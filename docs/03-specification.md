@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.32-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.33-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -8,7 +8,7 @@
 
 ## 1.1. Локальный MCP control plane
 
-Команда `takt mcp --workspace <dir> [--config <path>]` запускает локальный stdio JSON-RPC/MCP adapter поверх того же runtime и file store, которые использует CLI. Отдельный daemon, HTTP listener и БД не создаются.
+Команда `takt mcp --workspace <dir> [--config <path>]` запускает одноразовый stdio JSON-RPC/MCP adapter поверх общего control service. `takt mcp --daemon` проксирует тот же stdio-протокол в локальный `takt daemon` через Unix socket. БД и сетевой listener не создаются.
 
 Поддерживаются два протокольных входа:
 
@@ -17,7 +17,17 @@
 
 Сервер публикует инструменты `takt.workflow.list`, `takt.workflow.describe`, `takt.run.start`, `takt.run.get`, `takt.run.resume`, `takt.run.answer`, `takt.run.cancel`, `takt.run.children`, `takt.run.artifacts`, `takt.run.events` и внешний executor-контур `takt.node.pending|claim|event|complete|fail`. `takt.run.start` по умолчанию отсоединяет запуск и возвращает устойчивый `run_id`. События читаются по `revision` cursor, а содержимое артефактов выдаётся только по явному запросу с ограничением размера.
 
-MCP является локальным интерфейсом текущего пользователя. Он не добавляет аутентификацию, sandbox или новые полномочия и не предназначен для сетевой публикации. Полный control contract зафиксирован в `44-local-mcp-control-plane-v0.1.30.md`, а внешний executor и нормализованные события — в `45-agent-events-external-executor-v0.1.31.md`.
+MCP и daemon являются локальными интерфейсами текущего пользователя. Они не добавляют sandbox или новые полномочия и не предназначены для сетевой публикации. Полный control contract зафиксирован в `44-local-mcp-control-plane-v0.1.30.md`, внешний executor и события — в `45-agent-events-external-executor-v0.1.31.md`, а daemon и authoring preflight — в `47-authoring-local-daemon-v0.1.33.md`.
+
+## 1.2. Authoring preflight
+
+`takt validate` проверяет неизвестные поля с path-aware `did you mean`, command/model/assistant references, effective adapter capabilities, статические `${nodes.*}`/approval/artifact references и несовместимые параметры. Diagnostics возвращаются в JSON; `--warnings-as-errors` делает предупреждения ошибками CI.
+
+Renderer использует явные формы: `${path}` — обязательная ссылка, `${path?}` — optional, `${path:-default}` — значение по умолчанию. Неразрешённая обязательная ссылка является ошибкой и не передаётся действию как буквальный текст.
+
+## 1.3. Локальный daemon
+
+`takt daemon start|status|stop` управляет локальным процессом одного workspace. Daemon слушает `.takt/daemon.sock`, использует тот же файловый Store и поддерживает background `takt run --daemon`, `takt events --daemon --follow` и `takt mcp --daemon`. Несколько клиентов одного пользователя сериализуют короткие изменения Run через существующий file lock с bounded retry. Daemon переживает закрытие клиента, но не гарантирует продолжение выполнявшегося OS-процесса после падения самого daemon.
 
 ## 2. Файловая структура
 
@@ -93,9 +103,9 @@ assistants:
 
 ## 3.0. Входной контракт workflow
 
-Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`, `uniqueItems`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
+Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`/`maxItems`, `uniqueItems`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `minProperties`/`maxProperties`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
 
-Это используется шестью основными процессами профиля `code` 0.9.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+Это используется шестью основными процессами профиля `code` 0.9.1: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
 
 ## 3.1. Внешний исполнитель AI-узла
 
@@ -201,7 +211,7 @@ nodes:
       capture_response: true
 ```
 
-`timeout` использует формат Go duration: `500ms`, `30s`, `5m`, `1h`. Лимит действует на всю попытку узла: `before_node`, действие, `on_failure`, `after_node` и `before_complete`.
+`timeout` использует формат Go duration: `500ms`, `30s`, `5m`, `1h` и ограничивает всю попытку узла. `idle_timeout` поддерживается AI-узлами и сбрасывается нормализованными событиями активности; для claimed внешнего узла его обслуживает daemon. `always_run: true` запускает cleanup-узел после terminal-состояния всех зависимостей независимо от их результата, но не скрывает failure основного графа.
 
 Независимые готовые узлы `command`, `prompt` и `bash` без portable hooks и повторных попыток выполняются одной параллельной волной. Переходы `pending → running → terminal` и запись событий сериализуются, поэтому Run и журнал остаются едиными и детерминированными. Узлы с hooks или `attempts.max > 1` пока исполняются последовательно.
 
@@ -215,7 +225,7 @@ nodes:
 
 Передаёт assistant встроенный prompt.
 
-Для `command`, `prompt` и `script` можно задать проверяемый JSON-контракт `output_format`. Runtime принимает ровно одно JSON-значение, проверяет типы, обязательные поля, `enum`, массивы и запрет дополнительных свойств, затем сохраняет канонический компактный JSON. Нарушение контракта завершает узел ошибкой `protocol`.
+Для `command`, `prompt` и `script` можно задать проверяемый JSON-контракт `output_format`. Runtime принимает ровно одно JSON-значение, проверяет типы, обязательные поля, `enum`, дополнительные свойства, min/max для массивов, строк, чисел и объектов, а также строковый `pattern`, затем сохраняет канонический компактный JSON. Нарушение контракта завершает узел ошибкой `protocol`.
 
 ```yaml
 - id: classify
@@ -450,7 +460,7 @@ Runtime читает только явный массив и не преобра
 - `none_failed_min_one_success` — нет failure-like зависимостей и есть хотя бы одна `completed`;
 - `one_success` — после завершения всех зависимостей запускает узел, если хотя бы одна зависимость `completed`, включая соединение взаимоисключающих ветвей.
 
-После failed/errored/timed_out node scheduler продолжает DAG, чтобы выполнить `all_done`. Итоговый статус Run вычисляется после завершения доступного графа.
+После failed/errored/timed_out node scheduler продолжает DAG, чтобы выполнить `all_done`. `always_run` является явной cleanup-семантикой `all_done`; его нельзя совмещать с `when` или другим `trigger_rule`. Итоговый статус Run вычисляется после завершения доступного графа.
 
 Статусы Node:
 

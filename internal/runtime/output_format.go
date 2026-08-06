@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"takt/internal/spec"
 )
@@ -72,6 +74,12 @@ func validateOutputValue(value any, schema spec.OutputFormat, path string, requi
 		if !ok {
 			return fmt.Errorf("%s must be an object", path)
 		}
+		if len(object) < schema.MinProperties {
+			return fmt.Errorf("%s must contain at least %d properties", path, schema.MinProperties)
+		}
+		if schema.MaxProperties > 0 && len(object) > schema.MaxProperties {
+			return fmt.Errorf("%s must contain at most %d properties", path, schema.MaxProperties)
+		}
 		for _, name := range schema.Required {
 			if _, exists := object[name]; !exists {
 				return fmt.Errorf("%s.%s is required", path, name)
@@ -97,6 +105,9 @@ func validateOutputValue(value any, schema spec.OutputFormat, path string, requi
 		if len(array) < schema.MinItems {
 			return fmt.Errorf("%s must contain at least %d items", path, schema.MinItems)
 		}
+		if schema.MaxItems > 0 && len(array) > schema.MaxItems {
+			return fmt.Errorf("%s must contain at most %d items", path, schema.MaxItems)
+		}
 		if schema.UniqueItems {
 			seen := map[string]int{}
 			for i, child := range array {
@@ -119,24 +130,65 @@ func validateOutputValue(value any, schema spec.OutputFormat, path string, requi
 			}
 		}
 	case "string":
-		if _, ok := value.(string); !ok {
+		text, ok := value.(string)
+		if !ok {
 			return fmt.Errorf("%s must be a string", path)
+		}
+		length := utf8.RuneCountInString(text)
+		if length < schema.MinLength {
+			return fmt.Errorf("%s must contain at least %d characters", path, schema.MinLength)
+		}
+		if schema.MaxLength > 0 && length > schema.MaxLength {
+			return fmt.Errorf("%s must contain at most %d characters", path, schema.MaxLength)
+		}
+		if schema.Pattern != "" {
+			matched, err := regexp.MatchString(schema.Pattern, text)
+			if err != nil {
+				return fmt.Errorf("%s has invalid schema pattern: %w", path, err)
+			}
+			if !matched {
+				return fmt.Errorf("%s does not match pattern %q", path, schema.Pattern)
+			}
 		}
 	case "boolean":
 		if _, ok := value.(bool); !ok {
 			return fmt.Errorf("%s must be a boolean", path)
 		}
 	case "number":
-		if _, ok := value.(json.Number); !ok {
+		number, ok := value.(json.Number)
+		if !ok {
 			return fmt.Errorf("%s must be a number", path)
+		}
+		if err := validateNumberRange(number, schema, path); err != nil {
+			return err
 		}
 	case "integer":
 		number, ok := value.(json.Number)
 		if !ok || !jsonNumberIsInteger(number.String()) {
 			return fmt.Errorf("%s must be an integer", path)
 		}
+		if err := validateNumberRange(number, schema, path); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("%s has unsupported schema type %q", path, typeName)
+	}
+	return nil
+}
+
+func validateNumberRange(number json.Number, schema spec.OutputFormat, path string) error {
+	if schema.Minimum == nil && schema.Maximum == nil {
+		return nil
+	}
+	value, err := number.Float64()
+	if err != nil {
+		return fmt.Errorf("%s must be a finite JSON number: %w", path, err)
+	}
+	if schema.Minimum != nil && value < *schema.Minimum {
+		return fmt.Errorf("%s must be >= %v", path, *schema.Minimum)
+	}
+	if schema.Maximum != nil && value > *schema.Maximum {
+		return fmt.Errorf("%s must be <= %v", path, *schema.Maximum)
 	}
 	return nil
 }

@@ -1,7 +1,7 @@
 # Машиночитаемые схемы
 
 - `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `mock`, `process`, `pi`, `opencode`, Pi-specific `session_dir/project_trust` и OpenCode-specific `agent/auto_approve`, `max_output_bytes` и условные запреты несовместимых полей;
-- `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`, `output_format`, `one_success`, approval в цикле, `foreach.parallel` и governed child `workflow`;
+- `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`, `idle_timeout`, `always_run`, расширенный `output_format`, `one_success`, approval в цикле, `foreach.parallel` и governed child `workflow`;
 - `profile.schema.json` — Profile с default workflow и картой именованных `workflows`;
 - `command-frontmatter.schema.json` — frontmatter Markdown-команд;
 - `run-state.schema.json` — состояние Run, parent/child links, cancellation, fingerprints, revisions, типизированные Node statuses, execution identity и aggregate usage;
@@ -10,7 +10,7 @@
 - `validation-result.schema.json` — предметно-независимый результат качества `takt-validation/v1alpha1` для benchmark и внешних валидаторов;
 - `evaluation-report.schema.json` — отчёт `takt-evaluation/v1alpha1` с идентичностью стратегии, benchmark, workspace, моделей и метриками качества.
 
-Go-loader остаётся главным валидатором текущей реализации: кроме структуры он проверяет DAG, ссылки на модели/исполнителей, duration и ограничения `loop_group`. JSON Schema предназначены для редакторов, внешних инструментов и подготовки стабильной схемы.
+Go-loader и authoring preflight остаются главным валидатором: кроме структуры они проверяют DAG, ссылки на модели/исполнителей, capabilities, duration, template/output/artifact references и ограничения `loop_group`. JSON Schema предназначены для редакторов, внешних инструментов и подготовки стабильной схемы.
 
 `run-state.schema.json` включает подтверждённый флаг `nodes.*.resumed`, aggregate-поля узла и массив `nodes.*.executions` с assistant/version, requested/resolved model и usage каждой фактической попытки.
 

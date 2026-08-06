@@ -83,6 +83,51 @@ func New(service *control.Service, in io.Reader, out, errOut io.Writer) *Server 
 	return &Server{control: service, in: in, out: out, errOut: errOut, calls: map[string]context.CancelFunc{}}
 }
 
+// HandleJSON handles one JSON-RPC request without binding the MCP server to a
+// transport. It is used by the local daemon HTTP-over-Unix-socket endpoint and
+// preserves the same request cancellation registry as stdio.
+func (s *Server) HandleJSON(ctx context.Context, line []byte) ([]byte, bool) {
+	line = bytes.TrimSpace(line)
+	if len(line) == 0 {
+		payload, _ := json.Marshal(response{JSONRPC: "2.0", Error: &rpcError{Code: -32700, Message: "parse error", Data: "empty request"}})
+		return payload, true
+	}
+	if len(line) > 0 && line[0] == '[' {
+		payload, _ := json.Marshal(response{JSONRPC: "2.0", Error: &rpcError{Code: -32600, Message: "JSON-RPC batches are not supported"}})
+		return payload, true
+	}
+	var req request
+	if err := unmarshalEnvelope(line, &req); err != nil {
+		payload, _ := json.Marshal(response{JSONRPC: "2.0", Error: &rpcError{Code: -32700, Message: "parse error", Data: err.Error()}})
+		return payload, true
+	}
+	if req.JSONRPC != "2.0" || strings.TrimSpace(req.Method) == "" {
+		payload, _ := json.Marshal(response{JSONRPC: "2.0", ID: req.ID, Error: &rpcError{Code: -32600, Message: "invalid JSON-RPC request"}})
+		return payload, true
+	}
+	if len(req.ID) == 0 || string(req.ID) == "null" {
+		s.handleNotification(req)
+		return nil, false
+	}
+	requestCtx, cancel := context.WithCancel(ctx)
+	key := requestIDKey(req.ID)
+	s.callsMu.Lock()
+	s.calls[key] = cancel
+	s.callsMu.Unlock()
+	defer func() {
+		cancel()
+		s.callsMu.Lock()
+		delete(s.calls, key)
+		s.callsMu.Unlock()
+	}()
+	result, rpcErr := s.handleRequest(requestCtx, req)
+	if rpcErr == nil {
+		result = withServerMeta(result)
+	}
+	payload, _ := json.Marshal(response{JSONRPC: "2.0", ID: req.ID, Result: result, Error: rpcErr})
+	return payload, true
+}
+
 // ServeStdio serves newline-delimited JSON-RPC over stdin/stdout. Runtime and
 // diagnostics never write to stdout, preserving the MCP transport contract.
 func (s *Server) ServeStdio(ctx context.Context) error {

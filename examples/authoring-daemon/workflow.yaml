@@ -1,0 +1,36 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: authoring-daemon-example
+  description: Strict references, defaults and cleanup semantics.
+nodes:
+  - id: produce
+    script:
+      runtime: python
+      inline: |
+        print('{"name":"takt","empty":""}')
+    output_format:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        optional_note:
+          type: string
+        empty:
+          type: string
+      required: [name, empty]
+      additionalProperties: false
+
+  - id: render
+    depends_on: [produce]
+    bash: |
+      printf '%s|%s|%s' \
+        '${nodes.produce.output.name}' \
+        '${nodes.produce.output.optional_note?}' \
+        '${nodes.produce.output.empty:-fallback}'
+
+  - id: cleanup
+    depends_on: [render]
+    always_run: true
+    bash: printf cleanup-complete

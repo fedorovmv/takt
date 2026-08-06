@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.33-alpha
+
+- Добавлен authoring preflight: path-aware `did you mean`, capability validation в `takt validate`, статический анализ output/artifact references и `--warnings-as-errors`.
+- Renderer стал fail-closed и поддерживает обязательные `${path}`, optional `${path?}` и default `${path:-value}`.
+- Расширен проверяемый JSON Schema subset: min/max для массивов, строк, чисел и объектов, regex `pattern` и `description`.
+- Добавлены `always_run` для cleanup/finally-узлов и activity-based `idle_timeout` для локальных и внешних AI-узлов.
+- Добавлен локальный `takt daemon` на Unix socket и файловом Store: background Runs, event subscriptions, MCP proxy и несколько локальных клиентов без БД.
+- Control plane сериализует concurrent mutations bounded retry, external task становится claimable только после durable suspension checkpoint, daemon shutdown ожидает завершения monitor goroutine.
+- Authoring skill обновлён до 0.15.0; профиль `code` обновлён до 0.9.1 для явных optional recovery references.
+- Добавлены ADR-047/048, contracts `test-authoring.sh`/`test-daemon.sh` и `docs/47-authoring-local-daemon-v0.1.33.md`.
+
 ## v0.1.32-alpha
 
 - Завершён `takt-agent-events/v2`: session started/resumed, message, tool requested/allowed/denied/started/completed, artifact declared, usage, diagnostic и terminal events.

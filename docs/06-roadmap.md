@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.32-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.33-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -28,36 +28,13 @@
 
 Шесть основных процессов профиля `code` 0.9.0 получили строгие JSON-входы, специализированные предметные команды, обязательные checkpoint artifacts, domain error codes, Git decision trees, validation recovery и сквозной локальный Git/GitHub fixture. Полный архив среза: `46-controlled-agent-events-deep-workflows-v0.1.32.md`.
 
-## Приоритет 1. Улучшение authoring
+## Выполнено в v0.1.33-alpha. Строгий authoring и локальный daemon
 
-- предупреждения о подозрительных полях и `did you mean` для опечаток;
-- capability preflight в `takt validate`, а не только перед запуском узла;
-- статическая диагностика `${nodes.*}` и artifact references;
-- подсказки по несовместимым параметрам;
-- более полный JSON Schema;
-- `always_run`;
-- `idle_timeout`;
-- строгий renderer;
-- optional/default expressions.
+Authoring preflight обнаруживает опечатки с `did you mean`, проверяет capabilities при `validate`, анализирует output/artifact references, выдаёт semantic diagnostics и поддерживает `--warnings-as-errors`. Renderer стал fail-closed с `${path}`, `${path?}` и `${path:-default}`. Добавлены расширенный schema subset, `always_run` и activity-based `idle_timeout`.
 
-## Приоритет 2. Опциональный локальный daemon
+`takt daemon` использует Unix socket и существующий файловый Store для background Runs, event subscriptions, MCP proxy и нескольких локальных клиентов без БД. Полный архив среза: `47-authoring-local-daemon-v0.1.33.md`.
 
-```bash
-takt daemon
-```
-
-Daemon нужен только для локальных сценариев, которым недостаточно времени жизни одного CLI/MCP-процесса:
-
-- фоновые Run;
-- продолжение после закрытия клиента;
-- event subscriptions;
-- постоянный MCP endpoint;
-- несколько локальных coding agents;
-- восстановление активных external leases после перезапуска.
-
-Файловый Store остаётся источником истины; БД не требуется. HTTP, удалённый доступ и многопользовательская авторизация не входят в этот срез.
-
-## Приоритет 3. Усиление runtime и безопасность локального исполнения
+## Приоритет 1. Усиление runtime и безопасность локального исполнения
 
 - раннее завершение `one_success` и `all_success` с отменой ненужных детей;
 - нормализованные diagnostics и fingerprints ошибок;
@@ -66,7 +43,7 @@ Daemon нужен только для локальных сценариев, к�
 - реальный OS sandbox для недоверенных процессов;
 - path-based namespace для вложенных циклов.
 
-## Приоритет 4. Предметная проверка
+## Приоритет 2. Предметная проверка
 
 Отдельно от системных функций нужен Route DSL benchmark со штатным валидатором и обезличенными реальными заданиями: success@1, final success, число попыток, стоимость и стабильность на неизменных fingerprints.
 

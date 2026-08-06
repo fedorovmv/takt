@@ -32,3 +32,14 @@ MCP-процесс локальный и доверенный. Не публик
 ## Tool approval
 
 При `tool_approval.mode: required` запрос инструмента блокируется до `takt.node.tool.decide`. Policy применяется раньше approval: запрещённый инструмент сразу получает `denied`. Внешний узел нельзя завершить, пока все tool calls не перешли в `completed`, `failed`, `denied` или `cancelled`.
+
+## Постоянный локальный процесс
+
+Когда Run должен пережить закрытие coding-agent host, запусти:
+
+```bash
+takt daemon start --workspace .
+takt mcp --daemon --workspace .
+```
+
+Несколько локальных клиентов одного пользователя могут использовать один Unix socket. Для подписки без MCP используй `takt events <run-id> --daemon --follow`. Daemon не является сетевым сервером и не восстанавливает автоматически произвольный OS-процесс после собственного падения.

@@ -76,3 +76,11 @@ takt answer <run-id> <node-id> --workspace <dir> --value <text> --json
 ## Foreach выполняется не по ожидаемому списку
 
 Текущая версия принимает только `foreach.items`, записанный в YAML. Она не извлекает пункты из Markdown и не читает произвольный JSON-файл автоматически. Для Markdown используй обычный профиль и передавай документ агенту целиком.
+
+## Неизвестное поле или подозрительная ссылка
+
+`takt validate` показывает путь поля и `did you mean` для близкой опечатки. Обязательная `${path}` должна разрешиться статически и во время Run. Для осознанно отсутствующего значения используй `${path?}`, для fallback — `${path:-default}`. В CI запускай `takt validate ... --warnings-as-errors`.
+
+## Daemon не запускается
+
+Проверь `takt daemon status --workspace <dir>` и `.takt/daemon.log`. Один workspace допускает один daemon. Путь `.takt/daemon.sock` должен быть Unix socket и принадлежать текущему пользователю. После аварийного завершения следующий запуск удаляет только неактивный stale socket.

@@ -26,6 +26,8 @@ go build -o bin/takt-fake-code-agent ./cmd/takt-fake-code-agent
 ./scripts/test-mcp.sh
 ./scripts/test-external-executor.sh
 ./scripts/test-deep-code-workflows.sh
+./scripts/test-authoring.sh
+./scripts/test-daemon.sh
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \
@@ -61,6 +63,12 @@ go build -o bin/takt-fake-code-agent ./cmd/takt-fake-code-agent
 ./bin/takt validate examples/external-executor/workflow.yaml \
   --config examples/external-executor/config.yaml \
   --workspace . \
+  --json >/dev/null
+
+./bin/takt validate examples/authoring-daemon/workflow.yaml \
+  --config examples/authoring-daemon/config.yaml \
+  --workspace examples/authoring-daemon \
+  --warnings-as-errors \
   --json >/dev/null
 
 echo 'verification: PASS'

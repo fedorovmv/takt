@@ -313,9 +313,27 @@ Runtime `command|python|node|go`, source/dependency fingerprints, structured out
 - настоящий локальный Git repository, bare remote, fake `gh`;
 - успешный и recovery E2E.
 
-## Активные крупные направления после v0.1.32-alpha
+## Завершено в v0.1.33-alpha
 
-1. Authoring diagnostics, capability validate, output-reference analysis, strict renderer, `always_run`, `idle_timeout`.
-2. Опциональный локальный `takt daemon` на файловом Store.
-3. Runtime security hardening и secret protection.
-4. Реальный Route DSL benchmark.
+### TAKT-032. Authoring preflight and strict renderer — выполнено
+
+- path-aware `did you mean` для неизвестных полей;
+- capability validation в `takt validate`;
+- output/artifact reference diagnostics и incompatible-parameter hints;
+- расширенный schema subset;
+- `${path}`, `${path?}`, `${path:-default}`;
+- `always_run` и `idle_timeout`.
+
+### TAKT-033. Local filesystem daemon — выполнено
+
+- `takt daemon start|status|stop|serve`;
+- Unix socket, metadata, log и single-workspace lock;
+- background Runs, event subscriptions и MCP proxy;
+- несколько локальных clients и bounded control locking;
+- external worker idle monitor без БД.
+
+## Активные крупные направления после v0.1.33-alpha
+
+1. Runtime security hardening, secret protection, retry backoff и fan-out early exit.
+2. Реальный Route DSL benchmark.
+3. Опциональное расширение daemon recovery после отдельного crash/restart design.

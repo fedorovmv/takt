@@ -9,7 +9,7 @@ Takt — Go-runtime, который снаружи оркестрирует го
 ## Перед изменением
 
 1. Прочитайте `docs/12-document-map.md` и `docs/05-implementation-status.md`.
-2. Для runtime и local control plane изучите `docs/03-specification.md`, `docs/09-runtime-semantics.md`, `docs/44-local-mcp-control-plane-v0.1.30.md` и ADR.
+2. Для runtime и local control plane изучите `docs/03-specification.md`, `docs/09-runtime-semantics.md`, `docs/44-local-mcp-control-plane-v0.1.30.md`, `docs/47-authoring-local-daemon-v0.1.33.md` и ADR.
 3. Для assistants изучите `docs/10-assistant-adapter-spec.md` и соответствующие contract tests.
 4. Для evaluation изучите `docs/13-evaluation-plan.md` и документы `docs/26–30`.
 5. Зафиксируйте исходное состояние командой `make check`.
@@ -22,7 +22,7 @@ Takt — Go-runtime, который снаружи оркестрирует го
 - `allow_failure` разрешает только ненулевой exit code.
 - `timed_out` и `cancelled` имеют приоритет над производными ошибками и output overflow.
 - Root DAG, `loop_group`, скомпилированные `subworkflow` и `foreach` используют одну scheduler-семантику; независимые готовые узлы выполняются параллельными волнами, а вложенные `loop_group` в `v1alpha1` запрещены.
-- `output_format` является проверяемым контрактом JSON-вывода агентного узла; условия и шаблоны могут читать его поля через JSON-путь.
+- `output_format` является проверяемым контрактом JSON-вывода; обязательные шаблоны fail-closed, optional/default задаются явно, а authoring проверяет доступные JSON-пути до Run.
 - Node policy проверяется до запуска assistant; explicit empty allowlist остаётся запретом, а неподдерживаемая capability не может молча игнорироваться.
 - Governed child policy является верхней границей: allowlists пересекаются, deny/requirements объединяются, более строгий sandbox наследуется.
 - Approval внутри `loop_group` сохраняет номер активной итерации и после `answer` продолжает ту же итерацию.
@@ -34,7 +34,9 @@ Takt — Go-runtime, который снаружи оркестрирует го
 - Validation envelope декодируется только из stdout при любом terminal status; stderr остаётся диагностикой. Benchmark-успех требует `quality_node_status=completed` и `valid=true`.
 - Текст агента не считается доказательством успеха: завершение подтверждает детерминированная проверка.
 - Ошибки persistence всегда возвращаются вызывающему коду.
-- MCP adapter использует общий control service и штатные runtime/store/locks; не реализуйте второй executor или отдельную семантику Run.
+- MCP adapter и local daemon используют общий control service и штатные runtime/store/locks; не реализуйте второй executor или отдельную семантику Run.
+- `always_run` не скрывает failure основного графа; `idle_timeout` измеряет отсутствие нормализованной активности, а не полный timeout.
+- Daemon локальный и однопользовательский: Unix socket не является новой security boundary и не должен публиковаться в сеть.
 
 ## Порядок изменения
 
@@ -68,7 +70,7 @@ make check
 
 ## Границы изменений
 
-Сохраняйте Takt компактным orchestration runtime. Собственный coding-agent tool loop, общий plugin framework, Web UI, сервер, БД и поддержка недоверенных workflow не входят в текущий scope. Параллельность остаётся частью scheduler: независимые простые узлы и `foreach.parallel` выполняются конкурентно, а переходы состояния и запись событий сериализуются.
+Сохраняйте Takt компактным orchestration runtime. Собственный coding-agent tool loop, общий plugin framework, Web UI, удалённый/многопользовательский сервер, БД и поддержка недоверенных workflow не входят в текущий scope. Локальный `takt daemon` является частью scope и использует файловый Store. Параллельность остаётся частью scheduler: независимые простые узлы и `foreach.parallel` выполняются конкурентно, а переходы состояния и запись событий сериализуются.
 
 ### OpenCode adapter
 

@@ -314,11 +314,11 @@ nodes:
       - revalidate
     trigger_rule: all_done
     bash: |
-      if [ "${nodes.validate.output.status}" = "ready" ] || [ "${nodes.revalidate.output.status}" = "ready" ]; then
+      if [ "${nodes.validate.output.status}" = "ready" ] || [ "${nodes.revalidate.output.status?}" = "ready" ]; then
         exit 0
       fi
       printf 'validation failed: initial=%s recovery=%s revalidate=%s
-      '   '${nodes.validate.output.code}' '${nodes.recover.output.code}' '${nodes.revalidate.output.code}' >&2
+      '   '${nodes.validate.output.code}' '${nodes.recover.output.code?}' '${nodes.revalidate.output.code?}' >&2
       exit 1
   - id: create-pr
     command: pr-finalize

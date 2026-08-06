@@ -263,3 +263,19 @@ Built-in adapters используют тот же provider-neutral event contra
 Шесть основных workflow профиля `code` принимают строгий JSON input и разделяются на специализированные фазы. Каждая значимая фаза обязана вернуть checkpoint с ограниченным domain code, evidence и artifact path, а также сохранить типизированный артефакт. Git preparation, validation, recovery и PR finalization являются явными узлами, а не неформальными инструкциями внутри одной универсальной команды.
 
 Сквозные contract tests используют настоящий локальный Git repository, bare remote, fake `gh` и детерминированный process adapter. Это проверяет orchestration, ветки, коммиты, push, recovery и provenance без зависимости от GitHub network. Production workflow по-прежнему использует фактический coding agent и `gh`/GitHub environment пользователя.
+
+## ADR-047. Authoring preflight является частью исполняемого контракта
+
+**Статус:** принято.
+
+Takt проверяет не только синтаксис YAML, но и разрешимость значимых ссылок до создания Run. Неизвестные поля получают path-aware `did you mean`; capability-проверка использует фактический adapter; `${nodes.*}`, approvals и artifacts анализируются относительно DAG и объявленного `output_format`. Семантические подозрения являются diagnostics и могут стать ошибками через `--warnings-as-errors`.
+
+Renderer является fail-closed: `${path}` обязателен, `${path?}` явно optional, `${path:-default}` задаёт fallback. Неразрешённая обязательная ссылка не сохраняется как буквальный текст и не передаётся модели. `always_run` и `idle_timeout` являются runtime-семантикой, а не prompt convention.
+
+## ADR-048. Локальный daemon использует файловый Store и Unix socket
+
+**Статус:** принято.
+
+`takt daemon` добавляет время жизни процесса, а не второй runtime. CLI, event subscriptions и MCP вызывают общий `control.Service`; состояние, revisions, locks, fingerprints, child lifecycle и artifacts остаются в `.takt/runs`. Daemon слушает только Unix socket с правами текущего пользователя, не открывает TCP и не вводит БД.
+
+Один workspace допускает один daemon через локальный file lock. Concurrent управляющие запросы сериализуются bounded retry на уровне control plane, при этом Store lock остаётся неблокирующим. Daemon гарантирует продолжение после закрытия клиента, но не обещает восстановить выполнявшийся OS-процесс после падения самого daemon; durable waiting/pending состояния остаются доступными для явного resume/reclaim.
