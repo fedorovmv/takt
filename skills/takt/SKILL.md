@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, script-узлы, типизированные артефакты, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль.
+description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили кодовых агентов Pi/OpenCode. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, script-узлы, типизированные артефакты, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль или управлять Takt через локальный MCP control plane.
 ---
 
 # Работа с Takt
@@ -42,6 +42,10 @@ takt run code --workspace . --input docs/plan.md --json
 ```
 
 Профиль хранится в `.takt/profiles/code/`. Markdown-файл остаётся авторитетным планом: Takt передаёт агенту его путь и содержимое, но не преобразует его в обязательный JSON/YAML список задач. Формализованные входные адаптеры должны оставаться расширением, а не условием работы профиля.
+
+## Локальный MCP control plane
+
+Для управления Takt из coding-agent host запускай `takt mcp --workspace .`. Сначала используй `takt.workflow.list/describe`, затем `takt.run.start`; сохрани `run_id` и наблюдай через `takt.run.get/events`. Approval подтверждай `takt.run.answer` только при наличии решения пользователя. Полный контракт: `references/mcp.md`.
 
 ## Источники истины
 

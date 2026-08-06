@@ -1,10 +1,23 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.29-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.30-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
 Текущая реализация рассчитана на локальный однопользовательский trusted runtime. Workflow, config, Markdown-команды, shell-команды и рабочая директория считаются доверенными.
+
+## 1.1. Локальный MCP control plane
+
+Команда `takt mcp --workspace <dir> [--config <path>]` запускает локальный stdio JSON-RPC/MCP adapter поверх того же runtime и file store, которые использует CLI. Отдельный daemon, HTTP listener и БД не создаются.
+
+Поддерживаются два протокольных входа:
+
+- legacy `initialize` с версиями MCP 2025;
+- stateless `server/discover` с `protocolVersion: 2026-07-28`.
+
+Сервер публикует инструменты `takt.workflow.list`, `takt.workflow.describe`, `takt.run.start`, `takt.run.get`, `takt.run.resume`, `takt.run.answer`, `takt.run.cancel`, `takt.run.children`, `takt.run.artifacts` и `takt.run.events`. `takt.run.start` по умолчанию отсоединяет запуск и возвращает устойчивый `run_id`. События читаются по `revision` cursor, а содержимое артефактов выдаётся только по явному запросу с ограничением размера.
+
+MCP является локальным интерфейсом текущего пользователя. Он не добавляет аутентификацию, sandbox или новые полномочия и не предназначен для сетевой публикации. Полный контракт и ограничения зафиксированы в `44-local-mcp-control-plane-v0.1.30.md`.
 
 ## 2. Файловая структура
 

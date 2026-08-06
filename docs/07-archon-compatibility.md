@@ -1,6 +1,6 @@
 # Профиль совместимости с Archon
 
-Takt не заявляет бинарную или YAML-совместимость с Archon. Цель — перенести полезные процессы и сохранить знакомую модель DAG без второго runtime. В `v0.1.29-alpha` встроенный профиль `code` 0.8.0 содержит 19 процессов, соответствующих стандартному каталогу Archon, и умный роутер с no-tool policy как корневой Run и выбранный процесс как governed child Run.
+Takt не заявляет бинарную или YAML-совместимость с Archon. Цель — перенести полезные процессы и сохранить знакомую модель DAG без второго runtime. В `v0.1.30-alpha` встроенный профиль `code` 0.8.0 содержит 19 процессов, соответствующих стандартному каталогу Archon, и умный роутер с no-tool policy как корневой Run и выбранный процесс как governed child Run.
 
 ## Перенесённые конструкции
 
@@ -23,6 +23,7 @@ Takt не заявляет бинарную или YAML-совместимост
 | semantic artifacts | `output_type`, MIME, SHA-256, producer metadata и `takt artifacts` |
 | provider/model | assistant/model |
 | retry | attempts + portable hooks |
+| platform control tools | локальный stdio MCP control plane поверх файлового Run store |
 
 Полный список процессов и соответствий описан в `38-archon-workflow-catalog-v0.1.24.md`.
 
@@ -32,7 +33,7 @@ Takt не заявляет бинарную или YAML-совместимост
 - `subworkflow` компилируется в тот же Run; отдельный `workflow` создаёт governed child Run;
 - managed worktree isolation и автоматическое создание ветки реализованы; выбранный child Run применяет собственную политику или `isolation` родительского узла;
 - `one_success` fan-out пока ждёт всю группу вместо досрочного завершения;
-- Web UI, сервер, БД, адаптеры сообщений и уведомления остаются proposal для нелокального режима;
+- Web UI, HTTP server, БД, адаптеры сообщений и уведомления остаются proposal для нелокального режима; локальное управление доступно через `takt mcp`;
 - native hooks передаются адаптеру, portable hooks выполняются runtime;
 - state хранится локально.
 

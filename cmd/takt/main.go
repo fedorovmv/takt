@@ -15,9 +15,11 @@ import (
 
 	"takt/internal/command"
 	cfgpkg "takt/internal/config"
+	"takt/internal/control"
 	"takt/internal/definition"
 	"takt/internal/evaluation"
 	"takt/internal/gitworktree"
+	"takt/internal/mcp"
 	"takt/internal/profile"
 	"takt/internal/runtime"
 	"takt/internal/spec"
@@ -69,12 +71,31 @@ func run(args []string) error {
 		return commandCmd(args[1:])
 	case "eval":
 		return evalCmd(args[1:])
+	case "mcp":
+		return mcpCmd(args[1:])
 	case "version":
 		fmt.Println("takt v" + version.Value)
 		return nil
 	default:
 		return usage()
 	}
+}
+
+func mcpCmd(args []string) error {
+	fs := newFlagSet("mcp")
+	workspace := fs.String("workspace", ".", "control workspace")
+	configPath := fs.String("config", ".takt/config.yaml", "default config path for direct workflow files")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--config": true})); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("usage: takt mcp [--workspace dir] [--config path]")
+	}
+	service, err := control.New(*workspace, *configPath)
+	if err != nil {
+		return err
+	}
+	return mcp.New(service, os.Stdin, os.Stdout, os.Stderr).ServeStdio(context.Background())
 }
 
 func initCmd(args []string) error {
@@ -1288,5 +1309,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|run|workflow|answer|resume|status|children|artifacts|cancel|worktree|command|eval|version>")
+	return fmt.Errorf("usage: takt <init|validate|run|workflow|answer|resume|status|children|artifacts|cancel|worktree|command|eval|mcp|version>")
 }

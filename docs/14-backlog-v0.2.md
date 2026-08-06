@@ -260,6 +260,24 @@ Runtime list from structured output, child Run per item, max_parallel, resume, o
 
 Runtime `command|python|node|go`, source/dependency fingerprints, structured output, `output_type`/MIME/SHA-256/producer metadata, CLI и parent/child propagation.
 
-### Следующий крупный срез
+## Завершено в v0.1.30-alpha
 
-Локальный MCP-интерфейс Takt и skills для вызова orchestration из кодовых агентов. Server/Web UI/database remain proposals and are not prerequisites for local execution.
+### TAKT-028. Локальный MCP control plane — выполнено
+
+- `takt mcp` по stdio без второго runtime и отдельной БД;
+- legacy initialize и stateless server/discover;
+- workflow discovery и полный Run lifecycle tools;
+- detached start, revision events, children, typed artifact content;
+- strict schemas, request cancellation, unit/lifecycle/process contracts;
+- roadmap перенесён в архив `docs/44-local-mcp-control-plane-v0.1.30.md`.
+
+
+## Следующий крупный срез
+
+### TAKT-029. Агентные события и внешний исполнитель
+
+- единая модель assistant/tool-call events в state/event log;
+- внешний исполнитель одного узла без передачи ему orchestration semantics;
+- связь событий с attempt, assistant session и usage;
+- инструкции подключения MCP для основных coding-agent hosts;
+- optional daemon рассматривается только как отдельное решение для переживания закрытия MCP-клиента.

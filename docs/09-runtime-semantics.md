@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.29-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.30-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -369,3 +369,14 @@ Only a clean successful `on_success` worktree is removed automatically. An uncha
 Эффективная политика вычисляется до вызова adapter. Локальные ограничения объединяются с inherited policy: deny-списки складываются, allowlist и список skills пересекаются как верхние границы, `read_only` и `network: deny` наследуются как наиболее строгие значения, а inherited MCP нельзя незаметно заменить. Явные пустые `allowed_tools: []` и `skills: []` сохраняются как запрет, а не трактуются как отсутствие настройки.
 
 Adapter публикует capabilities. Если хотя бы одна необходимая capability отсутствует, узел завершается до запуска процесса. Эффективная политика и список capabilities сохраняются в `NodeState.policy`; inherited policy сохраняется в child Run. Policy resources входят в definition fingerprint.
+
+
+## MCP control-plane semantics
+
+MCP adapter не создаёт альтернативную модель состояния. Каждый tool вызывает общий local control service и использует тот же `Runner`, `FS`, lock, fingerprint, child lifecycle и worktree policy, что CLI.
+
+Detached start генерирует Run ID до запуска goroutine и возвращает его только после появления durable state либо ранней ошибки запуска. Жизненный цикл выполняется внутри процесса `takt mcp`; завершение host-процесса не является durable daemon semantics.
+
+`takt.run.events` использует монотонный `Event.Revision` как cursor: ответ содержит только события с revision больше `after_revision`, сохраняет порядок журнала и ограничивает число элементов. `wait_ms` реализует bounded polling и не меняет event store.
+
+JSON-RPC cancellation отменяет контекст текущего MCP-запроса. Отмена самого Run выполняется только явным `takt.run.cancel`, сохраняется в store и каскадируется governed children по общей runtime-семантике.

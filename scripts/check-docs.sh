@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.11.0" \
+  "skills/takt/VERSION|0.12.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -83,6 +83,12 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-040" \
   "ARCHITECTURE_DECISIONS.md|ADR-041" \
   "ARCHITECTURE_DECISIONS.md|ADR-042" \
+  "ARCHITECTURE_DECISIONS.md|ADR-043" \
+  "docs/44-local-mcp-control-plane-v0.1.30.md|takt.run.events" \
+  "docs/03-specification.md|server/discover" \
+  "skills/takt/references/mcp.md|takt.run.start" \
+  "scripts/test-mcp.sh|local MCP contract: PASS" \
+  "README.md|Локальное управление через MCP" \
   "docs/43-script-nodes-typed-artifacts-v0.1.29.md|Script-узел" \
   "docs/43-script-nodes-typed-artifacts-v0.1.29.md|takt artifacts" \
   "scripts/test-script-artifacts.sh|script and typed artifact contract: PASS" \
@@ -139,7 +145,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.29-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.30-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \

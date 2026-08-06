@@ -33,6 +33,16 @@
 - управляемая Git worktree isolation с отдельной веткой, control/execution workspace, safe cleanup и resume;
 - CLI `worktree list/remove/prune` и persisted Run overrides.
 
+### Локальный MCP control plane
+
+- команда `takt mcp` и stdio JSON-RPC transport без отдельного daemon/БД;
+- legacy initialization `2025-03-26|2025-06-18|2025-11-25` и stateless discovery `2026-07-28`;
+- 10 tools: workflow list/describe, Run start/get/resume/answer/cancel/children/artifacts/events;
+- detached start с durable `run_id`;
+- revision cursor и bounded long polling событий;
+- structured/text tool results, bounded artifact content, request cancellation и strict arguments;
+- MCP использует существующие fingerprints, locks, store и parent/child lifecycle.
+
 ### Governed child Runs
 
 - узел `workflow` запускает подключённое определение как отдельный Run, а не разворачивает его в DAG родителя;
@@ -105,4 +115,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Следующий крупный системный приоритет — локальный MCP-интерфейс Takt: list/describe/start/status/answer/cancel/artifacts для кодовых агентов. Затем — усиление runtime и предметный Route DSL benchmark. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.
+Локальный MCP-интерфейс Takt реализован в `v0.1.30-alpha`. Следующий крупный системный приоритет — усиление runtime и потоковый agent protocol и предметный Route DSL benchmark. Предметная задача остаётся прежней: запустить Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями на неизменных fingerprints.

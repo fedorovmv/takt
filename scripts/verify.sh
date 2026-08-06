@@ -22,6 +22,7 @@ go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
 ./scripts/test-policies.sh
 ./scripts/test-child-fanout.sh
 ./scripts/test-script-artifacts.sh
+./scripts/test-mcp.sh
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \

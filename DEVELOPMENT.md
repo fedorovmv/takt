@@ -34,10 +34,11 @@ go build -o bin/takt ./cmd/takt
 ```text
 Pi adapter и Route DSL contract suites — выполнено
 → evaluation identity и quality contract — выполнено
+→ локальный MCP control plane — выполнено
+→ нормализованные agent/tool-call events и внешний исполнитель узла
+→ инструкции подключения MCP для основных coding-agent hosts
 → baseline на реальном Pi, штатном validator и обезличенных заданиях
 → сравнение моделей и стратегий на одинаковых fingerprints
-→ manual-correction metric и CLI сравнения отчётов
-→ OpenCode adapter при подтверждённой необходимости
 ```
 
 Реальный benchmark запускается отдельно:
@@ -85,6 +86,7 @@ go build ./cmd/takt-fake-pi
 ./scripts/test-route-dsl-eval.sh
 ./scripts/test-takt-skill.sh
 ./scripts/test-script-artifacts.sh
+./scripts/test-mcp.sh
 ./scripts/check-docs.sh
 ./scripts/verify.sh
 ```

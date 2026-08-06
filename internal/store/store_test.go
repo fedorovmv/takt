@@ -104,3 +104,32 @@ func TestCancellationMarkerLifecycle(t *testing.T) {
 		t.Fatalf("marker was not cleared: requested=%v err=%v", requested, err)
 	}
 }
+
+func TestReadEventsUsesRevisionCursorAndLimit(t *testing.T) {
+	dir := t.TempDir()
+	st := FS{Workspace: dir}
+	state := &RunState{ID: "run-events", Status: RunRunning, Nodes: map[string]*NodeState{}, Approvals: map[string]string{}}
+	if err := st.Commit(state, Event{Type: "run.started"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Commit(state, Event{Type: "node.started", NodeID: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Commit(state, Event{Type: "node.completed", NodeID: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	events, err := st.ReadEvents(state.ID, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Revision != 2 || events[0].Type != "node.started" {
+		t.Fatalf("events = %#v", events)
+	}
+	events, err = st.ReadEvents(state.ID, 3, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("expected no events, got %#v", events)
+	}
+}

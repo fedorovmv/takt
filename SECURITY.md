@@ -2,7 +2,7 @@
 
 ## Supported trust model
 
-Takt `v0.1.26-alpha` is a local, single-user, trusted runtime.
+Takt `v0.1.30-alpha` is a local, single-user, trusted runtime.
 
 Trusted inputs:
 
@@ -85,3 +85,10 @@ A future server or untrusted mode requires at minimum:
 ## Assistant-enforced node policies
 
 `allowed_tools`, `denied_tools`, `skills`, `mcp`, `sandbox` and `requires` prevent silent policy omission: Takt verifies adapter capabilities before invocation and persists the effective policy. These controls constrain the coding agent interface but do not isolate the assistant binary, arbitrary subprocesses, custom MCP servers or host credentials. `sandbox.filesystem` and `sandbox.network` are contracts that an adapter must implement; they are not an OS security boundary.
+
+
+## Локальный MCP control plane
+
+`takt mcp` предоставляет тем же локальным полномочиям структурированный интерфейс запуска, approval, cancellation и чтения state/events/artifacts. Он не содержит аутентификации и не является сетевой security boundary. Запускай его только как stdio child process доверенного coding-agent host того же пользователя.
+
+Tool arguments считаются доверенными локальными запросами, но декодируются строго. Artifact content ограничивается по размеру; это ограничение защищает transport от случайного большого ответа, но не выполняет redaction. Содержимое state, events, stdout/stderr и artifacts может включать секреты согласно общему trust model.

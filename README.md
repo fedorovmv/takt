@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.29-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.30-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Серверный и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и более сильной модели блокировок. Эти режимы пока не поддерживаются.
 
@@ -54,6 +54,7 @@
 - динамический fan-out governed child Runs из структурированного output: устойчивые child ID, `max_parallel`, resume, ordered aggregation и join policies;
 - script runtime `command|python|node|go` с fingerprints исходника и зависимостей;
 - типизированные артефакты с MIME, SHA-256, producer metadata, CLI `takt artifacts` и передачей parent/child/fan-out;
+- локальный stdio MCP control plane с dual-era `initialize`/`server/discover`, 10 инструментами управления workflow/Run, detached start, revision events и bounded artifact content;
 - aggregate usage по узлам и отдельные execution records по каждой фактической попытке;
 - `takt eval run/report` для воспроизводимой оценки каталогов заданий с fingerprints стратегии, benchmark, workspace и валидатора, версией assistant, requested/resolved model и предметными метриками качества;
 - атрибуция tokens/cost по execution identity; смена assistant, его версии или resolved model между retry помечается как mixed;
@@ -113,6 +114,16 @@ make check
 
 
 
+
+## Локальное управление через MCP
+
+```bash
+takt mcp --workspace . --config .takt/config.yaml
+```
+
+Сервер работает по stdio и публикует `takt.workflow.list/describe`, `takt.run.start/get/resume/answer/cancel/children/artifacts/events`. `run.start` по умолчанию возвращает durable `run_id` после принятия запуска; состояние и поток событий читаются отдельными вызовами по revision cursor. Поддерживаются legacy initialization до `2025-11-25` и stateless discovery `2026-07-28`.
+
+MCP использует тот же файловый store, locks, fingerprints, governed children и worktree lifecycle, что CLI. Это локальный интерфейс текущего пользователя, а не сетевой сервер. Подробности: [Локальный MCP control plane v0.1.30](docs/44-local-mcp-control-plane-v0.1.30.md).
 
 ## Профиль code: 19 процессов и умный роутер
 
@@ -234,7 +245,7 @@ takt artifacts <run-id> --type plan --recursive
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.8.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Следующий крупный системный срез — локальная интеграция Takt через MCP. Server, Web UI и БД остаются proposal-направлением для возможного выхода за локальный trusted runtime.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.8.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha. Server, Web UI и БД остаются proposal-направлением для возможного выхода за локальный trusted runtime.
 
 Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Отдельный предметный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 
@@ -268,6 +279,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Политики возможностей узлов v0.1.27](docs/41-node-capability-policies-v0.1.27.md)
 - [Динамический fan-out governed child Runs v0.1.28](docs/42-governed-child-fanout-v0.1.28.md)
 - [Script-узлы и типизированные артефакты v0.1.29](docs/43-script-nodes-typed-artifacts-v0.1.29.md)
+- [Локальный MCP control plane v0.1.30](docs/44-local-mcp-control-plane-v0.1.30.md)
 - [Backlog v0.2](docs/14-backlog-v0.2.md)
 
 ## Документация
@@ -314,6 +326,7 @@ Evaluation runner фиксирует идентичность стратегии
 - [Политики возможностей узлов v0.1.27](docs/41-node-capability-policies-v0.1.27.md)
 - [Динамический fan-out governed child Runs v0.1.28](docs/42-governed-child-fanout-v0.1.28.md)
 - [Script-узлы и типизированные артефакты v0.1.29](docs/43-script-nodes-typed-artifacts-v0.1.29.md)
+- [Локальный MCP control plane v0.1.30](docs/44-local-mcp-control-plane-v0.1.30.md)
 - [Граница безопасности](SECURITY.md)
 - [JSON Schemas](schemas/README.md)
 

@@ -228,3 +228,14 @@ Filesystem/network policy текущего локального runtime явля
 
 `output_type` создаёт локальный неизменяемый снимок результата либо указанного файла после успешного завершения узла. Ссылка содержит type, MIME, SHA-256, размер и producer Run/Node/attempt. Governed children передают ссылки родителю, но файл остаётся в хранилище фактического producer Run; это сохраняет provenance и не требует соглашений о случайных именах файлов.
 
+
+
+## ADR-043. Локальный MCP является адаптером существующего control plane
+
+**Статус:** принято.
+
+`takt mcp` не запускает CLI как подпроцесс и не создаёт отдельную модель состояния. MCP tools вызывают общий локальный control service, который использует тот же runtime, file store, fingerprints, locks, governed child lifecycle и artifact references. Это исключает расхождение CLI и MCP по основным гарантиям исполнения.
+
+Run state остаётся явным handle в аргументах tools. Detached start возвращает `run_id`, а события читаются по durable revision cursor; MCP session не становится источником истины. Поддерживаются legacy initialize и stateless discovery, поскольку локальные coding-agent hosts обновляются не одновременно.
+
+Транспорт ограничен stdio и полномочиями текущего процесса. HTTP, daemon, authentication, multi-user use и untrusted workflow не выводятся из факта наличия MCP и требуют отдельной threat model.

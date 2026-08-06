@@ -9,7 +9,7 @@ Takt — Go-runtime, который снаружи оркестрирует го
 ## Перед изменением
 
 1. Прочитайте `docs/12-document-map.md` и `docs/05-implementation-status.md`.
-2. Для runtime изучите `docs/03-specification.md`, `docs/09-runtime-semantics.md` и ADR.
+2. Для runtime и local control plane изучите `docs/03-specification.md`, `docs/09-runtime-semantics.md`, `docs/44-local-mcp-control-plane-v0.1.30.md` и ADR.
 3. Для assistants изучите `docs/10-assistant-adapter-spec.md` и соответствующие contract tests.
 4. Для evaluation изучите `docs/13-evaluation-plan.md` и документы `docs/26–30`.
 5. Зафиксируйте исходное состояние командой `make check`.
@@ -34,6 +34,7 @@ Takt — Go-runtime, который снаружи оркестрирует го
 - Validation envelope декодируется только из stdout при любом terminal status; stderr остаётся диагностикой. Benchmark-успех требует `quality_node_status=completed` и `valid=true`.
 - Текст агента не считается доказательством успеха: завершение подтверждает детерминированная проверка.
 - Ошибки persistence всегда возвращаются вызывающему коду.
+- MCP adapter использует общий control service и штатные runtime/store/locks; не реализуйте второй executor или отдельную семантику Run.
 
 ## Порядок изменения
 

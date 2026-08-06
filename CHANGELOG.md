@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.30-alpha
+
+- Добавлена команда `takt mcp` — локальный stdio MCP control plane поверх существующих runtime и файлового store.
+- Поддержаны legacy `initialize` для версий 2025 и stateless `server/discover` для `2026-07-28`.
+- Опубликованы 10 детерминированно упорядоченных tools для discovery, start/get/resume/answer/cancel, child Runs, artifacts и events.
+- `takt.run.start` выполняется detached по умолчанию и возвращает durable `run_id`; `takt.run.events` поддерживает revision cursor и bounded long polling.
+- Tool results одновременно содержат text content, `structuredContent`, `resultType: complete` и `isError`.
+- Artifact tool поддерживает recursive filters и ограниченное UTF-8/base64 содержимое с сохранением checksum/provenance.
+- Добавлены общий local control service, чтение events из store, MCP cancellation request contexts, unit/lifecycle tests и `scripts/test-mcp.sh`.
+- Roadmap локального MCP перенесён в выполненные работы и заархивирован в `docs/44-local-mcp-control-plane-v0.1.30.md`.
+- Authoring skill обновлён до 0.12.0 и дополнен инструкцией локального MCP.
+
 ## v0.1.29-alpha
 
 - Добавлены `script`-узлы с runtime `command`, `python`, `node` и `go`, file/inline source, args, env, working directory и зависимостями.

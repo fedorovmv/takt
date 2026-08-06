@@ -167,14 +167,13 @@ agent draft
 
 ## 10. Текущий порядок ближайших задач
 
-1. Запуск Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями.
-2. Git worktree isolation и транзакция задачи — реализовано в v0.1.25-alpha.
-3. Governed child Run, cancel и parent/child lifecycle — реализовано в v0.1.26-alpha.
-4. Per-node tool, skills, MCP и sandbox policy.
-5. Динамический fan-out child Runs из output предыдущего узла.
-6. Script nodes и типизированные артефакты.
-7. Расширение параллельности на hooks/retries/governed nodes.
-8. Strict templates, полный JSON Schema и v1beta1 design.
+1. Агентные события и внешний исполнитель узла поверх существующего assistant protocol.
+2. Инструкции подключения локального MCP для OpenCode, Pi, Codex и Claude Code.
+3. Запуск Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями.
+4. Расширение параллельности на hooks/retries/governed nodes.
+5. Strict templates, полный JSON Schema и v1beta1 design.
+
+Завершённый локальный MCP control plane перенесён в архив `docs/44-local-mcp-control-plane-v0.1.30.md`.
 
 ## 11. Пока не начинать
 

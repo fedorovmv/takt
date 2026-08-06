@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.29-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.30-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -14,12 +14,16 @@
 
 Реализованы runtime `command|python|node|go`, file/inline source, args/env/working directory, fingerprints исходника и dependencies, structured output, `output_type`/MIME/SHA-256/producer metadata, CLI `takt artifacts` и передача ссылок parent/child/fan-out. Профиль `code` использует script и plan/PRD artifacts.
 
-## Приоритет 1. Локальная интеграция с кодовыми агентами
+## Выполнено в v0.1.30-alpha. Локальный MCP control plane
 
-- локальный MCP-сервер Takt: list/describe/start/status/answer/cancel/artifacts;
-- skills для OpenCode, Pi, Codex и Claude Code;
-- поток событий Run для вызывающего агента;
-- режим внешнего исполнителя одного узла при сохранении оркестрации в Takt.
+Реализованы stdio MCP server, dual-era protocol negotiation, workflow list/describe, detached Run start, get/resume/answer/cancel, children, artifacts с содержимым и revision event polling. Реализация использует существующий runtime/store и не вводит daemon, HTTP, Web UI или БД. Полный архив среза: `44-local-mcp-control-plane-v0.1.30.md`.
+
+## Приоритет 1. Агентные события и внешний исполнитель
+
+- нормализованный поток assistant/tool-call events внутри Run;
+- режим внешнего исполнителя одного узла при сохранении оркестрации в Takt;
+- готовые инструкции подключения MCP для OpenCode, Pi, Codex и Claude Code;
+- опциональный локальный daemon только при необходимости переживать закрытие MCP-клиента.
 
 ## Приоритет 2. Усиление runtime
 
