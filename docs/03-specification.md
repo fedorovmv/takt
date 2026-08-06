@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.34-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.35-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -105,7 +105,7 @@ assistants:
 
 Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`/`maxItems`, `uniqueItems`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `minProperties`/`maxProperties`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
 
-Это используется шестью основными процессами профиля `code` 0.10.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+Это используется шестью основными процессами профиля `code` 0.11.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
 
 ## 3.1. Внешний исполнитель AI-узла
 
@@ -159,6 +159,14 @@ Takt передаёт выбранную модель как `<provider>/<id>`, 
 Высокоуровневый `takt plan`/`takt.plan` возвращает решение `existing|planned`. `planned` использует `takt/v1alpha1 WorkflowPlan`: цель, жёсткие budgets, упорядоченные фазы `task|map`, зависимости, источник map и явные checkpoint. `uses` обязан ссылаться на разрешённый блок профиля. План проходит строгую проверку и компилируется в обычный `takt/v1alpha1 Workflow`; отдельная runtime-семантика для WorkflowPlan отсутствует.
 
 `takt execute` требует подтверждение planned-плана. Перепланировщик вызывается только после checkpoint и возвращает `continue|replace_remaining|finish|ask_user`. `replace_remaining` создаёт новую revision и не изменяет завершённые фазы. `takt steer` сохраняет уточнение до ближайшего checkpoint. Completed planned-план может быть продвинут через `takt plan promote` в `.takt/workflows/generated/` после повторной загрузки и Validate.
+
+### Доверенные пакеты блоков
+
+Профиль может объявить `block_packages`: список локальных `takt/v1alpha1 BlockPackage`. Каждый пакет содержит уникальные блоки с относительным workflow path, capabilities, integrations, `output_paths`, required checks и policy, а также templates и governance. Governance объединяет required blocks/checks, allowed integrations, branch rules, change-request template и пределы `max_child_runs|max_parallel|max_iterations|max_tokens`.
+
+Каталог загружается до планирования. Workflow блока проходит обычный Load/Validate, обязан иметь один публичный terminal output и не может запускать governed child Run. Каждый `output_path` обязан существовать в terminal `output_format`; источник `map` должен точно совпасть с объявленным путём типа `array`. Общий fingerprint манифестов и workflow сохраняется в плане и проверяется до execute/replan/promote.
+
+CLI: `takt block list|describe|validate`. MCP: `takt.block.list|describe`. Schema: `schemas/block-package.schema.json`.
 
 ## 4. Markdown-команды
 

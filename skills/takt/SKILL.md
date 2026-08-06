@@ -58,18 +58,34 @@ takt run code --workspace . --input docs/plan.md --json
 ```bash
 takt plan "Проверь совместимость MCP-инструментов" --workspace .
 takt execute <plan-id> --workspace . --confirm
+# Для Run, который должен пережить закрытие основной сессии:
+takt execute <plan-id> --workspace . --confirm --daemon
 takt plan get <plan-id> --workspace .
 takt steer <plan-id> "Сложные расхождения только задокументируй" --workspace .
 takt plan promote <plan-id> --name audit-mcp-compatibility --workspace .
 ```
 
-Через MCP используй высокоуровневые `takt.plan`, `takt.execute`, `takt.plan.get`, `takt.run.steer` и `takt.plan.promote`. Сначала покажи пользователю preview, бюджеты, требуемые фазы и необходимость подтверждения. `takt.execute` вызывай с `confirm: true` только после явного подтверждения, если политика проекта не разрешает автоматический запуск.
+Через MCP используй высокоуровневые `takt.plan`, `takt.execute`, `takt.plan.get`, `takt.run.steer` и `takt.plan.promote`. Прямой stdio MCP выполняет `takt.execute` до terminal/waiting; MCP через daemon запускает его отсоединённо. Сначала покажи пользователю preview, бюджеты, требуемые фазы и необходимость подтверждения. `takt.execute` вызывай с `confirm: true` только после явного подтверждения, если политика проекта не разрешает автоматический запуск.
 
-`WorkflowPlan` является ограниченным промежуточным представлением, а не вторым runtime. Он использует только разрешённые блоки `discover`, `investigate`, `implement`, `validate`, `review`, `adversarial-verify`, `synthesize`, после чего компилируется в обычный Takt Workflow с governed child Runs. Перепланирование допускается только в явных checkpoint и создаёт новую revision; выполненные фазы не переписываются.
+`WorkflowPlan` является ограниченным промежуточным представлением, а не вторым runtime. Он использует только блоки из явно подключённых `block_packages`, после чего компилируется в обычный Takt Workflow с governed child Runs. Встроенный пакет содержит `discover`, `investigate`, `implement`, `validate`, `review`, `adversarial-verify`, `synthesize`; корпоративный пакет может сузить политики, бюджеты и разрешённые интеграции либо добавить собственные блоки. Перепланирование допускается только в явных checkpoint и создаёт новую revision; выполненные фазы не переписываются.
 
 `steer` сохраняет уточнение для ближайшей контрольной точки. При статусе `waiting` передай пользователю причину и используй steering как ответ. После успешного завершения предлагай `plan promote`: команда обобщает план в проектный workflow и повторно проверяет его до сохранения.
 
 Для простого вопроса или небольшого локального изменения не вызывай Takt автоматически. Основной кодинг-агент выполняет такую задачу напрямую. Dynamic Takt нужен, когда ценность дают отдельное состояние, несколько исполнителей, параллельность, контрольный бюджет или долговременный Run.
+
+## Доверенные пакеты блоков
+
+Перед динамическим планированием проверь каталог:
+
+```bash
+takt block list --profile code --workspace .
+takt block describe <name> --profile code --workspace .
+takt block validate path/to/package.yaml
+```
+
+Профиль подключает пакет через `block_packages`. Не добавляй путь автоматически: каждый пакет является явной доверенной границей. Блок обязан иметь один итоговый узел со структурированным `output_format`; перечисленные `output_paths` должны существовать в этой схеме. Для `map` указывай точный объявленный путь типа `array`. Блок не должен запускать governed child Run — дочерние процессы создаются фазами `WorkflowPlan`, чтобы budgets оставались проверяемыми.
+
+Корпоративный пакет может объявить required blocks/checks, branch rules, change-request template, allowed integrations, policy и верхние limits. Ограничения нескольких пакетов объединяются в более строгую сторону. После preview изменение package/workflow fingerprint требует нового плана.
 
 ## Источники истины
 

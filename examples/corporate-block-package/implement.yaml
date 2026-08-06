@@ -1,0 +1,31 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: corporate-implement
+worktree:
+  enabled: true
+  cleanup: manual
+nodes:
+  - id: result
+    prompt: |
+      Implement the assigned bounded change. Follow branch, security, integration, and required-check rules from the trusted package governance in the input.
+      Return JSON with summary, changed_files, and tests.
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        changed_files:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        tests:
+          type: array
+          items:
+            type: string
+      required: [summary, changed_files, tests]
+    output_type: corporate-implementation
+    output_mime: application/json

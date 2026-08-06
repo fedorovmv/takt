@@ -19,11 +19,13 @@ import (
 	"time"
 
 	"takt/internal/authoring"
+	"takt/internal/blockcatalog"
 	"takt/internal/command"
 	cfgpkg "takt/internal/config"
 	"takt/internal/control"
 	"takt/internal/daemon"
 	"takt/internal/definition"
+	"takt/internal/dynamicplan"
 	"takt/internal/evaluation"
 	"takt/internal/gitworktree"
 	"takt/internal/mcp"
@@ -66,6 +68,8 @@ func run(args []string) error {
 		return steerCmd(args[1:])
 	case "workflow":
 		return workflowCmd(args[1:])
+	case "block":
+		return blockCmd(args[1:])
 	case "answer":
 		return answerCmd(args[1:])
 	case "resume":
@@ -123,8 +127,9 @@ func planCmd(args []string) error {
 		fs := newFlagSet("plan promote")
 		workspace := fs.String("workspace", ".", "control workspace")
 		name := fs.String("name", "", "generated workflow name")
+		force := fs.Bool("force", false, "replace an existing generated workflow")
 		jsonOut := fs.Bool("json", true, "JSON output")
-		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--workspace": true, "--name": true, "--json": false})); err != nil {
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--workspace": true, "--name": true, "--force": false, "--json": false})); err != nil {
 			return err
 		}
 		if fs.NArg() != 1 || strings.TrimSpace(*name) == "" {
@@ -134,7 +139,7 @@ func planCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		record, err := service.PromotePlan(fs.Arg(0), *name)
+		record, err := service.PromotePlanWithOptions(fs.Arg(0), *name, control.PromotePlanOptions{Force: *force})
 		if err != nil {
 			return err
 		}
@@ -173,18 +178,32 @@ func executeCmd(args []string) error {
 	fs := newFlagSet("execute")
 	workspace := fs.String("workspace", ".", "control workspace")
 	confirm := fs.Bool("confirm", false, "confirm the preview and hard limits")
+	useDaemon := fs.Bool("daemon", false, "submit execution to the local daemon")
+	socket := fs.String("socket", "", "daemon Unix socket path")
 	jsonOut := fs.Bool("json", true, "JSON output")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--confirm": false, "--json": false})); err != nil {
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--confirm": false, "--daemon": false, "--socket": true, "--json": false})); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return fmt.Errorf("usage: takt execute <plan-id> --confirm [--workspace dir]")
+		return fmt.Errorf("usage: takt execute <plan-id> --confirm [--daemon] [--workspace dir]")
+	}
+	request := control.ExecutePlanRequest{PlanID: fs.Arg(0), Confirm: *confirm}
+	if *useDaemon {
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		var record dynamicplan.Record
+		if err := client.Call(context.Background(), "plan.execute", request, &record); err != nil {
+			return err
+		}
+		return printResult(*jsonOut, &record)
 	}
 	service, err := control.New(*workspace, ".takt/config.yaml")
 	if err != nil {
 		return err
 	}
-	record, err := service.ExecutePlan(context.Background(), control.ExecutePlanRequest{PlanID: fs.Arg(0), Confirm: *confirm})
+	record, err := service.ExecutePlan(context.Background(), request)
 	if err != nil {
 		return err
 	}
@@ -195,12 +214,14 @@ func steerCmd(args []string) error {
 	fs := newFlagSet("steer")
 	workspace := fs.String("workspace", ".", "control workspace")
 	runID := fs.String("run", "", "execution Run ID instead of plan ID")
+	useDaemon := fs.Bool("daemon", false, "submit steering to the local daemon")
+	socket := fs.String("socket", "", "daemon Unix socket path")
 	jsonOut := fs.Bool("json", true, "JSON output")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--run": true, "--json": false})); err != nil {
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--run": true, "--daemon": false, "--socket": true, "--json": false})); err != nil {
 		return err
 	}
 	if fs.NArg() < 2 && *runID == "" {
-		return fmt.Errorf("usage: takt steer <plan-id> <message> [--workspace dir]")
+		return fmt.Errorf("usage: takt steer <plan-id> <message> [--daemon] [--workspace dir]")
 	}
 	request := control.SteerRequest{RunID: *runID}
 	if *runID != "" {
@@ -208,6 +229,17 @@ func steerCmd(args []string) error {
 	} else {
 		request.PlanID = fs.Arg(0)
 		request.Message = strings.TrimSpace(strings.Join(fs.Args()[1:], " "))
+	}
+	if *useDaemon {
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		var record dynamicplan.Record
+		if err := client.Call(context.Background(), "plan.steer", request, &record); err != nil {
+			return err
+		}
+		return printResult(*jsonOut, &record)
 	}
 	service, err := control.New(*workspace, ".takt/config.yaml")
 	if err != nil {
@@ -218,6 +250,72 @@ func steerCmd(args []string) error {
 		return err
 	}
 	return printResult(*jsonOut, record)
+}
+
+func blockCmd(args []string) error {
+	subcommand := "list"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		subcommand = args[0]
+		args = args[1:]
+	}
+	switch subcommand {
+	case "list":
+		fs := newFlagSet("block list")
+		workspace := fs.String("workspace", ".", "control workspace")
+		profileName := fs.String("profile", "code", "profile with trusted block packages")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--profile": true, "--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 0 {
+			return fmt.Errorf("usage: takt block list [--profile code] [--workspace dir]")
+		}
+		service, err := control.New(*workspace, ".takt/config.yaml")
+		if err != nil {
+			return err
+		}
+		view, err := service.ListBlocks(*profileName)
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, view)
+	case "describe":
+		fs := newFlagSet("block describe")
+		workspace := fs.String("workspace", ".", "control workspace")
+		profileName := fs.String("profile", "code", "profile with trusted block packages")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--profile": true, "--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt block describe <name> [--profile code] [--workspace dir]")
+		}
+		service, err := control.New(*workspace, ".takt/config.yaml")
+		if err != nil {
+			return err
+		}
+		block, err := service.DescribeBlock(*profileName, fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, block)
+	case "validate":
+		fs := newFlagSet("block validate")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args, map[string]bool{"--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt block validate <package.yaml>")
+		}
+		catalog, err := blockcatalog.LoadOne(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, catalog)
+	default:
+		return fmt.Errorf("unknown block subcommand %q", subcommand)
+	}
 }
 
 func mcpCmd(args []string) error {

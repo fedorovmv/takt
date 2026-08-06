@@ -1,0 +1,28 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: corporate-research
+nodes:
+  - id: result
+    prompt: |
+      Research the assigned objective. Follow the trusted package governance from the input.
+      Return JSON with summary, findings, and evidence.
+    allowed_tools: [read, grep]
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        findings:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            type: string
+      required: [summary, findings, evidence]
+    output_type: corporate-research
+    output_mime: application/json

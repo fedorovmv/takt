@@ -82,6 +82,8 @@
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
 | Локальный MCP control plane | `44-local-mcp-control-plane-v0.1.30.md` | фактический |
 | Строгий authoring и локальный daemon | `47-authoring-local-daemon-v0.1.33.md` | фактический |
+| Dynamic Takt | `48-dynamic-takt-v0.1.34.md` | фактический |
+| Доверенные пакеты блоков | `49-trusted-block-packages-v0.1.35.md`, `../schemas/block-package.schema.json`, `../examples/corporate-block-package/` | фактический |
 | Управляемые agent events и глубокие workflow | `46-controlled-agent-events-deep-workflows-v0.1.32.md` | фактический |
 | Исправления последнего аудита | `16–18-audit-remediation-*.md` | фактический |
 | Fake-assistant protocol suite | `20-fake-assistant-contract-v0.1.6.md` | фактический |
@@ -144,3 +146,5 @@
 - `47-authoring-local-daemon-v0.1.33.md` — authoring preflight, строгий renderer, always/idle semantics и локальный Unix-socket daemon.
 
 - `48-dynamic-takt-v0.1.34.md` — ограниченный WorkflowPlan, checkpoint replanning, coding-agent flow, MCP/CLI и promotion.
+
+- `49-trusted-block-packages-v0.1.35.md` — BlockPackage, корпоративный governance, fingerprint каталога и исправления Dynamic Takt.

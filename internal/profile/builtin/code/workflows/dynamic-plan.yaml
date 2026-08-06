@@ -55,7 +55,7 @@ nodes:
               maximum: 16
             max_tokens:
               type: integer
-              minimum: 0
+              minimum: 1
           required: [max_child_runs, max_parallel, max_iterations, max_tokens]
         phases:
           type: array
@@ -69,7 +69,7 @@ nodes:
                 pattern: "^[a-z][a-z0-9-]{0,62}$"
               uses:
                 type: string
-                enum: [discover, investigate, implement, validate, review, adversarial-verify, synthesize]
+                pattern: "^[a-z][a-z0-9-]{0,62}$"
               objective:
                 type: string
                 minLength: 1

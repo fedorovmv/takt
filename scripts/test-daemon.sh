@@ -78,7 +78,7 @@ printf '%s\n' '{"jsonrpc":"2.0","id":"daemon-tools","method":"tools/list","param
 python3 - "$WORK/mcp.json" <<'PY'
 import json, sys
 value=json.load(open(sys.argv[1]))
-assert len(value["result"]["tools"]) == 27, value
+assert len(value["result"]["tools"]) == 29, value
 PY
 
 "$TAKT" daemon stop --workspace "$WORK" --json >"$WORK/daemon-stop.json"

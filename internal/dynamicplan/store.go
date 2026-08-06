@@ -1,6 +1,7 @@
 package dynamicplan
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
+	"time"
 )
 
 type Store struct{ Workspace string }
@@ -21,6 +24,54 @@ func ValidateID(id string) error {
 		return fmt.Errorf("invalid plan id %q", id)
 	}
 	return nil
+}
+
+func (s Store) AcquireAdvanceLock(ctx context.Context) (*os.File, error) {
+	for {
+		file, acquired, err := s.TryAdvanceLock()
+		if err != nil {
+			return nil, err
+		}
+		if acquired {
+			return file, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+func (s Store) TryAdvanceLock() (*os.File, bool, error) {
+	if err := os.MkdirAll(s.Root(), 0o700); err != nil {
+		return nil, false, err
+	}
+	path := filepath.Join(s.Root(), ".advance.lock")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, false, err
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = file.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return file, true, nil
+}
+
+func ReleaseAdvanceLock(file *os.File) error {
+	if file == nil {
+		return nil
+	}
+	unlockErr := syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	closeErr := file.Close()
+	if unlockErr != nil {
+		return unlockErr
+	}
+	return closeErr
 }
 
 func (s Store) Save(record *Record) error {

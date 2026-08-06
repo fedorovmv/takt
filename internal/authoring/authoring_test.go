@@ -48,3 +48,20 @@ func TestAnalyzeAllowsLoopNodeToReferenceContainerUpstream(t *testing.T) {
 		t.Fatalf("unexpected diagnostics: %#v", diagnostics)
 	}
 }
+
+func TestAnalyzeChecksEveryCompoundWhenReference(t *testing.T) {
+	workflow := &spec.Workflow{Nodes: []spec.Node{
+		{ID: "source", Bash: "echo"},
+		{ID: "consumer", DependsOn: []string{"source"}, Bash: "echo", When: `nodes.source.status == "completed" && nodes.missing.status == "ready"`},
+	}}
+	diagnostics := Analyze(workflow, command.Resolver{})
+	found := false
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == "when.node_unknown" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected unknown node in compound when, got %#v", diagnostics)
+	}
+}

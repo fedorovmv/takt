@@ -10,6 +10,7 @@ func validPlan() Plan {
 	plan := Plan{
 		Decision: "planned",
 		Goal:     "audit handlers",
+		Reason:   "requires a bounded dynamic audit",
 		Budget:   Budget{MaxChildRuns: 12, MaxParallel: 4, MaxIterations: 3, MaxTokens: 10000},
 		Phases: []Phase{
 			{ID: "inventory", Uses: "discover", Objective: "find handlers", Strategy: "task"},
@@ -86,5 +87,35 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 	if loaded.Results == nil {
 		t.Fatal("empty results map must be restored after omitempty serialization")
+	}
+}
+
+func TestCompileLimitsParallelTaskPhases(t *testing.T) {
+	plan := validPlan()
+	plan.Budget.MaxParallel = 2
+	plan.Phases = []Phase{
+		{ID: "a", Uses: "discover", Objective: "a", Strategy: "task"},
+		{ID: "b", Uses: "review", Objective: "b", Strategy: "task"},
+		{ID: "c", Uses: "validate", Objective: "c", Strategy: "task"},
+		{ID: "d", Uses: "synthesize", Objective: "d", Strategy: "task"},
+	}
+	wf, err := Compile(plan.Phases, plan.Budget, CompileOptions{WorkflowName: "parallel-limit", BlocksDir: t.TempDir(), Goal: plan.Goal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsDependency(wf.Nodes[2].DependsOn, "a") || !containsDependency(wf.Nodes[3].DependsOn, "b") {
+		t.Fatalf("parallel lanes were not added: %#v", wf.Nodes)
+	}
+}
+
+func TestNormalizeTurnsZeroTokenBudgetIntoBoundedDefault(t *testing.T) {
+	plan := validPlan()
+	plan.Budget.MaxTokens = 0
+	Normalize(&plan)
+	if plan.Budget.MaxTokens != 500000 {
+		t.Fatalf("max_tokens=%d", plan.Budget.MaxTokens)
+	}
+	if err := Validate(plan); err != nil {
+		t.Fatal(err)
 	}
 }

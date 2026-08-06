@@ -20,7 +20,7 @@
         "max_child_runs": {"type": "integer", "minimum": 1, "maximum": 256},
         "max_parallel": {"type": "integer", "minimum": 1, "maximum": 64},
         "max_iterations": {"type": "integer", "minimum": 1, "maximum": 16},
-        "max_tokens": {"type": "integer", "minimum": 0}
+        "max_tokens": {"type": "integer", "minimum": 1}
       }
     },
     "phases": {

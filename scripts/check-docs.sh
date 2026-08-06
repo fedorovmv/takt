@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.16.0" \
+  "skills/takt/VERSION|0.17.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -99,6 +99,19 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-048" \
   "ARCHITECTURE_DECISIONS.md|ADR-049" \
   "ARCHITECTURE_DECISIONS.md|ADR-050" \
+  "ARCHITECTURE_DECISIONS.md|ADR-051" \
+  "ARCHITECTURE_DECISIONS.md|ADR-052" \
+  "docs/49-trusted-block-packages-v0.1.35.md|BlockPackage" \
+  "docs/49-trusted-block-packages-v0.1.35.md|takt block validate" \
+  "docs/06-roadmap.md|Выполнено в v0.1.35-alpha" \
+  "schemas/block-package.schema.json|Takt trusted block package" \
+  "schemas/profile.schema.json|block_packages" \
+  "internal/profile/builtin/code/profile.yaml|block_packages" \
+  "internal/profile/builtin/code/workflows/blocks/package.yaml|code-core" \
+  "examples/corporate-block-package/package.yaml|corporate-engineering" \
+  "scripts/test-block-packages.sh|trusted block package contract: PASS" \
+  "skills/takt/SKILL.md|Доверенные пакеты блоков" \
+  "skills/takt/references/mcp.md|takt.block.list" \
   "docs/48-dynamic-takt-v0.1.34.md|WorkflowPlan" \
   "docs/48-dynamic-takt-v0.1.34.md|takt.run.steer" \
   "docs/06-roadmap.md|Выполнено в v0.1.34-alpha" \
@@ -142,7 +155,7 @@ for check in \
   "scripts/test-child-fanout.sh|governed child fan-out contract: PASS" \
   "schemas/workflow.schema.json|fan_out" \
   "schemas/run-state.schema.json|child_runs" \
-  "internal/profile/builtin/code/VERSION|0.10.0" \
+  "internal/profile/builtin/code/VERSION|0.11.0" \
   "README.md|Динамический fan-out v0.1.28" \
   "docs/12-document-map.md|42-governed-child-fanout-v0.1.28.md" \
   "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \
@@ -188,7 +201,7 @@ for check in \
   "docs/03-specification.md|официальный RPC-режим Pi" \
   "docs/09-runtime-semantics.md|Store.Commit" \
   "docs/09-runtime-semantics.md|loop_group exhausted" \
-  "docs/09-runtime-semantics.md|v0.1.34-alpha" \
+  "docs/09-runtime-semantics.md|v0.1.35-alpha" \
   "docs/10-assistant-adapter-spec.md|takt-assistant/v1alpha1" \
   "docs/10-assistant-adapter-spec.md|Pi adapter реализован как \`type: pi\`" \
   "docs/10-assistant-adapter-spec.md|Request.Metadata\` является optional" \

@@ -1,0 +1,29 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: corporate-validate
+nodes:
+  - id: result
+    prompt: |
+      Execute and verify every required corporate check listed in the trusted package governance.
+      Return JSON with summary, passed, checks, and evidence.
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        passed:
+          type: boolean
+        checks:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            type: string
+      required: [summary, passed, checks, evidence]
+    output_type: corporate-validation
+    output_mime: application/json

@@ -311,6 +311,7 @@ func (s *Server) call(ctx context.Context, method string, raw json.RawMessage) (
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
+		params.Detached = true
 		return s.service.ExecutePlan(ctx, params)
 	case "plan.steer":
 		var params control.SteerRequest
@@ -322,11 +323,12 @@ func (s *Server) call(ctx context.Context, method string, raw json.RawMessage) (
 		var params struct {
 			PlanID string `json:"plan_id"`
 			Name   string `json:"name"`
+			Force  bool   `json:"force,omitempty"`
 		}
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return s.service.PromotePlan(params.PlanID, params.Name)
+		return s.service.PromotePlanWithOptions(params.PlanID, params.Name, control.PromotePlanOptions{Force: params.Force})
 	case "run.start":
 		var params control.StartRequest
 		if err := decodeParams(raw, &params); err != nil {

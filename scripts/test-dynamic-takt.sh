@@ -44,6 +44,7 @@ for file in \
   "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-implement.yaml" \
   "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-validate.yaml" \
   "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-review.yaml" \
+  "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-adversarial-verify.yaml" \
   "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-synthesize.yaml"
 do
   "$ROOT/bin/takt" validate "$file" --workspace "$TMP/project" --config "$TMP/project/.takt/config.yaml" --json >/dev/null
@@ -57,6 +58,28 @@ grep -q 'case "execute"' "$ROOT/cmd/takt/main.go"
 grep -q 'case "steer"' "$ROOT/cmd/takt/main.go"
 grep -q 'takt.plan.promote' "$ROOT/internal/mcp/server.go"
 grep -q 'Dynamic Takt из кодинг-агента' "$ROOT/skills/takt/SKILL.md"
+
+"$ROOT/bin/takt" block validate "$TMP/project/.takt/profiles/code/workflows/blocks/package.yaml" --json >/dev/null
+"$ROOT/bin/takt" block list --workspace "$TMP/project" --profile code --json > "$TMP/blocks.json"
+python3 - "$TMP/blocks.json" <<'PY'
+import json,sys
+value=json.load(open(sys.argv[1]))['result']
+assert len(value['blocks'])==7, value
+assert any(b['name']=='adversarial-verify' and b['workflow_path'].endswith('dynamic-adversarial-verify.yaml') for b in value['blocks']), value
+assert value['fingerprint'], value
+PY
+
+# The documented CLI path must work without a daemon: foreground execution
+# advances all segments before the CLI process exits.
+"$ROOT/bin/takt" plan 'fixture dynamic audit' --workspace "$TMP/project" --json > "$TMP/direct-plan.json"
+DIRECT_PLAN_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["result"]["plan_id"])' "$TMP/direct-plan.json")"
+"$ROOT/bin/takt" execute "$DIRECT_PLAN_ID" --confirm --workspace "$TMP/project" --json > "$TMP/direct-execute.json"
+python3 - "$TMP/direct-execute.json" <<'PY'
+import json,sys
+value=json.load(open(sys.argv[1]))['result']
+assert value['status']=='completed', value
+assert value['completed_phases']==['inventory','summary'], value
+PY
 
 "$ROOT/bin/takt" daemon start --workspace "$TMP/project" --json >/dev/null
 "$ROOT/bin/takt" plan 'fixture dynamic audit' --workspace "$TMP/project" --json > "$TMP/plan.json"
@@ -76,7 +99,7 @@ python3 - "$TMP/execute.json" <<'PY'
 import json,sys
 value=json.load(open(sys.argv[1]))
 assert value['result']['isError'] is False, value
-assert value['result']['structuredContent']['status']=='running', value
+assert value['result']['structuredContent']['status'] in ('running','completed'), value
 PY
 
 status=""

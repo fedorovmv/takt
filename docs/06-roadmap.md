@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.34-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.35-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -26,7 +26,7 @@
 
 Завершён event protocol v2: session lifecycle, tool request/allow/deny/start/complete, отдельная отмена вызова, artifact declaration с `call_id`, usage/diagnostic/terminal events и capability declaration adapter. Внешний executor обеспечивает блокирующий policy/approval до запуска инструмента и не может завершить узел с незакрытыми tool calls.
 
-Шесть основных процессов профиля `code` 0.9.0 получили строгие JSON-входы, специализированные предметные команды, обязательные checkpoint artifacts, domain error codes, Git decision trees, validation recovery и сквозной локальный Git/GitHub fixture. Полный архив среза: `46-controlled-agent-events-deep-workflows-v0.1.32.md`.
+Шесть основных процессов профиля `code` получили строгие JSON-входы, специализированные предметные команды, обязательные checkpoint artifacts, domain error codes, Git decision trees, validation recovery и сквозной локальный Git/GitHub fixture. Полный архив среза: `46-controlled-agent-events-deep-workflows-v0.1.32.md`.
 
 ## Выполнено в v0.1.33-alpha. Строгий authoring и локальный daemon
 
@@ -34,10 +34,15 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 
 `takt daemon` использует Unix socket и существующий файловый Store для background Runs, event subscriptions, MCP proxy и нескольких локальных клиентов без БД. Полный архив среза: `47-authoring-local-daemon-v0.1.33.md`.
 
-
 ## Выполнено в v0.1.34-alpha. Dynamic Takt и coding-agent experience
 
 Реализованы `existing|planned`, ограниченный `WorkflowPlan`, разрешённые блоки, компиляция в обычный Takt Workflow, preview/confirmation, бюджеты, checkpoint replanning, immutable revisions, steering, phase/run/artifact view, MCP/CLI `plan|execute|steer` и promotion успешного плана в workflow проекта. Основная сессия Pi/OpenCode остаётся интерфейсом пользователя, а фазы исполняются отдельными worker-сессиями. Полный архив среза: `48-dynamic-takt-v0.1.34.md`.
+
+## Выполнено в v0.1.35-alpha. Доверенные пакеты блоков
+
+Профиль подключает явный каталог `BlockPackage` со встроенными, корпоративными и проектными блоками. Пакет описывает workflow, типизированные выходы, возможности, интеграции, шаблоны, обязательные проверки, правила веток, шаблон запроса на изменение, security policy и максимальные бюджеты. Ограничения нескольких пакетов объединяются fail-closed, каталог получает fingerprint и становится обязательной границей plan/execute/replan/promote.
+
+Одновременно исправлены foreground-исполнение `takt execute`, обход лимита редакций через steering, macOS artifact path, составные `when`, полный учёт planner/replanner в бюджетах, ограничение параллельных task-фаз, безопасное promote и межпроцессное продвижение планов. Полный архив среза: `49-trusted-block-packages-v0.1.35.md`.
 
 ## Приоритет 1. Domain Adapter SDK
 
@@ -45,9 +50,28 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 - MCP/process transports;
 - типизированные inputs/results/errors, идемпотентность и capability discovery;
 - GitHub/GitLab как эталонные реализации без платформенных имён в workflow;
-- fake corporate SCM/tracker/CI для контрактных тестов.
+- fake corporate SCM/tracker/CI для контрактных тестов;
+- использование адаптеров как детерминированных узлов Takt и как разрешённых инструментов worker-сессии.
 
-## Приоритет 2. Усиление runtime и безопасность локального исполнения
+## Приоритет 2. Полная доставка пакетов
+
+- области `global|project|corporate` с явным приоритетом;
+- `install|update|uninstall|doctor`;
+- Git/local sources;
+- version pin и lock-файл;
+- зависимости и проверка совместимости;
+- checksum, подпись и политика источников;
+- команды, scripts, skills, MCP и adapter requirements в одном пакете.
+
+## Приоритет 3. Multi-repo dynamic workflow
+
+- определение затронутых репозиториев;
+- dependency graph;
+- отдельные worktree и child Run;
+- несколько change request через нейтральный SCM adapter;
+- интеграционная проверка и общий порядок слияния.
+
+## Приоритет 4. Усиление runtime и безопасность локального исполнения
 
 - раннее завершение `one_success` и `all_success` с отменой ненужных детей;
 - нормализованные diagnostics и fingerprints ошибок;
@@ -56,7 +80,7 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 - реальный OS sandbox для недоверенных процессов;
 - path-based namespace для вложенных циклов.
 
-## Приоритет 3. Предметная проверка
+## Предметная проверка
 
 Отдельно от системных функций нужен Route DSL benchmark со штатным валидатором и обезличенными реальными заданиями: success@1, final success, число попыток, стоимость и стабильность на неизменных fingerprints.
 

@@ -1,0 +1,62 @@
+apiVersion: takt/v1alpha1
+kind: BlockPackage
+metadata:
+  name: code-core
+  version: 0.1.0
+  scope: builtin
+  description: Trusted core blocks for bounded Dynamic Takt engineering plans.
+blocks:
+  discover:
+    workflow: dynamic-discover.yaml
+    description: Inventory files, services, handlers, APIs, or other affected units.
+    capabilities: [repository.read]
+    integrations: [filesystem]
+    output_paths: [summary, items]
+  investigate:
+    workflow: dynamic-investigate.yaml
+    description: Investigate one scope or item and return evidence-backed findings.
+    capabilities: [repository.read]
+    integrations: [filesystem]
+    output_paths: [summary, findings, evidence]
+  implement:
+    workflow: dynamic-implement.yaml
+    description: Modify code for a bounded objective and report changed files and tests.
+    capabilities: [repository.read, repository.write, shell]
+    integrations: [filesystem, git]
+    output_paths: [summary, changed_files, tests]
+  validate:
+    workflow: dynamic-validate.yaml
+    description: Run deterministic validation and report checks and issues.
+    capabilities: [repository.read, shell]
+    integrations: [filesystem, ci]
+    output_paths: [summary, passed, checks, issues]
+  review:
+    workflow: dynamic-review.yaml
+    description: Review completed work and return findings with evidence.
+    capabilities: [repository.read]
+    integrations: [filesystem]
+    output_paths: [summary, approved, findings, evidence]
+  adversarial-verify:
+    workflow: dynamic-adversarial-verify.yaml
+    description: Independently challenge findings or completed changes.
+    capabilities: [repository.read]
+    integrations: [filesystem]
+    output_paths: [summary, approved, findings, evidence]
+  synthesize:
+    workflow: dynamic-synthesize.yaml
+    description: Combine results into a final summary and next actions.
+    capabilities: [repository.read]
+    integrations: [filesystem]
+    output_paths: [summary, completed, unresolved, next_actions]
+templates:
+  research: evidence-first-research
+  implementation: bounded-code-change
+  change_request: neutral-change-request
+governance:
+  required_checks: [takt.validate]
+  allowed_integrations: [filesystem, git, scm, tracker, ci]
+  limits:
+    max_child_runs: 256
+    max_parallel: 64
+    max_iterations: 16
+    max_tokens: 100000000

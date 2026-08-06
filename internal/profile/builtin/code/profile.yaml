@@ -25,6 +25,8 @@ workflows:
   remotion-generate: workflows/remotion-generate.yaml
   resolve-conflicts: workflows/resolve-conflicts.yaml
 config: ../../config.yaml
+block_packages:
+  - workflows/blocks/package.yaml
 input:
   format: markdown
   preserve_path: true

@@ -80,7 +80,10 @@ daemon-contract: build
 dynamic-takt-contract: build
 	./scripts/test-dynamic-takt.sh
 
-check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract dynamic-takt-contract docs
+block-package-contract: build
+	./scripts/test-block-packages.sh
+
+check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract dynamic-takt-contract block-package-contract docs
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml

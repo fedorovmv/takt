@@ -194,3 +194,22 @@ func TestScriptLanguageRuntimes(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveArtifactSourcePathUsesExistingSymlinkPrefix(t *testing.T) {
+	realRoot := t.TempDir()
+	aliasParent := t.TempDir()
+	alias := filepath.Join(aliasParent, "workspace")
+	if err := os.Symlink(realRoot, alias); err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{Workspace: alias}
+	artifactsDir := filepath.Join(alias, ".takt", "runs", "run-test", "artifacts")
+	resolved, err := runner.resolveArtifactSourcePath(filepath.Join(alias, "future", "validation.json"), artifactsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(realRoot, "future", "validation.json")
+	if resolved != want {
+		t.Fatalf("resolved=%q want=%q", resolved, want)
+	}
+}

@@ -7,16 +7,19 @@ import (
 	"path/filepath"
 	"strings"
 
+	"takt/internal/blockcatalog"
 	"takt/internal/spec"
 )
 
 type CompileOptions struct {
-	WorkflowName string
-	OutputPath   string
-	BlocksDir    string
-	Goal         string
-	Context      string
-	Promoted     bool
+	WorkflowName      string
+	OutputPath        string
+	BlocksDir         string
+	Goal              string
+	Context           string
+	Promoted          bool
+	Catalog           *blockcatalog.Catalog
+	GovernanceContext string
 }
 
 func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workflow, error) {
@@ -52,15 +55,17 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 	}
 	mapIndex := 0
 	for _, phase := range phases {
-		blockFile := AllowedBlocks[phase.Uses]
-		blockPath := filepath.Join(options.BlocksDir, blockFile)
+		blockPath, blockPolicy, err := resolveBlock(options, phase.Uses)
+		if err != nil {
+			return nil, err
+		}
 		if options.OutputPath != "" {
 			if rel, err := filepath.Rel(filepath.Dir(options.OutputPath), blockPath); err == nil {
 				blockPath = filepath.ToSlash(rel)
 			}
 		}
-		input := phaseInput(options.Goal, phase, options.Context, options.Promoted)
-		node := spec.Node{ID: phase.ID, DependsOn: internalDependencies(phase.DependsOn, phaseSet), WorkflowRun: &spec.WorkflowRunSpec{Path: blockPath, Input: input, Isolation: "inherit"}}
+		input := phaseInput(options.Goal, phase, options.Context, options.GovernanceContext, options.Promoted)
+		node := spec.Node{ID: phase.ID, DependsOn: internalDependencies(phase.DependsOn, phaseSet), WorkflowRun: &spec.WorkflowRunSpec{Path: blockPath, Input: input, Isolation: "inherit", Policy: blockPolicy}}
 		if phase.Strategy == "map" {
 			source, err := RuntimeSource(phase.Source)
 			if err != nil {
@@ -70,7 +75,7 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 			if !phaseSet[sourceID] {
 				return nil, fmt.Errorf("map phase %q source %q crosses a replanning checkpoint; keep producer and map phase in the same segment", phase.ID, sourceID)
 			}
-			node.WorkflowRun.Input = phaseFanOutInput(options.Goal, phase, options.Context, options.Promoted)
+			node.WorkflowRun.Input = phaseFanOutInput(options.Goal, phase, options.Context, options.GovernanceContext, options.Promoted)
 			mapIndex++
 			remainingMaps := mapRuns - mapIndex + 1
 			maxItems := remainingMapItems / remainingMaps
@@ -79,7 +84,45 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 		}
 		wf.Nodes = append(wf.Nodes, node)
 	}
+	applySegmentParallelLimit(wf.Nodes, budget.MaxParallel)
 	return wf, nil
+}
+
+func applySegmentParallelLimit(nodes []spec.Node, maxParallel int) {
+	if maxParallel < 1 {
+		maxParallel = 1
+	}
+	for index := maxParallel; index < len(nodes); index++ {
+		predecessor := nodes[index-maxParallel].ID
+		if !containsDependency(nodes[index].DependsOn, predecessor) {
+			nodes[index].DependsOn = append(nodes[index].DependsOn, predecessor)
+		}
+	}
+}
+
+func containsDependency(items []string, value string) bool {
+	for _, item := range items {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveBlock(options CompileOptions, name string) (string, *spec.PolicySpec, error) {
+	if options.Catalog != nil {
+		block, ok := options.Catalog.Block(name)
+		if !ok {
+			return "", nil, fmt.Errorf("trusted block %q is not available", name)
+		}
+		policy := block.Policy
+		return block.WorkflowPath, &policy, nil
+	}
+	blockFile, ok := AllowedBlocks[name]
+	if !ok {
+		return "", nil, fmt.Errorf("unsupported block %q", name)
+	}
+	return filepath.Join(options.BlocksDir, blockFile), nil, nil
 }
 
 func WriteWorkflow(path string, wf *spec.Workflow) error {
@@ -104,15 +147,15 @@ func internalDependencies(deps []string, segment map[string]bool) []string {
 	return out
 }
 
-func phaseInput(goal string, phase Phase, context string, promoted bool) string {
+func phaseInput(goal string, phase Phase, context, governance string, promoted bool) string {
 	if promoted {
 		goal = "${input}"
 	}
-	return fmt.Sprintf("Goal: %s\n\nPhase objective: %s\n\nPrior dynamic context:\n%s", goal, phase.Objective, context)
+	return fmt.Sprintf("Goal: %s\n\nPhase objective: %s\n\nTrusted package governance:\n%s\n\nPrior dynamic context:\n%s", goal, phase.Objective, governance, context)
 }
 
-func phaseFanOutInput(goal string, phase Phase, context string, promoted bool) string {
-	base := phaseInput(goal, phase, context, promoted)
+func phaseFanOutInput(goal string, phase Phase, context, governance string, promoted bool) string {
+	base := phaseInput(goal, phase, context, governance, promoted)
 	return base + "\n\nCurrent item (${fanout.index}/${fanout.total}):\n${fanout.item}"
 }
 

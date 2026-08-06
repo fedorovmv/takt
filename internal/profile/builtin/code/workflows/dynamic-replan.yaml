@@ -38,7 +38,7 @@ nodes:
                 pattern: "^[a-z][a-z0-9-]{0,62}$"
               uses:
                 type: string
-                enum: [discover, investigate, implement, validate, review, adversarial-verify, synthesize]
+                pattern: "^[a-z][a-z0-9-]{0,62}$"
               objective:
                 type: string
                 minLength: 1

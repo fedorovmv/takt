@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.35-alpha
+
+- Добавлен минимальный доверенный каталог `BlockPackage` для Dynamic Takt: встроенные, корпоративные и проектные блоки, типизированные выходы, возможности, интеграции, шаблоны и governance.
+- Пакеты задают обязательные блоки/проверки, правила веток, шаблон change request, security policy и максимальные бюджеты; ограничения нескольких пакетов объединяются fail-closed.
+- Профиль поддерживает `block_packages`; добавлены CLI `takt block list|describe|validate` и MCP `takt.block.list|describe`. Каталог и workflow блоков входят в fingerprint плана.
+- `map` разрешает только точно объявленный массив результата; доверенный блок не может скрыто запускать governed child Runs. `adversarial-verify` получил отдельный workflow.
+- Исправлен прямой `takt execute`: без daemon план выполняется до terminal/waiting, с `--daemon` остаётся отсоединённым. Добавлен межпроцессный lock продвижения планов.
+- Лимиты revisions/child Runs/tokens теперь учитывают steering, planner, replanner, сегменты и детей; `max_parallel` ограничивает независимые task-фазы; `max_tokens: 0` нормализуется в bounded default.
+- Исправлены macOS artifact paths с несуществующим файлом под symlinked prefix, полный анализ составных `when`, безопасный promote с `--force`, порядок применения steering и ошибки persistence.
+- Профиль `code` обновлён до 0.11.0, coding-agent skill — до 0.17.0; добавлены ADR-051/052, schema/contract пакетов и `docs/49-trusted-block-packages-v0.1.35.md`.
+
 ## v0.1.34-alpha
 
 - Добавлен Dynamic Takt: решение `existing|planned`, ограниченный `WorkflowPlan`, разрешённые workflow-блоки и компиляция в обычные governed child Run без второго runtime.

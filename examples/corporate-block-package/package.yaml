@@ -1,0 +1,47 @@
+apiVersion: takt/v1alpha1
+kind: BlockPackage
+metadata:
+  name: corporate-engineering
+  version: 1.0.0
+  scope: corporate
+  description: Example trusted corporate blocks and engineering governance for Dynamic Takt.
+blocks:
+  corp-research:
+    workflow: research.yaml
+    description: Research a platform change using corporate evidence requirements.
+    capabilities: [repository.read, corporate.docs.read]
+    integrations: [filesystem, tracker]
+    output_paths: [summary, findings, evidence]
+  corp-implement:
+    workflow: implement.yaml
+    description: Implement a bounded change under corporate branch and security policy.
+    capabilities: [repository.read, repository.write, shell]
+    integrations: [filesystem, git, tracker]
+    output_paths: [summary, changed_files, tests]
+  corp-validate:
+    workflow: validate.yaml
+    description: Run mandatory corporate validation and CI evidence collection.
+    capabilities: [repository.read, shell, ci.read]
+    integrations: [filesystem, ci]
+    output_paths: [summary, passed, checks, evidence]
+templates:
+  research: corporate-evidence-report-v1
+  implementation: corporate-change-plan-v2
+  change_request: corporate-change-request-v3
+governance:
+  required_blocks: [corp-validate]
+  required_checks: [make-check, unit-race, security-policy, ci-required]
+  allowed_integrations: [filesystem, git, tracker, scm, ci]
+  branch_rules:
+    prefix: feature/
+    pattern: "^feature/[a-z0-9-]+$"
+    require_clean_base: true
+  change_request_template: corporate-change-request-v3
+  policy:
+    denied_tools: [network-unapproved]
+    requires: [tool_policy, sandbox_filesystem]
+  limits:
+    max_child_runs: 48
+    max_parallel: 8
+    max_iterations: 4
+    max_tokens: 1500000

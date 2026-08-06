@@ -9,6 +9,7 @@ takt mcp --workspace . --config .takt/config.yaml
 Сервер публикует инструменты:
 
 - `takt.workflow.list`, `takt.workflow.describe`;
+- `takt.block.list`, `takt.block.describe`;
 - `takt.plan`, `takt.plan.get`, `takt.execute`, `takt.run.steer`, `takt.plan.promote`;
 - `takt.run.start`, `takt.run.get`, `takt.run.resume`;
 - `takt.run.answer`, `takt.run.cancel`;
@@ -28,7 +29,9 @@ MCP-процесс локальный и доверенный. Не публик
 
 ## Dynamic Takt
 
-`takt.plan` принимает цель и возвращает решение `existing|planned`, preview, жёсткие бюджеты и `plan_id`. Для `planned` выполнение требует отдельного `takt.execute` с подтверждением. `takt.plan.get` возвращает редакции плана, состояние фаз, связанные Run, usage и число артефактов. `takt.run.steer` сохраняет уточнение для ближайшего checkpoint; завершённые фазы не переписываются. `takt.plan.promote` доступен только для успешно завершённого task-specific плана и сохраняет повторно проверенный workflow проекта.
+`takt.block.list/describe` показывают только явно подключённые доверенные пакеты, effective governance, типизированные выходы и fingerprint каталога.
+
+`takt.plan` принимает цель и возвращает решение `existing|planned`, preview, жёсткие бюджеты и `plan_id`. Для `planned` выполнение требует отдельного `takt.execute` с подтверждением. Прямой MCP ждёт terminal/waiting, а `takt mcp --daemon` возвращает управление после запуска и сохраняет Run независимо от клиента. `takt.plan.get` возвращает редакции плана, состояние фаз, связанные Run, usage и число артефактов. `takt.run.steer` сохраняет уточнение для ближайшего checkpoint; завершённые фазы не переписываются. `takt.plan.promote` доступен только для успешно завершённого task-specific плана и сохраняет повторно проверенный workflow проекта.
 
 Основная сессия кодинг-агента не выполняет весь граф последовательно. Takt запускает отдельные Pi/OpenCode worker-сессии через обычные assistant nodes или выдаёт `executor: external` задания совместимому worker. Кодинг-агент остаётся интерфейсом пользователя: показывает preview, наблюдает события и артефакты, передаёт approval/steering и публикует итог.
 

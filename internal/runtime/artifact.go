@@ -118,9 +118,9 @@ func (r *Runner) resolveArtifactSourcePath(value, artifactsDir string) (string, 
 	if err != nil {
 		return "", err
 	}
-	resolved := filepath.Clean(abs)
-	if evaluated, evalErr := filepath.EvalSymlinks(resolved); evalErr == nil {
-		resolved = evaluated
+	resolved, err := resolveExistingSymlinkPrefix(filepath.Clean(abs))
+	if err != nil {
+		return "", err
 	}
 	allowed := []string{r.Workspace, artifactsDir}
 	for _, root := range allowed {
@@ -128,8 +128,9 @@ func (r *Runner) resolveArtifactSourcePath(value, artifactsDir string) (string, 
 		if rootErr != nil {
 			continue
 		}
-		if evaluated, evalErr := filepath.EvalSymlinks(rootAbs); evalErr == nil {
-			rootAbs = evaluated
+		rootAbs, rootErr = resolveExistingSymlinkPrefix(rootAbs)
+		if rootErr != nil {
+			continue
 		}
 		rel, relErr := filepath.Rel(rootAbs, resolved)
 		if relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -137,6 +138,35 @@ func (r *Runner) resolveArtifactSourcePath(value, artifactsDir string) (string, 
 		}
 	}
 	return "", fmt.Errorf("artifact output_path %q is outside execution workspace and Run artifacts", value)
+}
+
+func resolveExistingSymlinkPrefix(path string) (string, error) {
+	path = filepath.Clean(path)
+	existing := path
+	var suffix []string
+	for {
+		_, err := os.Lstat(existing)
+		if err == nil {
+			break
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return "", fmt.Errorf("resolve artifact path %q: no existing parent", path)
+		}
+		suffix = append(suffix, filepath.Base(existing))
+		existing = parent
+	}
+	evaluated, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return "", err
+	}
+	for i := len(suffix) - 1; i >= 0; i-- {
+		evaluated = filepath.Join(evaluated, suffix[i])
+	}
+	return filepath.Clean(evaluated), nil
 }
 
 func copyArtifactFile(source, destination string) error {

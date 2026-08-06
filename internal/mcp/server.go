@@ -346,6 +346,23 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 			return nil, err
 		}
 		return s.control.DescribeWorkflow(in.Selector)
+	case "takt.block.list":
+		var in struct {
+			Profile string `json:"profile,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.ListBlocks(in.Profile)
+	case "takt.block.describe":
+		var in struct {
+			Profile string `json:"profile,omitempty"`
+			Name    string `json:"name"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.DescribeBlock(in.Profile, in.Name)
 	case "takt.plan":
 		var in struct {
 			Goal      string            `json:"goal"`
@@ -380,11 +397,12 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 		var in struct {
 			PlanID string `json:"plan_id"`
 			Name   string `json:"name"`
+			Force  bool   `json:"force,omitempty"`
 		}
 		if err := decodeArguments(args, &in); err != nil {
 			return nil, err
 		}
-		return s.control.PromotePlan(in.PlanID, in.Name)
+		return s.control.PromotePlanWithOptions(in.PlanID, in.Name, control.PromotePlanOptions{Force: in.Force})
 	case "takt.run.start":
 		var in struct {
 			Selector     string `json:"selector"`
@@ -706,13 +724,15 @@ func tools() []tool {
 	return []tool{
 		{Name: "takt.workflow.list", Title: "List Takt workflows", Description: "List deterministic workflow selectors published by an installed Takt profile.", InputSchema: object(map[string]any{"profile": stringProp("Installed profile name, for example code")}, "profile"), Annotations: readOnly},
 		{Name: "takt.workflow.describe", Title: "Describe a Takt workflow", Description: "Describe the public DAG of a profile selector before starting it.", InputSchema: object(map[string]any{"selector": stringProp("Profile selector such as code:plan-to-pr")}, "selector"), Annotations: readOnly},
+		{Name: "takt.block.list", Title: "List trusted Dynamic Takt blocks", Description: "List explicitly trusted block packages, governance limits, templates and blocks available to a profile.", InputSchema: object(map[string]any{"profile": stringProp("Installed profile, defaults to code")}), Annotations: readOnly},
+		{Name: "takt.block.describe", Title: "Describe trusted Dynamic Takt block", Description: "Describe one trusted block, its package scope, output paths, capabilities, integrations and policy.", InputSchema: object(map[string]any{"profile": stringProp("Installed profile, defaults to code"), "name": stringProp("Trusted block name")}, "name"), Annotations: readOnly},
 		{Name: "takt.plan", Title: "Plan with Dynamic Takt", Description: "Choose an existing workflow or create a bounded task-specific WorkflowPlan from approved blocks. Returns preview, budget and confirmation requirement.", InputSchema: object(map[string]any{
 			"goal": stringProp("Natural-language engineering goal"), "profile": stringProp("Installed profile, defaults to code"), "candidate": map[string]any{"type": "object", "description": "Optional externally proposed WorkflowPlan; Takt still validates it"},
 		}, "goal"), Annotations: mutating},
 		{Name: "takt.plan.get", Title: "Get Dynamic Takt plan", Description: "Read plan revisions, current phase segment, execution Runs, steering and promotion state.", InputSchema: object(map[string]any{"plan_id": stringProp("Durable plan ID")}, "plan_id"), Annotations: readOnly},
 		{Name: "takt.execute", Title: "Execute Dynamic Takt plan", Description: "Execute a previewed existing or planned workflow. Planned workflows require explicit confirm=true.", InputSchema: object(map[string]any{"plan_id": stringProp("Durable plan ID"), "confirm": boolProp("Confirm the displayed preview and hard limits")}, "plan_id"), Annotations: mutating},
 		{Name: "takt.run.steer", Title: "Steer Dynamic Takt run", Description: "Queue an instruction for the next replanning checkpoint, or continue a plan waiting for user input.", InputSchema: object(map[string]any{"plan_id": stringProp("Plan ID"), "run_id": stringProp("Any execution Run ID owned by the plan"), "message": stringProp("Concrete steering instruction")}, "message"), Annotations: mutating},
-		{Name: "takt.plan.promote", Title: "Promote successful dynamic plan", Description: "Compile the latest successful plan revision into a validated project workflow under .takt/workflows/generated.", InputSchema: object(map[string]any{"plan_id": stringProp("Completed plan ID"), "name": stringProp("Project workflow name")}, "plan_id", "name"), Annotations: mutating},
+		{Name: "takt.plan.promote", Title: "Promote successful dynamic plan", Description: "Compile the latest successful plan revision into a validated project workflow under .takt/workflows/generated.", InputSchema: object(map[string]any{"plan_id": stringProp("Completed plan ID"), "name": stringProp("Project workflow name"), "force": boolProp("Replace an existing generated workflow")}, "plan_id", "name"), Annotations: mutating},
 		{Name: "takt.run.start", Title: "Start a Takt Run", Description: "Validate definitions and start a local Takt Run. Detached mode is the default and returns a durable run_id for polling.", InputSchema: object(map[string]any{
 			"selector": stringProp("Profile selector or workflow file path"), "input": stringProp("Input text or a readable input file path"),
 			"config_path": stringProp("Optional config override"), "worktree": boolProp("Force or disable managed Git worktree isolation"),

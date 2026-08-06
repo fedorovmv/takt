@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"takt/internal/blockcatalog"
 )
 
 const (
@@ -22,7 +24,7 @@ var AllowedBlocks = map[string]string{
 	"implement":          "dynamic-implement.yaml",
 	"validate":           "dynamic-validate.yaml",
 	"review":             "dynamic-review.yaml",
-	"adversarial-verify": "dynamic-review.yaml",
+	"adversarial-verify": "dynamic-adversarial-verify.yaml",
 	"synthesize":         "dynamic-synthesize.yaml",
 }
 
@@ -69,25 +71,29 @@ type Steering struct {
 }
 
 type Record struct {
-	ID                   string            `json:"id"`
-	Status               string            `json:"status"`
-	Profile              string            `json:"profile"`
-	ConfigPath           string            `json:"config_path"`
-	CreatedAt            time.Time         `json:"created_at"`
-	UpdatedAt            time.Time         `json:"updated_at"`
-	RequiresConfirmation bool              `json:"requires_confirmation"`
-	ConfirmedAt          *time.Time        `json:"confirmed_at,omitempty"`
-	PlannerRunID         string            `json:"planner_run_id,omitempty"`
-	ExecutionRunIDs      []string          `json:"execution_run_ids,omitempty"`
-	CurrentRunID         string            `json:"current_run_id,omitempty"`
-	CurrentSegment       int               `json:"current_segment,omitempty"`
-	PendingSegments      [][]Phase         `json:"pending_segments,omitempty"`
-	CompletedPhases      []string          `json:"completed_phases,omitempty"`
-	Results              map[string]string `json:"results,omitempty"`
-	Steering             []Steering        `json:"steering,omitempty"`
-	LastError            string            `json:"last_error,omitempty"`
-	PromotedPath         string            `json:"promoted_path,omitempty"`
-	Revisions            []Revision        `json:"revisions"`
+	ID                      string            `json:"id"`
+	Status                  string            `json:"status"`
+	Profile                 string            `json:"profile"`
+	ConfigPath              string            `json:"config_path"`
+	BlockPackagePaths       []string          `json:"block_package_paths,omitempty"`
+	BlockCatalogFingerprint string            `json:"block_catalog_fingerprint,omitempty"`
+	CreatedAt               time.Time         `json:"created_at"`
+	UpdatedAt               time.Time         `json:"updated_at"`
+	RequiresConfirmation    bool              `json:"requires_confirmation"`
+	ConfirmedAt             *time.Time        `json:"confirmed_at,omitempty"`
+	PlannerRunID            string            `json:"planner_run_id,omitempty"`
+	ReplannerRunIDs         []string          `json:"replanner_run_ids,omitempty"`
+	ExecutionRunIDs         []string          `json:"execution_run_ids,omitempty"`
+	Detached                bool              `json:"detached,omitempty"`
+	CurrentRunID            string            `json:"current_run_id,omitempty"`
+	CurrentSegment          int               `json:"current_segment,omitempty"`
+	PendingSegments         [][]Phase         `json:"pending_segments,omitempty"`
+	CompletedPhases         []string          `json:"completed_phases,omitempty"`
+	Results                 map[string]string `json:"results,omitempty"`
+	Steering                []Steering        `json:"steering,omitempty"`
+	LastError               string            `json:"last_error,omitempty"`
+	PromotedPath            string            `json:"promoted_path,omitempty"`
+	Revisions               []Revision        `json:"revisions"`
 }
 
 type ReplanDecision struct {
@@ -112,6 +118,9 @@ func Normalize(plan *Plan) {
 	if plan.Budget.MaxIterations == 0 {
 		plan.Budget.MaxIterations = 3
 	}
+	if plan.Budget.MaxTokens == 0 {
+		plan.Budget.MaxTokens = 500000
+	}
 	for i := range plan.Phases {
 		if plan.Phases[i].Strategy == "" {
 			plan.Phases[i].Strategy = "task"
@@ -123,6 +132,10 @@ func Normalize(plan *Plan) {
 }
 
 func Validate(plan Plan) error {
+	return ValidateWithCatalog(plan, nil)
+}
+
+func ValidateWithCatalog(plan Plan, catalog *blockcatalog.Catalog) error {
 	if plan.APIVersion != APIVersion || plan.Kind != Kind {
 		return fmt.Errorf("plan must use apiVersion %s and kind %s", APIVersion, Kind)
 	}
@@ -141,8 +154,11 @@ func Validate(plan Plan) error {
 	if plan.Budget.MaxIterations < 1 || plan.Budget.MaxIterations > 16 {
 		return fmt.Errorf("budget.max_iterations must be between 1 and 16")
 	}
-	if plan.Budget.MaxTokens < 0 {
-		return fmt.Errorf("budget.max_tokens cannot be negative")
+	if plan.Budget.MaxTokens < 1 || plan.Budget.MaxTokens > 100000000 {
+		return fmt.Errorf("budget.max_tokens must be between 1 and 100000000")
+	}
+	if strings.TrimSpace(plan.Reason) == "" {
+		return fmt.Errorf("plan reason is required")
 	}
 	if plan.Decision == "existing" {
 		if strings.TrimSpace(plan.ExistingWorkflow) == "" {
@@ -168,7 +184,11 @@ func Validate(plan Plan) error {
 			return fmt.Errorf("duplicate phase id %q", phase.ID)
 		}
 		seen[phase.ID] = i
-		if _, ok := AllowedBlocks[phase.Uses]; !ok {
+		if catalog != nil {
+			if _, ok := catalog.Block(phase.Uses); !ok {
+				return fmt.Errorf("phase %q uses block %q outside the trusted catalog", phase.ID, phase.Uses)
+			}
+		} else if _, ok := AllowedBlocks[phase.Uses]; !ok {
 			return fmt.Errorf("phase %q uses unsupported block %q", phase.ID, phase.Uses)
 		}
 		if strings.TrimSpace(phase.Objective) == "" {
@@ -186,7 +206,9 @@ func Validate(plan Plan) error {
 			}
 		}
 	}
+	uses := make([]string, 0, len(plan.Phases))
 	for _, phase := range plan.Phases {
+		uses = append(uses, phase.Uses)
 		for _, dep := range phase.DependsOn {
 			position, ok := seen[dep]
 			if !ok {
@@ -204,6 +226,25 @@ func Validate(plan Plan) error {
 			if _, ok := seen[sourceID]; !ok || seen[sourceID] >= seen[phase.ID] {
 				return fmt.Errorf("phase %q source references unavailable phase %q", phase.ID, sourceID)
 			}
+			if catalog != nil {
+				sourcePhase := plan.Phases[seen[sourceID]]
+				path := SourceOutputPath(phase.Source)
+				outputType, ok := catalog.OutputPathType(sourcePhase.Uses, path)
+				if !ok {
+					return fmt.Errorf("phase %q source path %q is not declared by trusted block %q", phase.ID, path, sourcePhase.Uses)
+				}
+				if outputType != "array" {
+					return fmt.Errorf("phase %q source path %q from block %q has type %s, want array", phase.ID, path, sourcePhase.Uses, outputType)
+				}
+			}
+		}
+	}
+	if catalog != nil {
+		if err := catalog.ValidateBudget(plan.Budget.MaxChildRuns, plan.Budget.MaxParallel, plan.Budget.MaxIterations, plan.Budget.MaxTokens); err != nil {
+			return err
+		}
+		if err := catalog.ValidateRequiredBlocks(uses); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -215,6 +256,14 @@ func SourcePhaseID(source string) (string, error) {
 		return "", fmt.Errorf("source must be phases.<id>.output.<path>")
 	}
 	return parts[1], nil
+}
+
+func SourceOutputPath(source string) string {
+	parts := strings.Split(strings.TrimSpace(source), ".")
+	if len(parts) < 4 {
+		return ""
+	}
+	return strings.Join(parts[3:], ".")
 }
 
 func RuntimeSource(source string) (string, error) {
@@ -255,6 +304,10 @@ func PendingPhases(plan Plan, completed []string) []Phase {
 }
 
 func Preview(plan Plan) string {
+	return PreviewWithCatalog(plan, nil)
+}
+
+func PreviewWithCatalog(plan Plan, catalog *blockcatalog.Catalog) string {
 	var b strings.Builder
 	if plan.Decision == "existing" {
 		fmt.Fprintf(&b, "Existing workflow: %s\nReason: %s\n", plan.ExistingWorkflow, plan.Reason)
@@ -272,7 +325,17 @@ func Preview(plan Plan) string {
 		}
 		fmt.Fprintf(&b, "%d. %s — %s: %s%s\n", i+1, phase.ID, strategy, phase.Objective, checkpoint)
 	}
-	fmt.Fprintf(&b, "\nBudget: child runs <= %d, parallel <= %d, plan revisions <= %d", plan.Budget.MaxChildRuns, plan.Budget.MaxParallel, plan.Budget.MaxIterations)
+	if catalog != nil {
+		uses := make([]string, 0, len(plan.Phases))
+		for _, phase := range plan.Phases {
+			uses = append(uses, phase.Uses)
+		}
+		capabilities := catalog.RequiredCapabilities(uses)
+		if len(capabilities) > 0 {
+			fmt.Fprintf(&b, "\nRequired capabilities: %s\n", strings.Join(capabilities, ", "))
+		}
+	}
+	fmt.Fprintf(&b, "\nBudget: total runs <= %d, parallel phase nodes <= %d, plan revisions <= %d", plan.Budget.MaxChildRuns, plan.Budget.MaxParallel, plan.Budget.MaxIterations)
 	if plan.Budget.MaxTokens > 0 {
 		fmt.Fprintf(&b, ", tokens <= %d", plan.Budget.MaxTokens)
 	}

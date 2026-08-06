@@ -21,14 +21,15 @@ type Metadata struct {
 }
 
 type Manifest struct {
-	APIVersion string               `json:"apiVersion"`
-	Kind       string               `json:"kind"`
-	Metadata   Metadata             `json:"metadata"`
-	Workflow   string               `json:"workflow"`
-	Workflows  map[string]string    `json:"workflows,omitempty"`
-	Config     string               `json:"config"`
-	Input      InputSpec            `json:"input,omitempty"`
-	Inputs     map[string]InputSpec `json:"inputs,omitempty"`
+	APIVersion    string               `json:"apiVersion"`
+	Kind          string               `json:"kind"`
+	Metadata      Metadata             `json:"metadata"`
+	Workflow      string               `json:"workflow"`
+	Workflows     map[string]string    `json:"workflows,omitempty"`
+	Config        string               `json:"config"`
+	Input         InputSpec            `json:"input,omitempty"`
+	Inputs        map[string]InputSpec `json:"inputs,omitempty"`
+	BlockPackages []string             `json:"block_packages,omitempty"`
 }
 
 type InputSpec struct {
@@ -37,12 +38,13 @@ type InputSpec struct {
 }
 
 type Resolved struct {
-	Name         string
-	WorkflowName string
-	ManifestPath string
-	WorkflowPath string
-	ConfigPath   string
-	Manifest     Manifest
+	Name              string
+	WorkflowName      string
+	ManifestPath      string
+	WorkflowPath      string
+	ConfigPath        string
+	Manifest          Manifest
+	BlockPackagePaths []string
 }
 
 func Init(name, destination string, force bool) (string, error) {
@@ -190,7 +192,18 @@ func Load(path string) (*Resolved, error) {
 	if err != nil {
 		return nil, fmt.Errorf("profile config: %w", err)
 	}
-	return &Resolved{Name: manifest.Metadata.Name, ManifestPath: path, WorkflowPath: workflowPath, ConfigPath: configPath, Manifest: manifest}, nil
+	packagePaths := make([]string, 0, len(manifest.BlockPackages))
+	for index, packagePath := range manifest.BlockPackages {
+		if strings.TrimSpace(packagePath) == "" {
+			return nil, fmt.Errorf("profile block_packages[%d] path is required", index)
+		}
+		resolvedPackage, err := secureJoin(dir, packagePath)
+		if err != nil {
+			return nil, fmt.Errorf("profile block package %q: %w", packagePath, err)
+		}
+		packagePaths = append(packagePaths, resolvedPackage)
+	}
+	return &Resolved{Name: manifest.Metadata.Name, ManifestPath: path, WorkflowPath: workflowPath, ConfigPath: configPath, Manifest: manifest, BlockPackagePaths: packagePaths}, nil
 }
 
 func (r *Resolved) SelectWorkflow(name string) (*Resolved, error) {

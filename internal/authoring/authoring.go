@@ -316,6 +316,24 @@ func schemaPath(schema spec.OutputFormat, parts []string) (bool, bool) {
 }
 
 func analyzeWhen(value, path string, current spec.Node, byID, local map[string]spec.Node) []Diagnostic {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if parts := splitWhenLogical(value, "||"); len(parts) > 1 {
+		var diagnostics []Diagnostic
+		for index, part := range parts {
+			diagnostics = append(diagnostics, analyzeWhen(part, fmt.Sprintf("%s.or[%d]", path, index), current, byID, local)...)
+		}
+		return diagnostics
+	}
+	if parts := splitWhenLogical(value, "&&"); len(parts) > 1 {
+		var diagnostics []Diagnostic
+		for index, part := range parts {
+			diagnostics = append(diagnostics, analyzeWhen(part, fmt.Sprintf("%s.and[%d]", path, index), current, byID, local)...)
+		}
+		return diagnostics
+	}
 	for _, operator := range []string{"==", "!="} {
 		if index := strings.Index(value, operator); index >= 0 {
 			left := strings.TrimSpace(value[:index])
@@ -339,7 +357,34 @@ func analyzeWhen(value, path string, current spec.Node, byID, local map[string]s
 			return []Diagnostic{{Code: "when.reference_invalid", Severity: "error", Path: path, Message: fmt.Sprintf("unsupported when reference %q", left)}}
 		}
 	}
-	return []Diagnostic{{Code: "when.expression_invalid", Severity: "error", Path: path, Message: "when supports only == and != comparisons"}}
+	return []Diagnostic{{Code: "when.expression_invalid", Severity: "error", Path: path, Message: "when supports == and != comparisons joined by && or ||"}}
+}
+
+func splitWhenLogical(expr, operator string) []string {
+	var parts []string
+	start := 0
+	var quote rune
+	for index, r := range expr {
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			quote = r
+			continue
+		}
+		if index+len(operator) <= len(expr) && expr[index:index+len(operator)] == operator {
+			parts = append(parts, strings.TrimSpace(expr[start:index]))
+			start = index + len(operator)
+		}
+	}
+	if start == 0 {
+		return []string{expr}
+	}
+	parts = append(parts, strings.TrimSpace(expr[start:]))
+	return parts
 }
 
 func dependsOn(nodeID, target string, byID map[string]spec.Node, seen map[string]bool) bool {

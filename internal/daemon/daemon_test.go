@@ -113,7 +113,7 @@ nodes:
 		t.Fatal(err)
 	}
 	result := envelope["result"].(map[string]any)
-	if got := len(result["tools"].([]any)); got != 27 {
+	if got := len(result["tools"].([]any)); got != 29 {
 		t.Fatalf("MCP tools = %d", got)
 	}
 
