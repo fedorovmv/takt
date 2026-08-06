@@ -3,29 +3,45 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-cat > "$TMP/stubs.d.ts" <<'DTS'
-declare const process: { cwd(): string }
-declare module "node:child_process" { export const execFile: any }
-declare module "node:util" { export const promisify: any }
-declare module "@mariozechner/pi-coding-agent" { export type ExtensionAPI = any; export type ExtensionContext = any }
-declare module "@opencode-ai/plugin" { export const Plugin: any }
-DTS
+TSC="${TSC:-}"
+if [[ -z "$TSC" && -x "$ROOT/integrations/coding-agent-host-control/node_modules/.bin/tsc" ]]; then
+  TSC="$ROOT/integrations/coding-agent-host-control/node_modules/.bin/tsc"
+fi
+if [[ -z "$TSC" ]] && command -v tsc >/dev/null 2>&1; then
+  TSC="$(command -v tsc)"
+fi
+if [[ -z "$TSC" ]]; then
+  if [[ "${TAKT_REQUIRE_TYPESCRIPT:-0}" == "1" ]]; then
+    echo "TypeScript compiler is required; install pinned devDependencies" >&2
+    exit 1
+  fi
+  echo 'coding-agent host integrations TypeScript: SKIP (install pinned devDependencies or set TSC)'
+  exit 0
+fi
 cat > "$TMP/tsconfig.json" <<EOF2
 {
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "strict": false,
-    "skipLibCheck": true,
+    "strict": true,
+    "skipLibCheck": false,
     "noEmit": true
   },
   "files": [
-    "$TMP/stubs.d.ts",
+    "$ROOT/integrations/coding-agent-host-control/contracts/pi-0.73.1.d.ts",
     "$ROOT/integrations/coding-agent-host-control/pi/index.ts",
     "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"
   ]
 }
 EOF2
-tsc -p "$TMP/tsconfig.json"
+"$TSC" -p "$TMP/tsconfig.json"
+if grep -q 'Plugin.define\|from "@opencode-ai/plugin"' "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"; then
+  echo 'OpenCode integration must not import a runtime Plugin value or use Plugin.define' >&2
+  exit 1
+fi
+if grep -q '"next"\|"\*"' "$ROOT/integrations/coding-agent-host-control/opencode/package.json" "$ROOT/integrations/coding-agent-host-control/pi/package.json"; then
+  echo 'host integration dependencies must not use floating versions' >&2
+  exit 1
+fi
 echo 'coding-agent host integrations TypeScript: PASS'

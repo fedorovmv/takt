@@ -113,7 +113,7 @@ nodes:
 		t.Fatal(err)
 	}
 	result := envelope["result"].(map[string]any)
-	if got := len(result["tools"].([]any)); got != 36 {
+	if got := len(result["tools"].([]any)); got != 48 {
 		t.Fatalf("MCP tools = %d", got)
 	}
 
@@ -277,5 +277,68 @@ func TestResolvePathsRejectsLongExplicitSocket(t *testing.T) {
 	longSocket := filepath.Join(workspace, strings.Repeat("x", 120))
 	if _, err := ResolvePaths(workspace, longSocket); err == nil {
 		t.Fatal("expected explicit long socket path to be rejected")
+	}
+}
+
+func TestDaemonStartupRecoversInterruptedRun(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, ".takt", "config.yaml")
+	workflowPath := filepath.Join(workspace, "recover.yaml")
+	writeDaemonFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeDaemonFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: daemon-recover
+nodes:
+  - id: build
+    bash: "true"
+`)
+	now := time.Now().UTC()
+	interrupted := &store.RunState{ID: "run-daemon-recover", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"build": {Status: store.NodeRunning, Attempts: 1}}, Approvals: map[string]string{}, CurrentNode: "build", CurrentNodes: []string{"build"}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now}
+	if err := (store.FS{Workspace: workspace}).Save(interrupted); err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(Options{Workspace: workspace, ConfigPath: configPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(ctx) }()
+	client, err := NewClient(workspace, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer waitCancel()
+	if _, err := WaitForHealth(waitCtx, client, 20*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var state store.RunState
+		err := client.Call(context.Background(), "run.get", map[string]any{"run_id": interrupted.ID}, &state)
+		if err == nil && state.Status == store.RunCompleted {
+			if state.RecoveryCount != 1 {
+				t.Fatalf("recovery count = %d", state.RecoveryCount)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("interrupted run was not recovered: status=%s err=%v", state.Status, err)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if err := client.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("daemon did not stop")
 	}
 }

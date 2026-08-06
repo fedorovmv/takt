@@ -57,6 +57,9 @@ print(r['session']['id'])
 PY
 )"
 
+# A daemon restart must not lose the durable managed-session binding.
+"$ROOT/bin/takt" daemon stop --workspace "$TMP/project" --json >/dev/null
+"$ROOT/bin/takt" daemon start --workspace "$TMP/project" --json >/dev/null
 "$ROOT/bin/takt" host find --host pi --host-session pi-session-1 --workspace "$TMP/project" --daemon --json > "$TMP/find.json"
 python3 - "$TMP/find.json" "$SESSION_ID" <<'PY'
 import json,sys
@@ -90,6 +93,17 @@ import json,sys
 assert json.load(open(sys.argv[1]))['result']['allowed'] is True
 PY
 
+# The same host session can start a new task after the previous plan completed.
+"$ROOT/bin/takt" host begin 'fixture dynamic audit again' --host pi --host-session pi-session-1 \
+  --enforcement guarded --command-interception --input-interception --tool-call-blocking \
+  --session-recovery --workspace "$TMP/project" --daemon --json > "$TMP/begin-again.json"
+python3 - "$TMP/begin-again.json" "$SESSION_ID" <<'PY'
+import json,sys
+r=json.load(open(sys.argv[1]))['result']['session']
+assert r['status']=='preview', r
+assert r['id'] != sys.argv[2], r
+PY
+
 # Static contract for both native extensions: CLI envelope is unwrapped and
 # interception/gating hooks are present.
 grep -q 'envelope.result' "$ROOT/integrations/coding-agent-host-control/pi/index.ts"
@@ -99,5 +113,17 @@ grep -q 'pi.on("tool_call"' "$ROOT/integrations/coding-agent-host-control/pi/ind
 grep -q 'ctx.session.hook("context"' "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"
 grep -q 'ctx.tool.hook("execute.before"' "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"
 grep -q 'The main LLM was not invoked' "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"
+
+grep -q 'return { action: "handled" as const }' "$ROOT/integrations/coding-agent-host-control/pi/index.ts"
+! grep -q 'before_agent_start' "$ROOT/integrations/coding-agent-host-control/pi/index.ts"
+grep -q 'ctx.shell.hook("create.before"' "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"
+grep -q '\["host", "status", cached.id\]' "$ROOT/integrations/coding-agent-host-control/pi/index.ts"
+grep -q '\["host", "status", cached.id\]' "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"
+grep -q '"--enforcement", "guarded"' "$ROOT/integrations/coding-agent-host-control/pi/index.ts"
+grep -q '"--enforcement", "guarded"' "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"
+! grep -q 'completion-blocking' "$ROOT/integrations/coding-agent-host-control/pi/index.ts"
+grep -q '"verified": false' "$ROOT/integrations/coding-agent-host-control/opencode/package.json"
+grep -q '"enforcement": "guarded"' "$ROOT/integrations/coding-agent-host-control/opencode/package.json"
+! grep -Eq '"(next|\*)"' "$ROOT/integrations/coding-agent-host-control/opencode/package.json"
 
 echo 'coding-agent host control contract: PASS'

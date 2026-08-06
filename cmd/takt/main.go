@@ -59,7 +59,13 @@ func run(args []string) error {
 	case "validate":
 		return validateCmd(args[1:])
 	case "run":
-		return runCmd(args[1:])
+		return runDispatchCmd(args[1:])
+	case "runs":
+		return runsCmd(args[1:])
+	case "attention":
+		return attentionCmd(args[1:])
+	case "notify":
+		return notifyCmd(args[1:])
 	case "plan":
 		return planCmd(args[1:])
 	case "execute":
@@ -557,7 +563,7 @@ func eventsCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if (state.Status == store.RunCompleted || state.Status == store.RunFailed || state.Status == store.RunCancelled) && len(result.Events) == 0 {
+		if (state.Status == store.RunCompleted || state.Status == store.RunFailed || state.Status == store.RunCancelled || state.Status == store.RunAbandoned) && len(result.Events) == 0 {
 			return nil
 		}
 	}
@@ -1281,6 +1287,10 @@ func interspersed(args []string, takesValue map[string]bool) []string {
 	var flags, positional []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if arg == "--" {
+			positional = append(positional, args[i+1:]...)
+			break
+		}
 		if !strings.HasPrefix(arg, "-") || arg == "-" {
 			positional = append(positional, arg)
 			continue
@@ -1523,5 +1533,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|run|plan|execute|steer|host|workflow|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
+	return fmt.Errorf("usage: takt <init|validate|run|runs|attention|notify|plan|execute|steer|host|workflow|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
 }

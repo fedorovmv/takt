@@ -32,6 +32,7 @@ go build -o bin/takt-fake-code-agent ./cmd/takt-fake-code-agent
 ./scripts/test-block-packages.sh
 ./scripts/test-host-control.sh
 ./scripts/test-host-integrations-typescript.sh
+./scripts/test-autonomous-runs.sh
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \

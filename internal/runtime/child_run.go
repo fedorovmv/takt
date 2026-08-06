@@ -134,6 +134,9 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 		childState, err = childRunner.Resume(ctx, childState)
 	}
 
+	if errors.Is(err, ErrPaused) || (childState != nil && childState.Status == store.RunPaused) {
+		return childExecResult(childWorkflow, childState, definition.OutputNode), ErrPaused
+	}
 	if errors.Is(err, ErrWaiting) || childState.Status == store.RunWaiting {
 		message := fmt.Sprintf("child run %s is waiting", childState.ID)
 		if childState.Waiting != nil && childState.Waiting.Message != "" {
@@ -282,7 +285,7 @@ func loadCurrentChildRun(repository store.Repository, id string) (*store.RunStat
 
 func terminalRunStatus(status string) bool {
 	switch status {
-	case store.RunCompleted, store.RunFailed, store.RunCancelled:
+	case store.RunCompleted, store.RunFailed, store.RunCancelled, store.RunAbandoned:
 		return true
 	default:
 		return false

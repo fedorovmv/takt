@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -43,7 +44,6 @@ type HostSessionView struct {
 type HostToolGuardRequest struct {
 	SessionID string `json:"session_id"`
 	Tool      string `json:"tool"`
-	Category  string `json:"category,omitempty"`
 	ReadOnly  bool   `json:"read_only,omitempty"`
 }
 
@@ -84,7 +84,12 @@ func (s *Service) BeginHostSession(ctx context.Context, request HostBeginRequest
 		return nil, fmt.Errorf("unsupported host enforcement %q", enforcement)
 	}
 	store := hostcontrol.Store{Workspace: s.Workspace}
-	if existing, err := store.Find(host, hostSessionID); err == nil {
+	release, err := acquireHostStoreLock(store)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	if existing, findErr := store.Find(host, hostSessionID); findErr == nil {
 		if enforcement == hostcontrol.EnforcementStrict && (existing.Enforcement != hostcontrol.EnforcementStrict || !existing.Capabilities.StrictReady()) {
 			return nil, fmt.Errorf("existing host session %s does not satisfy strict host control", existing.ID)
 		}
@@ -94,6 +99,8 @@ func (s *Service) BeginHostSession(ctx context.Context, request HostBeginRequest
 		}
 		plan := latestPlan(view.Record)
 		return &HostBeginResult{Session: existing, Plan: &PlanResult{PlanID: existing.PlanID, Decision: plan.Decision, ExistingWorkflow: plan.ExistingWorkflow, Preview: view.Preview, RequiresConfirmation: view.Record.RequiresConfirmation, Record: view.Record}}, nil
+	} else if !os.IsNotExist(findErr) {
+		return nil, findErr
 	}
 	plan, err := s.Plan(ctx, PlanRequest{Goal: request.Goal, Profile: request.Profile, Candidate: request.Candidate})
 	if err != nil {
@@ -109,6 +116,20 @@ func (s *Service) BeginHostSession(ctx context.Context, request HostBeginRequest
 		return nil, err
 	}
 	return &HostBeginResult{Session: session, Plan: plan}, nil
+}
+
+func acquireHostStoreLock(store hostcontrol.Store) (func() error, error) {
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		release, err := store.AcquireLock()
+		if err == nil {
+			return release, nil
+		}
+		if !strings.Contains(err.Error(), "locked by another process") || !time.Now().Before(deadline) {
+			return nil, err
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func (s *Service) ConfirmHostSession(ctx context.Context, request HostConfirmRequest) (*HostSessionView, error) {
@@ -173,7 +194,7 @@ func (s *Service) GuardHostTool(request HostToolGuardRequest) (*HostGuardDecisio
 		return decision, nil
 	}
 	tool := strings.ToLower(strings.TrimSpace(request.Tool))
-	if strings.HasPrefix(tool, "takt.") || strings.HasPrefix(tool, "takt_") {
+	if hostControlTool(tool) {
 		decision.Allowed = true
 		decision.Reason = "Takt control operation is allowed in managed mode"
 		return decision, nil
@@ -187,6 +208,20 @@ func (s *Service) GuardHostTool(request HostToolGuardRequest) (*HostGuardDecisio
 	decision.RequiredOp = "delegate_to_takt_worker"
 	decision.Reason = fmt.Sprintf("tool %q is blocked while Takt plan %s is %s; mutating work must be performed by the current workflow phase", tool, view.Session.PlanID, status)
 	return decision, nil
+}
+
+func hostControlTool(tool string) bool {
+	normalized := strings.ReplaceAll(tool, "_", ".")
+	switch normalized {
+	case "takt.plan.get",
+		"takt.run.get", "takt.run.list", "takt.run.events", "takt.run.children", "takt.run.artifacts", "takt.run.summary", "takt.run.attention",
+		"takt.run.steer", "takt.run.answer", "takt.run.pause", "takt.run.resume.paused", "takt.run.retry", "takt.run.fork", "takt.run.abandon", "takt.run.recover", "takt.run.cancel",
+		"takt.notify.list", "takt.notify.ack",
+		"takt.host.get", "takt.host.find", "takt.host.guard.tool", "takt.host.guard.completion", "takt.host.release":
+		return true
+	default:
+		return false
+	}
 }
 
 func hostReadOnlyTool(tool string) bool {
@@ -274,6 +309,10 @@ func hostStatusForPlan(status string) string {
 		return hostcontrol.StatusManaged
 	case "waiting":
 		return hostcontrol.StatusWaiting
+	case "pausing", "paused":
+		return hostcontrol.StatusPaused
+	case "abandoned":
+		return hostcontrol.StatusFailed
 	case "completed":
 		return hostcontrol.StatusCompleted
 	case "failed":

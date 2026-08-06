@@ -73,26 +73,40 @@ func TestManagedHostBlocksMutationAndFinalCompletion(t *testing.T) {
 	if err := (hostcontrol.Store{Workspace: workspace}).Save(session); err != nil {
 		t.Fatal(err)
 	}
-	mutation, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "edit", Category: "write"})
+	mutation, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "edit"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if mutation.Allowed {
 		t.Fatalf("mutation escaped managed mode: %#v", mutation)
 	}
-	spoofed, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "edit", Category: "read", ReadOnly: true})
+	spoofed, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "edit", ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if spoofed.Allowed {
 		t.Fatalf("host-supplied read-only claim bypassed canonical tool classification: %#v", spoofed)
 	}
-	read, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "grep", Category: "read", ReadOnly: true})
+	read, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "grep", ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !read.Allowed {
 		t.Fatalf("read-only inspection was blocked: %#v", read)
+	}
+	unknownControl, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "takt.evil"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unknownControl.Allowed {
+		t.Fatalf("unknown takt-prefixed tool bypassed exact allowlist: %#v", unknownControl)
+	}
+	retryControl, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "takt.run.retry"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !retryControl.Allowed {
+		t.Fatalf("known Takt control tool was blocked: %#v", retryControl)
 	}
 	final, err := service.GuardHostCompletion(HostCompletionGuardRequest{SessionID: session.ID, Kind: "final"})
 	if err != nil {
@@ -131,5 +145,36 @@ func TestBeginHostSessionRejectsStrictReuseOfAdvisorySession(t *testing.T) {
 	_, err = service.BeginHostSession(ctx, HostBeginRequest{Host: "pi", HostSessionID: "session-reuse", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementStrict, Candidate: &candidate, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, CompletionBlocking: true, SessionRecovery: true}})
 	if err == nil || !strings.Contains(err.Error(), "does not satisfy strict") {
 		t.Fatalf("expected strict reuse error, got %v", err)
+	}
+}
+
+func TestBeginHostSessionAfterCompletedCreatesFreshSession(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, filepath.Join(workspace, ".takt", "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := candidateDynamicPlan()
+	first, err := service.BeginHostSession(context.Background(), HostBeginRequest{Host: "pi", HostSessionID: "reusable", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementGuarded, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, SessionRecovery: true}, Candidate: &candidate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Session.Status = hostcontrol.StatusCompleted
+	first.Session.UpdatedAt = time.Now().UTC()
+	if err := (hostcontrol.Store{Workspace: workspace}).Save(first.Session); err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.BeginHostSession(context.Background(), HostBeginRequest{Host: "pi", HostSessionID: "reusable", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementGuarded, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, SessionRecovery: true}, Candidate: &candidate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Session.ID == first.Session.ID || second.Session.PlanID == first.Session.PlanID {
+		t.Fatalf("completed host session was reused: first=%#v second=%#v", first.Session, second.Session)
+	}
+	if second.Session.Status != hostcontrol.StatusPreview {
+		t.Fatalf("new session status = %q", second.Session.Status)
 	}
 }

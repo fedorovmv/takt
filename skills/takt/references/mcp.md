@@ -12,11 +12,15 @@ takt mcp --workspace . --config .takt/config.yaml
 - `takt.block.list`, `takt.block.describe`;
 - `takt.plan`, `takt.plan.get`, `takt.execute`, `takt.run.steer`, `takt.plan.promote`;
 - `takt.run.start`, `takt.run.get`, `takt.run.resume`;
+- `takt.run.list`, `takt.run.attention`, `takt.run.summary`;
+- `takt.run.pause`, `takt.run.resume_paused`, `takt.run.retry`, `takt.run.fork`, `takt.run.abandon`, `takt.run.recover`;
 - `takt.run.answer`, `takt.run.cancel`;
 - `takt.run.children`, `takt.run.artifacts`, `takt.run.events`;
 - `takt.node.pending`, `takt.node.claim`, `takt.node.event`;
 - `takt.node.tool.request`, `takt.node.tool.decide`, `takt.node.tool.start`, `takt.node.tool.complete`, `takt.node.tool.get`, `takt.node.tool.cancel`;
-- `takt.node.artifact.declare`, `takt.node.complete`, `takt.node.fail`.
+- `takt.node.artifact.declare`, `takt.node.complete`, `takt.node.fail`;
+- `takt.host.begin`, `takt.host.confirm`, `takt.host.get`, `takt.host.find`, `takt.host.guard_tool`, `takt.host.guard_completion`, `takt.host.release`;
+- `takt.notify.list`, `takt.notify.ack`, `takt.notify.test`.
 
 `run.start` detached по умолчанию. Сохрани `run_id`, затем читай `run.get` и `run.events`. Для инкрементального чтения передавай `after_revision` из `next_revision`; `wait_ms` ограничен 30000.
 
@@ -53,7 +57,7 @@ takt daemon start --workspace .
 takt mcp --daemon --workspace .
 ```
 
-Несколько локальных клиентов одного пользователя могут использовать один Unix socket. Для подписки без MCP используй `takt events <run-id> --daemon --follow`. Daemon не является сетевым сервером и не восстанавливает автоматически произвольный OS-процесс после собственного падения.
+Несколько локальных клиентов одного пользователя могут использовать один Unix socket. Для подписки без MCP используй `takt events <run-id> --daemon --follow`. Daemon не является сетевым сервером. После рестарта он не продолжает прежний OS-процесс, а выполняет PID-based recovery durable Run как новую attempt.
 
 ## Coding Agent Host Control
 
@@ -64,4 +68,8 @@ takt mcp --daemon --workspace .
 - `takt.host.guard_completion` — запрет преждевременного final;
 - `takt.host.release` — явный выход из managed mode без отмены Run.
 
-Strict mode требует нативного host extension с command/input interception, tool/completion blocking и session recovery.
+Strict mode требует нативного host extension с command/input interception, tool/completion blocking и session recovery. Bundled Pi/OpenCode extensions в текущем релизе имеют уровень `guarded`.
+
+## Autonomous Run Operations
+
+`takt.run.list/attention/summary` дают реестр, очередь внимания и агрегированный результат. `pause` действует на границе узлов, `retry` повторяет failed node и зависимый хвост, `fork` создаёт новый запуск, `abandon` сохраняет историю в отдельном terminal-состоянии. Уведомления хранятся в durable inbox; desktop/process delivery является дополнительным sink, а не источником истины.

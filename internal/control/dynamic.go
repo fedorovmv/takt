@@ -294,7 +294,7 @@ func (s *Service) advanceForegroundPlan(ctx context.Context, record *dynamicplan
 			return nil, err
 		}
 		record = current
-		if record.Status != "running" || record.CurrentRunID == "" {
+		if (record.Status != "running" && record.Status != "pausing") || record.CurrentRunID == "" {
 			if releaseErr := dynamicplan.ReleaseAdvanceLock(advanceLock); releaseErr != nil {
 				return nil, releaseErr
 			}
@@ -305,12 +305,25 @@ func (s *Service) advanceForegroundPlan(ctx context.Context, record *dynamicplan
 			_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
 			return nil, err
 		}
-		if run.Status == store.RunRunning {
+		if run.Status == store.RunRunning || run.Status == store.RunPausing {
 			if releaseErr := dynamicplan.ReleaseAdvanceLock(advanceLock); releaseErr != nil {
 				return nil, releaseErr
 			}
 			time.Sleep(20 * time.Millisecond)
 			continue
+		}
+		if run.Status == store.RunPaused {
+			record.Status = "paused"
+			record.LastError = ""
+			record.UpdatedAt = time.Now().UTC()
+			if err := st.Save(record); err != nil {
+				_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
+				return nil, err
+			}
+			if releaseErr := dynamicplan.ReleaseAdvanceLock(advanceLock); releaseErr != nil {
+				return nil, releaseErr
+			}
+			return record, nil
 		}
 		if run.Status == store.RunWaiting {
 			record.Status = "waiting"
@@ -504,7 +517,7 @@ func (s *Service) AdvanceDynamicPlans(ctx context.Context) error {
 	}
 	var failures []string
 	for _, record := range records {
-		if record.Status != "running" || record.CurrentRunID == "" {
+		if (record.Status != "running" && record.Status != "pausing") || record.CurrentRunID == "" {
 			continue
 		}
 		if err := s.advanceDynamicRecord(ctx, record); err != nil {
@@ -529,8 +542,20 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 	if err != nil {
 		return err
 	}
-	if run.Status == store.RunRunning || run.Status == store.RunWaiting {
+	if run.Status == store.RunRunning || run.Status == store.RunPausing || run.Status == store.RunWaiting {
 		return nil
+	}
+	if run.Status == store.RunPaused {
+		record.Status = "paused"
+		record.LastError = ""
+		record.UpdatedAt = time.Now().UTC()
+		return (dynamicplan.Store{Workspace: s.Workspace}).Save(record)
+	}
+	if run.Status == store.RunAbandoned {
+		record.Status = "abandoned"
+		record.LastError = run.Error
+		record.UpdatedAt = time.Now().UTC()
+		return (dynamicplan.Store{Workspace: s.Workspace}).Save(record)
 	}
 	st := dynamicplan.Store{Workspace: s.Workspace}
 	if run.Status != store.RunCompleted {

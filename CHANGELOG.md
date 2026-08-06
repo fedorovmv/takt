@@ -1,9 +1,21 @@
 # Changelog
 
+## v0.1.37-alpha
+
+- Добавлен Autonomous Run Operations: `runs`, `attention`, `run list|summary|watch|pause|resume|retry|fork|abandon|recover` и соответствующий daemon/MCP API.
+- Safe pause прекращает запуск новых узлов и fan-out batches, каскадируется по governed child Runs и продолжает незавершённый граф после resume. Linked child ID получает marker даже до публикации собственного `state.json`.
+- Operator retry сохраняет историю и сбрасывает failed node с зависимым хвостом; fork создаёт новый Run/Dynamic Plan; abandon является отдельным terminal-состоянием.
+- Daemon выполняет PID-based recovery потерянных локальных executor: attempt получает `worker_lost`, node возвращается в `pending`, дети восстанавливаются раньше родителей.
+- Добавлен notification dispatcher с durable inbox, дедупликацией, ack и sinks `coding_agent_host|desktop|process`; Pi/OpenCode получили команды runs/attention/pause/resume/result.
+- Исправлен host-control: terminal session не переиспользуется, begin сериализуется file lock, повреждённые records fail-closed, транспортная ошибка bundled integrations сохраняет managed cache и блокирует обход.
+- Pi 0.73.1 и OpenCode V2 integrations честно переведены в `guarded`: Pi не заявляет неподтверждённый completion gate, OpenCode помечен `verified:false`; убраны `before_agent_start`, floating `next` и fail-open steering/shell paths.
+- MCP расширен до 48 tools; добавлены ADR-055/056, `docs/51-autonomous-run-operations-v0.1.37.md` и контракт `scripts/test-autonomous-runs.sh`.
+- Takt обновлён до 0.1.37-alpha, skill — до 0.19.0; профиль `code` остаётся 0.12.0, поскольку его workflow-контракт не менялся.
+
 ## v0.1.36-alpha
 
 - Добавлен Coding Agent Host Control: durable host sessions, CLI/MCP/daemon `host begin|confirm|get|find|guard|release` и строгие уровни `advisory|guarded|strict`.
-- Добавлены нативные расширения Pi и OpenCode: `/takt` перехватывается до основной LLM, дальнейший ввод направляется в steering, mutating tools и преждевременный final response блокируются до terminal-состояния Takt.
+- Добавлены экспериментальные host extensions Pi/OpenCode. Поздний аудит показал, что bundled adapters обеспечивают только guarded-контроль; это исправлено и явно зафиксировано в v0.1.37-alpha.
 - Fingerprint `BlockPackage` расширен до транзитивного содержимого команд, вложенных workflow, script source/dependencies, path skills и MCP-конфигураций.
 - Явный `allowed_integrations: []` теперь запрещает все интеграции; отсутствие поля не добавляет ограничения. Нулевая граница package limits документирована отдельно от bounded default динамического плана.
 - Исправлены macOS unit expectation, единый revision limit steering для `running|waiting`, foreground locking, обработка ошибок workflow listing/JSON/promote rollback и точный atomic-block contract test.

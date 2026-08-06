@@ -39,9 +39,9 @@
 ### Локальный MCP, daemon и управляемый worker lifecycle
 
 - прямой `takt mcp` и `takt mcp --daemon` через локальный Unix socket;
-- `takt daemon start|status|stop|serve` без БД: background Runs, event subscriptions и несколько клиентов одного пользователя;
+- `takt daemon start|status|stop|serve` без БД: background Runs, event subscriptions, несколько клиентов, recovery потерянных локальных executor и notification dispatch;
 - legacy initialization `2025-03-26|2025-06-18|2025-11-25` и stateless discovery `2026-07-28`;
-- 27 tools: workflow list/describe, Run start/get/resume/answer/cancel/children/artifacts/events, external node pending/claim/event/complete/fail и управляемые tool request/decision/start/complete/get/cancel/artifact declaration;
+- 48 tools: workflow/plan/block discovery, Run start/get/list/attention/summary/pause/resume/retry/fork/abandon/recover, events/artifacts, host-control, notifications, external node lifecycle и управляемые tool calls;
 - detached start с durable `run_id`;
 - indexed revision cursor и bounded long polling событий без полного пересканирования журнала;
 - structured/text tool results, bounded artifact content, request cancellation и strict arguments;
@@ -89,6 +89,20 @@
 - MCP `takt.plan`, `takt.plan.get`, `takt.execute`, `takt.run.steer`, `takt.plan.promote`;
 - обновлённый skill для Pi/OpenCode: основная сессия управляет, отдельные worker-сессии исполняют фазы.
 
+### Coding Agent Host Control и автономные Run
+
+- durable host sessions с begin/confirm/find/get/release и межпроцессной сериализацией;
+- default-deny tool guard с точным allowlist и игнорированием клиентского `read_only`;
+- `strict` доступен только адаптеру с command/input/tool/completion/recovery capabilities; bundled Pi/OpenCode integrations честно заявляют `guarded`;
+- fail-closed local cache bundled extensions при потере daemon, перехват steering и пользовательского shell;
+- реестр Run и attention queue с причинами approval/question/tool approval/failure/paused;
+- безопасная пауза на границе узла и fan-out batch, каскадный marker для governed child Runs и resume остатка;
+- operator retry failed-узла и зависимого хвоста, fork и отдельное состояние `abandoned`;
+- PID-based recovery после daemon restart с событием `worker_lost`, recovery count и продолжением parent chain;
+- агрегированный `run summary` с descendants, usage, artifacts, retry/recovery history;
+- durable notification inbox, desktop/process sinks, дедупликация и ack;
+- Pi/OpenCode команды runs, attention, pause, resume и result.
+
 ### Профиль code 0.12.0
 
 - встроенный пакет `code-core` с семью атомарными блоками Dynamic Takt;
@@ -121,6 +135,8 @@
 ### CLI
 
 - `init`, `validate`, `run`, `answer`, `resume`, `status`, `children`, `cancel`, `events`, `command run`;
+- `runs`, `attention`, `run list|summary|watch|pause|resume|retry|fork|abandon|recover`;
+- `notify list|ack|test|dispatch` и `host begin|confirm|status|find|guard-tool|guard-completion|release`;
 - `validate --warnings-as-errors`; `run --daemon`; `mcp --daemon`; `daemon start|status|stop|serve`;
 - `worktree list`, `worktree remove`, `worktree prune`;
 - `workflow list`, `workflow describe`;
@@ -142,7 +158,7 @@
 
 Все 19 пользовательских процессов, роутер, managed worktree, governed child Run lifecycle и локальный daemon реализованы. На уровне инфраструктуры отсутствуют:
 
-- удалённый server/Web UI, БД, message adapters, notifications и многопользовательская авторизация — proposal для будущего нелокального режима.
+- удалённый server/Web UI, БД, внешние message adapters и многопользовательская авторизация — proposal для будущего нелокального режима. Локальные уведомления уже реализованы через inbox/desktop/process sinks.
 
 Tool/skills/MCP policy теперь является контрактом ядра и adapters. Filesystem/network policy остаётся assistant-enforced и не заменяет OS sandbox.
 
@@ -152,4 +168,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Dynamic Takt, минимальный корпоративный каталог доверенных блоков и строгий Coding Agent Host Control реализованы к `v0.1.36-alpha`. Следующий крупный продуктовый приоритет — нейтральный SDK доменных адаптеров SCM/tracker/CI; полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark остаются следующими направлениями.
+Dynamic Takt, доверенные блоки, host-control core и автономная эксплуатация Run реализованы к `v0.1.37-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — нейтральный SDK доменных адаптеров SCM/tracker/CI; полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark остаются следующими направлениями.

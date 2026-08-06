@@ -188,7 +188,7 @@ func (s *Service) Start(ctx context.Context, request StartRequest) (*StartResult
 	}
 	if !request.Detached {
 		state, runErr := prepared.runner.StartWithOptions(ctx, prepared.input, prepared.options)
-		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
+		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 			return nil, runErr
 		}
 		return &StartResult{RunID: state.ID, Accepted: true, State: state.PublicView()}, nil
@@ -198,7 +198,7 @@ func (s *Service) Start(ctx context.Context, request StartRequest) (*StartResult
 	result := make(chan startOutcome, 1)
 	go func() {
 		state, runErr := prepared.runner.StartWithOptions(context.Background(), prepared.input, prepared.options)
-		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
+		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 			s.setLaunchError(runID, runErr)
 		}
 		result <- startOutcome{state: state, err: runErr}
@@ -212,13 +212,16 @@ func (s *Service) Start(ctx context.Context, request StartRequest) (*StartResult
 	for {
 		select {
 		case outcome := <-result:
-			if outcome.err != nil && !errors.Is(outcome.err, runtime.ErrWaiting) {
+			// Detached execution is an accepted durable operation once a Run state
+			// exists. Even an immediate terminal failure is observed through run.get,
+			// attention and notifications instead of racing the start RPC response.
+			if outcome.state != nil {
+				return &StartResult{RunID: runID, Accepted: true, State: outcome.state.PublicView()}, nil
+			}
+			if outcome.err != nil && !errors.Is(outcome.err, runtime.ErrWaiting) && !errors.Is(outcome.err, runtime.ErrPaused) {
 				return nil, outcome.err
 			}
-			if outcome.state == nil {
-				return &StartResult{RunID: runID, Accepted: true}, nil
-			}
-			return &StartResult{RunID: runID, Accepted: true, State: outcome.state.PublicView()}, nil
+			return &StartResult{RunID: runID, Accepted: true}, nil
 		case <-ticker.C:
 			state, loadErr := storeFS.Load(runID)
 			if loadErr == nil {
@@ -373,7 +376,7 @@ func (s *Service) Resume(ctx context.Context, runID string) (*store.RunState, er
 		return nil, err
 	}
 	state, runErr := runner.Resume(ctx, state)
-	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
+	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 		return nil, runErr
 	}
 	return state.PublicView(), nil
@@ -567,7 +570,7 @@ func (s *Service) Cancel(runID, reason string) (any, error) {
 }
 
 func terminalRun(status string) bool {
-	return status == store.RunCompleted || status == store.RunFailed || status == store.RunCancelled
+	return status == store.RunCompleted || status == store.RunFailed || status == store.RunCancelled || status == store.RunAbandoned
 }
 
 func cancelRunTree(st store.FS, state *store.RunState, reason string, includeSelf bool) error {

@@ -23,6 +23,8 @@ import (
 )
 
 var ErrWaiting = fmt.Errorf("workflow is waiting for input")
+var ErrPaused = fmt.Errorf("workflow is paused")
+var ErrAbandoned = fmt.Errorf("workflow was abandoned")
 
 type RunFailedError struct {
 	RunID  string
@@ -184,7 +186,7 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 	state := &store.RunState{
 		ID: id, Status: store.RunRunning, ParentRunID: options.ParentRunID, ParentNodeID: options.ParentNodeID, WorkflowPath: r.WorkflowPath, ConfigPath: r.ConfigPath,
 		Workspace: r.ControlWorkspace, ExecutionWorkspace: r.Workspace, Worktree: worktreeState, RunOptions: runOptionsState(options), InheritedPolicy: policyState(r.inheritedPolicy, nil), Input: input, Nodes: map[string]*store.NodeState{},
-		Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now,
+		Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now, ExecutorPID: os.Getpid(), HeartbeatAt: &now,
 		WorkflowFingerprint: fingerprints.Workflow,
 		ConfigFingerprint:   fingerprints.Config,
 		CommandsFingerprint: fingerprints.Commands,
@@ -321,7 +323,7 @@ func (r *Runner) VerifyDefinitions(state *store.RunState) error {
 }
 
 func (r *Runner) Resume(ctx context.Context, state *store.RunState) (*store.RunState, error) {
-	if state.Status == store.RunCompleted || state.Status == store.RunCancelled {
+	if state.Status == store.RunCompleted || state.Status == store.RunCancelled || state.Status == store.RunAbandoned {
 		return state, nil
 	}
 	if state.Status == store.RunFailed {
@@ -329,6 +331,12 @@ func (r *Runner) Resume(ctx context.Context, state *store.RunState) (*store.RunS
 	}
 	if err := r.VerifyDefinitions(state); err != nil {
 		return state, err
+	}
+	if requested, reason := r.abandonmentRequested(state.ID); requested {
+		return r.abandonState(state, reason)
+	}
+	if state.CancelRequested || r.cancellationRequested(state.ID) {
+		return r.cancelState(state, "cancel_requested")
 	}
 	if state.Status == store.RunWaiting && state.Waiting != nil {
 		if state.Waiting.Kind != "child_run" {
@@ -339,6 +347,13 @@ func (r *Runner) Resume(ctx context.Context, state *store.RunState) (*store.RunS
 		}
 		state.Waiting = nil
 	}
+	if value, ok := r.Store.(operatorStore); ok {
+		if err := value.ClearPause(state.ID); err != nil {
+			return state, err
+		}
+	}
+	state.PauseRequested = false
+	state.PausedAt = nil
 	state.Status = store.RunRunning
 	state.CurrentNodes = nil
 	state.Error, state.ErrorCode = "", ""
@@ -349,6 +364,9 @@ func (r *Runner) Resume(ctx context.Context, state *store.RunState) (*store.RunS
 }
 
 func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunState, error) {
+	if requested, reason := r.abandonmentRequested(state.ID); requested {
+		return r.abandonState(state, reason)
+	}
 	if state.CancelRequested {
 		return r.cancelState(state, "cancel_requested")
 	}
@@ -356,8 +374,33 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 	if errors.Is(err, ErrWaiting) {
 		return state, ErrWaiting
 	}
+	if errors.Is(err, ErrPaused) {
+		now := time.Now().UTC()
+		state.Status = store.RunPaused
+		state.PauseRequested = false
+		state.PausedAt = &now
+		state.CurrentNode = ""
+		state.CurrentNodes = nil
+		if value, ok := r.Store.(operatorStore); ok {
+			_ = value.ClearPause(state.ID)
+		}
+		if commitErr := r.commit(state, "run.paused", "", nil); commitErr != nil {
+			return state, commitErr
+		}
+		return state, ErrPaused
+	}
+	if errors.Is(err, ErrAbandoned) {
+		requested, reason := r.abandonmentRequested(state.ID)
+		if !requested {
+			reason = "abandoned by operator"
+		}
+		return r.abandonState(state, reason)
+	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if requested, reason := r.abandonmentRequested(state.ID); requested {
+				return r.abandonState(state, reason)
+			}
 			kind := execution.KindCancelled
 			if errors.Is(err, context.DeadlineExceeded) {
 				kind = execution.KindTimedOut
@@ -420,8 +463,15 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 
 func (r *Runner) executeGraph(ctx context.Context, state *store.RunState, nodes []spec.Node, previous map[string]store.NodeState) error {
 	for {
+		if requested, _ := r.abandonmentRequested(state.ID); requested {
+			return ErrAbandoned
+		}
 		if state.CancelRequested || r.cancellationRequested(state.ID) {
 			return context.Canceled
+		}
+		if r.pauseRequested(state.ID) {
+			state.PauseRequested = true
+			return ErrPaused
 		}
 		progress := false
 		runnable := make([]spec.Node, 0, len(nodes))
@@ -591,6 +641,17 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 				return err
 			}
 			return ErrWaiting
+		}
+		if errors.Is(execErr, ErrPaused) {
+			cancel()
+			// A paused child or nested execution is also a suspension point. Keep
+			// the parent node pending so resume reuses the same governed child Run.
+			ns.Attempts--
+			ns.Status = store.NodePending
+			if err := r.commit(state, "node.suspended", node.ID, map[string]any{"reason": "paused"}); err != nil {
+				return err
+			}
+			return ErrPaused
 		}
 		if err := r.flushAssistantEvents(state, node.ID, result.AssistantEvents, "adapter"); err != nil {
 			cancel()
@@ -1207,6 +1268,9 @@ func (r *Runner) finishNodeFailure(state *store.RunState, nodeID, code string, e
 }
 
 func (r *Runner) commit(state *store.RunState, eventType, nodeID string, data map[string]any) error {
+	now := time.Now().UTC()
+	state.ExecutorPID = os.Getpid()
+	state.HeartbeatAt = &now
 	return r.Store.Commit(state, store.Event{Type: eventType, NodeID: nodeID, Data: data})
 }
 

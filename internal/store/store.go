@@ -27,10 +27,13 @@ const (
 
 const (
 	RunRunning   = "running"
+	RunPausing   = "pausing"
+	RunPaused    = "paused"
 	RunWaiting   = "waiting"
 	RunCompleted = "completed"
 	RunFailed    = "failed"
 	RunCancelled = "cancelled"
+	RunAbandoned = "abandoned"
 )
 
 type ModelRef struct {
@@ -270,6 +273,16 @@ type RunState struct {
 	Usage               *Usage                `json:"usage,omitempty"`
 	Artifacts           []ArtifactRef         `json:"artifacts,omitempty"`
 	CancelRequested     bool                  `json:"cancel_requested,omitempty"`
+	PauseRequested      bool                  `json:"pause_requested,omitempty"`
+	PausedAt            *time.Time            `json:"paused_at,omitempty"`
+	PausedFrom          string                `json:"paused_from,omitempty"`
+	AbandonedAt         *time.Time            `json:"abandoned_at,omitempty"`
+	AbandonReason       string                `json:"abandon_reason,omitempty"`
+	RecoveryCount       int                   `json:"recovery_count,omitempty"`
+	LastRecoveredAt     *time.Time            `json:"last_recovered_at,omitempty"`
+	ExecutorPID         int                   `json:"executor_pid,omitempty"`
+	HeartbeatAt         *time.Time            `json:"heartbeat_at,omitempty"`
+	OperatorRetries     []OperatorRetryState  `json:"operator_retries,omitempty"`
 	CurrentNode         string                `json:"current_node,omitempty"`
 	CurrentNodes        []string              `json:"current_nodes,omitempty"`
 	Waiting             *WaitingState         `json:"waiting,omitempty"`
@@ -283,6 +296,14 @@ type RunState struct {
 	UpdatedAt           time.Time             `json:"updated_at"`
 	ErrorCode           string                `json:"error_code,omitempty"`
 	Error               string                `json:"error,omitempty"`
+}
+
+type OperatorRetryState struct {
+	NodeID           string    `json:"node_id"`
+	RequestedAt      time.Time `json:"requested_at"`
+	PreviousStatus   string    `json:"previous_status"`
+	PreviousAttempts int       `json:"previous_attempts"`
+	PreviousError    string    `json:"previous_error,omitempty"`
 }
 
 type WaitingState struct {
@@ -635,6 +656,79 @@ func (f FS) ClearCancel(id string) error {
 		return err
 	}
 	err := os.Remove(filepath.Join(f.RunDir(id), "cancel.requested"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
+func (f FS) RequestPause(id string) error {
+	return f.writeOperatorMarker(id, "pause.requested", "pause\n")
+}
+
+func (f FS) PauseRequested(id string) (bool, error) {
+	return f.operatorMarkerExists(id, "pause.requested")
+}
+
+func (f FS) ClearPause(id string) error {
+	return f.clearOperatorMarker(id, "pause.requested")
+}
+
+func (f FS) RequestAbandon(id, reason string) error {
+	if strings.TrimSpace(reason) == "" {
+		reason = "abandoned by operator"
+	}
+	return f.writeOperatorMarker(id, "abandon.requested", reason+"\n")
+}
+
+func (f FS) AbandonRequested(id string) (bool, string, error) {
+	if err := ValidateRunID(id); err != nil {
+		return false, "", err
+	}
+	raw, err := os.ReadFile(filepath.Join(f.RunDir(id), "abandon.requested"))
+	if err == nil {
+		return true, strings.TrimSpace(string(raw)), nil
+	}
+	if os.IsNotExist(err) {
+		return false, "", nil
+	}
+	return false, "", err
+}
+
+func (f FS) ClearAbandon(id string) error {
+	return f.clearOperatorMarker(id, "abandon.requested")
+}
+
+func (f FS) writeOperatorMarker(id, name, value string) error {
+	if err := ValidateRunID(id); err != nil {
+		return err
+	}
+	dir := f.RunDir(id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return writeFileSync(filepath.Join(dir, name), []byte(value), 0o600)
+}
+
+func (f FS) operatorMarkerExists(id, name string) (bool, error) {
+	if err := ValidateRunID(id); err != nil {
+		return false, err
+	}
+	_, err := os.Stat(filepath.Join(f.RunDir(id), name))
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func (f FS) clearOperatorMarker(id, name string) error {
+	if err := ValidateRunID(id); err != nil {
+		return err
+	}
+	err := os.Remove(filepath.Join(f.RunDir(id), name))
 	if os.IsNotExist(err) {
 		return nil
 	}

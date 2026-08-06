@@ -25,10 +25,13 @@
     "status": {
       "enum": [
         "running",
+        "pausing",
+        "paused",
         "waiting",
         "completed",
         "failed",
-        "cancelled"
+        "cancelled",
+        "abandoned"
       ]
     },
     "workflow_path": {
@@ -155,6 +158,45 @@
     },
     "cancel_requested": {
       "type": "boolean"
+    },
+    "pause_requested": {
+      "type": "boolean"
+    },
+    "paused_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "paused_from": {
+      "type": "string"
+    },
+    "abandoned_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "abandon_reason": {
+      "type": "string"
+    },
+    "recovery_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "last_recovered_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "executor_pid": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "heartbeat_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "operator_retries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/operatorRetryState"
+      }
     },
     "inherited_policy": {
       "$ref": "#/$defs/policyState"
@@ -761,6 +803,35 @@
           "additionalProperties": {
             "type": "object"
           }
+        }
+      }
+    },
+    "operatorRetryState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_id",
+        "requested_at",
+        "previous_status",
+        "previous_attempts"
+      ],
+      "properties": {
+        "node_id": {
+          "type": "string"
+        },
+        "requested_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "previous_status": {
+          "type": "string"
+        },
+        "previous_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "previous_error": {
+          "type": "string"
         }
       }
     }

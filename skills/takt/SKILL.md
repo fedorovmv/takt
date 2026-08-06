@@ -51,9 +51,25 @@ takt run code --workspace . --input docs/plan.md --json
 
 ## Строгий режим хоста кодинг-агента
 
-Для гарантированного выполнения используй нативную `/takt`-команду из `integrations/coding-agent-host-control/pi` или `integrations/coding-agent-host-control/opencode`. В strict mode команда и последующий пользовательский ввод перехватываются хостом до основной LLM; изменяющие инструменты и final completion основной сессии блокируются, пока durable host session активна. Skill и обычный MCP-вызов без host extension являются только advisory/guarded и не должны называться строгим контролем.
+Для host-managed выполнения используй `/takt` из `integrations/coding-agent-host-control/pi` или `integrations/coding-agent-host-control/opencode`. Go API поддерживает strict contract, но bundled Pi/OpenCode integrations заявляют только `guarded`: Pi не имеет подтверждённого completion gate, а OpenCode V2 не прошёл live smoke. Skill и обычный MCP-вызов также являются advisory/guarded и не должны называться строгим контролем.
 
 Основная сессия показывает preview, подтверждает запуск, отправляет steering и читает статус/артефакты. Код и shell выполняют только worker-сессии текущих фаз Takt. После перезапуска host extension обязан восстановить managed session через `takt.host.find`.
+
+## Автономные Run
+
+Для длительных задач используй daemon и операционный API, а не ручной polling одного `run_id`:
+
+```bash
+takt runs --active --daemon
+takt attention --daemon
+takt run pause <run-id> --daemon
+takt run resume <run-id> --daemon
+takt run retry <run-id> --node <id> --daemon
+takt run summary <run-id> --daemon
+takt notify list --unread
+```
+
+Pause безопасная: новые узлы и fan-out batches не запускаются, текущая attempt заканчивает границу узла. После daemon restart Takt выполняет PID-based recovery как новую attempt; критичные внешние операции должны быть идемпотентными. Для кодинг-агента используй `/takt-runs`, `/takt-attention`, `/takt-pause`, `/takt-resume`, `/takt-result`.
 
 ## Dynamic Takt из кодинг-агента
 

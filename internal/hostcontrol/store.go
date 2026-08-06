@@ -19,6 +19,7 @@ const (
 	StatusPreview   = "preview"
 	StatusManaged   = "managed"
 	StatusWaiting   = "waiting"
+	StatusPaused    = "paused"
 	StatusCompleted = "completed"
 	StatusFailed    = "failed"
 	StatusReleased  = "released"
@@ -53,6 +54,26 @@ type Store struct{ Workspace string }
 
 func (s Store) Root() string          { return filepath.Join(s.Workspace, ".takt", "host-sessions") }
 func (s Store) Path(id string) string { return filepath.Join(s.Root(), id+".json") }
+
+func (s Store) AcquireLock() (func() error, error) {
+	if err := os.MkdirAll(s.Root(), 0o700); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(s.Root(), ".lock")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil, fmt.Errorf("host session store is locked by another process")
+		}
+		return nil, err
+	}
+	_, _ = fmt.Fprintf(file, "%d\n", os.Getpid())
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return nil, err
+	}
+	return func() error { return os.Remove(path) }, nil
+}
 
 func ValidateID(id string) error {
 	if !strings.HasPrefix(id, "host-") || len(id) > 96 || strings.ContainsAny(id, `/\\`) || strings.Contains(id, "..") {
@@ -97,7 +118,10 @@ func (s Store) Save(session *Session) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(name, s.Path(session.ID))
+	if err := os.Rename(name, s.Path(session.ID)); err != nil {
+		return err
+	}
+	return syncDirectory(s.Root())
 }
 
 func (s Store) Load(id string) (*Session, error) {
@@ -135,9 +159,10 @@ func (s Store) List() ([]*Session, error) {
 		}
 		id := strings.TrimSuffix(entry.Name(), ".json")
 		session, loadErr := s.Load(id)
-		if loadErr == nil {
-			out = append(out, session)
+		if loadErr != nil {
+			return nil, fmt.Errorf("load host session %s: %w", id, loadErr)
 		}
+		out = append(out, session)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
 	return out, nil
@@ -150,9 +175,27 @@ func (s Store) Find(host, hostSessionID string) (*Session, error) {
 	}
 	for i := len(sessions) - 1; i >= 0; i-- {
 		item := sessions[i]
-		if item.Host == host && item.HostSessionID == hostSessionID && item.Status != StatusReleased {
+		if item.Host == host && item.HostSessionID == hostSessionID && activeStatus(item.Status) {
 			return item, nil
 		}
 	}
 	return nil, os.ErrNotExist
+}
+
+func activeStatus(status string) bool {
+	switch status {
+	case StatusPreview, StatusManaged, StatusWaiting, StatusPaused:
+		return true
+	default:
+		return false
+	}
+}
+
+func syncDirectory(path string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }

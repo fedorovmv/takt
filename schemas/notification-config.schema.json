@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/notification-config.schema.json",
+  "title": "Takt local notification configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind"],
+  "properties": {
+    "apiVersion": {"const": "takt/v1alpha1"},
+    "kind": {"const": "NotificationConfig"},
+    "events": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "approval.required",
+          "question.required",
+          "tool_approval.required",
+          "attention.required",
+          "run.completed",
+          "run.failed",
+          "run.paused",
+          "run.abandoned",
+          "worker.lost"
+        ]
+      }
+    },
+    "sinks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/sink"}
+    }
+  },
+  "$defs": {
+    "sink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["coding_agent_host", "desktop", "process"]},
+        "command": {"type": "string", "minLength": 1},
+        "args": {"type": "array", "items": {"type": "string"}}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "process"}}, "required": ["type"]},
+          "then": {"required": ["command"]}
+        }
+      ]
+    }
+  }
+}

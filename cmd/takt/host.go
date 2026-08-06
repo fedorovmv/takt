@@ -193,18 +193,17 @@ func hostGuardToolCmd(args []string) error {
 	fs := newFlagSet("host guard-tool")
 	workspace := fs.String("workspace", ".", "control workspace")
 	tool := fs.String("tool", "", "host tool name")
-	category := fs.String("category", "other", "control|read|write|shell|git|network|other")
 	readOnly := fs.Bool("read-only", false, "tool is read-only")
 	useDaemon := fs.Bool("daemon", false, "use local daemon")
 	socket := fs.String("socket", "", "daemon Unix socket path")
 	jsonOut := fs.Bool("json", true, "JSON output")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--tool": true, "--category": true, "--read-only": false, "--daemon": false, "--socket": true, "--json": false})); err != nil {
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--tool": true, "--read-only": false, "--daemon": false, "--socket": true, "--json": false})); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 || *tool == "" {
-		return fmt.Errorf("usage: takt host guard-tool <session-id> --tool <name> --category <category>")
+		return fmt.Errorf("usage: takt host guard-tool <session-id> --tool <name>")
 	}
-	request := control.HostToolGuardRequest{SessionID: fs.Arg(0), Tool: *tool, Category: *category, ReadOnly: *readOnly}
+	request := control.HostToolGuardRequest{SessionID: fs.Arg(0), Tool: *tool, ReadOnly: *readOnly}
 	var result control.HostGuardDecision
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)

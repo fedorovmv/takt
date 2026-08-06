@@ -20,6 +20,7 @@ import (
 
 	"takt/internal/control"
 	"takt/internal/mcp"
+	"takt/internal/notification"
 	"takt/internal/store"
 	"takt/internal/version"
 )
@@ -147,6 +148,11 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 	if err := writeJSONAtomic(s.paths.Metadata, s.metadata, 0o600); err != nil {
 		return err
+	}
+	if recovered, recoverErr := s.service.RecoverInterruptedRuns(context.Background()); recoverErr != nil {
+		fmt.Fprintln(s.errOut, "daemon recovery:", recoverErr)
+	} else if len(recovered.Recovered) > 0 {
+		fmt.Fprintln(s.errOut, "daemon recovered interrupted Runs:", strings.Join(recovered.Recovered, ", "))
 	}
 
 	mux := http.NewServeMux()
@@ -394,6 +400,91 @@ func (s *Server) call(ctx context.Context, method string, raw json.RawMessage) (
 			return nil, err
 		}
 		return s.service.GetRun(params.RunID)
+	case "run.list":
+		var params control.RunListRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.ListRuns(params)
+	case "run.attention":
+		return s.service.Attention()
+	case "run.summary":
+		var params struct {
+			RunID     string `json:"run_id"`
+			Recursive bool   `json:"recursive,omitempty"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.Summary(params.RunID, params.Recursive)
+	case "run.pause":
+		var params struct {
+			RunID string `json:"run_id"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.Pause(params.RunID)
+	case "run.resume_paused":
+		var params struct {
+			RunID string `json:"run_id"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.ResumePaused(ctx, params.RunID, true)
+	case "run.retry":
+		var params control.RetryRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		params.Detached = true
+		return s.service.Retry(ctx, params)
+	case "run.fork":
+		var params control.ForkRequest
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		params.Detached = true
+		return s.service.Fork(ctx, params)
+	case "run.abandon":
+		var params struct {
+			RunID  string `json:"run_id"`
+			Reason string `json:"reason,omitempty"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return s.service.Abandon(params.RunID, params.Reason)
+	case "run.recover":
+		return s.service.RecoverInterruptedRuns(ctx)
+	case "notify.list":
+		var params struct {
+			UnreadOnly bool `json:"unread_only,omitempty"`
+			Limit      int  `json:"limit,omitempty"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return (notification.Dispatcher{Workspace: s.metadata.Workspace}).List(params.UnreadOnly, params.Limit)
+	case "notify.ack":
+		var params struct {
+			ID string `json:"id"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return (notification.Dispatcher{Workspace: s.metadata.Workspace}).Ack(params.ID)
+	case "notify.test":
+		var params struct {
+			Message string `json:"message,omitempty"`
+		}
+		if err := decodeParams(raw, &params); err != nil {
+			return nil, err
+		}
+		return (notification.Dispatcher{Workspace: s.metadata.Workspace}).Test(params.Message)
+	case "notify.dispatch":
+		return (notification.Dispatcher{Workspace: s.metadata.Workspace}).Dispatch()
 	case "run.resume":
 		var params struct {
 			RunID string `json:"run_id"`
@@ -560,7 +651,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func terminalStatus(status string) bool {
-	return status == store.RunCompleted || status == store.RunFailed || status == store.RunCancelled
+	return status == store.RunCompleted || status == store.RunFailed || status == store.RunCancelled || status == store.RunAbandoned
 }
 
 func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
@@ -587,6 +678,11 @@ func (s *Server) monitorIdle(ctx context.Context) {
 				fmt.Fprintln(s.errOut, "daemon idle monitor:", err)
 			} else if len(expired) > 0 {
 				fmt.Fprintln(s.errOut, "daemon expired idle external nodes:", strings.Join(expired, ", "))
+			}
+			if emitted, err := (notification.Dispatcher{Workspace: s.metadata.Workspace}).Dispatch(); err != nil {
+				fmt.Fprintln(s.errOut, "daemon notifications:", err)
+			} else if len(emitted) > 0 {
+				fmt.Fprintln(s.errOut, "daemon notifications emitted:", len(emitted))
 			}
 		}
 	}

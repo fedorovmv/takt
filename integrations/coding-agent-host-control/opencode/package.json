@@ -1,10 +1,17 @@
 {
   "name": "takt-opencode-host-control",
-  "version": "0.1.36-alpha",
+  "version": "0.1.37-alpha",
   "private": true,
   "type": "module",
   "exports": "./index.ts",
-  "peerDependencies": {
-    "@opencode-ai/plugin": "next"
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.7.2"
+  },
+  "taktHostCompatibility": {
+    "api": "opencode-v2-beta",
+    "verified": false,
+    "enforcement": "guarded",
+    "note": "Pin and live-smoke the target OpenCode build before enabling this plugin in a corporate image. No strict capability is declared until model-dispatch cancellation is verified against that exact build."
   }
 }

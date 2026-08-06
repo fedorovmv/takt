@@ -278,7 +278,7 @@ Renderer является fail-closed: `${path}` обязателен, `${path?}
 
 `takt daemon` добавляет время жизни процесса, а не второй runtime. CLI, event subscriptions и MCP вызывают общий `control.Service`; состояние, revisions, locks, fingerprints, child lifecycle и artifacts остаются в `.takt/runs`. Daemon слушает только Unix socket с правами текущего пользователя, не открывает TCP и не вводит БД.
 
-Один workspace допускает один daemon через локальный file lock. Concurrent управляющие запросы сериализуются bounded retry на уровне control plane, при этом Store lock остаётся неблокирующим. Daemon гарантирует продолжение после закрытия клиента, но не обещает восстановить выполнявшийся OS-процесс после падения самого daemon; durable waiting/pending состояния остаются доступными для явного resume/reclaim.
+Один workspace допускает один daemon через локальный file lock. Concurrent управляющие запросы сериализуются bounded retry на уровне control plane, при этом Store lock остаётся неблокирующим. Daemon гарантирует продолжение после закрытия клиента. После падения он не продолжает прежний OS-процесс, но следующий daemon выполняет PID-based recovery durable `running|pausing` Run: помечает attempt как `worker_lost`, возвращает node в `pending` и запускает новую attempt. Внешние side effects требуют идемпотентности adapter/workflow.
 
 ## ADR-049. WorkflowPlan является ограниченным планом компиляции
 
@@ -321,3 +321,18 @@ Dynamic Takt не обнаруживает блоки автоматически
 **Решение.** Fingerprint блока включает package manifest, expanded workflow/subworkflow, разрешённые Markdown-команды, script source и dependencies, path skills и MCP-конфигурации.
 
 **Причина.** Хэш только wrapper workflow не обнаруживает изменение фактической инструкции или исполняемого ресурса после preview.
+
+
+## ADR-055. Автономная эксплуатация Run остаётся проекцией файлового Store
+
+**Статус:** принято.
+
+Реестр, attention queue, summary и уведомления не вводят отдельную БД или второй жизненный цикл. `run.list` и `run.summary` читают обычные RunState, notification dispatcher хранит только snapshot переходов и durable inbox. Ошибка доставки desktop/process не меняет статус Run; источником истины остаются state/events/artifacts.
+
+Безопасная pause прекращает запуск новых узлов и fan-out batches, позволяет активной attempt дойти до границы и затем переводит Run в `paused`. `retry` сбрасывает только выбранный failed node и зависимый хвост, `fork` создаёт новый запуск, а `abandon` является отдельным terminal-состоянием с сохранённой историей.
+
+## ADR-056. Восстановление daemon является PID-based повтором attempt
+
+**Статус:** принято.
+
+При старте daemon обнаруживает `running|pausing` Run, чей `executor_pid` больше не существует. Текущая execution record получает `worker_lost`, consumed attempt возвращается, node становится `pending`, recovery count увеличивается, а дочерние Run восстанавливаются раньше родителей. Это не продолжение того же provider-процесса и не exactly-once гарантия. Критичные внешние операции обязаны использовать идемпотентные адаптеры, ключи операции или отдельные детерминированные узлы.

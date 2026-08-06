@@ -2,38 +2,36 @@
 
 ## Задача
 
-Skill и MCP сами по себе не заставляют основную LLM вызвать Takt: модель может продолжить обычный agent loop. Этот срез переносит начало workflow в хост кодинг-агента. Команда `/takt` перехватывается до отправки запроса модели, после подтверждения сессия переходит в managed mode, а Takt становится единственным владельцем переходов и изменяющих код фаз.
+Skill и MCP сами по себе не заставляют основную LLM вызвать Takt. Срез вводит host-control API: хост кодинг-агента может перехватить `/takt` до основной модели, создать durable managed session, проверять инструменты и восстановить связь с активным Dynamic Plan после перезапуска.
 
 ```text
 /takt <задача>
 → host intercept
-→ host.begin / plan preview
+→ host.begin / preview
 → подтверждение
 → host.confirm / Takt execute
-→ отдельные worker Run
-→ terminal state
-→ итог основной сессии
+→ worker Run под управлением Takt
 ```
 
 ## Уровни контроля
 
-- `advisory` — интеграция только показывает состояние; обход не блокируется.
-- `guarded` — хост применяет часть ограничителей.
-- `strict` — принимается только при заявленных `command_interception`, `input_interception`, `tool_call_blocking`, `completion_blocking` и `session_recovery`.
+- `advisory` — хост только показывает состояние;
+- `guarded` — хост применяет доступные ограничители, но не заявляет полную гарантию;
+- `strict` — Takt принимает режим только при одновременной декларации `command_interception`, `input_interception`, `tool_call_blocking`, `completion_blocking` и `session_recovery`.
 
-Заявление возможностей является контрактом доверенного локального расширения, а не удалённой аттестацией. Takt отклоняет `strict`, если хотя бы одна возможность не объявлена.
+`strict` является контрактом доверенного host adapter. Само заявление capabilities не доказывает фактическое поведение стороннего хоста. Для выпуска строгой интеграции нужен live contract test на зафиксированной версии Pi/OpenCode.
 
 ## Durable host session
 
-Связь хоста и плана хранится в `.takt/host-sessions/<id>.json`:
+Связь хоста и плана хранится в `.takt/host-sessions/<id>.json` с правами `0600`:
 
-- host и стабильный ID его сессии;
+- host и стабильный ID сессии;
 - `plan_id`;
-- статус `preview|managed|waiting|completed|failed|released`;
-- уровень контроля и заявленные возможности;
-- время создания, обновления и явного release.
+- статус `preview|managed|waiting|paused|completed|failed|released`;
+- уровень контроля и capabilities;
+- время создания и обновления.
 
-После перезапуска расширение вызывает `host.find` и восстанавливает managed mode. `release` является явным операторским выходом и не отменяет уже запущенный Takt Run.
+`host.find` возвращает только активные сессии. Завершённая или ошибочная сессия не переиспользуется для следующего `/takt`; новый запрос получает новый plan и host-session record. Повреждённая запись является ошибкой, а не молча пропускается. Запись выполняется атомарно с `fsync` каталога.
 
 ## API
 
@@ -41,8 +39,8 @@ CLI:
 
 ```bash
 takt host begin "<задача>" --host pi --host-session <id> \
-  --enforcement strict --command-interception --input-interception \
-  --tool-call-blocking --completion-blocking --session-recovery --daemon
+  --enforcement guarded --command-interception --input-interception \
+  --tool-call-blocking --session-recovery --daemon
 
 takt host confirm <session-id> --confirm --daemon
 takt host status <session-id> --daemon
@@ -52,53 +50,66 @@ takt host guard-completion <session-id> --kind final --daemon
 takt host release <session-id> --daemon
 ```
 
-MCP публикует те же операции как `takt.host.begin|confirm|get|find|guard_tool|guard_completion|release`. Всего локальный MCP содержит 36 инструментов.
+MCP публикует `takt.host.begin|confirm|get|find|guard_tool|guard_completion|release`. `takt.host.confirm` через daemon запускает workflow отсоединённо и не удерживает MCP-вызов на время всего процесса.
 
-## Контроль основной сессии
+## Tool guard
 
-Пока host session имеет активный статус:
+Пока host session активна:
 
-- Takt control tools и известные read-only инструменты разрешены;
-- `edit`, `write`, shell, Git и неизвестные инструменты блокируются до выполнения;
-- поле `read_only` от хоста считается подсказкой и не может превратить неизвестный инструмент в разрешённый;
-- обычный пользовательский ввод направляется в `takt steer`, не вызывая основную модель;
-- final completion блокируется; разрешены только status, а в `waiting` — question/status.
+- разрешены только точные известные имена read-only инструментов и операций управления Takt;
+- `edit`, `write`, shell, Git и неизвестные инструменты блокируются;
+- `read_only` из запроса клиента не влияет на решение;
+- префикс `takt.` или `takt_` сам по себе не даёт разрешение.
 
-Основная сессия не выполняет рабочие фазы. Их исполняют отдельные Pi/OpenCode worker-сессии под обычным Takt DAG, output contracts, hooks, policies, budgets и artifacts.
+Серверный guard работает fail-closed при неизвестном `session_id`.
 
-## Pi
+## Встроенная интеграция Pi
 
-`integrations/coding-agent-host-control/pi/index.ts` использует нативную команду `/takt`, события `input`, `before_agent_start`, `tool_call`, `user_bash` и session lifecycle. Расширение:
+`integrations/coding-agent-host-control/pi/` зафиксирована на контракте Pi `0.73.1` и заявляет только `guarded`:
 
-- перехватывает задачу до main agent loop;
-- сохраняет только read-only active tools;
-- отправляет последующий ввод как steering;
-- блокирует обходные tool calls и прямой user bash;
-- восстанавливает durable session на `session_start`.
+- нативная команда `/takt`;
+- перехват последующего `input`;
+- блокирующий `tool_call` и `user_bash`;
+- локальный кеш последнего managed-решения;
+- при потере daemon кеш не сбрасывается: ввод и изменяющие инструменты остаются заблокированными;
+- steering передаётся после `--`, поэтому текст пользователя не разбирается как флаги Takt.
 
-## OpenCode
+Pi `0.73.1` не предоставляет подтверждённого fail-closed completion hook. `before_agent_start` не используется и capability `completion_blocking` не заявляется. Поэтому bundled Pi extension не является strict-интеграцией.
 
-`integrations/coding-agent-host-control/opencode/index.ts` использует V2 plugin API:
+## Встроенная интеграция OpenCode
 
-- command transform помещает управляющий маркер;
-- session `context` hook обрабатывает маркер и активный ввод непосредственно перед model dispatch и fail-closed прерывает dispatch;
-- `tool.execute.before` проверяет каждый tool через Takt.
+`integrations/coding-agent-host-control/opencode/` также заявляет только `guarded`:
 
-OpenCode V2 plugin API пока beta, поэтому корпоративное внедрение должно фиксировать совместимую версию и включать live smoke в своей среде.
+- command marker обрабатывается в `context` hook;
+- `tool.execute.before` проверяет инструменты;
+- `shell.hook("create.before")` блокирует пользовательский shell;
+- транспортные ошибки сохраняют managed cache и блокируют свободное продолжение;
+- package manifest не использует плавающий `next` и помечен `verified: false`.
 
-## Исправления v0.1.35
+Надёжное прекращение model dispatch через ошибку `context` hook не подтверждено live smoke на целевой версии OpenCode V2. До такого теста bundled OpenCode plugin нельзя считать strict.
 
-- macOS unit test использует тот же `EvalSymlinks`, что и runtime;
-- fingerprint пакета включает транзитивные команды, subworkflow, script source/dependencies, path skills и MCP-конфигурации;
-- отсутствующий `allowed_integrations` не ограничивает каталог, явный `[]` запрещает все интеграции;
-- steering из `running` и `waiting` использует единый порог `>= max_iterations`;
-- foreground advance читает план только после межпроцессной блокировки;
-- ошибки workflow listing, JSON encoding и promote rollback возвращаются вызывающему коду;
-- профиль без `block_packages` сохраняет статические workflow, но Dynamic Plan требует явной миграции;
-- `Detached` выбирается транспортом: daemon — detached, прямой CLI/MCP — foreground.
+## Что гарантирует Go-ядро
+
+- `strict` отклоняется без полного набора пяти capabilities и при begin, и при reuse;
+- Begin сериализуется межпроцессной блокировкой;
+- tool guard — default deny;
+- terminal host sessions не переиспользуются;
+- host-state восстанавливается после daemon restart;
+- completion guard возвращает решения `allow|deny` для `final|question|status`.
+
+## Исправления аудита
+
+- package fingerprint включает транзитивные Markdown-команды, subworkflow, scripts/dependencies, path skills и MCP-конфигурации;
+- macOS-тест использует канонический `EvalSymlinks`;
+- явный `allowed_integrations: []` отличается от отсутствующего поля;
+- steering использует единый предел редакций;
+- пользовательский текст передаётся после `--`;
+- transport failure bundled extensions обрабатывается fail-closed относительно сохранённого managed state;
+- TypeScript проверяется в strict-режиме против локальных contract `.d.ts`; отсутствие компилятора не ломает обычный Go build, а release verification может потребовать его через `TAKT_REQUIRE_TYPESCRIPT=1`.
 
 ## Границы
 
-- Pi/OpenCode binaries в release CI не запускаются: TypeScript integrations проходят структурный контракт, Go host API — unit и end-to-end tests. Перед внедрением нужен smoke с целевой версией хоста.
+- Фактический live smoke Pi/OpenCode в release-среде не выполняется.
+- Bundled adapters имеют уровень `guarded`, а не `strict`.
 - Host guard контролирует наблюдаемые действия, но не внутреннее рассуждение LLM.
-- Кеш каталога по fingerprint отложен; `plan.get/preview` пока повторно загружают локальный каталог.
+- `host release` освобождает интерфейсную сессию и не отменяет активный Run.

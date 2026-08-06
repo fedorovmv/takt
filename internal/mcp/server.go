@@ -17,6 +17,7 @@ import (
 	"takt/internal/assistant"
 	"takt/internal/control"
 	"takt/internal/dynamicplan"
+	"takt/internal/notification"
 	"takt/internal/store"
 	"takt/internal/version"
 )
@@ -374,6 +375,7 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 		if err := decodeArguments(args, &in); err != nil {
 			return nil, err
 		}
+		in.Detached = true
 		return s.control.ConfirmHostSession(ctx, in)
 	case "takt.host.get":
 		var in struct {
@@ -481,6 +483,85 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 			return nil, err
 		}
 		return s.control.GetRun(in.RunID)
+	case "takt.run.list":
+		var in control.RunListRequest
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.ListRuns(in)
+	case "takt.run.attention":
+		return s.control.Attention()
+	case "takt.run.summary":
+		var in struct {
+			RunID     string `json:"run_id"`
+			Recursive bool   `json:"recursive,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.Summary(in.RunID, in.Recursive)
+	case "takt.run.pause":
+		var in runIDArguments
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.Pause(in.RunID)
+	case "takt.run.resume_paused":
+		var in runIDArguments
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.ResumePaused(ctx, in.RunID, true)
+	case "takt.run.retry":
+		var in control.RetryRequest
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		in.Detached = true
+		return s.control.Retry(ctx, in)
+	case "takt.run.fork":
+		var in control.ForkRequest
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		in.Detached = true
+		return s.control.Fork(ctx, in)
+	case "takt.run.abandon":
+		var in struct {
+			RunID  string `json:"run_id"`
+			Reason string `json:"reason,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.Abandon(in.RunID, in.Reason)
+	case "takt.run.recover":
+		return s.control.RecoverInterruptedRuns(ctx)
+	case "takt.notify.list":
+		var in struct {
+			UnreadOnly bool `json:"unread_only,omitempty"`
+			Limit      int  `json:"limit,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return (notification.Dispatcher{Workspace: s.control.Workspace}).List(in.UnreadOnly, in.Limit)
+	case "takt.notify.ack":
+		var in struct {
+			ID string `json:"id"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return (notification.Dispatcher{Workspace: s.control.Workspace}).Ack(in.ID)
+	case "takt.notify.test":
+		var in struct {
+			Message string `json:"message,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return (notification.Dispatcher{Workspace: s.control.Workspace}).Test(in.Message)
 	case "takt.run.resume":
 		var in runIDArguments
 		if err := decodeArguments(args, &in); err != nil {
@@ -783,7 +864,7 @@ func tools() []tool {
 		{Name: "takt.host.confirm", Title: "Confirm managed Takt session", Description: "Confirm preview and start the bound Takt plan.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID"), "confirm": boolProp("Confirm preview and budgets")}, "session_id", "confirm"), Annotations: mutating},
 		{Name: "takt.host.get", Title: "Get managed Takt session", Description: "Read managed host session and bound plan state.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID")}, "session_id"), Annotations: readOnly},
 		{Name: "takt.host.find", Title: "Find managed Takt session", Description: "Recover a durable managed session by coding-agent host and session ID.", InputSchema: object(map[string]any{"host": stringProp("Coding-agent host"), "host_session_id": stringProp("Stable host session ID")}, "host", "host_session_id"), Annotations: readOnly},
-		{Name: "takt.host.guard_tool", Title: "Guard coding-agent tool", Description: "Fail closed on a host tool call while a Takt-managed workflow is active.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID"), "tool": stringProp("Host tool name"), "category": stringProp("Optional host category"), "read_only": boolProp("Host advisory read-only declaration")}, "session_id", "tool"), Annotations: readOnly},
+		{Name: "takt.host.guard_tool", Title: "Guard coding-agent tool", Description: "Fail closed on a host tool call while a Takt-managed workflow is active.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID"), "tool": stringProp("Host tool name"), "read_only": boolProp("Host advisory read-only declaration; never overrides the Takt allowlist")}, "session_id", "tool"), Annotations: readOnly},
 		{Name: "takt.host.guard_completion", Title: "Guard coding-agent completion", Description: "Block a final response while the bound Takt plan is active.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID"), "kind": map[string]any{"type": "string", "enum": []string{"final", "status", "question"}}}, "session_id", "kind"), Annotations: readOnly},
 		{Name: "takt.host.release", Title: "Release managed Takt session", Description: "Explicitly leave managed mode without cancelling the underlying Takt plan.", InputSchema: object(map[string]any{"session_id": stringProp("Managed host session ID")}, "session_id"), Annotations: mutating},
 		{Name: "takt.plan", Title: "Plan with Dynamic Takt", Description: "Choose an existing workflow or create a bounded task-specific WorkflowPlan from approved blocks. Returns preview, budget and confirmation requirement.", InputSchema: object(map[string]any{
@@ -800,6 +881,22 @@ func tools() []tool {
 			"allow_dirty_worktree": boolProp("Allow a dirty control checkout and start from committed state"), "detached": boolProp("Return after the Run is durably started; defaults to true"),
 		}, "selector"), Annotations: mutating},
 		{Name: "takt.run.get", Title: "Get Takt Run", Description: "Read the current public Run state, including waiting approval, nodes, usage and durable child links.", InputSchema: object(map[string]any{"run_id": stringProp("Durable Takt Run ID")}, "run_id"), Annotations: readOnly},
+		{Name: "takt.run.list", Title: "List Takt Runs", Description: "List durable local Runs with effective state, attention reason, current phase, usage and artifact counts.", InputSchema: object(map[string]any{
+			"status": stringProp("Optional status filter"), "active_only": boolProp("Return only non-terminal Runs"),
+			"attention_only": boolProp("Return only Runs requiring operator attention"), "root_only": boolProp("Exclude governed child Runs"),
+			"limit": integerProp("Maximum number of Runs", 1, 10000),
+		}), Annotations: readOnly},
+		{Name: "takt.run.attention", Title: "List Runs requiring attention", Description: "Return approvals, questions, tool approvals, failures and paused Runs that require an operator action.", InputSchema: object(map[string]any{}), Annotations: readOnly},
+		{Name: "takt.run.summary", Title: "Summarize Takt Run", Description: "Return an operator-oriented result projection with progress, descendants, usage, artifacts, output and remaining attention.", InputSchema: object(map[string]any{"run_id": stringProp("Run ID"), "recursive": boolProp("Aggregate descendant Runs")}, "run_id"), Annotations: readOnly},
+		{Name: "takt.run.pause", Title: "Pause Takt Run", Description: "Request a safe pause at node boundaries for the Run and active descendants. Running attempts finish before the pause takes effect.", InputSchema: object(map[string]any{"run_id": stringProp("Run ID")}, "run_id"), Annotations: mutating},
+		{Name: "takt.run.resume_paused", Title: "Resume paused Takt Run", Description: "Clear pause requests and continue a paused Run. A Run paused while waiting returns to the same waiting state.", InputSchema: object(map[string]any{"run_id": stringProp("Run ID")}, "run_id"), Annotations: mutating},
+		{Name: "takt.run.retry", Title: "Retry failed Takt node", Description: "Reset one failed node and its dependent remainder, preserving completed prerequisites and operator retry history.", InputSchema: object(map[string]any{"run_id": stringProp("Run ID"), "node_id": stringProp("Failed node; defaults to the first failed node")}, "run_id"), Annotations: mutating},
+		{Name: "takt.run.fork", Title: "Fork Takt Run", Description: "Create a new Run from the same workflow and options, or a new Dynamic Plan when the source belongs to Dynamic Takt.", InputSchema: object(map[string]any{"run_id": stringProp("Source Run ID"), "input": stringProp("Optional replacement input or Dynamic Plan goal")}, "run_id"), Annotations: mutating},
+		{Name: "takt.run.abandon", Title: "Abandon Takt Run", Description: "Stop servicing a Run and active descendants while preserving history with an abandoned terminal state.", InputSchema: object(map[string]any{"run_id": stringProp("Run ID"), "reason": stringProp("Operator reason")}, "run_id"), Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true}},
+		{Name: "takt.run.recover", Title: "Recover interrupted Runs", Description: "Detect Runs whose executor process disappeared, mark active attempts as worker_lost and continue them from durable state.", InputSchema: object(map[string]any{}), Annotations: mutating},
+		{Name: "takt.notify.list", Title: "List Takt notifications", Description: "Read durable local notifications produced by autonomous Runs; supports an unread-only view for coding-agent hosts.", InputSchema: object(map[string]any{"unread_only": boolProp("Only unacknowledged notifications"), "limit": integerProp("Maximum notifications", 1, 10000)}), Annotations: readOnly},
+		{Name: "takt.notify.ack", Title: "Acknowledge Takt notification", Description: "Mark one durable notification as acknowledged.", InputSchema: object(map[string]any{"id": stringProp("Notification ID")}, "id"), Annotations: mutating},
+		{Name: "takt.notify.test", Title: "Test Takt notifications", Description: "Create and deliver a local test notification through configured sinks.", InputSchema: object(map[string]any{"message": stringProp("Optional test message")}), Annotations: mutating},
 		{Name: "takt.run.resume", Title: "Resume Takt Run", Description: "Resume a failed or otherwise resumable Run after external correction. Definitions and fingerprints are verified first.", InputSchema: object(map[string]any{"run_id": stringProp("Durable Takt Run ID")}, "run_id"), Annotations: mutating},
 		{Name: "takt.run.answer", Title: "Answer Takt approval", Description: "Submit an approval response and continue the waiting child and parent Run chain.", InputSchema: object(map[string]any{"run_id": stringProp("Root or direct child Run ID"), "node_id": stringProp("Public approval node ID"), "value": stringProp("Approval response")}, "run_id", "node_id", "value"), Annotations: mutating},
 		{Name: "takt.run.cancel", Title: "Cancel Takt Run", Description: "Request durable cancellation of a Run and its active child tree.", InputSchema: object(map[string]any{"run_id": stringProp("Durable Takt Run ID"), "reason": stringProp("Cancellation reason")}, "run_id"), Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true}},

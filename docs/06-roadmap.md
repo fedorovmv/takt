@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.36-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.37-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -46,7 +46,11 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 
 ## Выполнено в v0.1.36-alpha. Coding Agent Host Control
 
-Добавлен строгий host-control для Pi и OpenCode: `/takt` и последующий ввод перехватываются до основной LLM, managed session восстанавливается после перезапуска, mutating tools блокируются до исполнения, а final response разрешается только после terminal-состояния Takt. Durable host-session связывает сессию кодинг-агента с Dynamic Plan; CLI/MCP/daemon публикуют begin/confirm/get/find/guard/release. Одновременно fingerprint доверенного пакета расширен до транзитивного содержимого команд, subworkflow, scripts, dependencies, skills и MCP. Полный архив среза: `50-coding-agent-host-control-v0.1.36.md`.
+Добавлено Go-ядро host-control: durable managed session, begin/confirm/find/get, default-deny tool guard, completion guard и восстановление связи после перезапуска daemon. `strict` принимается только от host adapter, заявляющего полный набор command/input/tool/completion/recovery capabilities. Bundled Pi/OpenCode integrations остаются `guarded`: их реальные host API не дают подтверждённой полной strict-гарантии без live smoke на зафиксированной версии. Одновременно fingerprint доверенного пакета расширен до транзитивного содержимого команд, subworkflow, scripts, dependencies, skills и MCP. Полный архив среза: `50-coding-agent-host-control-v0.1.36.md`.
+
+## Выполнено в v0.1.37-alpha. Autonomous Run Operations
+
+Добавлены реестр и история Run, attention queue, агрегированный summary, безопасная пауза на границе узлов и fan-out batches, resume, retry зависимого хвоста, fork и отдельное terminal-состояние abandon. Daemon восстанавливает локальные Run после потери executor PID, помечает attempt как `worker_lost` и продолжает parent chain. Локальный notification dispatcher поддерживает durable coding-agent inbox, desktop и доверенный process sink с дедупликацией и ack. Pi/OpenCode получили команды runs/attention/pause/resume/result. MCP расширен до 48 tools. Полный архив среза: `51-autonomous-run-operations-v0.1.37.md`.
 
 ## Приоритет 1. Domain Adapter SDK
 
@@ -90,4 +94,4 @@ Authoring preflight обнаруживает опечатки с `did you mean`,
 
 ## Отложенные proposals
 
-Server, Web UI, БД, удалённые workers, message adapters, notifications и многопользовательская авторизация рассматриваются только после появления задачи нелокального использования и отдельной threat model.
+Server, Web UI, БД, удалённые workers, внешние message adapters и многопользовательская авторизация рассматриваются только после появления задачи нелокального использования и отдельной threat model.

@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"takt/internal/control"
+	"takt/internal/dynamicplan"
+	"takt/internal/notification"
+	"takt/internal/profile"
 	"takt/internal/store"
 )
 
@@ -40,7 +43,7 @@ func TestServeStdioSupportsLegacyInitializeAndModernDiscover(t *testing.T) {
 		t.Fatalf("modern protocol = %v", got)
 	}
 	listed := responses["3"]["result"].(map[string]any)["tools"].([]any)
-	if len(listed) != 36 {
+	if len(listed) != 48 {
 		t.Fatalf("tools count = %d", len(listed))
 	}
 	first := listed[0].(map[string]any)["name"]
@@ -516,5 +519,76 @@ nodes:
 	second := secondValue.(*control.ExternalTask)
 	if second.ClaimToken == first.ClaimToken || second.ClaimedBy != "worker-2" {
 		t.Fatalf("lease was not reclaimed: first=%#v second=%#v", first, second)
+	}
+}
+
+func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	service, err := control.New(workspace, filepath.Join(workspace, ".takt", "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := New(service, nil, nil, nil)
+	candidate := dynamicplan.Plan{
+		APIVersion: "takt/v1alpha1", Kind: "WorkflowPlan", Decision: "planned",
+		Goal: "summarize repository", Reason: "single trusted phase",
+		Budget: dynamicplan.Budget{MaxChildRuns: 4, MaxParallel: 1, MaxIterations: 2, MaxTokens: 10000},
+		Phases: []dynamicplan.Phase{{ID: "summary", Uses: "synthesize", Objective: "Summarize the repository", Strategy: "task"}},
+	}
+	beginValue, err := server.executeTool(context.Background(), "takt.host.begin", map[string]any{
+		"host": "pi", "host_session_id": "mcp-host-session", "goal": candidate.Goal,
+		"profile": "code", "enforcement": "guarded",
+		"capabilities": map[string]any{"command_interception": true, "input_interception": true, "tool_call_blocking": true, "session_recovery": true},
+		"candidate":    candidate,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	begun := beginValue.(*control.HostBeginResult)
+	if begun.Session.ID == "" || begun.Session.Status != "preview" {
+		t.Fatalf("host begin = %#v", begun)
+	}
+	getValue, err := server.executeTool(context.Background(), "takt.host.get", map[string]any{"session_id": begun.Session.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if getValue.(*control.HostSessionView).Session.ID != begun.Session.ID {
+		t.Fatalf("host get = %#v", getValue)
+	}
+	guardValue, err := server.executeTool(context.Background(), "takt.host.guard_tool", map[string]any{"session_id": begun.Session.ID, "tool": "edit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if guardValue.(*control.HostGuardDecision).Allowed {
+		t.Fatalf("edit tool escaped MCP guard: %#v", guardValue)
+	}
+	startedAt := time.Now()
+	if _, err := server.executeTool(context.Background(), "takt.host.confirm", map[string]any{"session_id": begun.Session.ID, "confirm": true}); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(startedAt) > 2*time.Second {
+		t.Fatalf("host confirm blocked instead of starting detached")
+	}
+	if _, err := server.executeTool(context.Background(), "takt.run.list", map[string]any{"active_only": true}); err != nil {
+		t.Fatal(err)
+	}
+	noticeValue, err := server.executeTool(context.Background(), "takt.notify.test", map[string]any{"message": "mcp notice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	notice := noticeValue.(*notification.Item)
+	listedValue, err := server.executeTool(context.Background(), "takt.notify.list", map[string]any{"unread_only": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := listedValue.([]notification.Item)
+	if len(listed) == 0 || listed[0].ID != notice.ID {
+		t.Fatalf("notification list = %#v", listed)
+	}
+	if _, err := server.executeTool(context.Background(), "takt.notify.ack", map[string]any{"id": notice.ID}); err != nil {
+		t.Fatal(err)
 	}
 }

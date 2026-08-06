@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.36-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.37-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
 
 ## 1. Основные сущности
 
@@ -41,12 +41,14 @@ Control workspace хранит определения, state/events, locks и ar
 ```text
 running ──approval──> waiting ──answer──> running
    │                     │
-   ├──success──────────> completed
-   ├──failure──────────> failed
-   └──cancel───────────> cancelled
+   ├──pause request──> pausing ──safe boundary──> paused ──resume──> running
+   ├──success────────> completed
+   ├──failure────────> failed ──operator retry──> running
+   ├──cancel─────────> cancelled
+   └──abandon────────> abandoned
 ```
 
-`completed`, `failed` и `cancelled` — terminal-состояния.
+`completed`, `failed`, `cancelled` и `abandoned` — terminal-состояния. `paused` является durable non-terminal состоянием. Pause не прерывает attempt посередине provider/tool call: scheduler перестаёт запускать новые узлы и fan-out batches, активная попытка доходит до безопасной границы.
 
 Run не переходит в `failed` сразу после первого неуспешного узла. Scheduler сначала выполняет доступные ветви, включая `all_done`, затем вычисляет итоговый статус графа.
 
@@ -378,13 +380,13 @@ Workflow загружается fail-closed. Неизвестные поля п�
 
 ## Local daemon semantics
 
-Daemon является дополнительным владельцем времени жизни `control.Service`. Unix socket, metadata и lock лежат в `.takt/`; файловый Store остаётся источником истины. Concurrent clients не пишут state напрямую и используют bounded ожидание per-Run lock. Event subscription передаёт события после revision как NDJSON. Shutdown прекращает daemon и ожидает служебные monitor goroutines; активные дочерние OS-процессы не считаются restartable jobs.
+Daemon является дополнительным владельцем времени жизни `control.Service`. Unix socket, metadata и lock лежат в `.takt/`; файловый Store остаётся источником истины. Concurrent clients не пишут state напрямую и используют bounded ожидание per-Run lock. Event subscription передаёт события после revision как NDJSON. Shutdown прекращает daemon и ожидает служебные monitor goroutines. При следующем старте daemon выполняет PID-based recovery локальных `running|pausing` Run: текущая attempt получает diagnostic `worker_lost`, её счётчик возвращается, node снова становится `pending`, а child Runs восстанавливаются раньше родителей. Внешний side effect может повториться, поэтому adapter/workflow обязан обеспечивать идемпотентность критичных операций.
 
 ## MCP control-plane semantics
 
 MCP adapter не создаёт альтернативную модель состояния. Каждый tool вызывает общий local control service и использует тот же `Runner`, `FS`, lock, fingerprint, child lifecycle и worktree policy, что CLI.
 
-Detached start генерирует Run ID до запуска goroutine и возвращает его после появления durable state либо ранней ошибки запуска. При прямом `takt mcp` жизненный цикл ограничен процессом MCP. При `takt daemon` Run принадлежит отдельному локальному процессу и продолжается после закрытия клиента; daemon restart не восстанавливает произвольный уже выполнявшийся OS-процесс автоматически.
+Detached start генерирует Run ID до запуска goroutine и возвращает его после появления durable state либо ранней ошибки запуска. При прямом `takt mcp` жизненный цикл ограничен процессом MCP. При `takt daemon` Run принадлежит отдельному локальному процессу и продолжается после закрытия клиента; daemon restart не продолжает тот же OS-процесс, но восстанавливает его durable Run как новую attempt через PID-based recovery.
 
 `takt.run.events` использует монотонный `Event.Revision` как cursor: ответ содержит только события с revision больше `after_revision`, сохраняет порядок журнала и ограничивает число элементов. `wait_ms` реализует bounded polling и не меняет event store.
 
@@ -396,3 +398,9 @@ JSON-RPC cancellation отменяет контекст текущего MCP-з�
 `WorkflowPlan` не исполняется напрямую. Проверенная редакция компилируется в обычные governed workflow-сегменты. Checkpoint отделяет immutable завершённую историю от ещё не начатого хвоста. Steering применяется только планировщиком checkpoint. Новая редакция может заменить оставшиеся фазы, но не статус, output, events, usage или artifacts завершённых Run.
 
 `when` поддерживает сравнения `==`/`!=` и ограниченные логические связки `&&`/`||`; `&&` имеет более высокий приоритет. Выражения не являются общим языком программирования.
+
+## Autonomous Run operations
+
+Реестр `run.list` строится из файлового Store и отличает фактический статус от вычисленного `pausing|abandoning`. `run.attention` выделяет approval, question, tool approval, failed и paused Run. `run.summary` агрегирует descendant Runs, usage и artifacts без изменения исходных state.
+
+`run.retry` сбрасывает failed node и его зависимый хвост, сохраняя `operator_retries`. `run.fork` создаёт новый Run или новый Dynamic Plan; `run.abandon` формирует отдельное terminal-состояние. Notification dispatcher сравнивает durable snapshots, записывает дедуплицированные items в inbox и затем пытается доставить их sinks; inbox остаётся источником истины независимо от успеха desktop/process delivery.

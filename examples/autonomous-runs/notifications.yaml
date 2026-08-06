@@ -1,0 +1,21 @@
+apiVersion: takt/v1alpha1
+kind: NotificationConfig
+
+events:
+  - approval.required
+  - question.required
+  - tool_approval.required
+  - run.completed
+  - run.failed
+  - run.paused
+  - run.abandoned
+  - worker.lost
+
+sinks:
+  - type: coding_agent_host
+  # Optional local desktop notification:
+  # - type: desktop
+  # Optional trusted corporate bridge receiving one JSON object on stdin:
+  # - type: process
+  #   command: corp-notify-adapter
+  #   args: [--stdin-json]

@@ -1,33 +1,32 @@
-# Результаты проверок — v0.1.36-alpha
+# Результаты проверок — v0.1.37-alpha
 
 Дата: 2026-08-06
 
 ## Реализованный срез
 
-- Coding Agent Host Control для Pi/OpenCode;
-- durable host sessions и уровни `advisory|guarded|strict`;
-- CLI/MCP/daemon begin/confirm/get/find/tool guard/completion guard/release;
-- перехват `/takt` и последующего input до основной LLM;
-- блокировка mutating tools и premature final основной сессии;
-- восстановление managed mode после перезапуска хоста;
-- транзитивный fingerprint доверенных пакетов;
-- исправления замечаний ревью v0.1.35-alpha.
+- Autonomous Run Operations поверх локального файлового Store и daemon;
+- реестр и история root/child Run;
+- attention queue для approval, question, tool approval, failed и paused;
+- безопасные `pause/resume` на границах узлов и партий fan-out;
+- `retry`, `fork`, отдельное terminal-состояние `abandoned`;
+- PID-based recovery потерянных локальных executor после перезапуска daemon;
+- агрегированная сводка Run с descendants, usage и provenance артефактов;
+- durable notification inbox, дедупликация, ack и sinks `coding_agent_host|desktop|process`;
+- команды автономного управления в Pi/OpenCode host extensions;
+- исправления замечаний к Coding Agent Host Control v0.1.36-alpha.
 
 ## Go
 
 ```text
 gofmt cmd/internal                             PASS
 go vet ./...                                  PASS
+go build ./...                                PASS
 go test ./... -count=1                        PASS
-race: cmd, assistant, authoring, catalog,
-      command, config, control, daemon,
-      definition, dynamicplan, evaluation,
-      execution, gitworktree, MCP, profile    PASS
-race: runtime, store, validation,
-      workflow, yamlmini                       PASS
+race: первая группа Go-пакетов                PASS
+race: runtime/store/validation/workflow/yaml  PASS
 ```
 
-Монолитный race-запуск был разделён из-за внешнего лимита выполнения команды. Все пакеты с тестами прошли race-проверку в отдельных группах.
+Единый race-запуск был разделён из-за внешнего лимита продолжительности команды. Все пакеты с тестами прошли `go test -race -count=1` в группах.
 
 ## Контракты
 
@@ -40,71 +39,87 @@ Takt authoring skill                          PASS
 code profile 0.12.0                           PASS
 Git worktree                                  PASS
 governed child Runs                           PASS
-node capability policy                        PASS
 governed child fan-out                        PASS
+node capability policy                        PASS
 script and typed artifacts                    PASS
-local MCP control plane (36 tools)             PASS
+local MCP control plane (48 tools)             PASS
 external node executor                        PASS
 deep code workflows                           PASS
 authoring                                     PASS
 Dynamic Takt                                  PASS
 trusted block packages                        PASS
 Coding Agent Host Control                     PASS
-host integrations TypeScript structure        PASS
+host integrations TypeScript                  PASS
+Autonomous Run Operations                     PASS
 documentation                                 PASS
 Route DSL end-to-end                          PASS
 Route DSL evaluation + isolation              PASS
 local daemon                                  PASS ×4
 ```
 
-## Замечания v0.1.35-alpha
+## Autonomous Run Operations
 
 ```text
-B1 macOS test canonical expected path          PASS (unit regression)
-B2 transitive package fingerprint              PASS
-S1 explicit empty allowed_integrations         PASS
-S2 zero-limit semantics documented             PASS
-S3 steering revision threshold running/waiting PASS
-S4 foreground read under advance lock          PASS
-S5 no-block_packages migration note            PASS
-M1 exact governed-child rejection test         PASS
-M2 advisory governance fields documented       PASS
-M3 planner ListWorkflows/Marshal errors         PASS
-M4 promote rollback errors                     PASS
-M5 catalog cache explicitly deferred           PASS
-M6 Detached transport contract documented      PASS
-M7 takt block --json default documented        PASS
-M8 obsolete taste.md remains absent             PASS
+run registry/list filters                     PASS
+attention queue                               PASS
+recursive summary and artifact aggregation    PASS
+safe pause at node boundary                   PASS
+pause before next fan-out batch               PASS
+pause/resume governed child tree              PASS
+pre-armed pause marker before child state     PASS
+pre-armed abandon marker before child state   PASS
+resume waiting approval                       PASS
+operator retry dependent closure              PASS
+fork static Run and Dynamic Plan              PASS
+abandon as distinct terminal state            PASS
+PID-based worker_lost recovery                PASS
+notification deduplication and ack             PASS
+notification process sink                     PASS
+MCP run/notification operations               PASS
 ```
 
-## Host-control assertions
+## Исправления Coding Agent Host Control
 
 ```text
-strict without five host capabilities          REJECTED
-strict durable session recovery                PASS
-edit spoofed as read-only                      DENIED
-known grep/read inspection                     ALLOWED
-final while preview/running                    DENIED
-final after completed                          ALLOWED
-normal active input routed to steering         CONTRACT PASS
-main model dispatch bypassed by host hooks      CONTRACT PASS
+completed host session not reused             PASS
+begin serialized by interprocess lock         PASS
+corrupt host record fails closed              PASS
+host store rename + directory fsync            PASS
+unknown session_id fails closed               PASS
+exact control-tool allowlist                  PASS
+arbitrary takt.* name denied                  PASS
+edit spoofed as read-only denied              PASS
+strict requires all five capabilities         PASS
+Pi/OpenCode transport loss keeps cached lock  CONTRACT PASS
+terminal state distinguished from outage      CONTRACT PASS
+Pi steering failure remains intercepted       CONTRACT PASS
+Pi ineffective before_agent_start removed     PASS
+Pi 0.73.1 dependencies pinned                 PASS
+OpenCode floating next removed                PASS
+OpenCode user shell hook present              PASS
+OpenCode integration marked guarded/unverified PASS
+host MCP operations covered                   PASS
+host.confirm over MCP detached                PASS
+daemon restart preserves host binding         PASS
 ```
 
 ## Ограничения проверки
 
-- Фактический macOS-runner недоступен. Исправлен непереносимый unit test, а Linux regression suite проходит; macOS PASS не заявляется.
-- Реальные Pi/OpenCode binaries и авторизованные модели в этой среде недоступны. Расширения прошли TypeScript structural contract и Go/CLI end-to-end; перед корпоративным внедрением требуется smoke на зафиксированных версиях хостов.
-- OpenCode V2 plugin API имеет beta-статус, поэтому его версию требуется фиксировать.
+- Фактический macOS-runner недоступен. Переносимый `EvalSymlinks` regression test и Linux-набор проходят; macOS PASS не заявляется.
+- Реальные Pi/OpenCode binaries с авторизованными моделями не запускались. Pi extension компилируется против зафиксированных типов `0.73.1`; OpenCode V2 остаётся beta и помечен `verified:false`.
+- Bundled Pi/OpenCode extensions обеспечивают `guarded`, а не `strict`: подтверждённого fail-closed completion hook для Pi нет, а отмена model dispatch через OpenCode V2 context hook требует live smoke на точной корпоративной сборке.
+- Safe pause не прерывает уже выполняющийся provider/tool call. Recovery создаёт новую attempt и не гарантирует exactly-once для внешних побочных эффектов.
+- Desktop notification sink зависит от системной утилиты ОС; durable inbox остаётся источником истины доставки.
 
 ## Версии
 
 ```text
-Takt                              0.1.36-alpha
+Takt                              0.1.37-alpha
 code profile                      0.12.0
-Takt skill                        0.18.0
-MCP tools                         36
+Takt skill                        0.19.0
+MCP tools                         48
 ```
 
 ## Проверка поставки
 
-Итоговый ZIP распакован в чистый каталог. Из него прошли `sha256sum -c MANIFEST.sha256`, полный `go test ./...`, Coding Agent Host Control, TypeScript structural contract, Dynamic Takt, trusted packages, MCP, daemon и documentation checks.
+После формирования итогового ZIP он распаковывается в чистый каталог. Из поставки повторно проверяются `MANIFEST.sha256`, полный `go test ./...`, Autonomous Run Operations, Coding Agent Host Control, TypeScript-контракт, MCP, daemon и документация.

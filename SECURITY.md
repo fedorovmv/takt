@@ -97,7 +97,7 @@ Tool arguments считаются доверенными локальными з
 
 `takt daemon` слушает только Unix socket в `.takt/daemon.sock`; socket, metadata и log создаются для текущего пользователя. Любой процесс с доступом к socket получает полномочия локального CLI над workspace: запуск, чтение output/artifacts, approval, cancellation и внешний worker control. Это механизм локальной координации, а не аутентификация.
 
-Не публикуй socket через TCP proxy и не размещай workspace в каталоге с доступом недоверенных пользователей. Daemon переживает закрытие клиента, но не является supervisor для crash-recovery произвольного OS-процесса. После завершения daemon исполнявшийся subprocess прекращается вместе с ним; durable waiting/pending state остаётся для явного resume/reclaim.
+Не публикуй socket через TCP proxy и не размещай workspace в каталоге с доступом недоверенных пользователей. Daemon переживает закрытие клиента. После перезапуска он выполняет PID-based recovery локальных `running|pausing` Run: прежний subprocess не продолжается, а node запускается новой attempt с diagnostic `worker_lost`. Это может повторить внешний side effect. Критичные SCM/tracker/CI операции должны использовать идемпотентный adapter или устойчивый operation key.
 
 `idle_timeout` внешнего executor выполняется daemon. Он закрывает незавершённые tool calls и сохраняет timeout transition, но не может принудительно остановить сторонний процесс worker, который находится вне process group Takt.
 
@@ -108,3 +108,10 @@ Tool arguments считаются доверенными локальными з
 Claim token внешнего worker является локальным секретом lease. Его нельзя записывать в assistant messages, tool input/output, state-visible diagnostics или artifacts. Controller может отменить отдельный tool call; для уже выполняющегося внешнего действия это cooperative `cancel_requested`, который worker обязан подтвердить terminal-событием. Takt не может принудительно остановить произвольный внешний процесс за пределами своего process group.
 
 Policy/approval не заменяют OS sandbox. Разрешённый tool call всё ещё выполняется с полномочиями внешнего worker и текущего пользователя.
+
+
+## Host control и уведомления
+
+Host session и локальный cache не являются аутентификацией. Go guard работает default-deny, но реальная блокировка зависит от capabilities конкретного coding-agent host. Bundled Pi/OpenCode integrations имеют уровень `guarded`; до live contract test на зафиксированной версии их нельзя использовать как строгую security boundary.
+
+Notification inbox может содержать имена workflow, ошибки, пути и команды открытия Run. Он создаётся под `.takt/notifications/` с правами текущего пользователя и не выполняет redaction. `process` sink запускает доверенный локальный бинарник с полномочиями пользователя и передаёт notification JSON через stdin. Конфигурация `notifications.yaml` считается доверенной; не подключай команды из недоверенного пакета.

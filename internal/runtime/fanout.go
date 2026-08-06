@@ -117,6 +117,13 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 
 	maxParallel := normalizedMaxParallel(fanOut.MaxParallel)
 	for start := 0; start < len(pending); start += maxParallel {
+		// A fan-out is one governed node. Once an operator requests a safe
+		// pause, do not start another batch. Already running children are allowed
+		// to reach their own safe boundary and the parent node is suspended.
+		if r.pauseRequested(state.ID) {
+			state.PauseRequested = true
+			return execResult{}, ErrPaused
+		}
 		end := start + maxParallel
 		if end > len(pending) {
 			end = len(pending)
@@ -142,8 +149,13 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 		if err := r.commit(state, "child_run.fan_out.progress", node.ID, map[string]any{
 			"attempt": attempt, "completed": fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunCompleted),
 			"waiting": fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunWaiting),
+			"paused":  fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunPaused),
 		}); err != nil {
 			return execResult{}, err
+		}
+		if fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunPaused) > 0 || r.pauseRequested(state.ID) {
+			state.PauseRequested = true
+			return execResult{}, ErrPaused
 		}
 	}
 

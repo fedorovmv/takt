@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -268,6 +270,114 @@ func approveFanOutChild(t *testing.T, parentRunner *Runner, childPath, childID, 
 	}
 	if _, err := childRunner.Resume(context.Background(), child); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGovernedChildFanOutPauseStopsBeforeNextBatch(t *testing.T) {
+	dir := t.TempDir()
+	childPath := filepath.Join(dir, "child.yaml")
+	parentPath := filepath.Join(dir, "parent.yaml")
+	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: pausable-fanout-child
+nodes:
+  - id: run
+    bash: |
+      touch "started-${input}"
+      if [ '${input}' = 0 ]; then
+        i=0
+        while [ ! -f release-first ] && [ "$i" -lt 200 ]; do
+          i=$((i + 1))
+          sleep 0.01
+        done
+      fi
+      printf '%s' '${input}'
+`)
+	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: pausable-fanout-parent
+nodes:
+  - id: discover
+    bash: printf '[0,1,2]'
+  - id: execute
+    depends_on: [discover]
+    workflow:
+      path: child.yaml
+      input: '${fanout.item}'
+      output_node: run
+      isolation: inherit
+      fan_out:
+        items_from: nodes.discover.output
+        max_parallel: 1
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := New(wf, &spec.Config{}, parentPath, "<config>", dir)
+	type result struct {
+		state *store.RunState
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		state, runErr := runner.Start(context.Background(), "")
+		done <- result{state: state, err: runErr}
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, statErr := filepath.Glob(filepath.Join(dir, "started-0")); statErr != nil {
+			t.Fatal(statErr)
+		}
+		if _, statErr := os.Stat(filepath.Join(dir, "started-0")); statErr == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("first fan-out child did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	fs := store.FS{Workspace: dir}
+	ids, err := fs.ListRunIDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parentID string
+	for _, id := range ids {
+		state, loadErr := fs.Load(id)
+		if loadErr == nil && state.ParentRunID == "" {
+			parentID = id
+			break
+		}
+	}
+	if parentID == "" {
+		t.Fatal("parent run was not persisted")
+	}
+	if err := fs.RequestPause(parentID); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(dir, "release-first"), "ok")
+
+	paused := <-done
+	if !errors.Is(paused.err, ErrPaused) || paused.state == nil || paused.state.Status != store.RunPaused {
+		t.Fatalf("expected paused parent after first batch: state=%+v err=%v", paused.state, paused.err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "started-1")); !os.IsNotExist(err) {
+		t.Fatalf("second fan-out batch started after pause request: err=%v", err)
+	}
+
+	resumed, err := runner.Resume(context.Background(), paused.state)
+	if err != nil || resumed.Status != store.RunCompleted {
+		t.Fatalf("fan-out did not resume remaining batches: state=%+v err=%v", resumed, err)
+	}
+	for _, name := range []string{"started-1", "started-2"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("missing resumed fan-out marker %s: %v", name, err)
+		}
 	}
 }
 
