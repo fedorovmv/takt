@@ -713,6 +713,19 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 			return nil, fmt.Errorf("lease_ms must be between 0 and 3600000")
 		}
 		return s.control.ClaimExternal(control.ExternalClaimRequest{RunID: in.RunID, NodeID: in.NodeID, WorkerID: in.WorkerID, Capabilities: in.Capabilities, Declaration: in.Declaration, Lease: time.Duration(in.LeaseMS) * time.Millisecond})
+	case "takt.node.reconcile":
+		var in struct {
+			RunID      string          `json:"run_id"`
+			NodeID     string          `json:"node_id"`
+			Outcome    string          `json:"outcome"`
+			Receipt    string          `json:"receipt,omitempty"`
+			Output     string          `json:"output,omitempty"`
+			Structured json.RawMessage `json:"structured,omitempty"`
+		}
+		if err := decodeArguments(args, &in); err != nil {
+			return nil, err
+		}
+		return s.control.ReconcileExternal(ctx, control.ExternalReconcileRequest{RunID: in.RunID, NodeID: in.NodeID, Outcome: in.Outcome, Receipt: in.Receipt, Submission: control.ExternalSubmission{Output: in.Output, Structured: in.Structured}})
 	case "takt.node.event":
 		var in struct {
 			RunID      string          `json:"run_id"`
@@ -978,6 +991,10 @@ func allTools() []tool {
 			"capability_declaration": capabilityDeclaration,
 			"lease_ms":               integerProp("Claim lease in milliseconds; defaults to 900000", 1, 3600000),
 		}, "run_id", "node_id", "worker_id"), Annotations: mutating},
+		{Name: "takt.node.reconcile", Title: "Reconcile external side effect", Description: "Resolve an expired external claim before retrying a non-idempotent side effect. applied requires a receipt and result; not_applied permits a fresh claim; unknown remains blocked.", InputSchema: object(map[string]any{
+			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "outcome": map[string]any{"type": "string", "enum": []string{"applied", "not_applied", "unknown"}},
+			"receipt": stringProp("External receipt or durable operation identifier"), "output": stringProp("Recovered result when outcome is applied"), "structured": map[string]any{},
+		}, "run_id", "node_id", "outcome"), Annotations: mutating},
 		{Name: "takt.node.event", Title: "Append external node event", Description: "Append one provider-neutral assistant or tool event under the active claim.", InputSchema: object(map[string]any{
 			"run_id": stringProp("Run ID"), "node_id": stringProp("External node ID"), "claim_token": stringProp("Opaque token returned by takt.node.claim"),
 			"event": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"type"}, "properties": map[string]any{

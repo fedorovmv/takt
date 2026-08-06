@@ -43,7 +43,7 @@ func TestServeStdioSupportsLegacyInitializeAndModernDiscover(t *testing.T) {
 		t.Fatalf("modern protocol = %v", got)
 	}
 	listed := responses["3"]["result"].(map[string]any)["tools"].([]any)
-	if len(listed) != 53 {
+	if len(listed) != 54 {
 		t.Fatalf("tools count = %d", len(listed))
 	}
 	first := listed[0].(map[string]any)["name"]
@@ -619,4 +619,25 @@ func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
 	if _, err := server.executeTool(context.Background(), "takt.notify.ack", map[string]any{"id": notice.ID}); err != nil {
 		t.Fatal(err)
 	}
+	// host.confirm is intentionally detached. This unit test has no daemon
+	// monitor, so drive the same durable plan reconciler explicitly until the
+	// detached Run reaches a stable plan boundary before TempDir cleanup.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if err := service.AdvanceDynamicPlans(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		planView, err := service.GetPlan(begun.Session.PlanID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if planView.Record.Status != "running" && planView.Record.Status != "pausing" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("detached plan did not settle before cleanup: %#v", planView.Record)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
 }

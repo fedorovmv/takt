@@ -2,6 +2,7 @@
 
 - `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `default_assistant`, `mock`, `process`, `pi`, `opencode`, Pi-specific `session_dir/project_trust` и OpenCode-specific `agent/auto_approve`, `max_output_bytes` и условные запреты несовместимых полей;
 - `task-route.schema.json` — проверяемое решение Task Router: `workflow|template|dynamic`, сигналы и прогрессивные controls;
+- `evidence-manifest.schema.json` — внутренний EvidenceManifest: baseline, fingerprints известных failures, check-to-evidence mapping и verdict, привязанный к candidate SHA-256;
 - `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`, `idle_timeout`, `always_run`, расширенный `output_format`, `one_success`, approval в цикле, `foreach.parallel` и governed child `workflow`;
 - `profile.schema.json` — Profile с default workflow и картой именованных `workflows`;
 - `command-frontmatter.schema.json` — frontmatter Markdown-команд;

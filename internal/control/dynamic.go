@@ -15,6 +15,7 @@ import (
 
 	"takt/internal/blockcatalog"
 	"takt/internal/dynamicplan"
+	"takt/internal/evidence"
 	"takt/internal/profile"
 	"takt/internal/rolecontract"
 	"takt/internal/store"
@@ -446,7 +447,7 @@ func (s *Service) Steer(ctx context.Context, request SteerRequest) (*dynamicplan
 	if err != nil {
 		return nil, err
 	}
-	if record.Status != "running" && record.Status != "waiting" {
+	if record.Status != "running" && record.Status != "waiting" && record.Status != "parked" {
 		return nil, fmt.Errorf("plan %s cannot be steered from status %s", record.ID, record.Status)
 	}
 	plan := latestPlan(record)
@@ -455,11 +456,13 @@ func (s *Service) Steer(ctx context.Context, request SteerRequest) (*dynamicplan
 	}
 	record.Steering = append(record.Steering, dynamicplan.Steering{Message: request.Message, CreatedAt: time.Now().UTC()})
 	record.UpdatedAt = time.Now().UTC()
-	if record.Status == "waiting" {
+	if record.Status == "waiting" || record.Status == "parked" {
+		previousStatus := record.Status
 		record.Status = "running"
+		clearPlanFailure(record)
 		record.LastError = ""
 		if err := s.replanAtCheckpoint(ctx, record); err != nil {
-			record.Status = "waiting"
+			record.Status = previousStatus
 			record.LastError = err.Error()
 			if saveErr := st.Save(record); saveErr != nil {
 				return nil, fmt.Errorf("%v; persist steering failure: %w", err, saveErr)
@@ -662,7 +665,14 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 	if err != nil {
 		return err
 	}
-	controlOutcome, err := evaluateSegmentControls(record, segment, catalog, actualChanges)
+	candidateSHA, err := s.dynamicCandidateSHA(ctx, record)
+	if err != nil {
+		return err
+	}
+	if record.Evidence != nil {
+		evidence.MarkStale(record.Evidence, candidateSHA)
+	}
+	controlOutcome, err := evaluateSegmentControls(record, segment, catalog, actualChanges, candidateSHA)
 	if err != nil {
 		return err
 	}
@@ -670,6 +680,7 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 		record.Status = "failed"
 		record.CurrentRunID = ""
 		record.LastError = controlOutcome.DenyReason
+		record.Failure = &evidence.Failure{Code: evidence.FailureBoundary, Message: controlOutcome.DenyReason, Owner: "policy", SafeNextAction: "adjust the task or trusted scope; do not retry the same out-of-scope mutation", CreatedAt: time.Now().UTC()}
 		record.UpdatedAt = time.Now().UTC()
 		return st.Save(record)
 	}
@@ -684,9 +695,7 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 		}
 	}
 	if s.exceededTokenBudget(record, latestPlan(record).Budget.MaxTokens) {
-		record.Status = "failed"
-		record.LastError = "dynamic plan token budget exceeded at phase boundary"
-		record.UpdatedAt = time.Now().UTC()
+		parkPlan(record, evidence.FailureBudget, "dynamic plan token budget exceeded at phase boundary", "task-owner", "fork the task with an explicitly larger trusted budget or stop it", false)
 		return st.Save(record)
 	}
 	checkpoint := len(segment) > 0 && segment[len(segment)-1].Checkpoint
@@ -714,6 +723,8 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 		}
 		record.Status = "completed"
 		record.CurrentRunID = ""
+		clearPlanFailure(record)
+		finalizeEvidence(record, candidateSHA)
 		record.UpdatedAt = time.Now().UTC()
 		return st.Save(record)
 	}
@@ -735,7 +746,7 @@ type controlFailure struct {
 	Detail  string
 }
 
-func evaluateSegmentControls(record *dynamicplan.Record, segment []dynamicplan.Phase, catalog *blockcatalog.Catalog, actualChanges []string) (segmentControlOutcome, error) {
+func evaluateSegmentControls(record *dynamicplan.Record, segment []dynamicplan.Phase, catalog *blockcatalog.Catalog, actualChanges []string, candidateSHA string) (segmentControlOutcome, error) {
 	var outcome segmentControlOutcome
 	if len(actualChanges) > 0 {
 		declared := declaredChanges(record.Results)
@@ -756,6 +767,11 @@ func evaluateSegmentControls(record *dynamicplan.Record, segment []dynamicplan.P
 			return outcome, fmt.Errorf("trusted block %q disappeared while evaluating phase %s", phase.Uses, phase.ID)
 		}
 		output := record.Results[phase.ID]
+		if phase.Uses == "baseline" {
+			if err := captureBaselineEvidence(record, phase.ID, output, candidateSHA); err != nil {
+				return outcome, err
+			}
+		}
 		if block.RoleDefinition != nil {
 			scopeResult, err := rolecontract.ClassifyChanges(output, block.RoleDefinition.Paths)
 			if err != nil {
@@ -782,6 +798,32 @@ func evaluateSegmentControls(record *dynamicplan.Record, segment []dynamicplan.P
 		}
 		for _, result := range results {
 			result.PhaseID = phase.ID
+			result.Block = phase.Uses
+			issues := outputIssues(output)
+			if !result.Passed && len(issues) > 0 && record.Evidence != nil && record.Evidence.Baseline != nil {
+				known, fresh := evidence.ClassifyAgainstBaseline(issues, record.Evidence.Baseline)
+				if len(known) > 0 && len(fresh) == 0 {
+					result.Passed = true
+					result.BaselineOnly = true
+					result.FailureCode = evidence.FailureBaseline
+					result.Detail = "unchanged baseline failures: " + strings.Join(known, "; ")
+					record.Warnings = appendUniqueString(record.Warnings, fmt.Sprintf("phase %s reports only failures already present in the captured baseline", phase.ID))
+				}
+			}
+			if !result.Passed && result.FailureCode == "" {
+				if phase.Uses == "validate" {
+					result.FailureCode = evidence.FailureImplementation
+				} else {
+					result.FailureCode = evidence.FailureVerification
+				}
+			}
+			status := "passed"
+			if result.BaselineOnly {
+				status = "baseline"
+			} else if !result.Passed {
+				status = "failed"
+			}
+			recordAcceptance(record, phase.ID, phase.Uses, result.Name, status, result.FailureCode, result.Detail, candidateSHA, outputEvidence(output))
 			record.CheckResults = append(record.CheckResults, result)
 			if result.Passed {
 				continue
@@ -814,16 +856,12 @@ func (s *Service) scheduleAutomaticRepair(ctx context.Context, record *dynamicpl
 	for _, failure := range failures {
 		key := failure.Block + ":" + failure.Check
 		if record.RepairAttempts[key] >= 1 {
-			record.Status = "waiting"
-			record.CurrentRunID = ""
-			record.LastError = fmt.Sprintf("Technical check %s still fails after one automatic repair. Choose a different implementation approach, explicitly accept the remaining risk, or stop the task.", failure.Check)
+			parkPlan(record, evidence.FailureImplementation, fmt.Sprintf("Technical check %s still fails after one automatic repair.", failure.Check), "task-owner", "choose a different implementation approach, explicitly accept the remaining risk through a new plan, or stop the task", false)
 			return true, nil
 		}
 	}
 	if _, ok := catalog.Block("implement"); !ok {
-		record.Status = "waiting"
-		record.CurrentRunID = ""
-		record.LastError = "A required technical check failed, but the trusted catalog has no implement block for automatic repair. Choose how to continue."
+		parkPlan(record, evidence.FailureOwnerDecision, "A required technical check failed, but the trusted catalog has no implement block for automatic repair.", "task-owner", "select a trusted implementation path or stop the task", false)
 		return true, nil
 	}
 	for _, failure := range failures {
@@ -856,9 +894,7 @@ func (s *Service) scheduleAutomaticRepair(ctx context.Context, record *dynamicpl
 		previous = id
 	}
 	if len(phases) == 1 {
-		record.Status = "waiting"
-		record.CurrentRunID = ""
-		record.LastError = "A required check failed, but no trusted verification block is available for a bounded automatic repair. Choose how to continue."
+		parkPlan(record, evidence.FailureOwnerDecision, "A required check failed, but no trusted verification block is available for a bounded automatic repair.", "task-owner", "select a trusted verification path or stop the task", false)
 		return true, nil
 	}
 	remaining := record.CurrentSegment + 1

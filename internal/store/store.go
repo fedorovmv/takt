@@ -128,6 +128,10 @@ type ExternalExecutionState struct {
 	LastActivityAt        time.Time                 `json:"last_activity_at,omitempty"`
 	LastEventSequence     uint64                    `json:"last_event_sequence,omitempty"`
 	Result                *ExternalResultState      `json:"result,omitempty"`
+	SideEffectMode        string                    `json:"side_effect_mode,omitempty"`
+	IdempotencyKey        string                    `json:"idempotency_key,omitempty"`
+	Receipt               string                    `json:"receipt,omitempty"`
+	ReconcileStatus       string                    `json:"reconcile_status,omitempty"`
 }
 
 type ExternalResultState struct {

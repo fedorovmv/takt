@@ -53,3 +53,21 @@ func TestInferSignalsIsConservative(t *testing.T) {
 		}
 	}
 }
+
+func TestInferSignalsMatchesLexemesNotSubstrings(t *testing.T) {
+	for _, tc := range []struct {
+		goal   string
+		absent string
+	}{
+		{goal: "Update author metadata", absent: "security_sensitive"},
+		{goal: "Improve debug logging", absent: "regression"},
+	} {
+		set := map[string]bool{}
+		for _, value := range InferSignals(tc.goal) {
+			set[value] = true
+		}
+		if set[tc.absent] {
+			t.Fatalf("goal %q unexpectedly produced %q: %v", tc.goal, tc.absent, set)
+		}
+	}
+}

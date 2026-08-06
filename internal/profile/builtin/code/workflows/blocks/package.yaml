@@ -2,7 +2,7 @@ apiVersion: takt/v1alpha1
 kind: BlockPackage
 metadata:
   name: code-core
-  version: 0.3.0
+  version: 0.4.0
   scope: builtin
   description: Trusted core blocks for bounded Dynamic Takt engineering plans.
 roles:

@@ -9,6 +9,7 @@
 1. `docs/01-project.md`;
 1. `docs/05-implementation-status.md`;
 1. `skills/takt/SKILL.md`;
+1. `docs/54-evidence-baseline-failure-routing-v0.1.40.md`;
 1. `docs/53-role-brief-controls-v0.1.39.md`;
 1. `docs/52-simple-reliable-agent-neutral-router-v0.1.38.md`;
 1. `docs/proposals/001-simple-reliable-agent-neutral-takt.md`;
@@ -91,6 +92,7 @@
 | Dynamic Takt | `48-dynamic-takt-v0.1.34.md` | фактический |
 | Доверенные пакеты блоков | `49-trusted-block-packages-v0.1.35.md`, `../schemas/block-package.schema.json`, `../examples/corporate-block-package/` | фактический |
 | Coding Agent Host Control | `50-coding-agent-host-control-v0.1.36.md`, `../integrations/coding-agent-host-control/` | Go strict-core фактический; bundled Pi/OpenCode guarded до live smoke |
+| Evidence, baseline, parking и external reconciliation | `54-evidence-baseline-failure-routing-v0.1.40.md`, `../schemas/evidence-manifest.schema.json` | фактический |
 | Role Contract, TaskBrief и управляемые проверки | `53-role-brief-controls-v0.1.39.md`, `../schemas/task-brief.schema.json` | фактический |
 | Task Router, compact Task API и agent-neutral adapter | `52-simple-reliable-agent-neutral-router-v0.1.38.md`, `proposals/001-simple-reliable-agent-neutral-takt.md` | фактический срез и принятый proposal |
 | Автономная эксплуатация Run | `51-autonomous-run-operations-v0.1.37.md` | фактический |
@@ -111,7 +113,7 @@
 | Задачи | `14-backlog-v0.2.md` | рабочий backlog |
 | Старт кодового агента | `15-coding-agent-start.md` | готовая инструкция |
 | Отличия от Archon | `07-archon-compatibility.md` | справочный |
-| Машиночитаемые форматы | `schemas/*.json`, включая `notification-config.schema.json` | текущая alpha-схема |
+| Машиночитаемые форматы | `schemas/*.json`, включая `evidence-manifest.schema.json` и `notification-config.schema.json` | текущая alpha-схема |
 
 ## 3. Приоритет при расхождении
 

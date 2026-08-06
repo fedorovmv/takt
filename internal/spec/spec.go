@@ -61,6 +61,7 @@ type Node struct {
 	Sandbox      *SandboxSpec      `json:"sandbox,omitempty"`
 	Requires     []string          `json:"requires,omitempty"`
 	ToolApproval *ToolApprovalSpec `json:"tool_approval,omitempty"`
+	SideEffect   *SideEffectSpec   `json:"side_effect,omitempty"`
 	OutputFormat *OutputFormat     `json:"output_format,omitempty"`
 	OutputType   string            `json:"output_type,omitempty"`
 	OutputMIME   string            `json:"output_mime,omitempty"`
@@ -80,6 +81,14 @@ type ToolApprovalSpec struct {
 	Mode    string   `json:"mode"`
 	Tools   []string `json:"tools,omitempty"`
 	Message string   `json:"message,omitempty"`
+}
+
+// SideEffectSpec marks an external node whose effects may outlive the worker
+// process. idempotent permits safe replay; reconcile requires an explicit
+// external fact check after an expired/unknown claim before Takt can retry.
+type SideEffectSpec struct {
+	Mode           string `json:"mode"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 // ScriptSpec runs deterministic project code without an assistant. Path and

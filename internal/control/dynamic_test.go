@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -266,7 +267,7 @@ func TestSegmentControlsDifferentiateDenyRepairAndWarn(t *testing.T) {
 		"policy":    `{"allowed":false}`,
 		"quality":   `{"ideal":false}`,
 	}}
-	outcome, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "implement", Uses: "implement"}, {ID: "validate", Uses: "validate"}, {ID: "quality", Uses: "quality"}}, catalog, nil)
+	outcome, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "implement", Uses: "implement"}, {ID: "validate", Uses: "validate"}, {ID: "quality", Uses: "quality"}}, catalog, nil, "sha256:test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +278,7 @@ func TestSegmentControlsDifferentiateDenyRepairAndWarn(t *testing.T) {
 		t.Fatalf("warnings=%#v", record.Warnings)
 	}
 
-	denied, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "policy", Uses: "policy"}}, catalog, nil)
+	denied, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "policy", Uses: "policy"}}, catalog, nil, "sha256:test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +287,7 @@ func TestSegmentControlsDifferentiateDenyRepairAndWarn(t *testing.T) {
 	}
 
 	record.Results["implement"] = `{"changed_files":["../escape"],"summary":"bad"}`
-	denied, err = evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "implement", Uses: "implement"}}, catalog, nil)
+	denied, err = evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "implement", Uses: "implement"}}, catalog, nil, "sha256:test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +304,7 @@ func TestSegmentControlsDenyUndeclaredWorkspaceChange(t *testing.T) {
 	record := &dynamicplan.Record{Results: map[string]string{
 		"implement": `{"changed_files":["src/declared.go"]}`,
 	}}
-	outcome, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "implement", Uses: "implement"}}, catalog, []string{"src/declared.go", "src/hidden.go"})
+	outcome, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "implement", Uses: "implement"}}, catalog, []string{"src/declared.go", "src/hidden.go"}, "sha256:test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,5 +347,160 @@ func TestDynamicActualChangesUsesOriginalWorktreeBase(t *testing.T) {
 	}
 	if len(changes) != 2 || changes[0] != "src/base.go" || changes[1] != "src/new.go" {
 		t.Fatalf("changes=%#v", changes)
+	}
+}
+
+func TestSegmentControlsTreatUnchangedBaselineFailureAsEvidenceNotRegression(t *testing.T) {
+	catalog := &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{
+		"baseline": {Name: "baseline"},
+		"validate": {Name: "validate", Checks: []rolecontract.Check{{Name: "deterministic", Path: "passed", Level: rolecontract.CheckRequired, Reaction: rolecontract.ReactionRepair}}},
+	}}
+	record := &dynamicplan.Record{Results: map[string]string{
+		"baseline": `{"base_ref":"abc","passed_checks":[],"known_failures":["TestLegacy: timeout"],"unavailable_checks":[],"evidence":["go test ./..."]}`,
+		"validate": `{"passed":false,"issues":[" testlegacy:   timeout "],"checks":["go test ./..."]}`,
+	}}
+	if _, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "baseline", Uses: "baseline"}}, catalog, nil, "sha256:base"); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "validate", Uses: "validate"}}, catalog, nil, "sha256:candidate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcome.RepairFailures) != 0 || outcome.DenyReason != "" {
+		t.Fatalf("outcome=%#v", outcome)
+	}
+	last := record.CheckResults[len(record.CheckResults)-1]
+	if !last.Passed || !last.BaselineOnly || last.FailureCode != "BASELINE_FAILURE" {
+		t.Fatalf("check=%#v", last)
+	}
+	if record.Evidence == nil || record.Evidence.Baseline == nil || len(record.Evidence.Acceptance) != 1 {
+		t.Fatalf("evidence=%#v", record.Evidence)
+	}
+}
+
+func TestScheduleAutomaticRepairParksAfterExactlyOneRepair(t *testing.T) {
+	record := &dynamicplan.Record{RepairAttempts: map[string]int{"validate:deterministic": 1}}
+	catalog := &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{"implement": {Name: "implement"}}}
+	handled, err := (&Service{}).scheduleAutomaticRepair(context.Background(), record, nil, []controlFailure{{Block: "validate", Check: "deterministic", Detail: "still red"}}, catalog)
+	if err != nil || !handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	if record.Status != "parked" || record.Failure == nil || record.Failure.Code != "IMPLEMENTATION_FAILURE" {
+		t.Fatalf("record=%#v", record)
+	}
+}
+
+func TestScheduleAutomaticRepairParksWhenNoCheckBearingBlockExists(t *testing.T) {
+	record := &dynamicplan.Record{}
+	catalog := &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{"implement": {Name: "implement"}}}
+	handled, err := (&Service{}).scheduleAutomaticRepair(context.Background(), record, nil, []controlFailure{{Block: "validate", Check: "deterministic", Detail: "red"}}, catalog)
+	if err != nil || !handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	if record.Status != "parked" || record.Failure == nil || record.Failure.Code != "OWNER_DECISION_REQUIRED" {
+		t.Fatalf("record=%#v", record)
+	}
+}
+
+func TestRouterFallbackPersistsDiagnosticAndCancellationIsNotSwallowed(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(workspace, ".takt", "config.yaml")
+	config := `apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: mock
+models:
+  routing:
+    provider: test
+    id: routing
+  implementation:
+    provider: test
+    id: implementation
+  review:
+    provider: test
+    id: review
+assistants:
+  mock:
+    type: mock
+`
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Plan(context.Background(), PlanRequest{Goal: "Investigate fallback persistence", Profile: "code"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(result.Record.RouterError) == "" {
+		t.Fatalf("router fallback diagnostic was not persisted: %#v", result.Record)
+	}
+	loaded, err := (dynamicplan.Store{Workspace: workspace}).Load(result.PlanID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.RouterError != result.Record.RouterError {
+		t.Fatalf("persisted router error = %q, want %q", loaded.RouterError, result.Record.RouterError)
+	}
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := service.Plan(cancelled, PlanRequest{Goal: "do not swallow cancellation", Profile: "code"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled Plan error = %v, want context.Canceled", err)
+	}
+}
+
+func TestDynamicCandidateSHAChangesWithWorkspaceContent(t *testing.T) {
+	workspace := t.TempDir()
+	runGit := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", workspace}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	runGit("init")
+	runGit("config", "user.email", "takt@example.invalid")
+	runGit("config", "user.name", "Takt Test")
+	if err := os.WriteFile(filepath.Join(workspace, "tracked.txt"), []byte("base\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit("add", "tracked.txt")
+	runGit("commit", "-m", "base")
+	base := runGit("rev-parse", "HEAD")
+	record := &dynamicplan.Record{ExecutionWorkspace: workspace, ExecutionBaseCommit: base}
+	service := &Service{Workspace: workspace}
+	first, err := service.dynamicCandidateSHA(context.Background(), record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(first, "sha256:") {
+		t.Fatalf("candidate hash = %q", first)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "tracked.txt"), []byte("changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.dynamicCandidateSHA(context.Background(), record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second == first {
+		t.Fatal("candidate hash did not change after tracked diff")
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "new.txt"), []byte("new\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	third, err := service.dynamicCandidateSHA(context.Background(), record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third == second {
+		t.Fatal("candidate hash did not include untracked content")
 	}
 }

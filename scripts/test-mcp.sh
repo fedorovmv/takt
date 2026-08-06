@@ -57,7 +57,7 @@ assert [tool["name"] for tool in tools] == [
     "takt.run.recover", "takt.notify.list", "takt.notify.ack", "takt.notify.test",
     "takt.run.resume", "takt.run.answer", "takt.run.cancel", "takt.run.children",
     "takt.run.artifacts", "takt.run.events", "takt.node.pending", "takt.node.claim",
-    "takt.node.event", "takt.node.tool.request", "takt.node.tool.decide",
+    "takt.node.reconcile", "takt.node.event", "takt.node.tool.request", "takt.node.tool.decide",
     "takt.node.tool.start", "takt.node.tool.complete", "takt.node.tool.get",
     "takt.node.tool.cancel", "takt.node.artifact.declare", "takt.node.complete",
     "takt.node.fail",

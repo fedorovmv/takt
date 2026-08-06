@@ -57,6 +57,9 @@ func TestApprovalResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if state.Waiting == nil || state.Waiting.Kind != "question" || state.Waiting.NodeID != "approve" {
+		t.Fatalf("capture_response must publish a real question wait state: %#v", state.Waiting)
+	}
 	state.Approvals["approve"] = "yes"
 	state.Nodes["approve"].Status = "pending"
 	state.Status = "running"
@@ -742,7 +745,7 @@ func TestOpenCodeTimeoutPreservesProviderDiagnostics(t *testing.T) {
 		Metadata:   spec.Metadata{Name: "opencode-provider-timeout"},
 		Defaults:   spec.Defaults{Assistant: "opencode", Model: "m"},
 		Nodes: []spec.Node{{
-			ID: "agent", Prompt: "hello", Timeout: "2s",
+			ID: "agent", Prompt: "hello", Timeout: "5s",
 		}},
 	}
 	cfg := &spec.Config{
@@ -1150,5 +1153,64 @@ func TestPreStartCancellationMarkerIsHonored(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "should-not-exist")); !os.IsNotExist(statErr) {
 		t.Fatalf("cancelled run executed work: %v", statErr)
+	}
+}
+
+func TestPauseIsRecheckedBeforeRetryAttempt(t *testing.T) {
+	dir := t.TempDir()
+	cmdDir := filepath.Join(dir, "commands")
+	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cmdDir, "do.md"), []byte("---\nassistant: demo\nmodel: m\n---\nretry me\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "pause-retry"}, Nodes: []spec.Node{{ID: "do", Command: "do", Attempts: spec.AttemptsSpec{Max: 2, RetryOn: []string{"exit"}}}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "test", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := New(wf, cfg, "wf", "cfg", dir)
+	r.Commands.Dirs = []string{cmdDir}
+	runID := make(chan string, 1)
+	release := make(chan struct{})
+	calls := 0
+	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+		return adapterFunc(func(ctx context.Context, req assistant.Request) (assistant.Result, error) {
+			calls++
+			if calls == 1 {
+				runID <- req.RunID
+				<-release
+				return assistant.Result{ExitCode: 7}, &execution.Error{Kind: execution.KindExit, ExitCode: 7, Op: "test", Err: errors.New("retryable")}
+			}
+			return assistant.Result{Output: "unexpected second attempt"}, nil
+		}), nil
+	})
+	resultCh := make(chan struct {
+		state *store.RunState
+		err   error
+	}, 1)
+	go func() {
+		state, err := r.Start(context.Background(), "")
+		resultCh <- struct {
+			state *store.RunState
+			err   error
+		}{state, err}
+	}()
+	id := <-runID
+	if err := (store.FS{Workspace: dir}).RequestPause(id); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	result := <-resultCh
+	if !errors.Is(result.err, ErrPaused) {
+		t.Fatalf("expected ErrPaused, got %v", result.err)
+	}
+	if calls != 1 {
+		t.Fatalf("pause boundary allowed %d attempts", calls)
+	}
+	state, err := r.Store.Load(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunPaused {
+		t.Fatalf("status=%s", state.Status)
 	}
 }

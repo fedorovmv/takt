@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"takt/internal/blockcatalog"
+	"takt/internal/evidence"
 	"takt/internal/rolecontract"
 )
 
@@ -106,6 +107,9 @@ type Record struct {
 	RepairAttempts          map[string]int             `json:"repair_attempts,omitempty"`
 	RepairGeneration        int                        `json:"repair_generation,omitempty"`
 	DeferredSegments        [][]Phase                  `json:"deferred_segments,omitempty"`
+	Evidence                *evidence.Manifest         `json:"evidence,omitempty"`
+	Failure                 *evidence.Failure          `json:"failure,omitempty"`
+	ParkedAt                *time.Time                 `json:"parked_at,omitempty"`
 	Steering                []Steering                 `json:"steering,omitempty"`
 	LastError               string                     `json:"last_error,omitempty"`
 	PromotedPath            string                     `json:"promoted_path,omitempty"`

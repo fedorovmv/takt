@@ -67,7 +67,7 @@ func main() {
 			"name": "APIConnectionError",
 			"data": map[string]any{"message": "dial tcp provider.example:443: connection refused"},
 		}})
-		time.Sleep(5 * time.Second)
+		time.Sleep(8 * time.Second)
 		return
 	case "exit":
 		fmt.Fprintln(os.Stderr, "fake opencode exited")

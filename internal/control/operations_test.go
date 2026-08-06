@@ -704,3 +704,63 @@ func TestForkPersistsSourceFingerprintAndProvenance(t *testing.T) {
 		t.Fatalf("fork provenance missing: %#v", state)
 	}
 }
+
+func TestRecursiveSummaryToleratesLinkedChildBeforeStatePublication(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, workflowPath, "apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: summary-race\nnodes:\n  - id: x\n    bash: true\n")
+	now := time.Now().UTC()
+	state := &store.RunState{ID: "run-summary-race", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"x": {Status: store.NodeCompleted}}, Approvals: map[string]string{}, ChildRunIDs: []string{"run-child-not-published"}, CreatedAt: now, UpdatedAt: now}
+	if err := (store.FS{Workspace: workspace}).Save(state); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, err := service.Summary(state.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.DescendantRuns != 0 || summary.ChildRuns != 1 {
+		t.Fatalf("summary = %#v", summary)
+	}
+}
+
+func TestPlanForkFingerprintChangesWithPlanContent(t *testing.T) {
+	record := &dynamicplan.Record{BlockCatalogFingerprint: "catalog", Revisions: []dynamicplan.Revision{{Plan: dynamicplan.Plan{Goal: "one"}}}}
+	first := planForkFingerprint(record)
+	if first == "" {
+		t.Fatal("empty plan fork fingerprint")
+	}
+	record.Revisions[0].Plan.Goal = "two"
+	second := planForkFingerprint(record)
+	if second == "" || second == first {
+		t.Fatalf("fingerprint did not change: %q -> %q", first, second)
+	}
+}
+
+func TestAttentionIncludesParkedPlanWithFailureCode(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	record := &dynamicplan.Record{ID: "plan-attention-parked", Status: "parked", ConfigPath: configPath, Results: map[string]string{}, CreatedAt: now, UpdatedAt: now, Revisions: []dynamicplan.Revision{{Number: 1, Reason: "test", CreatedAt: now, Plan: dynamicplan.Plan{Goal: "x"}}}}
+	parkPlan(record, "OWNER_DECISION_REQUIRED", "choose a safe path", "owner", "reply with steering", false)
+	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
+		t.Fatal(err)
+	}
+	items, err := service.Attention()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].PlanID != record.ID || items[0].Reason != "owner_decision_required" {
+		t.Fatalf("attention = %#v", items)
+	}
+}

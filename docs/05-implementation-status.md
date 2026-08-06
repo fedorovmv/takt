@@ -41,7 +41,7 @@
 - прямой `takt mcp` и `takt mcp --daemon` через локальный Unix socket;
 - `takt daemon start|status|stop|serve` без БД: background Runs, event subscriptions, несколько клиентов, recovery потерянных локальных executor и notification dispatch;
 - legacy initialization `2025-03-26|2025-06-18|2025-11-25` и stateless discovery `2026-07-28`;
-- 53 internal operations разделены на surfaces; основная LLM видит пять `takt.task.*`, host и external worker получают только собственные протоколы;
+- 54 internal operations разделены на surfaces; основная LLM видит пять `takt.task.*`, host и external worker получают только собственные протоколы;
 - detached start с durable `run_id`;
 - indexed revision cursor и bounded long polling событий без полного пересканирования журнала;
 - structured/text tool results, bounded artifact content, request cancellation и strict arguments;
@@ -88,6 +88,10 @@
 - `takt plan|execute|steer`, phase/run/artifact view и promotion в `.takt/workflows/generated`;
 - MCP `takt.plan`, `takt.plan.get`, `takt.execute`, `takt.run.steer`, `takt.plan.promote`;
 - логический `coding-agent`: конкретный Pi/OpenCode/process adapter выбирается через `default_assistant`; отдельные worker-сессии исполняют фазы.
+- внутренний `EvidenceManifest` сохраняет baseline, check evidence и verdict, связанный с candidate content SHA-256;
+- известные baseline failures не считаются новой regression и не запускают automatic repair;
+- `parked` хранит failure code, owner и безопасное продолжение и попадает в attention;
+- external `side_effect.mode: reconcile` блокирует повтор внешней мутации при неизвестном исходе до reconciliation + receipt.
 
 
 ### Simple Reliable Task Router
@@ -115,7 +119,7 @@
 - durable notification inbox, desktop/process sinks, дедупликация и ack;
 - Pi/OpenCode команды runs, attention, pause, resume и result.
 
-### Профиль code 0.14.0
+### Профиль code 0.15.0
 
 - встроенный пакет `code-core` с девятью атомарными блоками Dynamic Takt, включая baseline и independent test-design;
 - внутренние роли `baseline-observer|investigator|implementer|test-designer|validator|verifier` и fresh bounded `TaskBrief` для trusted phases;
@@ -182,4 +186,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief и реакции `deny|repair|warn` реализованы к `v0.1.39-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — Evidence/baseline/failure routing; затем нейтральный SDK доменных адаптеров SCM/tracker/CI, полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark.
+Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief, реакции `deny|repair|warn`, EvidenceManifest, baseline classification, parking и external side-effect reconciliation реализованы к `v0.1.40-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — нейтральный SDK доменных адаптеров SCM/tracker/CI; затем полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark.

@@ -41,7 +41,7 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.21.0" \
+  "skills/takt/VERSION|0.22.0" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -108,6 +108,15 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-059" \
   "ARCHITECTURE_DECISIONS.md|ADR-060" \
   "ARCHITECTURE_DECISIONS.md|ADR-061" \
+  "ARCHITECTURE_DECISIONS.md|ADR-062" \
+  "ARCHITECTURE_DECISIONS.md|ADR-063" \
+  "docs/54-evidence-baseline-failure-routing-v0.1.40.md|EvidenceManifest" \
+  "docs/06-roadmap.md|Выполнено в v0.1.40-alpha" \
+  "schemas/evidence-manifest.schema.json|Takt EvidenceManifest" \
+  "scripts/test-evidence-routing.sh|evidence baseline failure routing contract: PASS" \
+  "schemas/workflow.schema.json|side_effect" \
+  "schemas/run-state.schema.json|reconcile_status" \
+  "skills/takt/SKILL.md|external reconciliation" \
   "docs/52-simple-reliable-agent-neutral-router-v0.1.38.md|Simple Reliable Router" \
   "docs/proposals/001-simple-reliable-agent-neutral-takt.md|Takt не зависит от Kiro CLI" \
   "docs/06-roadmap.md|Выполнено в v0.1.38-alpha" \
@@ -188,7 +197,7 @@ for check in \
   "scripts/test-child-fanout.sh|governed child fan-out contract: PASS" \
   "schemas/workflow.schema.json|fan_out" \
   "schemas/run-state.schema.json|child_runs" \
-  "internal/profile/builtin/code/VERSION|0.14.0" \
+  "internal/profile/builtin/code/VERSION|0.15.0" \
   "README.md|Динамический fan-out v0.1.28" \
   "docs/12-document-map.md|42-governed-child-fanout-v0.1.28.md" \
   "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \

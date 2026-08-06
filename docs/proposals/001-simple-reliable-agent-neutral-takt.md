@@ -523,30 +523,30 @@ Router не должен обучаться на собственных выво
 
 Одновременно исправлены критичные pause/recovery/notification дефекты v0.1.37 и compact Task API v0.1.38. Полный механизм описан в `docs/53-role-brief-controls-v0.1.39.md`.
 
-## 19. Следующие срезы
+## 19. Реализация в v0.1.40-alpha
 
-### 19.1. Evidence и baseline
+Третий срез добавляет внутренний `EvidenceManifest`: baseline provenance, stable failure fingerprints, check-to-evidence mapping и verdict, связанный с candidate content SHA-256. Изменение execution workspace после verdict переводит его в `stale`. Known baseline failure сохраняется как evidence и не запускает automatic repair; новая проблема идёт по обычному failure routing.
 
-- acceptance-to-evidence mapping;
-- candidate SHA binding;
-- stale verdict invalidation;
-- сравнение новых failures с baseline.
+Материальная остановка получает `parked` с компактным failure code, owner, `safe_next_action` и `unsafe_to_repeat`; Task API и attention скрывают внутреннюю механику и показывают пользователю только необходимость решения. External executor получил `side_effect.mode: reconcile`: неизвестный исход внешней мутации блокирует blind retry до явного `not_applied|applied|unknown`, а подтверждённый `applied` требует receipt и завершает node через обычный submit path.
 
-### 19.2. Adapter SDK
+## 20. Следующие срезы
+
+### 20.1. Agent + Domain Adapter SDK
 
 - готовые wrappers для востребованных Codex/Oh My Pi/Qwen CLI;
-- общий capability test kit;
-- session/tool event conformance;
-- live smoke на зафиксированных версиях каждого хоста.
+- общий capability/session/tool-event conformance kit и live smoke на зафиксированных версиях;
+- нейтральные SCM/tracker/CI capability contracts;
+- typed inputs/results/errors, idempotency и capability discovery;
+- GitHub/GitLab reference adapters и fake corporate backends без платформенных имён в workflow.
 
-### 19.3. Skill proposals и eval loop
+### 20.2. Skill proposals и eval loop
 
 - анализ повторяющихся Run;
 - pending proposals;
 - измерение эффекта после принятия;
 - отсутствие автоматической мутации доверенных пакетов.
 
-## 20. Критерий принятия дальнейших функций
+## 21. Критерий принятия дальнейших функций
 
 Новый механизм добавляется, когда:
 

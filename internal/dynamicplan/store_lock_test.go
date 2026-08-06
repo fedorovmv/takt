@@ -32,3 +32,17 @@ func TestAcquireAdvanceLockSerializesProcesses(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReleaseAdvanceLockReturnsUnlockError(t *testing.T) {
+	store := Store{Workspace: t.TempDir()}
+	file, err := store.AcquireAdvanceLock(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReleaseAdvanceLock(file); err == nil {
+		t.Fatal("ReleaseAdvanceLock swallowed closed-descriptor error")
+	}
+}

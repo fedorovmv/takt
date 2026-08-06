@@ -6,7 +6,7 @@
 
 ## Область применения текущей версии
 
-`v0.1.39-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.40-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Локальный `takt daemon` поддерживает фоновые Run и несколько клиентов одного пользователя через Unix socket. Сетевой и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и distributed locking. Эти режимы не поддерживаются.
 
@@ -48,14 +48,15 @@
 - строгий YAML subset с сохранением пустых строк в block scalar, path-aware `did you mean` и authoring diagnostics;
 - расширенный проверяемый `output_format`, статическая диагностика output/artifact references и строгие `${path}`, `${path?}`, `${path:-default}`;
 - именованные workflow профиля, `workflow list/describe` и селектор `profile:name`;
-- профиль `code` 0.14.0 с 19 процессами разработки, Task Router, внутренними Role/TaskBrief contracts и девятью встроенными доверенными блоками и шестью глубокими workflow со строгими JSON-входами, checkpoint artifacts, domain errors, Git/recovery semantics;
+- профиль `code` 0.15.0 с 19 процессами разработки, Task Router, внутренними Role/TaskBrief contracts и девятью встроенными доверенными блоками и шестью глубокими workflow со строгими JSON-входами, checkpoint artifacts, domain errors, Git/recovery semantics;
 - управляемые Git worktree: политика workflow, отдельная ветка, безопасное удержание/очистка и `takt worktree list/remove/prune`;
 - parent/child lifecycle с отдельными state/events/artifacts/usage, `takt children`, каскадным `takt cancel` и approval через корневой Run;
 - динамический fan-out governed child Runs из структурированного output: устойчивые child ID, `max_parallel`, resume, ordered aggregation и join policies;
 - script runtime `command|python|node|go|validation` с fingerprints исходника и зависимостей;
 - типизированные артефакты с MIME, SHA-256, producer metadata, CLI `takt artifacts` и передачей parent/child/fan-out;
-- role-based локальный MCP control plane: основная LLM по умолчанию видит пять `takt.task.*`, а полная совместимая поверхность содержит 53 операции workflow/Run/host/worker/operator;
+- role-based локальный MCP control plane: основная LLM по умолчанию видит пять `takt.task.*`, а полная совместимая поверхность содержит 54 операции workflow/Run/host/worker/operator;
 - Simple Reliable Task Router: выбор `workflow|template|dynamic`, прогрессивные baseline/independent-tests/enhanced-review controls и inspect-first fallback;
+- Evidence/baseline/failure routing: `EvidenceManifest`, candidate content SHA-256, stale verdict invalidation, baseline failure fingerprints, `parked` с safe next action и external `side_effect: reconcile`;
 - Dynamic Takt: решение `existing|planned`, ограниченный `WorkflowPlan`, доверенные `BlockPackage`, компиляция в обычные governed child Run, preview/confirmation, полные бюджеты, checkpoint-replanning, steering, plan revisions и продвижение completed-плана в workflow проекта;
 - Coding Agent Host Control: Go-ядро поддерживает strict host contract, а bundled Pi/OpenCode extensions работают в честном `guarded`-режиме с fail-closed cache до live smoke на зафиксированных версиях хоста;
 - Autonomous Run Operations: реестр и attention queue, safe pause/resume, retry/fork/abandon, PID-based recovery, уведомления и агрегированный result summary;
@@ -139,7 +140,7 @@ takt mcp --surface agent --workspace . --daemon
 takt daemon stop --workspace .
 ```
 
-По умолчанию `takt mcp` публикует безопасную agent surface из пяти `takt.task.*`. `--surface host|worker|operator|all` открывает отдельный протокол соответствующего потребителя; полная совместимая поверхность содержит 53 операции. `run.start` по умолчанию возвращает durable `run_id` после принятия запуска; состояние и поток событий читаются отдельными вызовами по revision cursor. Поддерживаются legacy initialization до `2025-11-25` и stateless discovery `2026-07-28`.
+По умолчанию `takt mcp` публикует безопасную agent surface из пяти `takt.task.*`. `--surface host|worker|operator|all` открывает отдельный протокол соответствующего потребителя; полная совместимая поверхность содержит 54 операции. `run.start` по умолчанию возвращает durable `run_id` после принятия запуска; состояние и поток событий читаются отдельными вызовами по revision cursor. Поддерживаются legacy initialization до `2025-11-25` и stateless discovery `2026-07-28`.
 
 Прямой MCP и daemon используют тот же файловый store, locks, fingerprints, governed children и worktree lifecycle, что CLI. Daemon слушает только Unix socket текущего пользователя, переживает закрытие клиента, восстанавливает durable Run после потери локального executor PID и не является сетевым или многопользовательским сервером. Подробности: [Локальный MCP control plane v0.1.30](docs/44-local-mcp-control-plane-v0.1.30.md), [внешний executor v0.1.31](docs/45-agent-events-external-executor-v0.1.31.md) и [управляемые события и глубокие workflow v0.1.32](docs/46-controlled-agent-events-deep-workflows-v0.1.32.md), а также [authoring/daemon v0.1.33](docs/47-authoring-local-daemon-v0.1.33.md).
 
@@ -152,7 +153,7 @@ takt task status <plan-id> --workspace .
 takt task explain <plan-id> --workspace .
 ```
 
-Task Router выбирает готовый процесс, стабильный `simple-reliable` или bounded Dynamic Plan. Обычный шаблон выполняет исследование, изменение, проверки и независимое ревью; baseline, независимые тесты и усиленная проверка добавляются только по сигналам риска. Ошибка semantic router приводит к inspect-first fallback, а не к остановке задачи. Профиль обращается к логическому `coding-agent`; конкретный Pi, OpenCode, Codex, Oh My Pi, Qwen CLI или другой адаптер выбирается через `default_assistant`. Подробности: [v0.1.38](docs/52-simple-reliable-agent-neutral-router-v0.1.38.md) и [proposal](docs/proposals/001-simple-reliable-agent-neutral-takt.md).
+Task Router выбирает готовый процесс, стабильный `simple-reliable` или bounded Dynamic Plan. Обычный шаблон выполняет исследование, изменение, проверки и независимое ревью; baseline, независимые тесты и усиленная проверка добавляются только по сигналам риска. Ошибка semantic router приводит к inspect-first fallback, а не к остановке задачи. Профиль обращается к логическому `coding-agent`; конкретный Pi, OpenCode, Codex, Oh My Pi, Qwen CLI или другой адаптер выбирается через `default_assistant`. Подробности: [v0.1.38](docs/52-simple-reliable-agent-neutral-router-v0.1.38.md), [v0.1.39](docs/53-role-brief-controls-v0.1.39.md), [v0.1.40](docs/54-evidence-baseline-failure-routing-v0.1.40.md) и [proposal](docs/proposals/001-simple-reliable-agent-neutral-takt.md).
 
 ## Dynamic Takt из основной сессии кодинг-агента
 
@@ -315,7 +316,7 @@ Dynamic Takt сохраняет fingerprint каталога при preview. И�
 
 Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
 
-Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.14.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon, v0.1.34-alpha — Dynamic Takt и coding-agent flow, v0.1.35-alpha — доверенные корпоративные блоки и исправления бюджетов/исполнения, v0.1.36-alpha — host-control core и guarded Pi/OpenCode integrations, v0.1.37-alpha — автономные Run, attention, pause/recovery и уведомления, v0.1.38-alpha — нейтральный coding-agent, Task Router, simple-reliable template и role-based MCP surfaces, а v0.1.39-alpha — Role Contract, bounded TaskBrief, required/preferred checks, deny/repair/warn и bounded automatic repair с исправлениями автономного control plane. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.15.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon, v0.1.34-alpha — Dynamic Takt и coding-agent flow, v0.1.35-alpha — доверенные корпоративные блоки и исправления бюджетов/исполнения, v0.1.36-alpha — host-control core и guarded Pi/OpenCode integrations, v0.1.37-alpha — автономные Run, attention, pause/recovery и уведомления, v0.1.38-alpha — нейтральный coding-agent, Task Router, simple-reliable template и role-based MCP surfaces, v0.1.39-alpha — Role Contract, bounded TaskBrief, required/preferred checks, deny/repair/warn и bounded automatic repair с исправлениями автономного control plane, а v0.1.40-alpha — EvidenceManifest, baseline-aware failure classification, parking и reconciliation неизвестных external side effects. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
 
 Evaluation runner фиксирует идентичность стратегии, набора заданий, workspace и валидатора, а также execution identity каждой попытки. Отдельный предметный этап — запустить `examples/route-dsl-benchmark` со штатным Route DSL validator и реальными обезличенными заданиями, получить baseline и сравнить модели или стратегии на неизменных fingerprints. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 
@@ -352,6 +353,8 @@ Evaluation runner фиксирует идентичность стратегии
 - [Локальный MCP control plane v0.1.30](docs/44-local-mcp-control-plane-v0.1.30.md)
 - [Доверенные пакеты блоков v0.1.35](docs/49-trusted-block-packages-v0.1.35.md)
 - [Coding Agent Host Control v0.1.36](docs/50-coding-agent-host-control-v0.1.36.md)
+- [Evidence, baseline и failure routing v0.1.40](docs/54-evidence-baseline-failure-routing-v0.1.40.md)
+- [Role Contract, Brief Compiler и управляемые проверки v0.1.39](docs/53-role-brief-controls-v0.1.39.md)
 - [Simple Reliable Router и нейтральные кодинг-агенты v0.1.38](docs/52-simple-reliable-agent-neutral-router-v0.1.38.md)
 - [Proposal: простой и надёжный agent-neutral Takt](docs/proposals/001-simple-reliable-agent-neutral-takt.md)
 - [Autonomous Run Operations v0.1.37](docs/51-autonomous-run-operations-v0.1.37.md)

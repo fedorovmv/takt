@@ -80,9 +80,10 @@ Worker surface публикует только lifecycle узла:
 - `takt.node.pending`, `claim`, `event`;
 - `takt.node.tool.request`, `decide`, `start`, `complete`, `get`, `cancel`;
 - `takt.node.artifact.declare`;
-- `takt.node.complete`, `fail`.
+- `takt.node.complete`, `fail`;
+- `takt.node.reconcile` для `side_effect.mode: reconcile` после неизвестного исхода внешней мутации.
 
-Claim token является секретом lease. Инструмент выполняется только после `request → policy/approval decision → start → complete`. Узел нельзя завершить, пока все tool calls не достигли terminal-состояния.
+Claim token является секретом lease. Инструмент выполняется только после `request → policy/approval decision → start → complete`. Узел нельзя завершить, пока все tool calls не достигли terminal-состояния. Для non-idempotent внешнего действия в режиме `reconcile` истёкший claim не переигрывается: adapter сначала сообщает `not_applied|applied|unknown`; `applied` требует receipt.
 
 ## Безопасность
 

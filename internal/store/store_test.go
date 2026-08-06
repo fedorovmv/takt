@@ -247,3 +247,26 @@ func TestReadEventsCreatesAndUsesOffsetIndex(t *testing.T) {
 		t.Fatalf("events = %#v", events)
 	}
 }
+
+func TestClearOperatorMarkersReturnFilesystemErrors(t *testing.T) {
+	fs := FS{Workspace: t.TempDir()}
+	const runID = "run-marker-errors"
+	if err := os.MkdirAll(fs.RunDir(runID), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{"pause.requested", "cancel.requested"} {
+		path := filepath.Join(fs.RunDir(runID), marker)
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(path, "child"), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := fs.ClearPause(runID); err == nil {
+		t.Fatal("ClearPause swallowed persistence error")
+	}
+	if err := fs.ClearCancel(runID); err == nil {
+		t.Fatal("ClearCancel swallowed persistence error")
+	}
+}

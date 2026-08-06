@@ -372,3 +372,9 @@ takt run .takt/workflows/main.yaml \
 - `references/patterns.md` — готовые композиции;
 - `references/troubleshooting.md` — диагностика типовых ошибок;
 - `assets/validated-agent-profile/` — копируемый стартовый профиль.
+
+## Evidence, baseline и external reconciliation
+
+Начиная с v0.1.40 Dynamic Takt сохраняет внутренний `EvidenceManifest`: baseline, fingerprints известных failures, structured check evidence и verdict, привязанный к candidate content SHA-256. Не пытайся эмулировать это свободным текстом в skill или prompt. Trusted check должен возвращать структурированный результат, а Takt сам классифицирует неизменившееся baseline-падение и инвалидирует stale verdict после изменения candidate.
+
+Для внешней мутации, результат которой нельзя безопасно повторить после потери worker, используй только `executor: external` с `side_effect.mode: reconcile`. После истёкшего claim внешний adapter обязан выполнить reconciliation и сообщить `not_applied`, `applied` с receipt/result или `unknown`; blind retry для такого узла запрещён.

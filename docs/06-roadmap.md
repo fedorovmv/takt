@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.39-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.40-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -65,16 +65,15 @@ Trusted `BlockPackage` объявляет внутренние функцион�
 
 Одновременно закрыты pause/recovery/notification high из v0.1.37 и compact Task API high из v0.1.38. Полный срез: `53-role-brief-controls-v0.1.39.md`.
 
-## Приоритет 1. Evidence, baseline и failure routing
+## Выполнено в v0.1.40-alpha. Evidence, baseline и failure routing
 
-- acceptance-to-evidence mapping и candidate SHA binding;
-- invalidation устаревшего verdict;
-- сравнение новых failures с baseline;
-- компактные failure codes, park/unpark и безопасный next action;
-- reconciliation внешних side effects перед повтором.
+Dynamic Plan хранит внутренний `EvidenceManifest` с baseline provenance, fingerprints известных failures, check-to-evidence mapping и verdict, привязанным к candidate content SHA-256. Изменение candidate инвалидирует старый verdict как `stale`; неизменившееся baseline-падение классифицируется как `BASELINE_FAILURE` и не запускает repair.
 
-## Приоритет 2. Domain Adapter SDK
+Материальная остановка использует `parked` с failure code, owner, `safe_next_action` и `unsafe_to_repeat` и проецируется в Task API/attention как `needs_input`. Для `executor: external` добавлен `side_effect.mode: reconcile`: expired claim запрещает blind retry до результата `not_applied|applied|unknown`, а `applied` требует receipt. Worker MCP расширен `takt.node.reconcile`, полная поверхность — 54 operations, agent surface остаётся пять tools. Полный срез: `54-evidence-baseline-failure-routing-v0.1.40.md`.
 
+## Приоритет 1. Agent + Domain Adapter SDK
+
+- единый conformance kit для Codex, Oh My Pi, Qwen CLI и других `SessionAdapter` wrappers без изменения workflow;
 - нейтральные capability contracts для SCM, tracker и CI;
 - MCP/process transports;
 - типизированные inputs/results/errors, идемпотентность и capability discovery;
@@ -82,7 +81,7 @@ Trusted `BlockPackage` объявляет внутренние функцион�
 - fake corporate SCM/tracker/CI для контрактных тестов;
 - использование адаптеров как детерминированных узлов Takt и как разрешённых инструментов worker-сессии.
 
-## Приоритет 3. Полная доставка пакетов
+## Приоритет 2. Полная доставка пакетов
 
 - области `global|project|corporate` с явным приоритетом;
 - `install|update|uninstall|doctor`;
@@ -92,7 +91,7 @@ Trusted `BlockPackage` объявляет внутренние функцион�
 - checksum, подпись и политика источников;
 - команды, scripts, skills, MCP и adapter requirements в одном пакете.
 
-## Приоритет 4. Multi-repo dynamic workflow
+## Приоритет 3. Multi-repo dynamic workflow
 
 - определение затронутых репозиториев;
 - dependency graph;
@@ -100,7 +99,7 @@ Trusted `BlockPackage` объявляет внутренние функцион�
 - несколько change request через нейтральный SCM adapter;
 - интеграционная проверка и общий порядок слияния.
 
-## Приоритет 5. Усиление runtime и безопасность локального исполнения
+## Приоритет 4. Усиление runtime и безопасность локального исполнения
 
 - раннее завершение `one_success` и `all_success` с отменой ненужных детей;
 - нормализованные diagnostics и fingerprints ошибок;

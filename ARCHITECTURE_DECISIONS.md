@@ -395,3 +395,19 @@ Surface фиксируется при создании MCP-подключени�
 Checks доверенного блока имеют `required|preferred` и реакцию `deny|repair|warn`. Preferred failure всегда остаётся warning. Required `repair` запускает не более одной автоматической repair-итерации на устойчивый `block:check`, после чего повторный отказ требует одного явного решения пользователя. `deny` предназначен для нарушения обязательной границы; `warn` сохраняет диагностику без остановки.
 
 Эта модель отделяет безопасность от качества: обычная исправимая техническая ошибка не должна превращаться в операторский gate, а необязательная усиленная проверка не должна делать Takt неудобным для повседневной работы.
+
+## ADR-062. Verdict принадлежит конкретному candidate content fingerprint
+
+**Статус:** принято.
+
+Dynamic Takt хранит `EvidenceManifest` отдельно от свободного текста worker-а. Baseline, результаты trusted checks и итоговый verdict связываются с `candidate_sha`, вычисленным как SHA-256 базового commit, бинарного Git diff и содержимого untracked files execution workspace. Изменение candidate после verdict делает verdict `stale`; completion не переиспользует доказательство от другой версии содержимого.
+
+Baseline failures сравниваются по детерминированному normalized fingerprint. Совпадение считается исходной проблемой и не запускает automatic repair; неясное или новое падение считается регрессией. LLM similarity не участвует в этом решении.
+
+## ADR-063. Неизвестный внешний side effect нельзя повторять без reconciliation
+
+**Статус:** принято.
+
+`executor: external` может объявить `side_effect.mode: reconcile`. После истечения claim такого узла новый worker не получает право повторить действие, пока внешний adapter не классифицирует факт как `not_applied`, `applied` или `unknown`. `not_applied` разрешает новый claim; `applied` требует receipt и результат и завершает узел через обычный submit path; `unknown` сохраняет ожидание и блокирует replay.
+
+Это не exactly-once гарантия внешней системы. Контракт предотвращает опасный blind retry и задаёт runtime seam для будущих SCM/tracker/CI adapters.

@@ -42,16 +42,9 @@ func taskStartCmd(args []string) error {
 	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--profile": true, "--file": true, "--go": false, "--daemon": false, "--socket": true, "--json": false})); err != nil {
 		return err
 	}
-	goal := strings.TrimSpace(strings.Join(fs.Args(), " "))
-	if *goalFile != "" {
-		if goal != "" {
-			return fmt.Errorf("task goal text and --file are mutually exclusive")
-		}
-		raw, err := os.ReadFile(*goalFile)
-		if err != nil {
-			return err
-		}
-		goal = strings.TrimSpace(string(raw))
+	goal, err := resolveTaskGoal(fs.Args(), *goalFile)
+	if err != nil {
+		return err
 	}
 	if goal == "" {
 		return fmt.Errorf("usage: takt task start <goal> [--file path] [--go] [--profile code] [--daemon]")
@@ -77,6 +70,21 @@ func taskStartCmd(args []string) error {
 		return err
 	}
 	return printResult(*jsonOut, result)
+}
+
+func resolveTaskGoal(args []string, goalFile string) (string, error) {
+	goal := strings.TrimSpace(strings.Join(args, " "))
+	if strings.TrimSpace(goalFile) == "" {
+		return goal, nil
+	}
+	if goal != "" {
+		return "", fmt.Errorf("task goal text and --file are mutually exclusive")
+	}
+	raw, err := os.ReadFile(goalFile)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(raw)), nil
 }
 
 func taskStatusCmd(args []string) error {

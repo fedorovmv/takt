@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.40-alpha
+
+- Добавлен внутренний `EvidenceManifest`: baseline provenance, stable failure fingerprints, check-to-evidence mapping и итоговый verdict, связанный с candidate content SHA-256. Изменение candidate после проверки делает verdict `stale`.
+- Baseline-aware validation отличает исходные падения от новых regressions: exact normalized `BASELINE_FAILURE` сохраняется как evidence и не запускает automatic repair; новые failures идут по обычному `IMPLEMENTATION_FAILURE|VERIFICATION_FAILURE` routing.
+- Dynamic Plan получил `parked` с компактным failure code, owner, `safe_next_action` и `unsafe_to_repeat`; Task API и attention показывают необходимость решения, а простой `continue` не обходит parking.
+- External executor получил `side_effect.mode: idempotent|reconcile`, durable idempotency key/receipt/reconcile state и worker MCP `takt.node.reconcile`. Unknown outcome блокирует blind retry; `not_applied` разрешает новый claim; `applied` требует receipt и завершает node без повторения side effect.
+- Полная MCP surface содержит 54 operations: agent 5, host 7, worker 13, operator 29. Agent surface не расширялась.
+- Закрыты тестовые пробелы последнего ревью: lexeme matching, bounded repair branches, pause-before-attempt, реальный `question`, persistence errors, transient summary, plan-fork fingerprint, notification dispatch lock/prune/desktop timeout, `--file`, MCP default, direct-run capability preflight и router diagnostic/cancellation.
+- Старые OpenCode timeout tests получили больший deadline для race-нагрузки; полный `go test -race ./internal/...` проходит единым прогоном.
+- Добавлены `schemas/evidence-manifest.schema.json`, ADR-062/063 и release note `docs/54-evidence-baseline-failure-routing-v0.1.40.md`. `code-core` обновлён до 0.4.0, профиль `code` — до 0.15.0, Takt skill — до 0.22.0.
+
 ## v0.1.39-alpha
 
 - Добавлены внутренние `RoleDefinition` и `TaskBrief`: trusted blocks получают функциональную роль, bounded context recipe, scope `expected|allowed|protected|forbidden` и fresh brief на каждую worker/repair-фазу без установки отдельных агентов в кодинг-хост.

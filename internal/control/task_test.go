@@ -107,3 +107,32 @@ func TestRespondTaskNeverFabricatesApprovalMessage(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestTaskStatusProjectsParkedPlanAsNeedsInput(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(workspace, ".takt", "config.yaml")
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	plan := candidateDynamicPlan()
+	record := &dynamicplan.Record{ID: "plan-parked1234", Status: "parked", Profile: "code", ConfigPath: configPath, LastError: "owner decision required", Results: map[string]string{}, CreatedAt: now, UpdatedAt: now, Revisions: []dynamicplan.Revision{{Number: 1, Reason: "test", CreatedAt: now, Plan: plan}}}
+	parkPlan(record, "OWNER_DECISION_REQUIRED", "choose a safe path", "owner", "reply with steering", false)
+	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
+		t.Fatal(err)
+	}
+	view, err := service.TaskStatus(record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Status != "parked" || !view.NeedsInput || view.Plan == nil || view.Plan.Record.LastError != "choose a safe path" {
+		t.Fatalf("view = %#v", view)
+	}
+	if _, err := service.RespondTask(context.Background(), TaskRespondRequest{Reference: record.ID, Action: "continue"}); err == nil || !strings.Contains(err.Error(), "parked") {
+		t.Fatalf("continue on parked plan error = %v", err)
+	}
+}

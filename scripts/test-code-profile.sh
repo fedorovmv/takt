@@ -13,7 +13,7 @@ PLAN
 "$ROOT/bin/takt" init code --dir "$TMP/project" --json >/dev/null
 "$ROOT/bin/takt" validate code --workspace "$TMP/project" --json >/dev/null
 [ -f "$TMP/project/.takt/profiles/code/profile.yaml" ]
-[ "$(tr -d '[:space:]' < "$TMP/project/.takt/profiles/code/VERSION")" = "0.14.0" ]
+[ "$(tr -d '[:space:]' < "$TMP/project/.takt/profiles/code/VERSION")" = "0.15.0" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/review-block.yaml" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/smart-review-block.yaml" ]
 [ -f "$TMP/project/.takt/profiles/code/workflows/blocks/package.yaml" ]

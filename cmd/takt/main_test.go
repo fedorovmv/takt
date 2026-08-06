@@ -434,3 +434,72 @@ assistants:
 		t.Fatal(err)
 	}
 }
+
+func TestTaskGoalReadsFilesOnlyWithExplicitFileFlag(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "goal.txt")
+	if err := os.WriteFile(path, []byte("file contents"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	goal, err := resolveTaskGoal([]string{path}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if goal != path {
+		t.Fatalf("positional path was treated as file: %q", goal)
+	}
+	goal, err = resolveTaskGoal(nil, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if goal != "file contents" {
+		t.Fatalf("--file goal=%q", goal)
+	}
+	if _, err := resolveTaskGoal([]string{"text"}, path); err == nil {
+		t.Fatal("text plus --file must fail")
+	}
+}
+
+func TestRunCmdPerformsCapabilityPreflightBeforeExecution(t *testing.T) {
+	dir := t.TempDir()
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
+	workflowText := `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: preflight
+nodes:
+  - id: work
+    prompt: do work
+    assistant: limited
+    model: demo
+    allowed_tools: [read]
+`
+	configText := `apiVersion: takt/v1alpha1
+kind: Config
+models:
+  demo:
+    provider: test
+    id: demo
+assistants:
+  limited:
+    type: process
+    argv: [cat]
+`
+	if err := os.WriteFile(workflowPath, []byte(workflowText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := runCmd([]string{workflowPath, "--workspace", dir, "--config", configPath})
+	if err == nil || !strings.Contains(err.Error(), "capability validation") || !strings.Contains(err.Error(), "tool_policy") {
+		t.Fatalf("runCmd error = %v, want capability preflight failure", err)
+	}
+	ids, listErr := (store.FS{Workspace: dir}).ListRunIDs()
+	if listErr != nil {
+		t.Fatal(listErr)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("run was created before capability validation: %v", ids)
+	}
+}

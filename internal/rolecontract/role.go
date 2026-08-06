@@ -62,13 +62,16 @@ type Brief struct {
 }
 
 type CheckResult struct {
-	PhaseID  string `json:"phase_id,omitempty"`
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	Level    string `json:"level"`
-	Reaction string `json:"reaction"`
-	Passed   bool   `json:"passed"`
-	Detail   string `json:"detail,omitempty"`
+	PhaseID      string `json:"phase_id,omitempty"`
+	Block        string `json:"block,omitempty"`
+	Name         string `json:"name"`
+	Path         string `json:"path"`
+	Level        string `json:"level"`
+	Reaction     string `json:"reaction"`
+	Passed       bool   `json:"passed"`
+	BaselineOnly bool   `json:"baseline_only,omitempty"`
+	FailureCode  string `json:"failure_code,omitempty"`
+	Detail       string `json:"detail,omitempty"`
 }
 
 type ScopeResult struct {

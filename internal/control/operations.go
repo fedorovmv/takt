@@ -250,10 +250,17 @@ func (s *Service) Attention() ([]AttentionItem, error) {
 		return nil, err
 	}
 	for _, plan := range plans {
-		if plan.Status != "waiting" || plan.CurrentRunID != "" {
+		if plan.CurrentRunID != "" || (plan.Status != "waiting" && plan.Status != "parked") {
 			continue
 		}
-		items = append(items, AttentionItem{Kind: "plan", PlanID: plan.ID, Status: plan.Status, Reason: "question", Message: plan.LastError, UpdatedAt: plan.UpdatedAt})
+		reason := "question"
+		if plan.Status == "parked" {
+			reason = "owner_decision_required"
+			if plan.Failure != nil && strings.TrimSpace(plan.Failure.Code) != "" {
+				reason = strings.ToLower(plan.Failure.Code)
+			}
+		}
+		items = append(items, AttentionItem{Kind: "plan", PlanID: plan.ID, Status: plan.Status, Reason: reason, Message: plan.LastError, UpdatedAt: plan.UpdatedAt})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].UpdatedAt.After(items[j].UpdatedAt) })
 	return items, nil

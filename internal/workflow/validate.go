@@ -168,6 +168,16 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 				return fmt.Errorf("node %q external executor is supported only for command or prompt nodes", n.ID)
 			}
 		}
+		if n.SideEffect != nil {
+			if n.Executor != "external" {
+				return fmt.Errorf("node %q side_effect requires executor: external", n.ID)
+			}
+			switch n.SideEffect.Mode {
+			case "idempotent", "reconcile":
+			default:
+				return fmt.Errorf("node %q side_effect.mode must be idempotent or reconcile", n.ID)
+			}
+		}
 		if n.ToolApproval != nil {
 			if n.Command == "" && n.Prompt == "" {
 				return fmt.Errorf("node %q tool_approval is supported only for command or prompt nodes", n.ID)

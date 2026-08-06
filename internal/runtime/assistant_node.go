@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"takt/internal/assistant"
@@ -123,6 +124,13 @@ func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, reso
 			RequestedModel: &store.ModelRef{Name: resolved.ModelName, Provider: resolved.Model.Provider, ID: resolved.Model.ID, Params: cloneParams(resolved.Model.Params)},
 			SessionMode:    resolved.SessionMode, SessionID: resolved.SessionID,
 			Policy: policyState(resolved.Policy, resolved.Capabilities), OutputFormat: outputFormat,
+		}
+		if node.SideEffect != nil {
+			ns.External.SideEffectMode = node.SideEffect.Mode
+			ns.External.IdempotencyKey = strings.TrimSpace(node.SideEffect.IdempotencyKey)
+			if ns.External.IdempotencyKey == "" {
+				ns.External.IdempotencyKey = state.ID + ":" + node.ID
+			}
 		}
 		if node.ToolApproval != nil {
 			ns.External.ToolApproval = &store.ToolApprovalState{Mode: node.ToolApproval.Mode, Tools: append([]string(nil), node.ToolApproval.Tools...), Message: node.ToolApproval.Message}

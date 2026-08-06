@@ -41,6 +41,10 @@ type ExternalTask struct {
 	CapabilityDeclaration assistant.CapabilityDeclaration `json:"capability_declaration"`
 	ToolApproval          *store.ToolApprovalState        `json:"tool_approval,omitempty"`
 	ToolCalls             map[string]*store.ToolCallState `json:"tool_calls,omitempty"`
+	SideEffectMode        string                          `json:"side_effect_mode,omitempty"`
+	IdempotencyKey        string                          `json:"idempotency_key,omitempty"`
+	Receipt               string                          `json:"receipt,omitempty"`
+	ReconcileStatus       string                          `json:"reconcile_status,omitempty"`
 }
 
 type ExternalClaimRequest struct {
@@ -88,10 +92,14 @@ func (s *Service) PendingExternal(runID string, recursive bool) ([]ExternalTask,
 				continue
 			}
 			external := node.External
-			if external.Status != "pending" && !(external.Status == "claimed" && !external.LeaseExpiresAt.After(now)) {
+			if external.Status != "pending" && external.Status != "reconcile_required" && !(external.Status == "claimed" && !external.LeaseExpiresAt.After(now)) {
 				continue
 			}
-			tasks = append(tasks, externalTask(state.ID, nodeID, external, ""))
+			task := externalTask(state.ID, nodeID, external, "")
+			if external.Status == "claimed" && !external.LeaseExpiresAt.After(now) && external.SideEffectMode == "reconcile" {
+				task.Status = "reconcile_required"
+			}
+			tasks = append(tasks, task)
 		}
 	}
 	sort.Slice(tasks, func(i, j int) bool {
@@ -169,6 +177,17 @@ func (s *Service) ClaimExternal(request ExternalClaimRequest) (*ExternalTask, er
 		return nil, fmt.Errorf("external node %s/%s is still being suspended; retry after it appears in takt.node.pending", state.ID, request.NodeID)
 	}
 	now := time.Now().UTC()
+	if external.Status == "reconcile_required" || (external.Status == "claimed" && !external.LeaseExpiresAt.After(now) && external.SideEffectMode == "reconcile" && external.ReconcileStatus != "not_applied") {
+		external.Status = "reconcile_required"
+		external.ReconcileStatus = "required"
+		node.Status = store.NodeWaiting
+		state.Status = store.RunWaiting
+		state.Waiting = &store.WaitingState{NodeID: request.NodeID, Message: "external side effect must be reconciled before retry", Kind: "external_reconcile"}
+		if err := st.Commit(state, store.Event{Type: "external_node.reconciliation_required", NodeID: request.NodeID, Data: map[string]any{"idempotency_key": external.IdempotencyKey}}); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("external node %s/%s requires side-effect reconciliation before retry", state.ID, request.NodeID)
+	}
 	if external.Status == "claimed" && external.LeaseExpiresAt.After(now) {
 		return nil, fmt.Errorf("external node %s/%s is already claimed by %s until %s", state.ID, request.NodeID, external.ClaimedBy, external.LeaseExpiresAt.Format(time.RFC3339))
 	}
@@ -191,6 +210,7 @@ func (s *Service) ClaimExternal(request ExternalClaimRequest) (*ExternalTask, er
 		return nil, err
 	}
 	external.Status = "claimed"
+	external.ReconcileStatus = ""
 	external.ClaimedBy = request.WorkerID
 	encodedDeclaration, _ := json.Marshal(declaration)
 	external.CapabilityDeclaration = encodedDeclaration
@@ -248,7 +268,99 @@ func externalTask(runID, nodeID string, external *store.ExternalExecutionState, 
 		Policy: external.Policy, OutputFormat: external.OutputFormat, ClaimedBy: external.ClaimedBy,
 		LeaseExpiresAt: external.LeaseExpiresAt, ClaimToken: token, CapabilityDeclaration: declaration,
 		ToolApproval: external.ToolApproval, ToolCalls: cloneToolCalls(external.ToolCalls),
+		SideEffectMode: external.SideEffectMode, IdempotencyKey: external.IdempotencyKey, Receipt: external.Receipt, ReconcileStatus: external.ReconcileStatus,
 	}
+}
+
+type ExternalReconcileRequest struct {
+	RunID      string
+	NodeID     string
+	Outcome    string
+	Receipt    string
+	Submission ExternalSubmission
+}
+
+func (s *Service) ReconcileExternal(ctx context.Context, request ExternalReconcileRequest) (*store.RunState, error) {
+	outcome := strings.ToLower(strings.TrimSpace(request.Outcome))
+	if outcome != "applied" && outcome != "not_applied" && outcome != "unknown" {
+		return nil, fmt.Errorf("reconcile outcome must be applied, not_applied, or unknown")
+	}
+	st := store.FS{Workspace: s.Workspace}
+	release, err := acquireRunLock(st, request.RunID)
+	if err != nil {
+		return nil, err
+	}
+	state, node, external, err := loadExternalNode(st, request.RunID, request.NodeID)
+	if err != nil {
+		_ = release()
+		return nil, err
+	}
+	now := time.Now().UTC()
+	if external.SideEffectMode != "reconcile" {
+		_ = release()
+		return nil, fmt.Errorf("external node %s/%s does not require reconciliation", request.RunID, request.NodeID)
+	}
+	if external.Status == "claimed" && external.LeaseExpiresAt.After(now) {
+		_ = release()
+		return nil, fmt.Errorf("external node %s/%s still has an active claim", request.RunID, request.NodeID)
+	}
+	if external.Status != "claimed" && external.Status != "reconcile_required" {
+		_ = release()
+		return nil, fmt.Errorf("external node %s/%s cannot reconcile from status %s", request.RunID, request.NodeID, external.Status)
+	}
+	external.ReconcileStatus = outcome
+	external.Receipt = strings.TrimSpace(request.Receipt)
+	switch outcome {
+	case "unknown":
+		external.Status = "reconcile_required"
+		state.Status = store.RunWaiting
+		node.Status = store.NodeWaiting
+		state.Waiting = &store.WaitingState{NodeID: request.NodeID, Message: "external side effect state remains unknown; operator decision required", Kind: "external_reconcile"}
+		err = st.Commit(state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
+		_ = release()
+		if err != nil {
+			return nil, err
+		}
+		return state.PublicView(), nil
+	case "not_applied":
+		external.Status = "pending"
+		external.ClaimToken = ""
+		external.ClaimedBy = ""
+		external.LeaseExpiresAt = time.Time{}
+		state.Status = store.RunWaiting
+		node.Status = store.NodeWaiting
+		state.Waiting = &store.WaitingState{NodeID: request.NodeID, Message: "external executor must claim and complete this node", Kind: "external_node"}
+		err = st.Commit(state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
+		_ = release()
+		if err != nil {
+			return nil, err
+		}
+		return state.PublicView(), nil
+	case "applied":
+		if external.Receipt == "" {
+			_ = release()
+			return nil, fmt.Errorf("receipt is required when reconciliation confirms an applied side effect")
+		}
+		token, tokenErr := newClaimToken()
+		if tokenErr != nil {
+			_ = release()
+			return nil, tokenErr
+		}
+		external.Status = "claimed"
+		external.ClaimToken = token
+		external.ClaimedBy = "reconciler"
+		external.LeaseExpiresAt = now.Add(time.Minute)
+		err = st.Commit(state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
+		_ = release()
+		if err != nil {
+			return nil, err
+		}
+		sub := request.Submission
+		sub.RunID, sub.NodeID, sub.ClaimToken = request.RunID, request.NodeID, token
+		return s.submitExternal(ctx, sub, false)
+	}
+	_ = release()
+	return nil, fmt.Errorf("unreachable reconcile outcome")
 }
 
 func (s *Service) AppendExternalEvent(runID, nodeID, claimToken string, event assistant.Event) (uint64, error) {

@@ -210,3 +210,18 @@ func TestCommandDirsForDefinitionIncludesProfileAndTaktRoots(t *testing.T) {
 		t.Fatalf("command dirs %v do not include profile=%s and takt=%s", dirs, wantProfile, wantTakt)
 	}
 }
+
+func TestValidateExternalSideEffectContract(t *testing.T) {
+	valid := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "side-effect"}, Nodes: []spec.Node{{ID: "publish", Prompt: "publish", Executor: "external", SideEffect: &spec.SideEffectSpec{Mode: "reconcile"}}}}
+	if err := Validate(valid); err != nil {
+		t.Fatalf("valid reconcile side effect rejected: %v", err)
+	}
+	invalidMode := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "side-effect"}, Nodes: []spec.Node{{ID: "publish", Prompt: "publish", Executor: "external", SideEffect: &spec.SideEffectSpec{Mode: "maybe"}}}}
+	if err := Validate(invalidMode); err == nil || !strings.Contains(err.Error(), "side_effect.mode") {
+		t.Fatalf("invalid mode error = %v", err)
+	}
+	local := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "side-effect"}, Nodes: []spec.Node{{ID: "publish", Bash: "true", SideEffect: &spec.SideEffectSpec{Mode: "reconcile"}}}}
+	if err := Validate(local); err == nil || !strings.Contains(err.Error(), "executor: external") {
+		t.Fatalf("local side effect error = %v", err)
+	}
+}

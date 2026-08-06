@@ -259,3 +259,108 @@ nodes:
 		t.Fatalf("state = %#v", state)
 	}
 }
+
+func TestExternalSideEffectRequiresReconciliationBeforeExpiredClaimReplay(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	mustWriteControlTest(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+models:
+  demo:
+    provider: test
+    id: demo
+assistants:
+  worker:
+    type: mock
+`)
+	mustWriteControlTest(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: reconcile-side-effect
+defaults:
+  assistant: worker
+  model: demo
+nodes:
+  - id: publish
+    prompt: publish externally
+    executor: external
+    side_effect:
+      mode: reconcile
+`)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}, Lease: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim.SideEffectMode != "reconcile" || claim.IdempotencyKey == "" {
+		t.Fatalf("claim=%#v", claim)
+	}
+	fs := store.FS{Workspace: workspace}
+	state, err := fs.Load(started.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Nodes["publish"].External.LeaseExpiresAt = time.Now().Add(-time.Minute)
+	if err := fs.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := service.PendingExternal(started.RunID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].Status != "reconcile_required" {
+		t.Fatalf("pending=%#v", pending)
+	}
+	if _, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-2", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}}); err == nil {
+		t.Fatal("expired non-idempotent claim replayed without reconciliation")
+	}
+	state, err = fs.Load(started.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Nodes["publish"].External.Status != "reconcile_required" || state.Waiting == nil || state.Waiting.Kind != "external_reconcile" {
+		t.Fatalf("state=%#v", state.Nodes["publish"].External)
+	}
+	if _, err := service.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "unknown"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "not_applied", Receipt: "lookup:no-record"}); err != nil {
+		t.Fatal(err)
+	}
+	claim2, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-3", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}})
+	if err != nil {
+		t.Fatalf("claim after not_applied reconcile: %v", err)
+	}
+	state, err = fs.Load(started.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Nodes["publish"].External.LeaseExpiresAt = time.Now().Add(-time.Minute)
+	if err := fs.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-4", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}}); err == nil {
+		t.Fatal("second expired claim replayed without reconciliation")
+	}
+	if _, err := service.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "applied"}); err == nil {
+		t.Fatal("applied reconciliation without receipt was accepted")
+	}
+	final, err := service.ReconcileExternal(context.Background(), ExternalReconcileRequest{
+		RunID: started.RunID, NodeID: "publish", Outcome: "applied", Receipt: "remote:42",
+		Submission: ExternalSubmission{Output: "published", Structured: json.RawMessage(`{"published":true}`)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.Status != store.RunCompleted || final.Nodes["publish"].External.Receipt != "remote:42" || final.Nodes["publish"].Output != "published" {
+		t.Fatalf("reconciled final state = %#v (prior claim=%#v)", final, claim2)
+	}
+}

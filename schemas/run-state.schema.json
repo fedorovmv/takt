@@ -803,6 +803,18 @@
           "additionalProperties": {
             "type": "object"
           }
+        },
+        "side_effect_mode": {
+          "type": "string"
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "receipt": {
+          "type": "string"
+        },
+        "reconcile_status": {
+          "type": "string"
         }
       }
     },

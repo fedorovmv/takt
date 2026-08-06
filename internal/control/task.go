@@ -68,7 +68,7 @@ func (s *Service) StartTask(ctx context.Context, request TaskStartRequest) (*Tas
 	}
 	view.Status = record.Status
 	view.RunID = record.CurrentRunID
-	view.NeedsInput = record.Status == "waiting" || record.Status == "paused"
+	view.NeedsInput = record.Status == "waiting" || record.Status == "paused" || record.Status == "parked"
 	return view, nil
 }
 
@@ -84,7 +84,7 @@ func (s *Service) TaskStatus(reference string) (*TaskView, error) {
 		}
 		view := &TaskView{Reference: reference, Kind: "plan", Status: plan.Record.Status, PlanID: reference, Route: plan.Route, Plan: plan, Preview: concisePlanView(plan)}
 		view.RunID = plan.Record.CurrentRunID
-		view.NeedsInput = plan.Record.Status == "draft" || plan.Record.Status == "waiting" || plan.Record.Status == "paused"
+		view.NeedsInput = plan.Record.Status == "draft" || plan.Record.Status == "waiting" || plan.Record.Status == "paused" || plan.Record.Status == "parked"
 		return view, nil
 	}
 	summary, err := s.Summary(reference, true)
@@ -103,11 +103,18 @@ func (s *Service) RespondTask(ctx context.Context, request TaskRespondRequest) (
 	if strings.HasPrefix(reference, "plan-") {
 		switch action {
 		case "go", "continue":
+			current, loadErr := (dynamicplan.Store{Workspace: s.Workspace}).Load(reference)
+			if loadErr != nil {
+				return nil, loadErr
+			}
+			if current.Status == "parked" {
+				return nil, fmt.Errorf("plan %s is parked: provide steering with a safe alternative or stop the task", reference)
+			}
 			record, err := s.ExecutePlan(ctx, ExecutePlanRequest{PlanID: reference, Confirm: true, Detached: request.Detached})
 			if err != nil {
 				return nil, err
 			}
-			return &TaskView{Reference: reference, Kind: "plan", Status: record.Status, PlanID: reference, RunID: record.CurrentRunID, NeedsInput: record.Status == "waiting" || record.Status == "paused"}, nil
+			return &TaskView{Reference: reference, Kind: "plan", Status: record.Status, PlanID: reference, RunID: record.CurrentRunID, NeedsInput: record.Status == "waiting" || record.Status == "paused" || record.Status == "parked"}, nil
 		case "steer":
 			if strings.TrimSpace(request.Message) == "" {
 				return nil, fmt.Errorf("message is required for %s", action)
