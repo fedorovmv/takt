@@ -17,6 +17,7 @@ import (
 	"takt/internal/spec"
 	"takt/internal/workflow"
 	"takt/internal/yamlmini"
+	domainadaptersdk "takt/sdk/domainadapter"
 )
 
 const (
@@ -68,14 +69,34 @@ type Block struct {
 	Policy         spec.PolicySpec      `json:"policy,omitempty"`
 }
 
+type Dependency struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+type AdapterRequirement struct {
+	Name       string   `json:"name"`
+	Domain     string   `json:"domain"`
+	Operations []string `json:"operations,omitempty"`
+	Reconcile  []string `json:"reconcile,omitempty"`
+	Level      string   `json:"level,omitempty"` // required | preferred
+}
+
+type Requirements struct {
+	Takt     string               `json:"takt,omitempty"`
+	Adapters []AdapterRequirement `json:"adapters,omitempty"`
+}
+
 type Package struct {
-	APIVersion string                             `json:"apiVersion"`
-	Kind       string                             `json:"kind"`
-	Metadata   Metadata                           `json:"metadata"`
-	Blocks     map[string]Block                   `json:"blocks"`
-	Roles      map[string]rolecontract.Definition `json:"roles,omitempty"`
-	Templates  map[string]string                  `json:"templates,omitempty"`
-	Governance Governance                         `json:"governance,omitempty"`
+	APIVersion   string                             `json:"apiVersion"`
+	Kind         string                             `json:"kind"`
+	Metadata     Metadata                           `json:"metadata"`
+	Dependencies []Dependency                       `json:"dependencies,omitempty"`
+	Requirements Requirements                       `json:"requirements,omitempty"`
+	Blocks       map[string]Block                   `json:"blocks"`
+	Roles        map[string]rolecontract.Definition `json:"roles,omitempty"`
+	Templates    map[string]string                  `json:"templates,omitempty"`
+	Governance   Governance                         `json:"governance,omitempty"`
 }
 
 type ResolvedBlock struct {
@@ -104,11 +125,13 @@ type PackageSummary struct {
 }
 
 type Catalog struct {
-	Packages    []PackageSummary         `json:"packages"`
-	Blocks      map[string]ResolvedBlock `json:"blocks"`
-	Templates   map[string]string        `json:"templates,omitempty"`
-	Governance  Governance               `json:"governance,omitempty"`
-	Fingerprint string                   `json:"fingerprint"`
+	Packages     []PackageSummary         `json:"packages"`
+	Blocks       map[string]ResolvedBlock `json:"blocks"`
+	Templates    map[string]string        `json:"templates,omitempty"`
+	Governance   Governance               `json:"governance,omitempty"`
+	Dependencies []Dependency             `json:"dependencies,omitempty"`
+	Requirements Requirements             `json:"requirements,omitempty"`
+	Fingerprint  string                   `json:"fingerprint"`
 }
 
 func Load(paths []string) (*Catalog, error) {
@@ -141,9 +164,6 @@ func Load(paths []string) (*Catalog, error) {
 		sort.Strings(names)
 		for _, name := range names {
 			block := pkg.Blocks[name]
-			if _, exists := catalog.Blocks[name]; exists {
-				return nil, fmt.Errorf("block %q is declared by more than one trusted package", name)
-			}
 			workflowPath, err := securePackagePath(base, block.Workflow)
 			if err != nil {
 				return nil, fmt.Errorf("block package %s block %s: %w", pkg.Metadata.Name, name, err)
@@ -187,12 +207,22 @@ func Load(paths []string) (*Catalog, error) {
 				policy = mergePolicy(policy, resolvedRole.Policy)
 			}
 			policy = mergePolicy(policy, block.Policy)
-			catalog.Blocks[name] = ResolvedBlock{
+			resolvedBlock := ResolvedBlock{
 				Name: name, Package: pkg.Metadata.Name, PackageScope: pkg.Metadata.Scope,
 				WorkflowPath: workflowPath, Description: block.Description, Role: block.Role, RoleDefinition: roleDef,
 				Capabilities: unique(block.Capabilities), Integrations: unique(block.Integrations),
 				OutputPaths: unique(block.OutputPaths), OutputTypes: outputTypes, RequiredChecks: unique(append(append([]string{}, pkg.Governance.RequiredChecks...), block.RequiredChecks...)), Checks: append([]rolecontract.Check(nil), block.Checks...), Policy: policy,
 			}
+			if existing, exists := catalog.Blocks[name]; exists {
+				newRank, oldRank := scopeRank(pkg.Metadata.Scope), scopeRank(existing.PackageScope)
+				if newRank == oldRank {
+					return nil, fmt.Errorf("block %q is declared by more than one %s package", name, pkg.Metadata.Scope)
+				}
+				if newRank < oldRank {
+					continue
+				}
+			}
+			catalog.Blocks[name] = resolvedBlock
 		}
 		for name, value := range pkg.Templates {
 			key := pkg.Metadata.Name + ":" + name
@@ -200,6 +230,11 @@ func Load(paths []string) (*Catalog, error) {
 				return nil, fmt.Errorf("duplicate template %q", key)
 			}
 			catalog.Templates[key] = value
+		}
+		catalog.Dependencies = append(catalog.Dependencies, pkg.Dependencies...)
+		catalog.Requirements.Adapters = append(catalog.Requirements.Adapters, pkg.Requirements.Adapters...)
+		if catalog.Requirements.Takt == "" {
+			catalog.Requirements.Takt = pkg.Requirements.Takt
 		}
 		if err := mergeGovernance(&catalog.Governance, pkg.Governance); err != nil {
 			return nil, fmt.Errorf("merge governance from package %s: %w", pkg.Metadata.Name, err)
@@ -232,6 +267,21 @@ func Load(paths []string) (*Catalog, error) {
 	return catalog, nil
 }
 
+func scopeRank(scope string) int {
+	switch scope {
+	case "project":
+		return 4
+	case "corporate":
+		return 3
+	case "global":
+		return 2
+	case "builtin":
+		return 1
+	default:
+		return 0
+	}
+}
+
 func LoadOne(path string) (*Catalog, error) { return Load([]string{path}) }
 
 func validatePackage(pkg Package, path string) error {
@@ -244,11 +294,32 @@ func validatePackage(pkg Package, path string) error {
 	if strings.TrimSpace(pkg.Metadata.Version) == "" {
 		return fmt.Errorf("block package %s metadata.version is required", path)
 	}
-	if pkg.Metadata.Scope != "builtin" && pkg.Metadata.Scope != "corporate" && pkg.Metadata.Scope != "project" {
-		return fmt.Errorf("block package %s metadata.scope must be builtin, corporate, or project", path)
+	if pkg.Metadata.Scope != "builtin" && pkg.Metadata.Scope != "global" && pkg.Metadata.Scope != "corporate" && pkg.Metadata.Scope != "project" {
+		return fmt.Errorf("block package %s metadata.scope must be builtin, global, corporate, or project", path)
 	}
 	if len(pkg.Blocks) == 0 {
 		return fmt.Errorf("block package %s must declare blocks", path)
+	}
+	for _, dep := range pkg.Dependencies {
+		if !namePattern.MatchString(dep.Name) || strings.TrimSpace(dep.Version) == "" {
+			return fmt.Errorf("block package %s has invalid dependency", path)
+		}
+	}
+	for _, req := range pkg.Requirements.Adapters {
+		if !namePattern.MatchString(req.Name) {
+			return fmt.Errorf("block package %s has invalid adapter requirement name %q", path, req.Name)
+		}
+		if req.Domain != domainadaptersdk.DomainSCM && req.Domain != domainadaptersdk.DomainTracker && req.Domain != domainadaptersdk.DomainCI {
+			return fmt.Errorf("block package %s adapter %s has invalid domain %q", path, req.Name, req.Domain)
+		}
+		if req.Level != "" && req.Level != "required" && req.Level != "preferred" {
+			return fmt.Errorf("block package %s adapter %s level must be required or preferred", path, req.Name)
+		}
+		for _, op := range append(append([]string{}, req.Operations...), req.Reconcile...) {
+			if err := domainadaptersdk.ValidateOperation(op); err != nil {
+				return fmt.Errorf("block package %s adapter %s: %w", path, req.Name, err)
+			}
+		}
 	}
 	for name, role := range pkg.Roles {
 		if !namePattern.MatchString(name) {
@@ -401,7 +472,7 @@ func (c *Catalog) PlannerView() map[string]any {
 			"required_checks": block.RequiredChecks, "checks": block.Checks,
 		})
 	}
-	return map[string]any{"packages": c.Packages, "blocks": blocks, "templates": c.Templates, "governance": c.Governance, "fingerprint": c.Fingerprint}
+	return map[string]any{"packages": c.Packages, "blocks": blocks, "templates": c.Templates, "governance": c.Governance, "dependencies": c.Dependencies, "requirements": c.Requirements, "fingerprint": c.Fingerprint}
 }
 
 func (c *Catalog) GovernanceJSON() string {

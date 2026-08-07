@@ -14,64 +14,6 @@ import (
 
 const ProtocolV1Alpha2 = "takt-assistant/v1alpha2"
 
-type Declaration struct {
-	Protocol       string   `json:"protocol"`
-	Capabilities   []string `json:"capabilities,omitempty"`
-	EventTypes     []string `json:"event_types,omitempty"`
-	SessionEvents  bool     `json:"session_events,omitempty"`
-	ToolEvents     bool     `json:"tool_events,omitempty"`
-	ToolControl    bool     `json:"tool_control,omitempty"`
-	ArtifactEvents bool     `json:"artifact_events,omitempty"`
-	UsageEvents    bool     `json:"usage_events,omitempty"`
-}
-
-type ToolRequest struct {
-	CallID    string          `json:"call_id"`
-	Tool      string          `json:"tool"`
-	Input     json.RawMessage `json:"input,omitempty"`
-	Message   string          `json:"message,omitempty"`
-	SessionID string          `json:"session_id,omitempty"`
-}
-
-type SessionResult struct {
-	ID      string `json:"id,omitempty"`
-	Resumed bool   `json:"resumed,omitempty"`
-}
-
-type Usage struct {
-	InputTokens  int     `json:"input_tokens,omitempty"`
-	OutputTokens int     `json:"output_tokens,omitempty"`
-	Cost         float64 `json:"cost,omitempty"`
-}
-
-type Model struct {
-	Name     string         `json:"name"`
-	Provider string         `json:"provider"`
-	ID       string         `json:"id"`
-	Params   map[string]any `json:"params,omitempty"`
-}
-
-type Result struct {
-	ProtocolVersion string          `json:"protocol_version"`
-	Type            string          `json:"type"`
-	Status          string          `json:"status"`
-	Output          string          `json:"output,omitempty"`
-	Structured      json.RawMessage `json:"structured,omitempty"`
-	Session         *SessionResult  `json:"session,omitempty"`
-	ExitCode        *int            `json:"exit_code"`
-	ResolvedModel   *Model          `json:"resolved_model,omitempty"`
-	Usage           *Usage          `json:"usage,omitempty"`
-}
-
-type TranscriptRecord struct {
-	ProtocolVersion string          `json:"protocol_version"`
-	Type            string          `json:"type"`
-	Declaration     *Declaration    `json:"declaration,omitempty"`
-	Event           json.RawMessage `json:"event,omitempty"`
-	ToolRequest     *ToolRequest    `json:"tool_request,omitempty"`
-	Result          *Result         `json:"result,omitempty"`
-}
-
 type Options struct {
 	RequestedSessionID   string
 	RequireDeclaration   bool
@@ -133,10 +75,10 @@ func ValidateTranscript(r io.Reader, options Options) (Report, error) {
 			if declared || record.Declaration == nil {
 				return report, fmt.Errorf("invalid capabilities record")
 			}
-			declared = true
-			if record.Declaration.Protocol != "" && record.Declaration.Protocol != "takt-agent-events/v2" {
-				return report, fmt.Errorf("unsupported event protocol %q", record.Declaration.Protocol)
+			if err := ValidateDeclaration(*record.Declaration); err != nil {
+				return report, err
 			}
+			declared = true
 			report.Capabilities = append([]string(nil), record.Declaration.Capabilities...)
 			declaredToolControl = record.Declaration.ToolControl
 			if options.RequireToolControl && !declaredToolControl {
@@ -153,8 +95,11 @@ func ValidateTranscript(r io.Reader, options Options) (Report, error) {
 			}
 			report.Events++
 		case "tool.request":
-			if record.ToolRequest == nil || record.ToolRequest.CallID == "" || record.ToolRequest.Tool == "" {
-				return report, fmt.Errorf("tool.request requires call_id and tool")
+			if record.ToolRequest == nil {
+				return report, fmt.Errorf("tool.request requires tool_request")
+			}
+			if err := ValidateToolRequest(*record.ToolRequest); err != nil {
+				return report, err
 			}
 			if callIDs[record.ToolRequest.CallID] {
 				return report, fmt.Errorf("duplicate tool request call_id %q", record.ToolRequest.CallID)
@@ -165,28 +110,11 @@ func ValidateTranscript(r io.Reader, options Options) (Report, error) {
 				return report, fmt.Errorf("tool request without declared tool_control")
 			}
 		case "result":
-			if record.Result == nil || record.Result.ExitCode == nil {
-				return report, fmt.Errorf("terminal result requires exit_code")
+			if record.Result == nil {
+				return report, fmt.Errorf("terminal result requires result")
 			}
-			if record.Result.ProtocolVersion != ProtocolV1Alpha2 || record.Result.Type != "result" {
-				return report, fmt.Errorf("terminal result must use %s result", ProtocolV1Alpha2)
-			}
-			if record.Result.Status != "completed" && record.Result.Status != "failed" {
-				return report, fmt.Errorf("terminal result status must be completed or failed")
-			}
-			if record.Result.Status == "completed" && *record.Result.ExitCode != 0 {
-				return report, fmt.Errorf("completed result has non-zero exit_code")
-			}
-			if record.Result.Status == "failed" && *record.Result.ExitCode == 0 {
-				return report, fmt.Errorf("failed result has zero exit_code")
-			}
-			if record.Result.Usage != nil && (record.Result.Usage.InputTokens < 0 || record.Result.Usage.OutputTokens < 0 || record.Result.Usage.Cost < 0) {
-				return report, fmt.Errorf("terminal result contains negative usage")
-			}
-			if options.RequestedSessionID != "" {
-				if record.Result.Session == nil || !record.Result.Session.Resumed || record.Result.Session.ID != options.RequestedSessionID {
-					return report, fmt.Errorf("requested session %q was not resumed exactly", options.RequestedSessionID)
-				}
+			if err := ValidateResult(*record.Result, options.RequestedSessionID); err != nil {
+				return report, err
 			}
 			terminal = true
 			report.Terminal = true

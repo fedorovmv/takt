@@ -267,6 +267,15 @@ func (s *Service) prepareStart(request StartRequest) (*preparedStart, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resolved != nil {
+		catalog, catalogErr := catalogForResolved(resolved)
+		if catalogErr != nil {
+			return nil, catalogErr
+		}
+		if _, preflightErr := preflightCatalogAdapters(context.Background(), catalog, cfg); preflightErr != nil {
+			return nil, preflightErr
+		}
+	}
 	runner := runtime.New(wf, cfg, wfPath, cfgPath, s.Workspace)
 	if err := workflow.ValidateReferences(wf, cfg, runner.Commands); err != nil {
 		return nil, err

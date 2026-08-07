@@ -1,0 +1,18 @@
+apiVersion: takt/v1alpha1
+kind: BlockPackage
+metadata:
+  name: portable-review
+  version: 1.0.0
+  scope: project
+dependencies: []
+requirements:
+  takt: ">=0.1.42"
+  adapters:
+    - name: scm
+      domain: scm
+      operations: [change.get]
+      level: preferred
+blocks:
+  portable-review:
+    workflow: workflow.yaml
+    output_paths: [summary]

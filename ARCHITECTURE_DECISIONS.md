@@ -426,3 +426,21 @@ Capability discovery выполняется до вызова. Для `side_effe
 **Статус:** принято.
 
 `sdk/agentadapter` предоставляет product-neutral conformance kit для `takt-assistant/v1alpha2`: protocol/event/result/session invariants проверяются одинаково для Codex, Oh My Pi, Qwen CLI и других wrappers. Наличие transcript-conformance не повышает adapter до `tool_control`, strict completion gate или reliable resume; такие capabilities заявляются только после product-specific live/fixture проверки.
+
+## ADR-066. Установленный BlockPackage остаётся тем же trusted catalog, а доставка фиксируется lock-файлом
+
+**Статус:** принято.
+
+Package distribution не вводит новый workflow/package runtime. `takt package install|update|sync` копирует целый `BlockPackage`, проверяет manifest, dependency/requirements, source policy, checksum и при необходимости Ed25519 signature, затем фиксирует точную поставку в `takt.lock.json`. `profile.Resolve` подключает locked package manifests к существующему `blockcatalog`.
+
+Для конфликтующего имени блока применяется `project > corporate > global > builtin`. Governance всех уровней при этом продолжает объединяться fail-closed: precedence выбирает реализацию, но не является способом ослабить верхнеуровневые ограничения.
+
+**Причина.** Пользователю нужна переносимая и воспроизводимая установка без второго DSL и без ручного списка `block_packages`. Lock отделяет желаемый источник от реально проверенного содержимого и позволяет восстановить Git-пакет по commit, обнаружить drift local source и выполнить capability preflight до Run.
+
+## ADR-067. Package trust policy проверяет источник и содержимое до активации
+
+**Статус:** принято.
+
+Project/global `PackagePolicy` могут ограничивать префиксы local/Git sources, требовать подпись для выбранных scopes и задавать trusted Ed25519 public keys. Digest строится по всему дереву пакета, кроме `.git` и envelope `package.sig`; lock хранит SHA-256, source commit и факт проверки подписи. Установка сначала полностью проверяет staged content и dependency graph, только затем заменяет установленную версию и lock entry.
+
+**Причина.** Корпоративный package может нести workflow, scripts, skills и MCP-конфигурацию, то есть исполняемый trusted content. Проверка только имени/версии создаёт ложное чувство воспроизводимости; checksum/source/signature policy делает изменение поставки наблюдаемым и fail-closed.

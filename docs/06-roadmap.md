@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.41-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.42-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -77,17 +77,13 @@ Dynamic Plan хранит внутренний `EvidenceManifest` с baseline pr
 
 Готовые production GitHub/GitLab/корпоративные adapters остаются отдельными поставками поверх SDK; ядро содержит транспорт и контракты, а не credentials/provider logic.
 
-## Приоритет 1. Полная доставка пакетов
+## Выполнено в v0.1.42-alpha. Portable Package Distribution
 
-- области `global|project|corporate` с явным приоритетом;
-- `install|update|uninstall|doctor`;
-- Git/local sources;
-- version pin и lock-файл;
-- зависимости и проверка совместимости;
-- checksum, подпись и политика источников;
-- команды, scripts, skills, MCP и adapter requirements в одном пакете.
+Существующий `BlockPackage` получил переносимую доставку без нового runtime: `package install|update|uninstall|list|sync|doctor|sign`, local/Git sources, scopes `global|corporate|project`, precedence `project > corporate > global > builtin`, version/dependency constraints и reproducible lock с Git commit + SHA-256. `PackagePolicy` ограничивает источники и может требовать Ed25519 signature. Locked packages автоматически подключаются к profile catalog.
 
-## Приоритет 2. Multi-repo dynamic workflow
+Пакет также объявляет Takt/adapter requirements. Required capabilities проверяются до Run; preferred availability передаётся semantic Router/Planner. Conformance kit `v1alpha2` получил публичные envelopes/validators, общие fixtures и реальное использование fake wrapper contract. Полный срез: `56-portable-package-distribution-v0.1.42.md`.
+
+## Приоритет 1. Multi-repo dynamic workflow
 
 - определение затронутых репозиториев;
 - dependency graph;
@@ -95,7 +91,7 @@ Dynamic Plan хранит внутренний `EvidenceManifest` с baseline pr
 - несколько change request через нейтральный SCM adapter;
 - интеграционная проверка и общий порядок слияния.
 
-## Приоритет 3. Усиление runtime и безопасность локального исполнения
+## Приоритет 2. Усиление runtime и безопасность локального исполнения
 
 - раннее завершение `one_success` и `all_success` с отменой ненужных детей;
 - нормализованные diagnostics и fingerprints ошибок;

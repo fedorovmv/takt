@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"takt/internal/packagedist"
 	"takt/internal/yamlmini"
 )
 
@@ -127,6 +128,11 @@ func Resolve(selector, workspace string) (*Resolved, error) {
 			if err != nil {
 				return nil, err
 			}
+			installed, err := packagedist.InstalledManifestPaths(workspace)
+			if err != nil {
+				return nil, err
+			}
+			resolved.BlockPackagePaths = append(resolved.BlockPackagePaths, installed...)
 			return resolved.SelectWorkflow(workflowName)
 		}
 	}

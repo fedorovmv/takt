@@ -563,11 +563,23 @@ func TestEvidenceRecheckReplacesFailedAcceptanceWithPassed(t *testing.T) {
 	if item.Status != "passed" || item.CandidateSHA != "sha256:b" {
 		t.Fatalf("rechecked=%#v", item)
 	}
+	finalizeEvidence(record, "sha256:b")
+	if record.Evidence.Verdict == nil || record.Evidence.Verdict.Status != evidence.VerdictPass || record.Evidence.Verdict.CandidateSHA != "sha256:b" {
+		t.Fatalf("final verdict=%#v", record.Evidence.Verdict)
+	}
 }
 
-func TestBoundaryViolationUsesParkingModel(t *testing.T) {
-	record := &dynamicplan.Record{Status: "running"}
-	parkPlan(record, evidence.FailureBoundary, "outside allowed scope", "policy", "adjust scope", false, "repeat mutation")
+func TestBoundaryViolationUsesParkingModelThroughDenyReason(t *testing.T) {
+	role := rolecontract.Definition{Paths: rolecontract.PathScope{Allowed: []string{"src/**"}}}
+	catalog := &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{"implement": {Name: "implement", Role: "implementer", RoleDefinition: &role}}}
+	record := &dynamicplan.Record{Status: "running", Results: map[string]string{"implement": `{"changed_files":["outside/file.go"]}`}}
+	outcome, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "implement", Uses: "implement"}}, catalog, nil, "sha256:test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.DenyReason == "" || !applyControlDeny(record, outcome) {
+		t.Fatalf("outcome=%#v", outcome)
+	}
 	if record.Status != "parked" || record.Failure == nil || record.Failure.Code != evidence.FailureBoundary || record.ParkedAt == nil {
 		t.Fatalf("record=%#v", record)
 	}

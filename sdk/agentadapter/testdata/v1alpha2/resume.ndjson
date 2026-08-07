@@ -1,0 +1,2 @@
+{"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","capabilities":["skills"]}}
+{"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha2","type":"result","status":"completed","session":{"id":"session-42","resumed":true},"exit_code":0}}

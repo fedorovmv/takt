@@ -62,7 +62,20 @@ takt run code --workspace . --input docs/plan.md --json
     mode: reconcile
 ```
 
-Конкретный process или MCP server задаётся в `config.yaml`. Перед authoring проверь `takt adapter doctor <name> --workspace .`: обязательная operation должна присутствовать в capability declaration, а mutating `reconcile` — также в reconcile capabilities. После `unknown` не создавай ручной повтор той же операции: runtime обязан сначала сверить внешний факт с тем же idempotency key. Для примера используй `examples/adapter-platform/`.
+Конкретный process или MCP server задаётся в `config.yaml`. Перед authoring проверь `takt adapter doctor <name> --workspace .`: обязательная operation должна присутствовать в capability declaration, а операция с `side_effect.mode: reconcile` — также в reconcile capabilities. После `unknown` не создавай ручной повтор той же операции: runtime обязан сначала сверить внешний факт с тем же idempotency key. Для примера используй `examples/adapter-platform/`.
+
+## Переносимые пакеты BlockPackage
+
+Для повторно используемых project/corporate/global процессов предпочитай `takt package` ручному редактированию `profile.block_packages`:
+
+```bash
+takt package install ./package --scope project --workspace .
+takt package install git+ssh://git.corp/takt/platform-code.git --scope corporate --ref v2.3.1 --workspace .
+takt package doctor --workspace .
+takt package sync --workspace .
+```
+
+Locked package автоматически подключается к каталогу профиля. При совпадении блоков действует `project > corporate > global > builtin`, но governance всех уровней объединяется fail-closed. Перед запуском учитывай `dependencies`, `requirements.takt` и adapter requirements: required capability должна пройти preflight, preferred может быть исключена Router/Planner. Для корпоративной поставки проверь `.takt/package-policy.yaml`; не обходи source allowlist, checksum или обязательную Ed25519 signature ручным копированием файлов.
 
 ## Локальный MCP и daemon
 
@@ -158,7 +171,7 @@ takt block validate path/to/package.yaml
 
 ## Критичные правила
 
-- Узел определяет ровно одно действие: `command`, `prompt`, `bash`, `script`, `approval`, `loop_group`, `subworkflow`, `foreach` или `workflow`.
+- Узел определяет ровно одно действие: `command`, `prompt`, `bash`, `script`, `adapter`, `approval`, `loop_group`, `subworkflow`, `foreach` или `workflow`.
 - Приоритет assistant/model: узел → frontmatter Markdown-команды → `workflow.defaults`.
 - Имена моделей в workflow ссылаются на aliases из `config.models`, а не напрямую на provider ID.
 - `session: resume` требует реального сохранения Session ID; не подменяй неуспешный resume на fresh.

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/package-signature.schema.json",
+  "title": "Takt package signature",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "key_id",
+    "algorithm",
+    "digest",
+    "signature"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "takt/v1alpha1"
+    },
+    "kind": {
+      "const": "PackageSignature"
+    },
+    "key_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "algorithm": {
+      "const": "ed25519"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

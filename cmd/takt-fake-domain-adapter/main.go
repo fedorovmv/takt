@@ -146,7 +146,7 @@ func serveMCP(domain string) {
 		}
 		switch method {
 		case "initialize":
-			rpc(id, map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "takt-fake-domain-adapter", "version": "0.1.41-alpha"}})
+			rpc(id, map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "takt-fake-domain-adapter", "version": "0.1.42-alpha"}})
 		case "tools/list":
 			var tools []map[string]any
 			for _, op := range capabilities(domain) {

@@ -71,3 +71,5 @@ func SupportsReconcile(value Declaration, operation string) bool {
 	}
 	return false
 }
+
+func CoreOperations(domain string) []string { return sdk.CoreOperations(domain) }

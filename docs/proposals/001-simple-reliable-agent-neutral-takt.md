@@ -575,3 +575,11 @@ P3 Adapter Platform реализует следующий слой перено�
 - пять пользовательских `takt.task.*` MCP tools не расширяются.
 
 Следующий приоритет — package distribution, чтобы workflow, roles, skills, scripts и adapter requirements устанавливались и фиксировались одним переносимым пакетом.
+
+## 21. Реализация в v0.1.42-alpha
+
+Portable Package Distribution завершает переносимость trusted process layer без нового runtime. Существующий `BlockPackage` устанавливается из local/Git source в `global|corporate|project`, фиксируется exact lock по source/ref/commit/content SHA-256 и автоматически подключается к профилю. При конфликте block implementation действует `project > corporate > global > builtin`, но governance всех уровней объединяется fail-closed.
+
+Package manifest объявляет dependencies, совместимость с Takt и required/preferred SCM/tracker/CI capabilities. Required adapter requirement проверяется до Run; preferred availability попадает в Task Router/Planner и может быть исключена из плана. Source policy и Ed25519 signature позволяют корпоративной поставке контролировать происхождение workflow/scripts/skills/MCP content.
+
+Agent Adapter SDK одновременно доведён до фактически переиспользуемого контракта: public envelopes/validators, общие fixtures и проверка реального repository wrapper через тот же conformance kit. Это не заменяет host-specific live tests и отдельно не доказывает OS process exit status.

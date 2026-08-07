@@ -1,0 +1,3 @@
+{"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2"}}
+{"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha2","type":"result","status":"completed","exit_code":0}}
+{"protocol_version":"takt-assistant/v1alpha2","type":"event","event":{"type":"message"}}

@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/package-lock.schema.json",
+  "title": "Takt package lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "packages"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "takt/v1alpha1"
+    },
+    "kind": {
+      "const": "PackageLock"
+    },
+    "packages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/package"
+      }
+    }
+  },
+  "$defs": {
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "scope",
+        "source",
+        "checksum",
+        "installed_at"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "enum": [
+            "global",
+            "corporate",
+            "project"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "checksum": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "signature_key_id": {
+          "type": "string"
+        },
+        "signature_verified": {
+          "type": "boolean"
+        },
+        "installed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "location"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "local",
+            "git"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

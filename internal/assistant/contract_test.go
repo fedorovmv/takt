@@ -15,6 +15,7 @@ import (
 
 	"takt/internal/execution"
 	"takt/internal/spec"
+	agentadaptersdk "takt/sdk/agentadapter"
 )
 
 var (
@@ -83,6 +84,12 @@ func protocolProcess(caseName string, extra ...string) Process {
 	}}
 }
 
+func protocolProcessV2(caseName string, extra ...string) Process {
+	argv := []string{fakeAssistantBinary, "--case", caseName}
+	argv = append(argv, extra...)
+	return Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: argv, MaxOutputBytes: 32 * 1024}}
+}
+
 func protocolRequest(workspace string) Request {
 	return Request{
 		RunID:       "run-contract",
@@ -95,6 +102,21 @@ func protocolRequest(workspace string) Request {
 		SessionMode: "fresh",
 		NativeHooks: json.RawMessage(`{"post_tool_use":[{"matcher":"Write"}]}`),
 		Metadata:    map[string]string{"suite": "contract"},
+	}
+}
+
+func TestFakeAssistantV1Alpha2UsesPublicConformanceKit(t *testing.T) {
+	p := protocolProcessV2("success")
+	result, err := p.Run(context.Background(), protocolRequest(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := agentadaptersdk.ValidateTranscript(strings.NewReader(result.Stdout), agentadaptersdk.Options{RequireDeclaration: true, RequireToolControl: true, RequiredCapabilities: []string{"skills"}})
+	if err != nil {
+		t.Fatalf("public conformance kit rejected repository wrapper: %v\n%s", err, result.Stdout)
+	}
+	if !report.Terminal || report.Records != 2 {
+		t.Fatalf("unexpected conformance report: %+v", report)
 	}
 }
 

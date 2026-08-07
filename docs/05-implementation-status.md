@@ -129,6 +129,17 @@
 - `sdk/agentadapter` conformance kit для внешних coding-agent wrappers;
 - CLI `takt adapter list|describe|doctor`, fake domain adapter и provider-neutral E2E.
 
+### Portable Package Distribution v0.1.42
+
+- `takt package install|update|uninstall|list|sync|doctor|sign` поверх прежнего `BlockPackage`;
+- local/Git sources, exact Git commit + content SHA-256 в lock;
+- области `global|corporate|project` и precedence `project > corporate > global > builtin` при fail-closed governance;
+- dependencies, `requirements.takt` и adapter requirements `required|preferred`;
+- ранний adapter capability preflight для package requirements до запуска Run и передача preferred availability Router/Planner;
+- `PackagePolicy` с allowlist источников, trusted Ed25519 keys и обязательной подписью для выбранных scopes;
+- public `sdk/agentadapter` envelopes/validators, shared fixtures и conformance contract на реальном fake wrapper;
+- schemas lock/policy/signature и сквозной package distribution contract.
+
 ### Профиль code 0.15.0
 
 - встроенный пакет `code-core` с девятью атомарными блоками Dynamic Takt, включая baseline и independent test-design;
@@ -167,6 +178,7 @@
 - `notify list|ack|test|dispatch` и `host begin|confirm|status|find|guard-tool|guard-completion|release`;
 - `validate --warnings-as-errors`; `run --daemon`; `mcp --daemon`; `daemon start|status|stop|serve`;
 - `worktree list`, `worktree remove`, `worktree prune`;
+- `package install|update|uninstall|list|sync|doctor|sign` и `adapter list|describe|doctor`;
 - `workflow list`, `workflow describe`;
 - `artifacts` с фильтрацией по узлу/типу и рекурсивным обходом child Runs;
 - единый JSON success/error envelope.
@@ -196,4 +208,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief, реакции `deny|repair|warn`, EvidenceManifest, baseline classification, parking и external side-effect reconciliation реализованы к `v0.1.40-alpha`; Adapter Platform и conformance kit — к `v0.1.41-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — полная доставка пакетов; затем multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark.
+Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief, реакции `deny|repair|warn`, EvidenceManifest, baseline classification, parking и external side-effect reconciliation реализованы к `v0.1.40-alpha`; Adapter Platform и conformance kit — к `v0.1.41-alpha`, Portable Package Distribution — к `v0.1.42-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — multi-repo orchestration; затем runtime/security hardening и предметный Route DSL benchmark.

@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.41-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.42-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -166,7 +166,7 @@ side_effect:
 - `not_applied` разрешает один безопасный повтор с тем же ключом;
 - `unknown` сохраняет неопределённое состояние и запрещает blind retry.
 
-Для внешнего worker сверка выполняется через `takt.node.reconcile`. Для доменного adapter runtime вызывает его `Reconcile` автоматически; capability `reconcile` проверяется **до** mutating-вызова. Состояние ключа, receipt и reconcile outcome сохраняется durable в Run state. YAML-схема находится в `schemas/workflow.schema.json`, сохранённое состояние — в `schemas/run-state.schema.json`.
+Для внешнего worker сверка выполняется через `takt.node.reconcile`. Для доменного adapter runtime вызывает его `Reconcile` автоматически; при `side_effect.mode: reconcile` соответствующая capability проверяется **до первого вызова операции**. Состояние ключа, receipt и reconcile outcome сохраняется durable в Run state. YAML-схема находится в `schemas/workflow.schema.json`, сохранённое состояние — в `schemas/run-state.schema.json`.
 
 ### Pi assistant
 
@@ -213,13 +213,19 @@ Takt передаёт выбранную модель как `<provider>/<id>`, 
 
 ### Доверенные пакеты блоков
 
-Профиль может объявить `block_packages`: список локальных `takt/v1alpha1 BlockPackage`. Каждый пакет содержит уникальные блоки с относительным workflow path, capabilities, integrations, `output_paths`, required checks и policy, а также templates и governance. Governance объединяет required blocks/checks, allowed integrations, branch rules, change-request template и пределы `max_child_runs|max_parallel|max_iterations|max_tokens`.
+Профиль может объявить `block_packages`: список локальных `takt/v1alpha1 BlockPackage`. Начиная с `v0.1.42-alpha`, те же пакеты можно устанавливать через `takt package`; locked packages подключаются к профилю автоматически и не требуют ручного изменения `block_packages`. Каждый пакет содержит блоки с относительным workflow path, capabilities, integrations, `output_paths`, checks/policy, templates, roles и governance.
 
-Начиная с v0.1.39-alpha пакет также может объявлять внутренние `roles`. Блок связывается с ролью и получает bounded `TaskBrief`, context recipe, `expected|allowed|protected|forbidden` scope и `checks` с `required|preferred` + `deny|repair|warn`. Эти роли не являются глобальными агентами кодинг-хоста. Машиночитаемые схемы: `schemas/block-package.schema.json` и `schemas/task-brief.schema.json`.
+Устанавливаемые scope: `global`, `corporate`, `project`. При совпадении имени блока действует `project > corporate > global > builtin`; governance всех пакетов по-прежнему объединяется fail-closed. Global content хранится в `~/.takt/packages/global`, project/corporate — в `<workspace>/.takt/packages/<scope>`.
 
-Каталог загружается до планирования. Workflow блока проходит обычный Load/Validate, обязан иметь один публичный terminal output и не может запускать governed child Run. Каждый `output_path` обязан существовать в terminal `output_format`; источник `map` должен точно совпасть с объявленным путём типа `array`. Общий fingerprint манифестов и workflow сохраняется в плане и проверяется до execute/replan/promote.
+Пакет может объявить `dependencies` с version constraint и `requirements.takt`, а также `requirements.adapters` с именем/domain, обязательными operations, reconcile capabilities и уровнем `required|preferred`. Required adapter requirements проверяются до Run; preferred capability передаётся Task Router/Planner как недоступная возможность и может быть исключена из плана без позднего падения. Автоматическая установка зависимостей в `v0.1.42` не выполняется: dependency graph проверяется до install/update/uninstall.
 
-CLI: `takt block list|describe|validate`. MCP: `takt.block.list|describe`. Schema: `schemas/block-package.schema.json`.
+Local/Git sources фиксируются в `.takt/takt.lock.json` (global — `~/.takt/takt.lock.json`). Lock хранит точную версию, source/ref, Git commit, SHA-256 содержимого и результат проверки подписи. Перед автоматическим подключением locked packages к профилю integrity/policy проверяются повторно; drift установленного дерева fail-closed отклоняет запуск до `package doctor|sync`. `takt package sync` восстанавливает Git content по commit; local source обязан воспроизводить locked version/checksum. Опциональный `PackagePolicy` в `.takt/package-policy.yaml`/`~/.takt/package-policy.yaml` ограничивает source prefixes и может требовать Ed25519 package signature для выбранных scopes.
+
+Начиная с v0.1.39-alpha пакет также может объявлять внутренние `roles`. Блок связывается с ролью и получает bounded `TaskBrief`, context recipe, `expected|allowed|protected|forbidden` scope и `checks` с `required|preferred` + `deny|repair|warn`. Эти роли не являются глобальными агентами кодинг-хоста. Машиночитаемые схемы: `schemas/block-package.schema.json`, `schemas/task-brief.schema.json`, `schemas/package-lock.schema.json`, `schemas/package-policy.schema.json`, `schemas/package-signature.schema.json`.
+
+Каталог загружается до планирования. Workflow блока проходит обычный Load/Validate, обязан иметь один публичный terminal output и не может запускать governed child Run. Каждый `output_path` обязан существовать в terminal `output_format`; источник `map` должен точно совпасть с объявленным путём типа `array`. Fingerprint манифеста и транзитивного исполняемого содержимого сохраняется в плане и проверяется до execute/replan/promote.
+
+CLI пакетов: `takt package install|update|uninstall|list|sync|doctor|sign`. CLI каталога: `takt block list|describe|validate`. MCP для authoring сохраняет `takt.block.list|describe`; package mutation намеренно остаётся операторской CLI-операцией и не добавляет новые public agent tools.
 
 ## 4. Markdown-команды
 

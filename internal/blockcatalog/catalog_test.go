@@ -280,7 +280,7 @@ metadata:
   name: block
 nodes:
   - id: result
-    bash: echo '{"summary":"ok"}'
+    prompt: return ok
     output_format:
       type: object
       properties:
@@ -313,4 +313,129 @@ func mustWriteCatalog(t *testing.T, path, value string) {
 	if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestPackageScopePrecedenceAndGovernanceRemainFailClosed(t *testing.T) {
+	root := t.TempDir()
+	makePackage := func(scope, marker, denied string) string {
+		t.Helper()
+		dir := filepath.Join(root, scope)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		mustWriteCatalog(t, filepath.Join(dir, "block.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: shared
+nodes:
+  - id: result
+    prompt: return `+marker+`
+    output_format:
+      type: object
+      properties:
+        summary:
+          type: string
+      required: [summary]
+`)
+		pkg := `apiVersion: takt/v1alpha1
+kind: BlockPackage
+metadata:
+  name: ` + scope + `
+  version: 1.0.0
+  scope: ` + scope + `
+blocks:
+  shared:
+    workflow: block.yaml
+    output_paths: [summary]
+governance:
+  policy:
+    denied_tools: [` + denied + `]
+`
+		path := filepath.Join(dir, "package.yaml")
+		mustWriteCatalog(t, path, pkg)
+		return path
+	}
+	global := makePackage("global", "global", "global-deny")
+	corporate := makePackage("corporate", "corporate", "corporate-deny")
+	project := makePackage("project", "project", "project-deny")
+	catalog, err := blockcatalog.Load([]string{project, global, corporate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, ok := catalog.Block("shared")
+	if !ok || !strings.Contains(block.WorkflowPath, string(filepath.Separator)+"project"+string(filepath.Separator)) {
+		t.Fatalf("project block did not win precedence: %#v", block)
+	}
+	for _, want := range []string{"global-deny", "corporate-deny", "project-deny"} {
+		found := false
+		for _, got := range catalog.Governance.Policy.DeniedTools {
+			if got == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("governance lost %q: %#v", want, catalog.Governance)
+		}
+	}
+}
+
+func TestPackageAdapterRequirementsAreValidated(t *testing.T) {
+	root := t.TempDir()
+	mustWriteCatalog(t, filepath.Join(root, "block.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: block
+nodes:
+  - id: result
+    prompt: return ok
+    output_format:
+      type: object
+      properties:
+        summary:
+          type: string
+      required: [summary]
+`)
+	path := filepath.Join(root, "package.yaml")
+	mustWriteCatalog(t, path, `apiVersion: takt/v1alpha1
+kind: BlockPackage
+metadata:
+  name: requirements
+  version: 1.0.0
+  scope: project
+blocks:
+  inspect:
+    workflow: block.yaml
+    output_paths: [summary]
+requirements:
+  takt: ">=0.1.40"
+  adapters:
+    - name: scm
+      domain: scm
+      operations: [change.create]
+      reconcile: [change.create]
+      level: required
+`)
+	pkg, err := blockcatalog.LoadOne(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkg.Requirements.Adapters) != 1 {
+		t.Fatalf("requirements=%#v", pkg.Requirements)
+	}
+	if got := pkg.Requirements.Adapters[0]; got.Name != "scm" || got.Domain != "scm" || len(got.Operations) != 1 || got.Level != "required" {
+		t.Fatalf("requirements=%#v", pkg.Requirements)
+	}
+	mustWriteCatalog(t, path, strings.ReplaceAll(string(mustReadCatalogForTest(t, path)), "change.create", "Change.Create"))
+	if _, err := blockcatalog.LoadOne(path); err == nil {
+		t.Fatal("expected invalid adapter operation")
+	}
+}
+
+func mustReadCatalogForTest(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

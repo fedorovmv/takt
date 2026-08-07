@@ -192,7 +192,7 @@ func (m *MCP) start(ctx context.Context) (*mcpSession, error) {
 		cancel()
 		return nil, err
 	}
-	if _, err := session.request("initialize", map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "takt", "version": "0.1.41-alpha"}}); err != nil {
+	if _, err := session.request("initialize", map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "takt", "version": "0.1.42-alpha"}}); err != nil {
 		session.close()
 		return nil, err
 	}

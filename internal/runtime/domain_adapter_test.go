@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"takt/internal/domainadapter"
 	"takt/internal/spec"
@@ -107,4 +108,125 @@ func TestDomainAdapterUnknownReconcileBlocksRetry(t *testing.T) {
 	if state.Nodes["ci"].ErrorCode != "external_state_unknown" {
 		t.Fatalf("node=%#v", state.Nodes["ci"])
 	}
+}
+
+func TestDomainAdapterNodeHonorsPauseAtNodeBoundary(t *testing.T) {
+	dir := t.TempDir()
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	adapter := &fakeDomainAdapter{declaration: domainadapter.Declaration{APIVersion: domainadapter.ProtocolV1Alpha1, Kind: "AdapterCapabilities", Domain: "tracker", Capabilities: []string{"item.get", "item.comment"}}}
+	adapter.invoke = domainadapter.Result{Status: "completed", Output: json.RawMessage(`{"ok":true}`)}
+	resolver := &blockingDomainResolver{adapter: adapter, started: started, release: release}
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "adapter-pause"}, Nodes: []spec.Node{
+		{ID: "first", Adapter: &spec.AdapterCallSpec{Name: "tracker", Operation: "item.get", Input: `{}`}},
+		{ID: "second", DependsOn: []string{"first"}, Adapter: &spec.AdapterCallSpec{Name: "tracker", Operation: "item.comment", Input: `{}`}},
+	}}
+	r := New(wf, &spec.Config{APIVersion: "takt/v1alpha1", Kind: "Config"}, "<test>", "<test>", dir)
+	r.Adapters = resolver
+	runID := "adapter-pause"
+	type result struct {
+		state *store.RunState
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		state, err := r.StartWithOptions(context.Background(), "", StartOptions{RunID: runID})
+		done <- result{state, err}
+	}()
+	<-started
+	if err := (store.FS{Workspace: dir}).RequestPause(runID); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	out := <-done
+	if !errors.Is(out.err, ErrPaused) || out.state.Status != store.RunPaused {
+		t.Fatalf("expected paused run: state=%+v err=%v", out.state, out.err)
+	}
+	if adapter.invokes != 1 || out.state.Nodes["second"].Status != store.NodePending {
+		t.Fatalf("pause allowed next adapter node: invokes=%d second=%+v", adapter.invokes, out.state.Nodes["second"])
+	}
+}
+
+func TestDomainAdapterNodeHonorsCancellationWhileInvoking(t *testing.T) {
+	dir := t.TempDir()
+	started := make(chan struct{}, 1)
+	adapter := &cancelDomainAdapter{started: started}
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "adapter-cancel"}, Nodes: []spec.Node{{ID: "call", Adapter: &spec.AdapterCallSpec{Name: "tracker", Operation: "item.get", Input: `{}`}}}}
+	r := New(wf, &spec.Config{APIVersion: "takt/v1alpha1", Kind: "Config"}, "<test>", "<test>", dir)
+	r.Adapters = singleDomainResolver{adapter: adapter}
+	runID := "adapter-cancel"
+	type result struct {
+		state *store.RunState
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		state, err := r.StartWithOptions(context.Background(), "", StartOptions{RunID: runID})
+		done <- result{state, err}
+	}()
+	<-started
+	if err := (store.FS{Workspace: dir}).RequestCancel(runID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case out := <-done:
+		if out.state == nil || out.state.Status != store.RunCancelled || !errors.Is(out.err, context.Canceled) {
+			t.Fatalf("expected cancelled adapter run: state=%+v err=%v", out.state, out.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("adapter invocation did not observe cancellation")
+	}
+}
+
+type blockingDomainResolver struct {
+	adapter *fakeDomainAdapter
+	started chan struct{}
+	release chan struct{}
+}
+
+func (r *blockingDomainResolver) Resolve(string) (domainadapter.Adapter, error) {
+	return &blockingDomainAdapter{base: r.adapter, started: r.started, release: r.release}, nil
+}
+
+type blockingDomainAdapter struct {
+	base    *fakeDomainAdapter
+	started chan struct{}
+	release chan struct{}
+}
+
+func (a *blockingDomainAdapter) Describe(ctx context.Context) (domainadapter.Declaration, error) {
+	return a.base.Describe(ctx)
+}
+func (a *blockingDomainAdapter) Invoke(ctx context.Context, req domainadapter.InvokeRequest) (domainadapter.Result, error) {
+	a.base.invokes++
+	if a.base.invokes == 1 {
+		a.started <- struct{}{}
+		select {
+		case <-a.release:
+		case <-ctx.Done():
+			return domainadapter.Result{}, ctx.Err()
+		}
+	}
+	return a.base.invoke, nil
+}
+func (a *blockingDomainAdapter) Reconcile(ctx context.Context, req domainadapter.ReconcileRequest) (domainadapter.ReconcileResult, error) {
+	return a.base.Reconcile(ctx, req)
+}
+
+type singleDomainResolver struct{ adapter domainadapter.Adapter }
+
+func (r singleDomainResolver) Resolve(string) (domainadapter.Adapter, error) { return r.adapter, nil }
+
+type cancelDomainAdapter struct{ started chan struct{} }
+
+func (a *cancelDomainAdapter) Describe(context.Context) (domainadapter.Declaration, error) {
+	return domainadapter.Declaration{APIVersion: domainadapter.ProtocolV1Alpha1, Kind: "AdapterCapabilities", Domain: "tracker", Capabilities: []string{"item.get"}}, nil
+}
+func (a *cancelDomainAdapter) Invoke(ctx context.Context, _ domainadapter.InvokeRequest) (domainadapter.Result, error) {
+	a.started <- struct{}{}
+	<-ctx.Done()
+	return domainadapter.Result{}, ctx.Err()
+}
+func (a *cancelDomainAdapter) Reconcile(context.Context, domainadapter.ReconcileRequest) (domainadapter.ReconcileResult, error) {
+	return domainadapter.ReconcileResult{}, errors.New("unexpected reconcile")
 }

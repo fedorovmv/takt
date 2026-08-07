@@ -64,6 +64,14 @@ func TestMCPTransportDiscoversMappedCapabilitiesAndCallsTool(t *testing.T) {
 	}
 }
 
+func TestProcessTransportEnforcesMaxOutputBytes(t *testing.T) {
+	argv := []string{os.Args[0], "-test.run=TestDomainAdapterHelper"}
+	adapter := &Process{Spec: spec.DomainAdapterSpec{Domain: "scm", Transport: "process", Argv: argv, Env: map[string]string{"TAKT_DOMAIN_HELPER": "process-overflow"}, MaxOutputBytes: 128}}
+	if _, err := adapter.Describe(context.Background()); err == nil || !strings.Contains(err.Error(), "output exceeds") {
+		t.Fatalf("expected max_output_bytes error, got %v", err)
+	}
+}
+
 func TestDomainAdapterHelper(t *testing.T) {
 	mode := os.Getenv("TAKT_DOMAIN_HELPER")
 	if mode == "" {
@@ -76,6 +84,10 @@ func TestDomainAdapterHelper(t *testing.T) {
 	if mode == "mcp" {
 		helperMCP()
 		return
+	}
+	if mode == "process-overflow" {
+		_, _ = os.Stdout.Write([]byte(strings.Repeat("x", 1024)))
+		os.Exit(0)
 	}
 	os.Exit(2)
 }

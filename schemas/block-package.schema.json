@@ -37,6 +37,7 @@
         "scope": {
           "enum": [
             "builtin",
+            "global",
             "corporate",
             "project"
           ]
@@ -74,6 +75,16 @@
     },
     "governance": {
       "$ref": "#/$defs/governance"
+    },
+    "dependencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/dependency"
+      }
+    },
+    "requirements": {
+      "$ref": "#/$defs/requirements"
     }
   },
   "$defs": {
@@ -293,6 +304,75 @@
             "repair",
             "warn"
           ]
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,62}$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact, >=, ^, or * package version constraint."
+        }
+      }
+    },
+    "adapterRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "domain"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,62}$"
+        },
+        "domain": {
+          "enum": [
+            "scm",
+            "tracker",
+            "ci"
+          ]
+        },
+        "operations": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "reconcile": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "level": {
+          "enum": [
+            "required",
+            "preferred"
+          ]
+        }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "takt": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact, >=, ^, or * Takt compatibility constraint."
+        },
+        "adapters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/adapterRequirement"
+          }
         }
       }
     }

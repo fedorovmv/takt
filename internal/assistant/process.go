@@ -270,8 +270,11 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 		_ = cmd.Wait()
 		return Result{Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1, Truncated: rawOut.Truncated() || rawErr.Truncated()}, &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "assistant process v1alpha2 stream", Err: err}
 	}
-	waitErr := cmd.Wait()
+	// Drain stderr before Wait closes the StderrPipe. os/exec documents that
+	// calling Wait while reads from StderrPipe are still in flight is incorrect
+	// and can surface a spurious "file already closed" under the race detector.
 	copyErr := <-stderrDone
+	waitErr := cmd.Wait()
 	processFinished = true
 	if copyErr != nil {
 		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 stderr", Err: copyErr}

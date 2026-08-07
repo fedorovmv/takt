@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.42-alpha
+
+- Добавлена Portable Package Distribution поверх существующего `BlockPackage`: `takt package install|update|uninstall|list|sync|doctor|sign`, local/Git sources и автоматическое подключение locked packages к profile catalog.
+- Добавлены scopes `global|corporate|project` с precedence `project > corporate > global > builtin`; governance всех уровней остаётся fail-closed. Lock фиксирует version/source/ref/Git commit/SHA-256 и verified signature metadata.
+- `BlockPackage` получил dependencies, `requirements.takt` и adapter requirements `required|preferred`; required capabilities проверяются до Run, preferred availability передаётся Task Router/Planner.
+- Добавлен `PackagePolicy`: source allowlist, trusted Ed25519 keys и обязательные подписи для выбранных scopes. Git sync восстанавливает exact commit; local sync запрещает drift от locked checksum/version.
+- Закрыты замечания ревью v0.1.41: public agent-adapter envelopes/validators, shared fixtures, использование conformance kit реальным fake wrapper contract, явная граница OS exit-code проверки, настоящий `adapter doctor`, расширенные SDK tests, точная reconcile-документация и регрессии pause/cancel/overflow/boundary/evidence.
+- Добавлены ADR-066/067, `docs/56-portable-package-distribution-v0.1.42.md`, package lock/policy/signature schemas и `scripts/test-package-distribution.sh`. Takt skill обновлён до 0.24.0.
+
 ## v0.1.41-alpha
 
 - Добавлена Adapter Platform: публичный `sdk/domainadapter`, нейтральные `scm|tracker|ci` adapters, новый `adapter` Node action, capability preflight и `process|mcp` transports без платформенных имён в workflow.

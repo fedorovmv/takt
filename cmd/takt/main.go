@@ -30,6 +30,7 @@ import (
 	"takt/internal/evaluation"
 	"takt/internal/gitworktree"
 	"takt/internal/mcp"
+	"takt/internal/packagedist"
 	"takt/internal/profile"
 	"takt/internal/runtime"
 	"takt/internal/spec"
@@ -83,6 +84,8 @@ func run(args []string) error {
 		return blockCmd(args[1:])
 	case "adapter":
 		return adapterCmd(args[1:])
+	case "package":
+		return packageCmd(args[1:])
 	case "answer":
 		return answerCmd(args[1:])
 	case "resume":
@@ -382,9 +385,166 @@ func adapterCmd(args []string) error {
 		if err := domainadapter.ValidateDeclaration(declaration); err != nil {
 			return err
 		}
-		return printResult(*jsonOut, map[string]any{"name": name, "status": "ready", "declaration": declaration})
+		if args[0] == "describe" {
+			return printResult(*jsonOut, map[string]any{"name": name, "declaration": declaration})
+		}
+		spec := cfg.Adapters[name]
+		capSet, recSet := map[string]bool{}, map[string]bool{}
+		for _, op := range declaration.Capabilities {
+			capSet[op] = true
+		}
+		for _, op := range declaration.Reconcile {
+			recSet[op] = true
+		}
+		var problems, missingCore []string
+		for op := range spec.Operations {
+			if !capSet[op] {
+				problems = append(problems, "configured operation not declared: "+op)
+			}
+		}
+		for op := range spec.ReconcileOperations {
+			if !recSet[op] {
+				problems = append(problems, "configured reconcile operation not declared: "+op)
+			}
+		}
+		for _, op := range domainadapter.CoreOperations(spec.Domain) {
+			if !capSet[op] {
+				missingCore = append(missingCore, op)
+			}
+		}
+		sort.Strings(problems)
+		sort.Strings(missingCore)
+		status := "ready"
+		if len(problems) > 0 {
+			status = "error"
+		}
+		return printResult(*jsonOut, map[string]any{"name": name, "status": status, "transport": spec.Transport, "declaration": declaration, "missing_core_operations": missingCore, "problems": problems})
 	default:
 		return fmt.Errorf("usage: takt adapter <list|describe|doctor> ...")
+	}
+}
+
+func packageCmd(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: takt package <install|update|uninstall|list|sync|doctor|sign> ...")
+	}
+	sub := args[0]
+	fs := newFlagSet("package " + sub)
+	workspace := fs.String("workspace", ".", "control workspace")
+	scope := fs.String("scope", "", "package scope: global, corporate, or project")
+	ref := fs.String("ref", "", "Git branch, tag, or revision used for updates")
+	keyID := fs.String("key-id", "", "signature key id")
+	keyFile := fs.String("key", "", "base64 Ed25519 private key file")
+	configPath := fs.String("config", ".takt/config.yaml", "config used to verify package adapter requirements")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args[1:], map[string]bool{"--workspace": true, "--scope": true, "--ref": true, "--key-id": true, "--key": true, "--config": true, "--json": false})); err != nil {
+		return err
+	}
+	mgr, err := packagedist.New(*workspace)
+	if err != nil {
+		return err
+	}
+	switch sub {
+	case "install":
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt package install <local-path|git-url> [--scope project|corporate|global] [--ref ref]")
+		}
+		s := *scope
+		if s == "" {
+			s = "project"
+		}
+		entry, err := mgr.Install(context.Background(), fs.Arg(0), packagedist.InstallOptions{Scope: s, Ref: *ref})
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, entry)
+	case "update":
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt package update <name> [--scope scope] [--ref ref]")
+		}
+		entry, err := mgr.Update(context.Background(), fs.Arg(0), *scope, *ref)
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, entry)
+	case "uninstall":
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt package uninstall <name> [--scope scope]")
+		}
+		if err := mgr.Uninstall(fs.Arg(0), *scope); err != nil {
+			return err
+		}
+		return printResult(*jsonOut, map[string]any{"removed": fs.Arg(0), "scope": *scope})
+	case "list":
+		if fs.NArg() != 0 {
+			return fmt.Errorf("usage: takt package list [--workspace dir]")
+		}
+		values, err := mgr.List()
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, values)
+	case "sync":
+		if fs.NArg() != 0 {
+			return fmt.Errorf("usage: takt package sync [--workspace dir]")
+		}
+		report, err := mgr.Sync(context.Background())
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, report)
+	case "doctor":
+		if fs.NArg() != 0 {
+			return fmt.Errorf("usage: takt package doctor [--workspace dir] [--config path]")
+		}
+		report, err := mgr.Doctor()
+		if err != nil {
+			return err
+		}
+		if report.Status != "ready" {
+			return fmt.Errorf("package doctor found problems: %+v", report.Packages)
+		}
+		var adapterPreflight []control.AdapterPreflightStatus
+		paths, err := packagedist.InstalledManifestPaths(*workspace)
+		if err != nil {
+			return err
+		}
+		if len(paths) > 0 {
+			catalog, err := blockcatalog.Load(paths)
+			if err != nil {
+				return err
+			}
+			if len(catalog.Requirements.Adapters) > 0 {
+				path := *configPath
+				if !filepath.IsAbs(path) {
+					path = filepath.Join(*workspace, path)
+				}
+				var cfg *spec.Config
+				if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+					cfg = &spec.Config{APIVersion: "takt/v1alpha1", Kind: "Config", Adapters: map[string]spec.DomainAdapterSpec{}}
+				} else {
+					cfg, err = cfgpkg.Load(path)
+					if err != nil {
+						return fmt.Errorf("package doctor adapter config: %w", err)
+					}
+				}
+				adapterPreflight, err = control.PreflightCatalogAdapters(context.Background(), catalog, cfg)
+				if err != nil {
+					return fmt.Errorf("package doctor adapter preflight: %w", err)
+				}
+			}
+		}
+		return printResult(*jsonOut, map[string]any{"status": report.Status, "packages": report.Packages, "adapter_preflight": adapterPreflight})
+	case "sign":
+		if fs.NArg() != 1 || strings.TrimSpace(*keyID) == "" || strings.TrimSpace(*keyFile) == "" {
+			return fmt.Errorf("usage: takt package sign <package-dir> --key-id id --key private-key-file")
+		}
+		if err := packagedist.SignPackage(fs.Arg(0), *keyID, *keyFile); err != nil {
+			return err
+		}
+		return printResult(*jsonOut, map[string]any{"signed": fs.Arg(0), "key_id": *keyID})
+	default:
+		return fmt.Errorf("usage: takt package <install|update|uninstall|list|sync|doctor|sign> ...")
 	}
 }
 
@@ -1603,5 +1763,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|task|run|runs|attention|notify|plan|execute|steer|host|workflow|block|adapter|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
+	return fmt.Errorf("usage: takt <init|validate|task|run|runs|attention|notify|plan|execute|steer|host|workflow|block|adapter|package|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"takt/internal/blockcatalog"
+	cfgpkg "takt/internal/config"
 	"takt/internal/dynamicplan"
 	"takt/internal/evidence"
 	"takt/internal/profile"
@@ -99,6 +100,14 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 	if err != nil {
 		return nil, err
 	}
+	preflightConfig, err := cfgpkg.Load(resolved.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	adapterPreflight, err := preflightCatalogAdapters(ctx, catalog, preflightConfig)
+	if err != nil {
+		return nil, err
+	}
 	workflows, err := s.ListWorkflows(profileName)
 	if err != nil {
 		return nil, fmt.Errorf("list workflows for task router: %w", err)
@@ -115,7 +124,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 			plan.Goal = goal
 		}
 	} else {
-		route, routerRunID, err = s.routeTask(ctx, resolved, catalog, goal, workflows)
+		route, routerRunID, err = s.routeTask(ctx, resolved, catalog, goal, workflows, adapterPreflight)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
@@ -152,7 +161,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 			}
 		default:
 			plannerPath := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "dynamic-plan.yaml")
-			plannerInput, encodeErr := json.Marshal(map[string]any{"goal": goal, "existing_workflows": workflows, "trusted_catalog": catalog.PlannerView()})
+			plannerInput, encodeErr := json.Marshal(map[string]any{"goal": goal, "existing_workflows": workflows, "trusted_catalog": catalog.PlannerView(), "adapter_preflight": adapterPreflight})
 			if encodeErr != nil {
 				return nil, fmt.Errorf("encode dynamic planner input: %w", encodeErr)
 			}
@@ -679,8 +688,7 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 	if err != nil {
 		return err
 	}
-	if controlOutcome.DenyReason != "" {
-		parkPlan(record, evidence.FailureBoundary, controlOutcome.DenyReason, "policy", "adjust the task or trusted scope; do not retry the same out-of-scope mutation", false, "repeat the same out-of-scope mutation")
+	if applyControlDeny(record, controlOutcome) {
 		return st.Save(record)
 	}
 	if len(controlOutcome.RepairFailures) > 0 {
@@ -731,6 +739,14 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 		return err
 	}
 	return st.Save(record)
+}
+
+func applyControlDeny(record *dynamicplan.Record, outcome segmentControlOutcome) bool {
+	if outcome.DenyReason == "" {
+		return false
+	}
+	parkPlan(record, evidence.FailureBoundary, outcome.DenyReason, "policy", "adjust the task or trusted scope; do not retry the same out-of-scope mutation", false, "repeat the same out-of-scope mutation")
+	return true
 }
 
 type segmentControlOutcome struct {

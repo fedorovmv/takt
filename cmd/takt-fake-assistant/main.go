@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"takt/internal/assistant"
+	agentadaptersdk "takt/sdk/agentadapter"
 )
 
 func main() {
@@ -151,15 +152,30 @@ func readRequest(r io.Reader) (assistant.ProtocolRequest, error) {
 	if err := dec.Decode(&request); err != nil {
 		return assistant.ProtocolRequest{}, fmt.Errorf("decode request: %w", err)
 	}
-	var trailing any
-	if err := dec.Decode(&trailing); err != io.EOF {
-		if err == nil {
-			return assistant.ProtocolRequest{}, fmt.Errorf("decode request: multiple JSON values")
+	if request.ProtocolVersion != assistant.ProtocolV1Alpha2 {
+		var trailing any
+		if err := dec.Decode(&trailing); err != io.EOF {
+			if err == nil {
+				return assistant.ProtocolRequest{}, fmt.Errorf("decode request: multiple JSON values")
+			}
+			return assistant.ProtocolRequest{}, fmt.Errorf("decode request trailing data: %w", err)
 		}
-		return assistant.ProtocolRequest{}, fmt.Errorf("decode request trailing data: %w", err)
 	}
-	if request.ProtocolVersion != assistant.ProtocolV1Alpha1 || request.Type != "request" {
+	if (request.ProtocolVersion != assistant.ProtocolV1Alpha1 && request.ProtocolVersion != assistant.ProtocolV1Alpha2) || request.Type != "request" {
 		return assistant.ProtocolRequest{}, fmt.Errorf("unsupported request envelope")
+	}
+	if request.ProtocolVersion == assistant.ProtocolV1Alpha2 {
+		encoded, err := json.Marshal(request)
+		if err != nil {
+			return assistant.ProtocolRequest{}, err
+		}
+		var public agentadaptersdk.Request
+		if err := json.Unmarshal(encoded, &public); err != nil {
+			return assistant.ProtocolRequest{}, err
+		}
+		if err := agentadaptersdk.ValidateRequest(public); err != nil {
+			return assistant.ProtocolRequest{}, fmt.Errorf("public v1alpha2 request contract: %w", err)
+		}
 	}
 	return request, nil
 }
@@ -189,7 +205,7 @@ func successResult(request assistant.ProtocolRequest, id string, resumed bool, c
 		"max_output_bytes": request.Limits.MaxOutputBytes,
 	})
 	return assistant.ProtocolResult{
-		ProtocolVersion: assistant.ProtocolV1Alpha1,
+		ProtocolVersion: request.ProtocolVersion,
 		Type:            "result",
 		Status:          status,
 		Output:          "fake assistant completed",
@@ -209,7 +225,32 @@ func sessionID(request assistant.ProtocolRequest) string {
 }
 
 func writeResult(result assistant.ProtocolResult) {
-	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+	encoder := json.NewEncoder(os.Stdout)
+	if result.ProtocolVersion == assistant.ProtocolV1Alpha2 {
+		declaration := agentadaptersdk.Declaration{Protocol: agentadaptersdk.EventProtocolV2, Capabilities: []string{"skills", "tool_control"}, EventTypes: assistant.EventTypes(), SessionEvents: true, ToolEvents: true, ToolControl: true, ArtifactEvents: true, UsageEvents: true}
+		if err := agentadaptersdk.ValidateDeclaration(declaration); err != nil {
+			panic(err)
+		}
+		encoded, err := json.Marshal(result)
+		if err != nil {
+			panic(err)
+		}
+		var publicResult agentadaptersdk.Result
+		if err := json.Unmarshal(encoded, &publicResult); err != nil {
+			panic(err)
+		}
+		if err := agentadaptersdk.ValidateResult(publicResult, ""); err != nil {
+			panic(err)
+		}
+		if err := encoder.Encode(agentadaptersdk.TranscriptRecord{ProtocolVersion: agentadaptersdk.ProtocolV1Alpha2, Type: "capabilities", Declaration: &declaration}); err != nil {
+			panic(err)
+		}
+		if err := encoder.Encode(agentadaptersdk.TranscriptRecord{ProtocolVersion: agentadaptersdk.ProtocolV1Alpha2, Type: "result", Result: &publicResult}); err != nil {
+			panic(err)
+		}
+		return
+	}
+	if err := encoder.Encode(result); err != nil {
 		panic(err)
 	}
 }

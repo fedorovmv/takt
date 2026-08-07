@@ -4,14 +4,14 @@
 
 ## Что добавлено
 
-- `sdk/agentadapter` — переиспользуемый conformance kit для `takt-assistant/v1alpha2`;
+- `sdk/agentadapter` — публичные envelope/request/result types, validators и переиспользуемый conformance kit для `takt-assistant/v1alpha2`;
 - публичный `sdk/domainadapter` с типами протокола и core operations для `scm|tracker|ci`;
 - новый `adapter` Node action с `name`, `operation`, JSON `input` и обычным `output_format`;
 - `process` transport `takt-domain-adapter/v1alpha1`;
 - MCP stdio transport с `initialize`, `tools/list`, `tools/call` и явным mapping нейтральных операций;
 - `takt adapter list|describe|doctor`;
 - durable `DomainOperationState` с capabilities, idempotency key, receipt и reconcile status;
-- preflight reconcile capability для mutating operations и запрет blind retry после `unknown`;
+- preflight reconcile capability только для операций с `side_effect.mode: reconcile` и запрет blind retry после `unknown`;
 - `cmd/takt-fake-domain-adapter` и provider-neutral E2E `examples/adapter-platform`;
 - схемы config/workflow/run state и `schemas/domain-adapter-protocol.schema.json`.
 
@@ -51,3 +51,8 @@
 ## Граница реализации
 
 Adapter Platform не содержит готовых production credentials/providers и не превращает Takt в сетевой integration server. Fake adapters доказывают контракт, а реальный GitHub/GitLab/корпоративный SCM или tracker реализуется отдельным adapter package. `process` и MCP transport считаются доверенными локальными интеграциями текущего пользователя.
+
+
+## Уточнения после ревью
+
+В `v0.1.42` kit получил общие fixture-файлы и используется contract test реального `cmd/takt-fake-assistant`, а не только собственными unit tests. Transcript validator не видит OS process exit status и поэтому не подменяет host-проверку соответствия process exit code полю `result.exit_code`.

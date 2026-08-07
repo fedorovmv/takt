@@ -503,3 +503,41 @@ assistants:
 		t.Fatalf("run was created before capability validation: %v", ids)
 	}
 }
+
+func TestAdapterListDescribeAndDoctorPaths(t *testing.T) {
+	dir := t.TempDir()
+	config := `apiVersion: takt/v1alpha1
+kind: Config
+adapters:
+  scm:
+    domain: scm
+    transport: process
+    argv: ["` + os.Args[0] + `", "-test.run=TestAdapterCLIHelper"]
+    env:
+      TAKT_ADAPTER_CLI_HELPER: "1"
+    operations:
+      change.create: change.create
+`
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapterCmd([]string{"list", "--workspace", dir, "--config", path}); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapterCmd([]string{"describe", "scm", "--workspace", dir, "--config", path}); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapterCmd([]string{"doctor", "scm", "--workspace", dir, "--config", path}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAdapterCLIHelper(t *testing.T) {
+	if os.Getenv("TAKT_ADAPTER_CLI_HELPER") == "" {
+		return
+	}
+	_, _ = os.Stdin.Read(make([]byte, 4096))
+	_, _ = os.Stdout.WriteString(`{"apiVersion":"takt-domain-adapter/v1alpha1","kind":"DescribeResponse","declaration":{"apiVersion":"takt-domain-adapter/v1alpha1","kind":"AdapterCapabilities","domain":"scm","capabilities":["change.create"],"reconcile":[]}}` + "\n")
+	os.Exit(0)
+}

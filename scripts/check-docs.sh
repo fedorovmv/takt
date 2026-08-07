@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.23.0" \
-  "VERSION|0.1.41-alpha" \
-  "internal/version/version.go|0.1.41-alpha" \
+  "skills/takt/VERSION|0.24.0" \
+  "VERSION|0.1.42-alpha" \
+  "internal/version/version.go|0.1.42-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -114,6 +114,17 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-063" \
   "ARCHITECTURE_DECISIONS.md|ADR-064" \
   "ARCHITECTURE_DECISIONS.md|ADR-065" \
+  "ARCHITECTURE_DECISIONS.md|ADR-066" \
+  "ARCHITECTURE_DECISIONS.md|ADR-067" \
+  "docs/56-portable-package-distribution-v0.1.42.md|Portable Package Distribution" \
+  "docs/06-roadmap.md|Выполнено в v0.1.42-alpha" \
+  "docs/03-specification.md|takt package install" \
+  "schemas/package-lock.schema.json|PackageLock" \
+  "schemas/package-policy.schema.json|PackagePolicy" \
+  "schemas/package-signature.schema.json|PackageSignature" \
+  "scripts/test-package-distribution.sh|portable package distribution contract: PASS" \
+  "examples/portable-package/package.yaml|portable-review" \
+  "sdk/agentadapter/testdata/v1alpha2/success.ndjson|takt-assistant/v1alpha2" \
   "docs/55-adapter-platform-v0.1.41.md|Adapter Platform" \
   "docs/06-roadmap.md|Выполнено в v0.1.41-alpha" \
   "docs/03-specification.md|Контракт side_effect" \
