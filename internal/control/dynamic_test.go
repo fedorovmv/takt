@@ -12,6 +12,7 @@ import (
 
 	"takt/internal/blockcatalog"
 	"takt/internal/dynamicplan"
+	"takt/internal/evidence"
 	"takt/internal/profile"
 	"takt/internal/rolecontract"
 )
@@ -502,5 +503,72 @@ func TestDynamicCandidateSHAChangesWithWorkspaceContent(t *testing.T) {
 	}
 	if third == second {
 		t.Fatal("candidate hash did not include untracked content")
+	}
+}
+
+func TestSteerFailedReplanPreservesParkingRecord(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, filepath.Join(workspace, ".takt", "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := candidateDynamicPlan()
+	now := time.Now().UTC().Add(-time.Minute)
+	failure := &evidence.Failure{Code: evidence.FailureOwnerDecision, Message: "original parking reason", Owner: "task-owner", SafeNextAction: "choose path", CreatedAt: now}
+	record := &dynamicplan.Record{ID: "plan-steer-park-1234", Status: "parked", Profile: "missing-profile", ConfigPath: service.ConfigPath, CreatedAt: now, UpdatedAt: now, ParkedAt: &now, Failure: failure, Results: map[string]string{}, Revisions: []dynamicplan.Revision{{Number: 1, Reason: "initial", CreatedAt: now, Plan: plan}}}
+	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Steer(context.Background(), SteerRequest{PlanID: record.ID, Message: "try a different path"}); err == nil {
+		t.Fatal("expected replanner failure")
+	}
+	loaded, err := (dynamicplan.Store{Workspace: workspace}).Load(record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != "parked" || loaded.Failure == nil || loaded.Failure.Code != failure.Code || loaded.Failure.Message != failure.Message || loaded.ParkedAt == nil || !loaded.ParkedAt.Equal(now) {
+		t.Fatalf("parking record was not preserved: %#v", loaded)
+	}
+}
+
+func TestFinalizeEvidenceProducesPartialForPreferredFailureOnly(t *testing.T) {
+	record := &dynamicplan.Record{Evidence: &evidence.Manifest{APIVersion: "takt/v1alpha1", Kind: "EvidenceManifest", Acceptance: map[string]evidence.Acceptance{
+		"required":  {ID: "required", Status: "passed", Level: rolecontract.CheckRequired},
+		"preferred": {ID: "preferred", Status: "failed", Level: rolecontract.CheckPreferred},
+	}}}
+	finalizeEvidence(record, "sha256:candidate")
+	if record.Evidence.Verdict == nil || record.Evidence.Verdict.Status != evidence.VerdictPartial {
+		t.Fatalf("verdict=%#v", record.Evidence.Verdict)
+	}
+}
+
+func TestEvidenceRecheckReplacesFailedAcceptanceWithPassed(t *testing.T) {
+	catalog := &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{"validate": {Name: "validate", Checks: []rolecontract.Check{{Name: "deterministic", Path: "passed", Level: rolecontract.CheckRequired, Reaction: rolecontract.ReactionRepair}}}}}
+	record := &dynamicplan.Record{Results: map[string]string{"validate": `{"passed":false,"issues":["new failure"]}`}}
+	if _, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "validate", Uses: "validate"}}, catalog, nil, "sha256:a"); err != nil {
+		t.Fatal(err)
+	}
+	id := evidence.AcceptanceID("validate", "deterministic")
+	if record.Evidence.Acceptance[id].Status != "failed" {
+		t.Fatalf("first=%#v", record.Evidence.Acceptance[id])
+	}
+	record.Results["validate"] = `{"passed":true,"issues":[]}`
+	if _, err := evaluateSegmentControls(record, []dynamicplan.Phase{{ID: "validate", Uses: "validate"}}, catalog, nil, "sha256:b"); err != nil {
+		t.Fatal(err)
+	}
+	item := record.Evidence.Acceptance[id]
+	if item.Status != "passed" || item.CandidateSHA != "sha256:b" {
+		t.Fatalf("rechecked=%#v", item)
+	}
+}
+
+func TestBoundaryViolationUsesParkingModel(t *testing.T) {
+	record := &dynamicplan.Record{Status: "running"}
+	parkPlan(record, evidence.FailureBoundary, "outside allowed scope", "policy", "adjust scope", false, "repeat mutation")
+	if record.Status != "parked" || record.Failure == nil || record.Failure.Code != evidence.FailureBoundary || record.ParkedAt == nil {
+		t.Fatalf("record=%#v", record)
 	}
 }

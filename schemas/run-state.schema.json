@@ -331,6 +331,9 @@
         },
         "external": {
           "$ref": "#/$defs/externalExecutionState"
+        },
+        "domain_operation": {
+          "$ref": "#/$defs/domainOperationState"
         }
       }
     },
@@ -844,6 +847,58 @@
         },
         "previous_error": {
           "type": "string"
+        }
+      }
+    },
+    "domainOperationState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter",
+        "domain",
+        "operation"
+      ],
+      "properties": {
+        "adapter": {
+          "type": "string"
+        },
+        "domain": {
+          "enum": [
+            "scm",
+            "tracker",
+            "ci"
+          ]
+        },
+        "operation": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reconcile_supported": {
+          "type": "boolean"
+        },
+        "side_effect_mode": {
+          "enum": [
+            "idempotent",
+            "reconcile"
+          ]
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "receipt": {
+          "type": "string"
+        },
+        "reconcile_status": {
+          "enum": [
+            "applied",
+            "not_applied",
+            "unknown"
+          ]
         }
       }
     }

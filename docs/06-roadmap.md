@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.40-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.41-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -71,17 +71,13 @@ Dynamic Plan хранит внутренний `EvidenceManifest` с baseline pr
 
 Материальная остановка использует `parked` с failure code, owner, `safe_next_action` и `unsafe_to_repeat` и проецируется в Task API/attention как `needs_input`. Для `executor: external` добавлен `side_effect.mode: reconcile`: expired claim запрещает blind retry до результата `not_applied|applied|unknown`, а `applied` требует receipt. Worker MCP расширен `takt.node.reconcile`, полная поверхность — 54 operations, agent surface остаётся пять tools. Полный срез: `54-evidence-baseline-failure-routing-v0.1.40.md`.
 
-## Приоритет 1. Agent + Domain Adapter SDK
+## Выполнено в v0.1.41-alpha. Agent + Domain Adapter SDK
 
-- единый conformance kit для Codex, Oh My Pi, Qwen CLI и других `SessionAdapter` wrappers без изменения workflow;
-- нейтральные capability contracts для SCM, tracker и CI;
-- MCP/process transports;
-- типизированные inputs/results/errors, идемпотентность и capability discovery;
-- GitHub/GitLab как эталонные реализации без платформенных имён в workflow;
-- fake corporate SCM/tracker/CI для контрактных тестов;
-- использование адаптеров как детерминированных узлов Takt и как разрешённых инструментов worker-сессии.
+Добавлены `sdk/agentadapter`, нейтральные домены `scm|tracker|ci`, process/MCP transports, capability discovery, новый `adapter` Node action и CLI `adapter list|describe|doctor`. Mutating adapters используют durable idempotency/receipt/reconciliation и запрещают blind retry после `unknown`. Fake process/MCP adapters и provider-neutral E2E проверяют один workflow без GitHub/Jira-понятий. Публичная agent MCP surface остаётся пять tools. Полный срез: `55-adapter-platform-v0.1.41.md`.
 
-## Приоритет 2. Полная доставка пакетов
+Готовые production GitHub/GitLab/корпоративные adapters остаются отдельными поставками поверх SDK; ядро содержит транспорт и контракты, а не credentials/provider logic.
+
+## Приоритет 1. Полная доставка пакетов
 
 - области `global|project|corporate` с явным приоритетом;
 - `install|update|uninstall|doctor`;
@@ -91,7 +87,7 @@ Dynamic Plan хранит внутренний `EvidenceManifest` с baseline pr
 - checksum, подпись и политика источников;
 - команды, scripts, skills, MCP и adapter requirements в одном пакете.
 
-## Приоритет 3. Multi-repo dynamic workflow
+## Приоритет 2. Multi-repo dynamic workflow
 
 - определение затронутых репозиториев;
 - dependency graph;
@@ -99,7 +95,7 @@ Dynamic Plan хранит внутренний `EvidenceManifest` с baseline pr
 - несколько change request через нейтральный SCM adapter;
 - интеграционная проверка и общий порядок слияния.
 
-## Приоритет 4. Усиление runtime и безопасность локального исполнения
+## Приоритет 3. Усиление runtime и безопасность локального исполнения
 
 - раннее завершение `one_success` и `all_success` с отменой ненужных детей;
 - нормализованные diagnostics и fingerprints ошибок;

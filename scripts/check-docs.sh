@@ -41,7 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.22.0" \
+  "skills/takt/VERSION|0.23.0" \
+  "VERSION|0.1.41-alpha" \
+  "internal/version/version.go|0.1.41-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -110,6 +112,14 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-061" \
   "ARCHITECTURE_DECISIONS.md|ADR-062" \
   "ARCHITECTURE_DECISIONS.md|ADR-063" \
+  "ARCHITECTURE_DECISIONS.md|ADR-064" \
+  "ARCHITECTURE_DECISIONS.md|ADR-065" \
+  "docs/55-adapter-platform-v0.1.41.md|Adapter Platform" \
+  "docs/06-roadmap.md|Выполнено в v0.1.41-alpha" \
+  "docs/03-specification.md|Контракт side_effect" \
+  "schemas/domain-adapter-protocol.schema.json|takt-domain-adapter/v1alpha1" \
+  "scripts/test-adapter-platform.sh|adapter platform contract: PASS" \
+  "sdk/agentadapter/conformance.go|ProtocolV1Alpha2" \
   "docs/54-evidence-baseline-failure-routing-v0.1.40.md|EvidenceManifest" \
   "docs/06-roadmap.md|Выполнено в v0.1.40-alpha" \
   "schemas/evidence-manifest.schema.json|Takt EvidenceManifest" \

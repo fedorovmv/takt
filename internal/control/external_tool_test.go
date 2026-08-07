@@ -332,6 +332,9 @@ nodes:
 	if _, err := service.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "unknown"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-after-unknown", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}}); err == nil {
+		t.Fatal("claim was accepted while reconcile outcome remained unknown")
+	}
 	if _, err := service.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "not_applied", Receipt: "lookup:no-record"}); err != nil {
 		t.Fatal(err)
 	}

@@ -16,6 +16,7 @@ import (
 	"takt/internal/assistant"
 	"takt/internal/command"
 	"takt/internal/definition"
+	"takt/internal/domainadapter"
 	"takt/internal/execution"
 	"takt/internal/gitworktree"
 	"takt/internal/spec"
@@ -50,6 +51,7 @@ type Runner struct {
 	Commands         command.Resolver
 	Store            store.Repository
 	Assistants       assistant.Resolver
+	Adapters         domainadapter.Resolver
 	startOptions     StartOptions
 	inheritedPolicy  assistant.Policy
 }
@@ -71,7 +73,7 @@ func New(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspac
 		Workflow: wf, Config: cfg, WorkflowPath: workflowPath, ConfigPath: configPath,
 		ControlWorkspace: workspace, Workspace: workspace,
 		Commands: buildCommandResolver(workflowPath, workspace, workspace),
-		Store:    store.FS{Workspace: workspace}, Assistants: assistant.Factory{Config: cfg},
+		Store:    store.FS{Workspace: workspace}, Assistants: assistant.Factory{Config: cfg}, Adapters: domainadapter.Factory{Config: cfg},
 	}
 }
 
@@ -867,6 +869,7 @@ type execResult struct {
 	ResolvedModel    *store.ModelRef
 	Artifacts        []store.ArtifactRef
 	AssistantEvents  []assistant.Event
+	DomainOperation  *store.DomainOperationState
 }
 
 func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.Node, loopPrevious map[string]store.NodeState) (execResult, error) {
@@ -946,6 +949,16 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		default:
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "workflow group", Err: fmt.Errorf("unsupported internal mode %q", node.Internal.Mode)}
 		}
+	case node.Adapter != nil:
+		result, err := r.runDomainAdapter(ctx, state, node, local, feedback, artifacts)
+		if err == nil && node.OutputFormat != nil {
+			normalized, validationErr := validateAndNormalizeOutput(result.Output, node.OutputFormat)
+			if validationErr != nil {
+				return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "validate adapter structured output", Err: validationErr}
+			}
+			result.Output = normalized
+		}
+		return result, err
 	case node.Command != "" || node.Prompt != "":
 		resolved, err := r.resolveAssistantNode(state, node, local, feedback, artifacts)
 		if err != nil {
@@ -1179,6 +1192,11 @@ func applyExecResult(node *store.NodeState, result execResult) {
 	}
 	if len(result.Artifacts) > 0 {
 		node.Artifacts = cloneArtifacts(result.Artifacts)
+	}
+	if result.DomainOperation != nil {
+		copy := *result.DomainOperation
+		copy.Capabilities = append([]string(nil), result.DomainOperation.Capabilities...)
+		node.DomainOperation = &copy
 	}
 }
 

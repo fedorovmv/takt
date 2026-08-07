@@ -1,116 +1,137 @@
-# Takt v0.1.40-alpha — результаты проверок
+# Takt v0.1.41-alpha — результаты проверок
 
 Дата проверки: 2026-08-07.
 
 ## Состав среза
 
-- Takt: `0.1.40-alpha`.
-- `code` profile: `0.15.0`.
-- `code-core` BlockPackage: `0.4.0`.
-- Takt authoring skill: `0.22.0`.
+- Takt: `0.1.41-alpha`.
+- `code` profile: `0.15.0` (не менялся).
+- `code-core` BlockPackage: `0.4.0` (не менялся).
+- Takt authoring skill: `0.23.0`.
 - MCP: 54 операции суммарно; agent surface — 5, host — 7, worker — 13, operator — 29.
-- Новый worker tool: `takt.node.reconcile`.
+- Новый публичный SDK: `sdk/domainadapter` и `sdk/agentadapter`.
+- Новый Node action: `adapter`.
 
-## Основные изменения, проверенные в этом релизе
+## Adapter Platform P3
 
-- внутренний `EvidenceManifest` с baseline, check-to-evidence mapping и candidate content SHA-256;
-- stale verdict invalidation после изменения candidate;
-- exact normalized classification известных baseline failures без лишнего automatic repair;
-- `parked` Dynamic Plan с failure code, owner, `safe_next_action` и attention projection;
-- `executor: external` + `side_effect.mode: reconcile`, запрещающий blind retry после неизвестного исхода;
-- reconciliation outcomes `unknown|not_applied|applied`, причём `applied` требует receipt и проходит обычный submit/finalization path;
-- постоянные regressions для замечаний ревью v0.1.39;
-- стабилизация старых OpenCode timeout contract tests под полной race-нагрузкой.
+Проверено:
+
+- provider-neutral домены `scm|tracker|ci` и core operation names;
+- `adapter`-узел в обычном scheduler/runtime;
+- process transport `takt-domain-adapter/v1alpha1`;
+- MCP stdio transport с `initialize`, `tools/list`, `tools/call` и mapping операций;
+- capability discovery/preflight до внешнего вызова;
+- process/MCP adapter doctor через CLI;
+- durable `DomainOperationState` с capabilities, idempotency key, receipt и reconcile status;
+- `side_effect.mode: reconcile` с проверкой reconcile capability **до** мутации;
+- `applied|not_applied|unknown`, причём `unknown` запрещает blind retry;
+- fake SCM/tracker/CI adapters и provider-neutral workflow без GitHub/Jira names;
+- public `sdk/agentadapter` conformance для фактического `takt-assistant/v1alpha2` transcript;
+- public `sdk/domainadapter` как источник protocol types, validation и core operation constants;
+- публичная agent MCP surface осталась пять `takt.task.*` tools.
+
+Новый сквозной contract:
+
+```text
+scripts/test-adapter-platform.sh             PASS
+sdk/agentadapter                            PASS
+sdk/domainadapter                           PASS
+```
+
+## Исправления по ревью v0.1.40
+
+Подтверждены regression-тестами:
+
+- основной `docs/03-specification.md` теперь описывает внешний `side_effect` контракт;
+- steering очищает parking record только после принятого replan; ошибка replanner сохраняет Failure/ParkedAt;
+- `partial` verdict достижим: все required evidence прошли, но preferred checks неполны;
+- Pi overflow contract test использует 5s deadline, как исправленный OpenCode twin;
+- `BOUNDARY_VIOLATION` использует общую parking model вместо отдельного `failed`;
+- evidence re-check заменяет запись `failed → passed`;
+- surface counts 5/7/13/29 и total 54 закреплены тестом;
+- claim после reconcile `unknown` отклоняется напрямую;
+- обязательные `verdict.candidate_sha` и `created_at` больше не `omitempty` в Go contract.
+
+Межпроцессный notification dispatch lock и desktop sink timeout на macOS не переписывались: это платформенные integration checks, а не дефект P3 runtime. Linux/внутрипроцессные текущие проверки сохранены.
 
 ## Go quality gates
 
 ```text
-gofmt -w cmd internal                 PASS
-go vet ./...                          PASS
-go test ./... -count=1                PASS
-go build ./...                        PASS
-go test -race ./... -count=1          PASS
+gofmt -w cmd internal sdk                 PASS
+go vet ./...                              PASS
+go test ./... -count=1                    PASS
+go build ./...                            PASS
 ```
 
-`go test -race ./...` дважды запускался отдельно после того, как длинная объединённая shell-команда достигала внешнего timeout. Оба отдельных полных race-прогона завершились PASS. В частности, прежние flaky tests `TestOpenCodeRunPreservesContextPriorityWithRealOverflow` и `TestOpenCodeTimeoutPreservesProviderDiagnostics` прошли в общем race-прогоне после увеличения их тестового deadline.
-
-При первой проверке чистой распаковки проявилась отдельная lifecycle-гонка самого теста `TestHostRunAndNotificationToolsThroughMCP`: detached `host.confirm` продолжал писать state после завершения unit-test без daemon monitor. Тест исправлен так, чтобы явно прогонять `AdvanceDynamicPlans` до устойчивой границы; после исправления проблемный тест прошёл 20/20, затем полный unit/race suite снова прошёл.
-
-## Новый P2 contract
+Race для всех изменённых пакетов запускался отдельно и прошёл:
 
 ```text
-scripts/test-evidence-routing.sh              PASS
+internal/assistant                        PASS
+internal/config                           PASS
+internal/workflow                         PASS
+internal/domainadapter                    PASS
+internal/runtime                          PASS
+internal/control                          PASS
+internal/mcp                              PASS
+internal/store                            PASS
+internal/evidence                         PASS
+sdk/agentadapter                          PASS
+sdk/domainadapter                         PASS
 ```
 
-Он постоянно проверяет:
-
-- baseline-only failure classification;
-- обе terminal-ветки bounded automatic repair;
-- candidate SHA изменение от tracked/untracked content;
-- parking и Task/attention projection;
-- external side-effect reconciliation;
-- side-effect workflow validation;
-- lexeme matching `auth != author`, `bug != debug`.
-
-Дополнительные Go-регрессии покрывают:
-
-- pause re-check перед новой retry-attempt;
-- настоящий `Waiting.Kind=question` для `capture_response`;
-- ошибки `ClearPause`, `ClearCancel`, release advance lock;
-- transient recursive summary для linked-but-not-published child;
-- plan-fork fingerprint;
-- notification dispatch lock, bounded inbox и desktop timeout;
-- `task start --file` semantics;
-- default MCP surface для пустого значения;
-- direct `takt run` capability preflight до создания Run;
-- persisted `RouterError` и propagation `context.Canceled`.
+`go test -race ./...` внутри `make check` и два агрегированных варианта `./internal/...` достигали внешнего лимита длительной команды/зависали при многопакетном запуске в этой песочнице без сообщения о test failure. Те же затронутые пакеты, включая `internal/runtime`, отдельно проходят race стабильно. Поэтому в этом релизе **не заявляется PASS агрегированного full-repo race одной командой**; подтверждён race изменённого контура и обычный полный `go test ./...`.
 
 ## Сквозные контракты
 
+Фактически завершились PASS отдельными прогонами:
+
 ```text
-scripts/test-simple-reliable-router.sh         PASS
-scripts/test-autonomous-runs.sh                PASS
-scripts/test-host-control.sh                   PASS
-scripts/test-host-integrations-typescript.sh   PASS
-scripts/test-mcp.sh                            PASS
-scripts/test-daemon.sh                         PASS ×4
-scripts/test-dynamic-takt.sh                   PASS
-scripts/test-block-packages.sh                 PASS
-scripts/test-external-executor.sh              PASS
-scripts/test-deep-code-workflows.sh            PASS
-scripts/test-code-profile.sh                   PASS
-scripts/test-composition.sh                    PASS
-scripts/test-worktree.sh                       PASS
-scripts/test-child-runs.sh                     PASS
-scripts/test-child-fanout.sh                   PASS
-scripts/test-policies.sh                       PASS
-scripts/test-script-artifacts.sh               PASS
-scripts/test-authoring.sh                      PASS
 scripts/test-fake-assistant.sh                 PASS
 scripts/test-pi-adapter.sh                     PASS
 scripts/test-opencode-adapter.sh               PASS
 scripts/test-route-dsl-e2e.sh                  PASS
 scripts/test-route-dsl-eval.sh                 PASS
+scripts/test-composition.sh                    PASS
 scripts/test-takt-skill.sh                     PASS
+scripts/test-code-profile.sh                   PASS
+scripts/test-worktree.sh                       PASS
+scripts/test-child-runs.sh                     PASS
+scripts/test-policies.sh                       PASS
+scripts/test-child-fanout.sh                   PASS
+scripts/test-script-artifacts.sh               PASS
+scripts/test-mcp.sh                            PASS
+scripts/test-external-executor.sh              PASS
+scripts/test-deep-code-workflows.sh            PASS
+scripts/test-authoring.sh                      PASS
+scripts/test-daemon.sh                         PASS
+scripts/test-dynamic-takt.sh                   PASS
+scripts/test-block-packages.sh                 PASS
+scripts/test-host-control.sh                   PASS
+scripts/test-host-integrations-typescript.sh   PASS
+scripts/test-autonomous-runs.sh                PASS
+scripts/test-simple-reliable-router.sh         PASS
+scripts/test-evidence-routing.sh               PASS
+scripts/test-adapter-platform.sh               PASS
 scripts/check-docs.sh                          PASS
 ```
 
-Один длинный агрегированный запуск группы contract scripts достиг внешнего timeout во время OpenCode suite после успешного прохождения предыдущих тестов. OpenCode suite и оставшиеся contracts затем запускались отдельно и завершились PASS.
+Длинные объединённые цепочки contract targets несколько раз достигали внешнего timeout на переходе между suites. Оставшиеся suites после этого запускались отдельно и завершились PASS.
 
-## Проверенная семантика MCP
+## Schema и CLI
 
-- default `takt mcp` = agent surface;
-- agent surface: только `takt.task.start|status|respond|stop|explain`;
-- worker surface включает `takt.node.reconcile`;
-- `tools/call` проверяет surface, а не только `tools/list`;
-- полная surface содержит 54 операции.
+```text
+все schemas/*.json: Draft 2020-12 structural validation   PASS
+takt version                                               0.1.41-alpha
+takt adapter list/doctor                                   PASS
+```
 
-## Ограничения, которые не следует трактовать как реализованные гарантии
+Новая внешняя схема `schemas/domain-adapter-protocol.schema.json` соответствует process transport `takt-domain-adapter/v1alpha1`. `config`, `workflow`, `run-state` и `EvidenceManifest` schemas обновлены вместе с Go contracts.
 
-- Candidate SHA является content SHA-256 рабочей Git-дельты и untracked files, а не Git commit SHA и не supply-chain attestation.
-- Baseline matching детерминированный и точный после нормализации; семантически похожие, но текстово разные failures считаются новыми.
-- `parked` является состоянием Dynamic Plan; Run-level pause/abandon сохраняют отдельную существующую семантику.
-- External reconciliation не знает GitHub/GitLab/tracker/CI самостоятельно. Adapter обязан проверить внешний факт и предоставить receipt/result.
-- Exactly-once внешних side effects не заявляется.
-- Path-level OS sandbox для mutating coding-agent workers ещё не реализован; Takt применяет managed worktree, adapter policy и post-action Git-diff scope gate.
-- Bundled Pi/OpenCode host integrations остаются `guarded` до live smoke на зафиксированных реальных версиях.
+## Осознанные границы
+
+- В поставку не входят production GitHub/GitLab/Jira/корпоративные credentials и provider implementations. SDK, transports, fake adapters и E2E являются переносимой основой для них.
+- MCP adapter использует stdio и локальный trusted process; сетевой integration server не добавлен.
+- Capability discovery доказывает заявленную операцию, но бизнес-права конкретного provider остаются ответственностью adapter.
+- Exactly-once внешних side effects не заявляется. Reconcile предотвращает blind retry и требует внешней сверки факта.
+- `sdk/agentadapter` проверяет protocol/session invariants, но не превращает неподтверждённый host в strict/tool-control capable adapter. Product-specific live/fixture checks остаются обязательными.
+- Bundled Pi/OpenCode host integrations сохраняют `guarded` до live smoke на зафиксированных реальных версиях.

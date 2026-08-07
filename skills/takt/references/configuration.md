@@ -207,3 +207,21 @@ JSON events читаются из stdout, stderr остаётся диагнос
 Pi принимает только существующие path skills: Takt проверяет путь до запуска и передаёт его через `--skill`. Именованный skill без файла для Pi завершится ошибкой конфигурации. OpenCode поддерживает path skills и именованные skills: содержимое path skill добавляется в prompt, именованный skill ограничивается через permissions.
 
 При `sandbox.filesystem: read_only` OpenCode принудительно запрещает `write`, `edit`, `bash` и `task`, даже если инструмент указан в `allowed_tools`.
+
+## Доменные adapters
+
+SCM, tracker и CI подключаются отдельно от coding assistant:
+
+```yaml
+adapters:
+  scm:
+    domain: scm
+    transport: mcp
+    argv: [corp-scm]
+    operations:
+      change.create: corp_change_create
+    reconcile_operations:
+      change.create: corp_change_reconcile
+```
+
+`domain` — `scm|tracker|ci`, `transport` — `process|mcp`. Workflow использует только нейтральное `adapter.name` и `adapter.operation`. Для process transport действует `takt-domain-adapter/v1alpha1`; MCP transport получает capabilities через `tools/list`. Проверяй подключение через `takt adapter doctor <name>` до запуска mutating workflow.

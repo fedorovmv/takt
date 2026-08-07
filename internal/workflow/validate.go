@@ -103,6 +103,9 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		if n.Internal != nil {
 			kinds++
 		}
+		if n.Adapter != nil {
+			kinds++
+		}
 		if kinds != 1 {
 			return fmt.Errorf("node %q must define exactly one action", n.ID)
 		}
@@ -160,6 +163,20 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 				return err
 			}
 		}
+		if n.Adapter != nil {
+			if strings.TrimSpace(n.Adapter.Name) == "" {
+				return fmt.Errorf("node %q adapter.name is required", n.ID)
+			}
+			if strings.TrimSpace(n.Adapter.Operation) == "" {
+				return fmt.Errorf("node %q adapter.operation is required", n.ID)
+			}
+			parts := strings.Split(n.Adapter.Operation, ".")
+			for _, part := range parts {
+				if part == "" || !regexp.MustCompile(`^[a-z0-9_-]+$`).MatchString(part) {
+					return fmt.Errorf("node %q adapter.operation must use lowercase dot-separated segments", n.ID)
+				}
+			}
+		}
 		if n.Executor != "" {
 			if n.Executor != "external" {
 				return fmt.Errorf("node %q executor must be external", n.ID)
@@ -169,8 +186,8 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			}
 		}
 		if n.SideEffect != nil {
-			if n.Executor != "external" {
-				return fmt.Errorf("node %q side_effect requires executor: external", n.ID)
+			if n.Executor != "external" && n.Adapter == nil {
+				return fmt.Errorf("node %q side_effect requires executor: external or adapter node", n.ID)
 			}
 			switch n.SideEffect.Mode {
 			case "idempotent", "reconcile":
@@ -282,8 +299,8 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			}
 		}
 		if n.OutputFormat != nil {
-			if n.Command == "" && n.Prompt == "" && n.Script == nil {
-				return fmt.Errorf("node %q output_format is supported only for command, prompt, or script nodes", n.ID)
+			if n.Command == "" && n.Prompt == "" && n.Script == nil && n.Adapter == nil {
+				return fmt.Errorf("node %q output_format is supported only for command, prompt, script, or adapter nodes", n.ID)
 			}
 			if err := validateOutputFormat(*n.OutputFormat, "node "+n.ID+".output_format"); err != nil {
 				return err

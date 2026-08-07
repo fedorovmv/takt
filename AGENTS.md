@@ -35,6 +35,7 @@ Takt — Go-runtime, который снаружи оркестрирует го
 - Текст агента не считается доказательством успеха: завершение подтверждает детерминированная проверка.
 - Ошибки persistence всегда возвращаются вызывающему коду.
 - MCP adapter и local daemon используют общий control service и штатные runtime/store/locks; не реализуйте второй executor или отдельную семантику Run.
+- Domain adapters (`scm|tracker|ci`) являются обычными Node actions единого scheduler; provider/transport details живут в config/adapter, а `side_effect: reconcile` запрещает blind retry после неизвестного внешнего эффекта.
 - `always_run` не скрывает failure основного графа; `idle_timeout` измеряет отсутствие нормализованной активности, а не полный timeout.
 - Daemon локальный и однопользовательский: Unix socket не является новой security boundary и не должен публиковаться в сеть.
 
@@ -52,7 +53,7 @@ Takt — Go-runtime, который снаружи оркестрирует го
 Минимум перед завершением:
 
 ```bash
-gofmt -w cmd internal
+gofmt -w cmd internal sdk
 go test ./... -count=1
 go test -race ./... -count=1
 go vet ./...

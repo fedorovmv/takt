@@ -1,6 +1,6 @@
 # Спецификация адаптеров исполнителей
 
-Статус: process-протокол v1alpha1/v1alpha2, Pi RPC adapter, OpenCode CLI adapter, capability declaration и нормализованный EventSink реализованы и покрыты контрактными наборами.
+Статус: process-протокол v1alpha1/v1alpha2, Pi RPC adapter, OpenCode CLI adapter, capability declaration, нормализованный EventSink и переиспользуемый conformance kit реализованы и покрыты контрактными наборами.
 
 ## 1. Назначение
 
@@ -334,3 +334,12 @@ JSON stream текущего CLI не гарантирует отдельное 
 22. opt-in smoke test с реальным бинарником.
 
 Для CI используются `cmd/takt-fake-assistant`, `cmd/takt-fake-pi`, `cmd/takt-fake-opencode` и соответствующие contract scripts. Реальный Pi smoke test включается только через `TAKT_PI_SMOKE=1` и не блокирует обычный unit test suite.
+
+
+## 12. Conformance kit для сторонних coding-agent adapters
+
+Пакет `sdk/agentadapter` является стабильной тестовой границей для обёрток Codex, Oh My Pi, Qwen CLI и других coding agents по `takt-assistant/v1alpha2`. Он не содержит логики конкретного продукта и не запускает agent loop.
+
+`ValidateTranscript` принимает NDJSON transcript и проверяет protocol version, declaration capabilities, уникальность tool `call_id`, наличие `tool_control` при блокирующих tool requests, ровно один terminal result, согласованность status/exit code и сохранение Session ID при обязательном resume. Внешняя обёртка может использовать пакет в собственных Go contract tests либо проверять те же fixtures из другого языка.
+
+Conformance kit дополняет, а не заменяет product-specific smoke test: возможность `resume`, pre-execution tool control или read-only режима считается поддержанной только после фактической проверки хоста. Пример и матрица возможностей находятся в `examples/agent-session-adapters/README.md`.

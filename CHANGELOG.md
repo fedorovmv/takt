@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.41-alpha
+
+- Добавлена Adapter Platform: публичный `sdk/domainadapter`, нейтральные `scm|tracker|ci` adapters, новый `adapter` Node action, capability preflight и `process|mcp` transports без платформенных имён в workflow.
+- Process transport использует строгий `takt-domain-adapter/v1alpha1`; MCP transport выполняет discovery через `tools/list` и отображает нейтральные операции на конкретные tools. Добавлены CLI `takt adapter list|describe|doctor`, fake adapters и provider-neutral E2E.
+- Side-effect reconciliation распространён на доменные adapters: capability проверяется до мутации, idempotency key/receipt сохраняются durable, `unknown` запрещает blind retry до reconcile.
+- Добавлен `sdk/agentadapter` с conformance kit для сторонних `takt-assistant/v1alpha2` wrappers. Публичная agent MCP surface остаётся пять `takt.task.*` tools.
+- Исправления ревью v0.1.40: спецификация `side_effect`, сохранение parking record при неудачном steering, достижимый `partial` verdict, Pi overflow timeout, единая parking-модель `BOUNDARY_VIOLATION`, evidence failed→passed regression, явные MCP surface counts и unknown-claim regression.
+- Добавлены ADR-064/065, `docs/55-adapter-platform-v0.1.41.md`, `schemas/domain-adapter-protocol.schema.json`; Takt skill обновлён до 0.23.0.
+
 ## v0.1.40-alpha
 
 - Добавлен внутренний `EvidenceManifest`: baseline provenance, stable failure fingerprints, check-to-evidence mapping и итоговый verdict, связанный с candidate content SHA-256. Изменение candidate после проверки делает verdict `stale`.

@@ -279,3 +279,56 @@ assistants:
 		t.Fatal("expected unknown default assistant to fail")
 	}
 }
+
+func TestLoadDomainAdapters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := `apiVersion: takt/v1alpha1
+kind: Config
+adapters:
+  scm:
+    domain: scm
+    transport: mcp
+    argv: [corp-scm]
+    operations:
+      change.create: create_change
+    reconcile_operations:
+      change.create: reconcile_change
+    timeout: 5s
+  tracker:
+    domain: tracker
+    transport: process
+    argv: [corp-tracker]
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Adapters["scm"].Operations["change.create"]; got != "create_change" {
+		t.Fatalf("operation mapping = %q", got)
+	}
+	if got := cfg.Adapters["tracker"].Domain; got != "tracker" {
+		t.Fatalf("tracker domain = %q", got)
+	}
+}
+
+func TestLoadRejectsInvalidDomainAdapter(t *testing.T) {
+	for name, body := range map[string]string{
+		"domain":    "domain: github\n    transport: process\n    argv: [adapter]",
+		"transport": "domain: scm\n    transport: http\n    argv: [adapter]",
+		"operation": "domain: scm\n    transport: mcp\n    argv: [adapter]\n    operations:\n      Change.Create: create",
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			content := "apiVersion: takt/v1alpha1\nkind: Config\nadapters:\n  bad:\n    " + body + "\n"
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(path); err == nil {
+				t.Fatal("expected invalid domain adapter to fail")
+			}
+		})
+	}
+}

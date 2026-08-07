@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.local/schemas/domain-adapter-protocol.schema.json",
+  "title": "Takt domain adapter process protocol v1alpha1",
+  "description": "Single-request JSON protocol used by process domain adapters. One request is written to stdin and one response is read from stdout.",
+  "oneOf": [
+    { "$ref": "#/$defs/describeRequest" },
+    { "$ref": "#/$defs/invokeRequestEnvelope" },
+    { "$ref": "#/$defs/reconcileRequestEnvelope" },
+    { "$ref": "#/$defs/describeResponse" },
+    { "$ref": "#/$defs/invokeResponse" },
+    { "$ref": "#/$defs/reconcileResponse" }
+  ],
+  "$defs": {
+    "operation": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+(?:\\.[a-z0-9_-]+)*$"
+    },
+    "describeRequest": {
+      "type": "object",
+      "required": ["apiVersion", "kind"],
+      "properties": {
+        "apiVersion": { "const": "takt-domain-adapter/v1alpha1" },
+        "kind": { "const": "DescribeRequest" }
+      },
+      "additionalProperties": false
+    },
+    "declaration": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "domain", "capabilities"],
+      "properties": {
+        "apiVersion": { "const": "takt-domain-adapter/v1alpha1" },
+        "kind": { "const": "AdapterCapabilities" },
+        "domain": { "enum": ["scm", "tracker", "ci"] },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/operation" }
+        },
+        "reconcile": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/operation" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "describeResponse": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "declaration"],
+      "properties": {
+        "apiVersion": { "const": "takt-domain-adapter/v1alpha1" },
+        "kind": { "const": "DescribeResponse" },
+        "declaration": { "$ref": "#/$defs/declaration" }
+      },
+      "additionalProperties": false
+    },
+    "invokeRequest": {
+      "type": "object",
+      "required": ["run_id", "node_id", "attempt", "domain", "operation"],
+      "properties": {
+        "run_id": { "type": "string", "minLength": 1 },
+        "node_id": { "type": "string", "minLength": 1 },
+        "attempt": { "type": "integer", "minimum": 1 },
+        "domain": { "enum": ["scm", "tracker", "ci"] },
+        "operation": { "$ref": "#/$defs/operation" },
+        "input": {},
+        "idempotency_key": { "type": "string" },
+        "side_effect_mode": { "enum": ["", "idempotent", "reconcile"] }
+      },
+      "additionalProperties": false
+    },
+    "invokeRequestEnvelope": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "request"],
+      "properties": {
+        "apiVersion": { "const": "takt-domain-adapter/v1alpha1" },
+        "kind": { "const": "InvokeRequest" },
+        "request": { "$ref": "#/$defs/invokeRequest" }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["completed", "failed", "unknown"] },
+        "output": {},
+        "receipt": { "type": "string" },
+        "error_code": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "invokeResponse": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "result"],
+      "properties": {
+        "apiVersion": { "const": "takt-domain-adapter/v1alpha1" },
+        "kind": { "const": "InvokeResponse" },
+        "result": { "$ref": "#/$defs/result" }
+      },
+      "additionalProperties": false
+    },
+    "reconcileRequest": {
+      "type": "object",
+      "required": ["run_id", "node_id", "domain", "operation", "idempotency_key"],
+      "properties": {
+        "run_id": { "type": "string", "minLength": 1 },
+        "node_id": { "type": "string", "minLength": 1 },
+        "domain": { "enum": ["scm", "tracker", "ci"] },
+        "operation": { "$ref": "#/$defs/operation" },
+        "input": {},
+        "idempotency_key": { "type": "string", "minLength": 1 },
+        "receipt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "reconcileRequestEnvelope": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "reconcile"],
+      "properties": {
+        "apiVersion": { "const": "takt-domain-adapter/v1alpha1" },
+        "kind": { "const": "ReconcileRequest" },
+        "reconcile": { "$ref": "#/$defs/reconcileRequest" }
+      },
+      "additionalProperties": false
+    },
+    "reconcileResult": {
+      "type": "object",
+      "required": ["outcome"],
+      "properties": {
+        "outcome": { "enum": ["applied", "not_applied", "unknown"] },
+        "output": {},
+        "receipt": { "type": "string" },
+        "error_code": { "type": "string" },
+        "error": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "reconcileResponse": {
+      "type": "object",
+      "required": ["apiVersion", "kind", "reconcile"],
+      "properties": {
+        "apiVersion": { "const": "takt-domain-adapter/v1alpha1" },
+        "kind": { "const": "ReconcileResponse" },
+        "reconcile": { "$ref": "#/$defs/reconcileResult" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,32 @@
+apiVersion: takt/v1alpha1
+kind: Config
+
+adapters:
+  tracker:
+    domain: tracker
+    transport: process
+    argv: [takt-fake-domain-adapter, --domain=tracker]
+    timeout: 10s
+
+  ci:
+    domain: ci
+    transport: process
+    argv: [takt-fake-domain-adapter, --domain=ci]
+    timeout: 10s
+
+  scm:
+    domain: scm
+    transport: mcp
+    argv: [takt-fake-domain-adapter, --mcp, --domain=scm]
+    timeout: 10s
+    operations:
+      repository.get: scm.repository.get
+      change.get: scm.change.get
+      change.create: scm.change.create
+      change.comment: scm.change.comment
+      change.review: scm.change.review
+      checks.get: scm.checks.get
+    reconcile_operations:
+      change.create: scm.change.create.reconcile
+      change.comment: scm.change.comment.reconcile
+      change.review: scm.change.review.reconcile

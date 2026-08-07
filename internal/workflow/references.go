@@ -54,6 +54,17 @@ func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg 
 				return fmt.Errorf("node %q references unknown model %q", n.ID, modelName)
 			}
 		}
+		if n.Adapter != nil {
+			adapter, ok := cfg.Adapters[n.Adapter.Name]
+			if !ok {
+				return fmt.Errorf("node %q references unknown domain adapter %q", n.ID, n.Adapter.Name)
+			}
+			if adapter.Transport == "mcp" && len(adapter.Operations) > 0 {
+				if _, ok := adapter.Operations[n.Adapter.Operation]; !ok {
+					return fmt.Errorf("node %q operation %q is not mapped by MCP adapter %q", n.ID, n.Adapter.Operation, n.Adapter.Name)
+				}
+			}
+		}
 		if n.LoopGroup != nil {
 			if err := validateReferencesRecursive(n.LoopGroup.Nodes, defaults, cfg, resolver, stack, depth); err != nil {
 				return fmt.Errorf("loop_group %q: %w", n.ID, err)

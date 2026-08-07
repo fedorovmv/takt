@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
+
+	"takt/internal/domainadapter"
 
 	"takt/internal/spec"
 	"takt/internal/yamlmini"
@@ -29,6 +32,47 @@ func Load(path string) (*spec.Config, error) {
 	for name, model := range cfg.Models {
 		if model.Provider == "" || model.ID == "" {
 			return nil, fmt.Errorf("model %q requires provider and id", name)
+		}
+	}
+	for name, adapter := range cfg.Adapters {
+		if strings.TrimSpace(name) == "" {
+			return nil, fmt.Errorf("adapter name cannot be empty")
+		}
+		switch adapter.Domain {
+		case domainadapter.DomainSCM, domainadapter.DomainTracker, domainadapter.DomainCI:
+		default:
+			return nil, fmt.Errorf("adapter %q domain must be scm, tracker, or ci", name)
+		}
+		if adapter.Transport != "process" && adapter.Transport != "mcp" {
+			return nil, fmt.Errorf("adapter %q transport must be process or mcp", name)
+		}
+		if len(adapter.Argv) == 0 || strings.TrimSpace(adapter.Argv[0]) == "" {
+			return nil, fmt.Errorf("adapter %q requires argv", name)
+		}
+		if adapter.Timeout != "" {
+			value, err := time.ParseDuration(adapter.Timeout)
+			if err != nil || value <= 0 {
+				return nil, fmt.Errorf("adapter %q timeout must be a positive duration", name)
+			}
+		}
+		if adapter.MaxOutputBytes < 0 {
+			return nil, fmt.Errorf("adapter %q max_output_bytes cannot be negative", name)
+		}
+		for operation, tool := range adapter.Operations {
+			if err := domainadapter.ValidateOperation(operation); err != nil {
+				return nil, fmt.Errorf("adapter %q operation %q: %w", name, operation, err)
+			}
+			if strings.TrimSpace(tool) == "" {
+				return nil, fmt.Errorf("adapter %q operation %q has empty MCP tool mapping", name, operation)
+			}
+		}
+		for operation, tool := range adapter.ReconcileOperations {
+			if err := domainadapter.ValidateOperation(operation); err != nil {
+				return nil, fmt.Errorf("adapter %q reconcile operation %q: %w", name, operation, err)
+			}
+			if strings.TrimSpace(tool) == "" {
+				return nil, fmt.Errorf("adapter %q reconcile operation %q has empty MCP tool mapping", name, operation)
+			}
 		}
 	}
 	for name, assistant := range cfg.Assistants {

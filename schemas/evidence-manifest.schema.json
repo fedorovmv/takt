@@ -3,57 +3,167 @@
   "$id": "https://takt.local/schemas/evidence-manifest.schema.json",
   "title": "Takt EvidenceManifest",
   "type": "object",
-  "required": ["apiVersion", "kind", "acceptance"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "acceptance"
+  ],
   "properties": {
-    "apiVersion": {"const": "takt/v1alpha1"},
-    "kind": {"const": "EvidenceManifest"},
-    "candidate_sha": {"type": "string"},
+    "apiVersion": {
+      "const": "takt/v1alpha1"
+    },
+    "kind": {
+      "const": "EvidenceManifest"
+    },
+    "candidate_sha": {
+      "type": "string"
+    },
     "baseline": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "properties": {
-        "phase_id": {"type": "string"},
-        "base_ref": {"type": "string"},
-        "candidate_sha": {"type": "string"},
-        "passed_checks": {"type": "array", "items": {"type": "string"}},
-        "known_failures": {"type": "array", "items": {"type": "string"}},
-        "failure_fingerprints": {"type": "array", "items": {"type": "string"}},
-        "unavailable_checks": {"type": "array", "items": {"type": "string"}},
-        "evidence": {"type": "array", "items": {"type": "string"}},
-        "captured_at": {"type": "string", "format": "date-time"}
+        "phase_id": {
+          "type": "string"
+        },
+        "base_ref": {
+          "type": "string"
+        },
+        "candidate_sha": {
+          "type": "string"
+        },
+        "passed_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "known_failures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failure_fingerprints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unavailable_checks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "captured_at": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
       "additionalProperties": false
     },
     "acceptance": {
       "type": "object",
-      "additionalProperties": {"$ref": "#/$defs/acceptance"}
+      "additionalProperties": {
+        "$ref": "#/$defs/acceptance"
+      }
     },
     "verdict": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "properties": {
-        "status": {"enum": ["pass", "fail", "partial", "stale"]},
-        "candidate_sha": {"type": "string"},
-        "reason": {"type": "string"},
-        "created_at": {"type": "string", "format": "date-time"}
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "partial",
+            "stale"
+          ]
+        },
+        "candidate_sha": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
-      "required": ["status", "candidate_sha", "created_at"],
+      "required": [
+        "status",
+        "candidate_sha",
+        "created_at"
+      ],
       "additionalProperties": false
     },
-    "updated_at": {"type": "string", "format": "date-time"}
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
   },
   "$defs": {
     "acceptance": {
       "type": "object",
-      "required": ["id", "block", "check", "status"],
+      "required": [
+        "id",
+        "block",
+        "check",
+        "status"
+      ],
       "properties": {
-        "id": {"type": "string"},
-        "block": {"type": "string"},
-        "check": {"type": "string"},
-        "phase_id": {"type": "string"},
-        "status": {"enum": ["passed", "failed", "unavailable", "baseline"]},
-        "failure_code": {"type": "string"},
-        "detail": {"type": "string"},
-        "evidence": {"type": "array", "items": {"type": "string"}},
-        "candidate_sha": {"type": "string"}
+        "id": {
+          "type": "string"
+        },
+        "block": {
+          "type": "string"
+        },
+        "check": {
+          "type": "string"
+        },
+        "phase_id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "unavailable",
+            "baseline"
+          ]
+        },
+        "failure_code": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "candidate_sha": {
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "required",
+            "preferred"
+          ]
+        }
       },
       "additionalProperties": false
     }

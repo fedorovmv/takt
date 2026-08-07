@@ -75,7 +75,7 @@ func TestPiRunPreservesContextPriorityWithRealOverflow(t *testing.T) {
 			caseName: "timeout-overflow",
 			wantKind: execution.KindTimedOut,
 			context: func(adapter *Pi) (context.Context, context.CancelFunc) {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				adapter.onOutputTruncated = func() { <-ctx.Done() }
 				return ctx, cancel
 			},

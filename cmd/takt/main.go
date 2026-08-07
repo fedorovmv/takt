@@ -25,6 +25,7 @@ import (
 	"takt/internal/control"
 	"takt/internal/daemon"
 	"takt/internal/definition"
+	"takt/internal/domainadapter"
 	"takt/internal/dynamicplan"
 	"takt/internal/evaluation"
 	"takt/internal/gitworktree"
@@ -80,6 +81,8 @@ func run(args []string) error {
 		return workflowCmd(args[1:])
 	case "block":
 		return blockCmd(args[1:])
+	case "adapter":
+		return adapterCmd(args[1:])
 	case "answer":
 		return answerCmd(args[1:])
 	case "resume":
@@ -325,6 +328,63 @@ func blockCmd(args []string) error {
 		return printResult(*jsonOut, catalog)
 	default:
 		return fmt.Errorf("unknown block subcommand %q", subcommand)
+	}
+}
+
+func adapterCmd(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: takt adapter <list|describe|doctor> ...")
+	}
+	fs := newFlagSet("adapter " + args[0])
+	workspace := fs.String("workspace", ".", "control workspace")
+	configPath := fs.String("config", ".takt/config.yaml", "config path")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args[1:], map[string]bool{"--workspace": true, "--config": true, "--json": false})); err != nil {
+		return err
+	}
+	path := *configPath
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(*workspace, path)
+	}
+	cfg, err := cfgpkg.Load(path)
+	if err != nil {
+		return err
+	}
+	switch args[0] {
+	case "list":
+		if fs.NArg() != 0 {
+			return fmt.Errorf("usage: takt adapter list [--workspace dir] [--config path]")
+		}
+		type row struct {
+			Name      string `json:"name"`
+			Domain    string `json:"domain"`
+			Transport string `json:"transport"`
+		}
+		rows := make([]row, 0, len(cfg.Adapters))
+		for name, value := range cfg.Adapters {
+			rows = append(rows, row{Name: name, Domain: value.Domain, Transport: value.Transport})
+		}
+		sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
+		return printResult(*jsonOut, rows)
+	case "describe", "doctor":
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt adapter %s <name> [--workspace dir] [--config path]", args[0])
+		}
+		name := fs.Arg(0)
+		adapter, err := (domainadapter.Factory{Config: cfg}).Resolve(name)
+		if err != nil {
+			return err
+		}
+		declaration, err := adapter.Describe(context.Background())
+		if err != nil {
+			return err
+		}
+		if err := domainadapter.ValidateDeclaration(declaration); err != nil {
+			return err
+		}
+		return printResult(*jsonOut, map[string]any{"name": name, "status": "ready", "declaration": declaration})
+	default:
+		return fmt.Errorf("usage: takt adapter <list|describe|doctor> ...")
 	}
 }
 
@@ -1486,7 +1546,7 @@ func wantsJSON(args []string) bool {
 	value := false
 	if len(args) > 0 {
 		switch args[0] {
-		case "run", "plan", "execute", "steer", "answer", "resume", "status", "children", "artifacts", "worktree", "eval":
+		case "run", "plan", "execute", "steer", "answer", "resume", "status", "children", "artifacts", "worktree", "eval", "adapter":
 			value = true
 		case "command":
 			value = len(args) > 1 && args[1] == "run"
@@ -1543,5 +1603,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|task|run|runs|attention|notify|plan|execute|steer|host|workflow|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
+	return fmt.Errorf("usage: takt <init|validate|task|run|runs|attention|notify|plan|execute|steer|host|workflow|block|adapter|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
 }

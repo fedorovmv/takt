@@ -352,3 +352,20 @@ requires: [tool_control, agent_events_v2, tool_events]
 ```
 
 Такой workflow запускается только с executor, который заявил pre-execution `tool_control`.
+
+## Domain adapter node
+
+Для SCM/tracker/CI используй нейтральный `adapter`, а не provider-specific shell/CLI в workflow:
+
+```yaml
+- id: publish
+  adapter:
+    name: scm
+    operation: change.create
+    input: |
+      {"title":"${nodes.prepare.output.title}"}
+  side_effect:
+    mode: reconcile
+```
+
+`adapter.input` после rendering должен быть JSON object. Для внешней мутации предпочитай `side_effect.mode: reconcile`: Takt проверит reconcile capability до вызова, сохранит idempotency key/receipt и не сделает blind retry после `unknown`.

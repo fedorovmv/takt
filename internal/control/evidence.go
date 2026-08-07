@@ -15,6 +15,7 @@ import (
 
 	"takt/internal/dynamicplan"
 	"takt/internal/evidence"
+	"takt/internal/rolecontract"
 )
 
 func ensureEvidence(record *dynamicplan.Record) *evidence.Manifest {
@@ -79,11 +80,11 @@ func outputEvidence(output string) []string {
 	return evidence.EvidenceStrings(value)
 }
 
-func recordAcceptance(record *dynamicplan.Record, phaseID, block, check, status, failureCode, detail, candidateSHA string, proof []string) {
+func recordAcceptance(record *dynamicplan.Record, phaseID, block, check, level, status, failureCode, detail, candidateSHA string, proof []string) {
 	manifest := ensureEvidence(record)
 	id := evidence.AcceptanceID(block, check)
 	manifest.Acceptance[id] = evidence.Acceptance{
-		ID: id, Block: block, Check: check, PhaseID: phaseID, Status: status, FailureCode: failureCode,
+		ID: id, Block: block, Check: check, PhaseID: phaseID, Status: status, Level: level, FailureCode: failureCode,
 		Detail: detail, Evidence: append([]string(nil), proof...), CandidateSHA: candidateSHA,
 	}
 	manifest.CandidateSHA = candidateSHA
@@ -94,12 +95,23 @@ func finalizeEvidence(record *dynamicplan.Record, candidateSHA string) {
 	manifest := ensureEvidence(record)
 	status := evidence.VerdictPass
 	reason := "all required evidence is satisfied for the current candidate"
+	partial := false
 	for _, item := range manifest.Acceptance {
-		if item.Status == "failed" || item.Status == "unavailable" {
-			status = evidence.VerdictFail
-			reason = "one or more required evidence items are not satisfied"
-			break
+		if item.Status != "failed" && item.Status != "unavailable" {
+			continue
 		}
+		if item.Level == rolecontract.CheckPreferred {
+			partial = true
+			continue
+		}
+		status = evidence.VerdictFail
+		reason = "one or more required evidence items are not satisfied"
+		partial = false
+		break
+	}
+	if status == evidence.VerdictPass && partial {
+		status = evidence.VerdictPartial
+		reason = "required evidence passed, but one or more preferred checks are incomplete"
 	}
 	manifest.CandidateSHA = candidateSHA
 	manifest.Verdict = &evidence.Verdict{Status: status, CandidateSHA: candidateSHA, Reason: reason, CreatedAt: time.Now().UTC()}

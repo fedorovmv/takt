@@ -26,3 +26,17 @@ default_assistant: qwen
 ```
 
 Workflow и команды профиля при этом не меняются.
+
+## Conformance kit v0.1.41
+
+Takt предоставляет product-neutral проверку `takt-assistant/v1alpha2` в Go-пакете `sdk/agentadapter`. Новый wrapper для Codex, Oh My Pi, Qwen CLI или другого coding agent сначала записывает NDJSON transcript своего contract fixture, затем проверяет общие protocol/session invariants:
+
+```go
+report, err := agentadapter.ValidateTranscript(reader, agentadapter.Options{
+    RequireDeclaration: true,
+    RequiredCapabilities: []string{"structured_output"},
+    RequestedSessionID: "session-123",
+})
+```
+
+Conformance kit проверяет declaration, terminal result, exit/status, tool-control consistency и resume identity. Он не объявляет capability за адаптер: `tool_control`, read-only enforcement и strict completion gate должны подтверждаться отдельным fixture/live test конкретного хоста.

@@ -104,6 +104,20 @@ type ToolCallState struct {
 	CompletedAt     time.Time       `json:"completed_at,omitempty"`
 }
 
+// DomainOperationState records provider-neutral SCM/tracker/CI execution and
+// the reconciliation facts needed to prevent blind retries of side effects.
+type DomainOperationState struct {
+	Adapter            string   `json:"adapter"`
+	Domain             string   `json:"domain"`
+	Operation          string   `json:"operation"`
+	Capabilities       []string `json:"capabilities,omitempty"`
+	ReconcileSupported bool     `json:"reconcile_supported,omitempty"`
+	SideEffectMode     string   `json:"side_effect_mode,omitempty"`
+	IdempotencyKey     string   `json:"idempotency_key,omitempty"`
+	Receipt            string   `json:"receipt,omitempty"`
+	ReconcileStatus    string   `json:"reconcile_status,omitempty"`
+}
+
 // ExternalExecutionState is a durable hand-off of one command/prompt node to a
 // local MCP client. The claim token is intentionally omitted from PublicView.
 type ExternalExecutionState struct {
@@ -211,6 +225,7 @@ type NodeState struct {
 	Policy            *NodePolicyState        `json:"policy,omitempty"`
 	Artifacts         []ArtifactRef           `json:"artifacts,omitempty"`
 	External          *ExternalExecutionState `json:"external,omitempty"`
+	DomainOperation   *DomainOperationState   `json:"domain_operation,omitempty"`
 }
 
 func (n NodeState) Terminal() bool {

@@ -374,6 +374,9 @@
         },
         "side_effect": {
           "$ref": "#/$defs/sideEffect"
+        },
+        "adapter": {
+          "$ref": "#/$defs/adapterCall"
         }
       },
       "oneOf": [
@@ -420,6 +423,11 @@
         {
           "required": [
             "workflow"
+          ]
+        },
+        {
+          "required": [
+            "adapter"
           ]
         }
       ],
@@ -687,6 +695,9 @@
         },
         "side_effect": {
           "$ref": "#/$defs/sideEffect"
+        },
+        "adapter": {
+          "$ref": "#/$defs/adapterCall"
         }
       },
       "oneOf": [
@@ -723,6 +734,11 @@
         {
           "required": [
             "workflow"
+          ]
+        },
+        {
+          "required": [
+            "adapter"
           ]
         }
       ],
@@ -1416,6 +1432,27 @@
         "idempotency_key": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "adapterCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "operation"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]+(?:\\.[a-z0-9_-]+)*$"
+        },
+        "input": {
+          "type": "string"
         }
       }
     }

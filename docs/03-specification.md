@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.40-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.41-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -107,6 +107,31 @@ assistants:
 
 На Unix процесс запускается в отдельной process group; timeout и cancellation завершают процесс и его потомков.
 
+### Доменные адаптеры SCM, tracker и CI
+
+В `Config` поле `adapters` задаёт нейтральные интеграции с инженерной средой. Workflow ссылается на имя адаптера и предметную операцию, а не на GitHub, GitLab, Jira или конкретную корпоративную систему.
+
+```yaml
+adapters:
+  scm:
+    domain: scm
+    transport: mcp
+    argv: [corp-scm-mcp]
+    operations:
+      change.create: corp_change_create
+    reconcile_operations:
+      change.create: corp_change_reconcile
+    timeout: 30s
+
+  tracker:
+    domain: tracker
+    transport: process
+    argv: [corp-tracker-adapter]
+```
+
+Допустимые домены — `scm`, `tracker`, `ci`; транспорты — `process` и `mcp`. Операция использует lowercase dot-separated имя (`change.create`, `item.get`, `run.start`). `process` реализует `takt-domain-adapter/v1alpha1`; MCP transport выполняет `initialize`, `tools/list` для capability discovery и `tools/call`. Для MCP `operations` и `reconcile_operations` связывают нейтральные операции с именами конкретных tools; без явной карты используется `<domain>.<operation>`.
+
+Перед выполнением runtime запрашивает capabilities и fail-fast отклоняет обязательную неподдерживаемую операцию. `takt adapter list|describe|doctor` позволяет проверить конфигурацию и фактическую декларацию адаптера без запуска workflow. Схемы: `schemas/config.schema.json` и `schemas/domain-adapter-protocol.schema.json`; публичные типы и core operation names находятся в `sdk/domainadapter`.
 
 ## 3.0. Входной контракт workflow
 
@@ -123,6 +148,25 @@ Event protocol v2 использует: `assistant.session.started`, `assistant.
 При `tool_approval` worker обязан запросить tool call до фактического запуска. Takt сначала применяет effective node policy, затем при необходимости сохраняет blocking approval. Запуск разрешён только после `allow`. Отмена одного tool call сохраняется отдельно от отмены Run. Артефакт внешнего worker регистрируется через `takt.node.artifact.declare` и связывается с устойчивым `call_id`. Внешний узел нельзя завершить, пока tool call не достиг terminal-состояния `completed|failed|denied|cancelled`. После `takt.node.complete|fail` результат проходит обычные `output_format`, attempts, hooks и artifact semantics.
 
 Встроенные adapters используют тот же нормализованный event contract через `assistant.Request.Emit`, но заявляют только реально доступные capabilities. Наблюдательные tool events OpenCode/Pi не означают pre-execution `tool_control`.
+
+### Контракт side_effect
+
+`side_effect` допустим у `executor: external` и у доменного `adapter`-узла. Он описывает семантику внешнего изменения, а не конкретный провайдер:
+
+```yaml
+side_effect:
+  mode: reconcile
+  idempotency_key: ${run.id}:${node.id}
+```
+
+- `idempotent` означает, что повтор с тем же ключом безопасен по контракту исполнителя;
+- `reconcile` означает, что после неопределённого результата повтор запрещён до сверки факта;
+- если `idempotency_key` не задан, Takt использует устойчивый ключ `run_id:node_id`;
+- `applied` завершает операцию только с receipt/result;
+- `not_applied` разрешает один безопасный повтор с тем же ключом;
+- `unknown` сохраняет неопределённое состояние и запрещает blind retry.
+
+Для внешнего worker сверка выполняется через `takt.node.reconcile`. Для доменного adapter runtime вызывает его `Reconcile` автоматически; capability `reconcile` проверяется **до** mutating-вызова. Состояние ключа, receipt и reconcile outcome сохраняется durable в Run state. YAML-схема находится в `schemas/workflow.schema.json`, сохранённое состояние — в `schemas/run-state.schema.json`.
 
 ### Pi assistant
 
@@ -333,6 +377,26 @@ nodes:
 `runtime` принимает `command`, `python` или `node`. `command` требует `path`; `python` и `node` принимают ровно одно из `path` и `inline`. Дополнительно доступны `args`, `env`, `working_directory` и `dependencies`. Пути вычисляются относительно workflow и отображаются в execution workspace при managed worktree. Runtime передаёт `TAKT_RUN_ID`, `TAKT_NODE_ID`, `TAKT_ATTEMPT`, `TAKT_WORKSPACE` и `TAKT_ARTIFACTS_DIR`.
 
 Stdout/stderr сохраняются раздельно. `output_format` нормализует только `Output`, не затирая raw stdout. Исходник script и файлы `dependencies` входят в fingerprint.
+
+### `adapter`
+
+Выполняет одну нейтральную операцию через доменный адаптер из `Config`:
+
+```yaml
+- id: create-change
+  adapter:
+    name: scm
+    operation: change.create
+    input: |
+      {"title":"${nodes.prepare.output.title}"}
+  side_effect:
+    mode: reconcile
+    idempotency_key: ${run.id}:create-change
+  output_format:
+    type: object
+```
+
+`adapter` является обычным действием Node и проходит тот же scheduler, dependencies, attempts, hooks, timeout и `output_format`. Он не создаёт второй runtime. `adapter.input` после template rendering обязан быть JSON object. Runtime выполняет capability preflight, а в `NodeState.domain_operation` сохраняет домен, операцию, обнаруженные capabilities, idempotency key, receipt и состояние reconcile.
 
 ### Типизированные артефакты
 

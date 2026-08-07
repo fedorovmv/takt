@@ -404,3 +404,12 @@ JSON-RPC cancellation отменяет контекст текущего MCP-з�
 Реестр `run.list` строится из файлового Store и отличает фактический статус от вычисленного `pausing|abandoning`. `run.attention` выделяет approval, question, tool approval, failed и paused Run. `run.summary` агрегирует descendant Runs, usage и artifacts без изменения исходных state.
 
 `run.retry` сбрасывает failed node и его зависимый хвост, сохраняя `operator_retries`. `run.fork` создаёт новый Run или новый Dynamic Plan; `run.abandon` формирует отдельное terminal-состояние. Notification dispatcher сравнивает durable snapshots, записывает дедуплицированные items в inbox и затем пытается доставить их sinks; inbox остаётся источником истины независимо от успеха desktop/process delivery.
+
+
+## Domain adapter execution
+
+`adapter` является ещё одним детерминированным Node action внутри существующего scheduler. Перед `Invoke` runtime разрешает adapter из config, получает declaration и проверяет требуемую нейтральную capability. Поэтому неизвестная или неподдерживаемая операция завершается до внешнего side effect.
+
+Для `side_effect.mode: reconcile` adapter обязан объявить reconcile для этой операции до первого mutating-вызова. Неопределённый transport/result не переводится в обычный retry: runtime сначала вызывает `Reconcile` с тем же durable idempotency key и receipt. `applied` принимается как завершённый эффект, `not_applied` допускает один повтор, `unknown` классифицируется как `external_state_unknown` и требует внешнего разрешения.
+
+Process и MCP являются transport-реализациями одной границы. Workflow и scheduler не знают имён провайдеров; `NodeState.domain_operation` сохраняет фактически обнаруженные capabilities и reconciliation provenance. Эта модель продолжает ADR-063 и не вводит отдельный integration runtime.

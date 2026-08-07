@@ -17,6 +17,7 @@ description: Создаёт, устанавливает, изменяет, пр�
    - `command` — длинный или переиспользуемый prompt в Markdown;
    - `bash` — короткая детерминированная shell-команда;
    - `script` — версионируемый command/Python/Node/Go-скрипт с fingerprint исходника и зависимостей;
+   - `adapter` — нейтральная SCM/tracker/CI операция через именованный process/MCP adapter; provider-specific имя остаётся только в config;
    - hook с `retry` — проверка и исправление результата;
    - `approval` — отдельное сохраняемое решение пользователя;
    - `loop_group` — только когда нужен повтор вложенного DAG, а обычных attempts недостаточно;
@@ -44,6 +45,24 @@ takt run code --workspace . --input docs/plan.md --json
 ```
 
 Профиль хранится в `.takt/profiles/code/`. Markdown-файл остаётся авторитетным планом: Takt передаёт агенту его путь и содержимое, но не преобразует его в обязательный JSON/YAML список задач. Формализованные входные адаптеры должны оставаться расширением, а не условием работы профиля.
+
+
+## Доменные адаптеры SCM, tracker и CI
+
+Для внешней инженерной системы используй `adapter`-узел вместо GitHub/Jira-команд внутри workflow:
+
+```yaml
+- id: publish
+  adapter:
+    name: scm
+    operation: change.create
+    input: |
+      {"title":"${nodes.prepare.output.title}"}
+  side_effect:
+    mode: reconcile
+```
+
+Конкретный process или MCP server задаётся в `config.yaml`. Перед authoring проверь `takt adapter doctor <name> --workspace .`: обязательная operation должна присутствовать в capability declaration, а mutating `reconcile` — также в reconcile capabilities. После `unknown` не создавай ручной повтор той же операции: runtime обязан сначала сверить внешний факт с тем же idempotency key. Для примера используй `examples/adapter-platform/`.
 
 ## Локальный MCP и daemon
 

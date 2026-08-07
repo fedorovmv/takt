@@ -114,7 +114,7 @@ func (c *compiler) compileNode(node spec.Node, workflowPath, prefix string, defa
 	publicID := qualify(prefix, node.ID)
 	kinds := sourceKinds(node)
 	if kinds != 1 {
-		return compiledGroup{}, fmt.Errorf("node %q must define exactly one of command, prompt, bash, approval, loop_group, subworkflow, foreach, workflow", node.ID)
+		return compiledGroup{}, fmt.Errorf("node %q must define exactly one action (command, prompt, bash, script, adapter, approval, loop_group, subworkflow, foreach, or workflow)", node.ID)
 	}
 
 	switch {
@@ -384,6 +384,12 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 	}
 	rebaseNodePolicyPaths(node, workflowPath)
 	node.OutputPath = rewriteTemplate(node.OutputPath)
+	if node.Adapter != nil {
+		node.Adapter.Input = rewriteTemplate(node.Adapter.Input)
+	}
+	if node.SideEffect != nil {
+		node.SideEffect.IdempotencyKey = rewriteTemplate(node.SideEffect.IdempotencyKey)
+	}
 	if node.Approval != nil {
 		node.Approval.Message = rewriteTemplate(node.Approval.Message)
 	}
@@ -464,6 +470,12 @@ func rebaseSkillPaths(values *[]string, workflowPath string) {
 
 func unresolvedInput(node *spec.Node) string {
 	values := []string{node.Prompt, node.Bash, node.When, node.OutputPath}
+	if node.Adapter != nil {
+		values = append(values, node.Adapter.Input)
+	}
+	if node.SideEffect != nil {
+		values = append(values, node.SideEffect.IdempotencyKey)
+	}
 	if node.Script != nil {
 		values = append(values, node.Script.Path, node.Script.Inline, node.Script.WorkingDir)
 		values = append(values, node.Script.Args...)
@@ -593,6 +605,9 @@ func sourceKinds(node spec.Node) int {
 		count++
 	}
 	if node.Internal != nil {
+		count++
+	}
+	if node.Adapter != nil {
 		count++
 	}
 	return count

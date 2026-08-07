@@ -19,7 +19,7 @@
 - DAG с `depends_on`, `when`, JSON-путями и правилами `all_success`, `all_done`, `none_failed_min_one_success`, `one_success`;
 - реальные параллельные волны независимых простых `command`, `prompt`, `bash`, `script`;
 - одна scheduler-семантика root DAG, `loop_group`, скомпилированных `subworkflow` и `foreach`;
-- `command`, `prompt`, `bash`, `script`, `approval`, `loop_group`, `subworkflow`, последовательный и параллельный `foreach`;
+- `command`, `prompt`, `bash`, `script`, `adapter`, `approval`, `loop_group`, `subworkflow`, последовательный и параллельный `foreach`;
 - approval внутри `loop_group` с pause/resume той же итерации;
 - inline `foreach.items` и внешний `items_from.path` с fingerprint исходного файла;
 - детерминированный массив результатов `foreach` в порядке входа независимо от порядка завершения;
@@ -119,6 +119,16 @@
 - durable notification inbox, desktop/process sinks, дедупликация и ack;
 - Pi/OpenCode команды runs, attention, pause, resume и result.
 
+### Domain Adapter Platform v0.1.41
+
+- нейтральные `scm|tracker|ci` contracts и именованные adapters в Config;
+- `adapter` как обычный Node action единого scheduler с `output_format`;
+- строгий process protocol `takt-domain-adapter/v1alpha1` и MCP stdio transport;
+- capability discovery/preflight до внешнего вызова;
+- durable idempotency key, receipt и reconcile state для mutating operations;
+- `sdk/agentadapter` conformance kit для внешних coding-agent wrappers;
+- CLI `takt adapter list|describe|doctor`, fake domain adapter и provider-neutral E2E.
+
 ### Профиль code 0.15.0
 
 - встроенный пакет `code-core` с девятью атомарными блоками Dynamic Takt, включая baseline и independent test-design;
@@ -186,4 +196,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief, реакции `deny|repair|warn`, EvidenceManifest, baseline classification, parking и external side-effect reconciliation реализованы к `v0.1.40-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — нейтральный SDK доменных адаптеров SCM/tracker/CI; затем полная доставка пакетов, multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark.
+Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief, реакции `deny|repair|warn`, EvidenceManifest, baseline classification, parking и external side-effect reconciliation реализованы к `v0.1.40-alpha`; Adapter Platform и conformance kit — к `v0.1.41-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — полная доставка пакетов; затем multi-repo orchestration, runtime/security hardening и предметный Route DSL benchmark.

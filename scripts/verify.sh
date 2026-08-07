@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-gofmt -w cmd internal
+gofmt -w cmd internal sdk
 go vet ./...
 go test ./...
 go test -race ./...
@@ -10,6 +10,7 @@ go build -o bin/takt-fake-assistant ./cmd/takt-fake-assistant
 go build -o bin/takt-fake-pi ./cmd/takt-fake-pi
 go build -o bin/takt-fake-opencode ./cmd/takt-fake-opencode
 go build -o bin/takt-fake-code-agent ./cmd/takt-fake-code-agent
+go build -o bin/takt-fake-domain-adapter ./cmd/takt-fake-domain-adapter
 ./scripts/test-fake-assistant.sh
 ./scripts/test-pi-adapter.sh
 ./scripts/test-opencode-adapter.sh
@@ -34,6 +35,9 @@ go build -o bin/takt-fake-code-agent ./cmd/takt-fake-code-agent
 ./scripts/test-host-integrations-typescript.sh
 ./scripts/test-autonomous-runs.sh
 ./scripts/test-simple-reliable-router.sh
+./scripts/test-evidence-routing.sh
+./scripts/test-adapter-platform.sh
+go test ./sdk/agentadapter -count=1
 ./scripts/check-docs.sh
 
 ./bin/takt validate examples/route-dsl/workflow.yaml \

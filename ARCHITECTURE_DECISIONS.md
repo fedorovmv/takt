@@ -411,3 +411,18 @@ Baseline failures сравниваются по детерминированно
 `executor: external` может объявить `side_effect.mode: reconcile`. После истечения claim такого узла новый worker не получает право повторить действие, пока внешний adapter не классифицирует факт как `not_applied`, `applied` или `unknown`. `not_applied` разрешает новый claim; `applied` требует receipt и результат и завершает узел через обычный submit path; `unknown` сохраняет ожидание и блокирует replay.
 
 Это не exactly-once гарантия внешней системы. Контракт предотвращает опасный blind retry и задаёт runtime seam для будущих SCM/tracker/CI adapters.
+
+
+## ADR-064. Доменные интеграции являются нейтральными adapter-узлами единого runtime
+
+**Статус:** принято.
+
+SCM, tracker и CI подключаются через именованные `adapters` в Config и нейтральные операции (`change.create`, `item.get`, `run.start`). Workflow не содержит GitHub/Jira/корпоративные transport details. `adapter` является обычным действием Node: существующий scheduler применяет dependencies, attempts, timeout, hooks и structured output, а transport `process|mcp` скрыт за `domainadapter.Adapter`. Отдельный integration runtime не создаётся.
+
+Capability discovery выполняется до вызова. Для `side_effect.mode: reconcile` поддержка сверки также обязана быть объявлена до первого внешнего изменения. Неопределённый результат запрещает blind retry и сначала проходит reconciliation с тем же durable idempotency key.
+
+## ADR-065. Agent Adapter SDK проверяет контракт, но не объявляет неподтверждённые возможности хоста
+
+**Статус:** принято.
+
+`sdk/agentadapter` предоставляет product-neutral conformance kit для `takt-assistant/v1alpha2`: protocol/event/result/session invariants проверяются одинаково для Codex, Oh My Pi, Qwen CLI и других wrappers. Наличие transcript-conformance не повышает adapter до `tool_control`, strict completion gate или reliable resume; такие capabilities заявляются только после product-specific live/fixture проверки.

@@ -8,12 +8,13 @@ import (
 type Kind string
 
 const (
-	KindExit      Kind = "exit"
-	KindStart     Kind = "start"
-	KindCancelled Kind = "cancelled"
-	KindTimedOut  Kind = "timed_out"
-	KindProtocol  Kind = "protocol"
-	KindInternal  Kind = "internal"
+	KindExit            Kind = "exit"
+	KindStart           Kind = "start"
+	KindCancelled       Kind = "cancelled"
+	KindTimedOut        Kind = "timed_out"
+	KindProtocol        Kind = "protocol"
+	KindInternal        Kind = "internal"
+	KindExternalUnknown Kind = "external_state_unknown"
 )
 
 type Error struct {

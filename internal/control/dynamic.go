@@ -459,9 +459,11 @@ func (s *Service) Steer(ctx context.Context, request SteerRequest) (*dynamicplan
 	if record.Status == "waiting" || record.Status == "parked" {
 		previousStatus := record.Status
 		record.Status = "running"
-		clearPlanFailure(record)
 		record.LastError = ""
 		if err := s.replanAtCheckpoint(ctx, record); err != nil {
+			// Steering is tentative until the replacement plan is accepted. Keep the
+			// durable parking record intact so a failed replanner cannot erase the
+			// reason, timestamp or safe continuation advice for the operator.
 			record.Status = previousStatus
 			record.LastError = err.Error()
 			if saveErr := st.Save(record); saveErr != nil {
@@ -469,6 +471,7 @@ func (s *Service) Steer(ctx context.Context, request SteerRequest) (*dynamicplan
 			}
 			return nil, err
 		}
+		clearPlanFailure(record)
 	}
 	if err := st.Save(record); err != nil {
 		return nil, err
@@ -677,11 +680,7 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 		return err
 	}
 	if controlOutcome.DenyReason != "" {
-		record.Status = "failed"
-		record.CurrentRunID = ""
-		record.LastError = controlOutcome.DenyReason
-		record.Failure = &evidence.Failure{Code: evidence.FailureBoundary, Message: controlOutcome.DenyReason, Owner: "policy", SafeNextAction: "adjust the task or trusted scope; do not retry the same out-of-scope mutation", CreatedAt: time.Now().UTC()}
-		record.UpdatedAt = time.Now().UTC()
+		parkPlan(record, evidence.FailureBoundary, controlOutcome.DenyReason, "policy", "adjust the task or trusted scope; do not retry the same out-of-scope mutation", false, "repeat the same out-of-scope mutation")
 		return st.Save(record)
 	}
 	if len(controlOutcome.RepairFailures) > 0 {
@@ -823,7 +822,7 @@ func evaluateSegmentControls(record *dynamicplan.Record, segment []dynamicplan.P
 			} else if !result.Passed {
 				status = "failed"
 			}
-			recordAcceptance(record, phase.ID, phase.Uses, result.Name, status, result.FailureCode, result.Detail, candidateSHA, outputEvidence(output))
+			recordAcceptance(record, phase.ID, phase.Uses, result.Name, result.Level, status, result.FailureCode, result.Detail, candidateSHA, outputEvidence(output))
 			record.CheckResults = append(record.CheckResults, result)
 			if result.Passed {
 				continue

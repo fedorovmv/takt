@@ -49,6 +49,7 @@ type Acceptance struct {
 	Check        string   `json:"check,omitempty"`
 	PhaseID      string   `json:"phase_id,omitempty"`
 	Status       string   `json:"status"`
+	Level        string   `json:"level,omitempty"`
 	FailureCode  string   `json:"failure_code,omitempty"`
 	Detail       string   `json:"detail,omitempty"`
 	Evidence     []string `json:"evidence,omitempty"`
@@ -57,9 +58,9 @@ type Acceptance struct {
 
 type Verdict struct {
 	Status       string    `json:"status"`
-	CandidateSHA string    `json:"candidate_sha,omitempty"`
+	CandidateSHA string    `json:"candidate_sha"`
 	Reason       string    `json:"reason,omitempty"`
-	CreatedAt    time.Time `json:"created_at,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Manifest struct {

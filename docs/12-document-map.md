@@ -9,6 +9,7 @@
 1. `docs/01-project.md`;
 1. `docs/05-implementation-status.md`;
 1. `skills/takt/SKILL.md`;
+1. `docs/55-adapter-platform-v0.1.41.md`;
 1. `docs/54-evidence-baseline-failure-routing-v0.1.40.md`;
 1. `docs/53-role-brief-controls-v0.1.39.md`;
 1. `docs/52-simple-reliable-agent-neutral-router-v0.1.38.md`;
@@ -87,6 +88,7 @@
 | Script-узлы и типизированные артефакты | `43-script-nodes-typed-artifacts-v0.1.29.md` | фактический |
 | Динамический fan-out governed children | `42-governed-child-fanout-v0.1.28.md` | фактический |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
+| Domain Adapter Platform | `55-adapter-platform-v0.1.41.md`, `../schemas/domain-adapter-protocol.schema.json` | фактический |
 | Локальный MCP control plane | `44-local-mcp-control-plane-v0.1.30.md` | фактический |
 | Строгий authoring и локальный daemon | `47-authoring-local-daemon-v0.1.33.md` | фактический |
 | Dynamic Takt | `48-dynamic-takt-v0.1.34.md` | фактический |

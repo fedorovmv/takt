@@ -62,6 +62,7 @@ type Node struct {
 	Requires     []string          `json:"requires,omitempty"`
 	ToolApproval *ToolApprovalSpec `json:"tool_approval,omitempty"`
 	SideEffect   *SideEffectSpec   `json:"side_effect,omitempty"`
+	Adapter      *AdapterCallSpec  `json:"adapter,omitempty"`
 	OutputFormat *OutputFormat     `json:"output_format,omitempty"`
 	OutputType   string            `json:"output_type,omitempty"`
 	OutputMIME   string            `json:"output_mime,omitempty"`
@@ -83,7 +84,17 @@ type ToolApprovalSpec struct {
 	Message string   `json:"message,omitempty"`
 }
 
-// SideEffectSpec marks an external node whose effects may outlive the worker
+// AdapterCallSpec invokes a provider-neutral engineering-system operation.
+// The adapter name resolves from Config.adapters; operation names are domain
+// local (for example change.create, item.get, run.start). Input is JSON with
+// the ordinary Takt template syntax applied before invocation.
+type AdapterCallSpec struct {
+	Name      string `json:"name"`
+	Operation string `json:"operation"`
+	Input     string `json:"input,omitempty"`
+}
+
+// SideEffectSpec marks an external or domain-adapter node whose effects may outlive the process
 // process. idempotent permits safe replay; reconcile requires an explicit
 // external fact check after an expired/unknown claim before Takt can retry.
 type SideEffectSpec struct {
@@ -251,11 +262,12 @@ type HookDecision struct {
 }
 
 type Config struct {
-	APIVersion       string                   `json:"apiVersion"`
-	Kind             string                   `json:"kind"`
-	DefaultAssistant string                   `json:"default_assistant,omitempty"`
-	Models           map[string]ModelSpec     `json:"models,omitempty"`
-	Assistants       map[string]AssistantSpec `json:"assistants,omitempty"`
+	APIVersion       string                       `json:"apiVersion"`
+	Kind             string                       `json:"kind"`
+	DefaultAssistant string                       `json:"default_assistant,omitempty"`
+	Models           map[string]ModelSpec         `json:"models,omitempty"`
+	Assistants       map[string]AssistantSpec     `json:"assistants,omitempty"`
+	Adapters         map[string]DomainAdapterSpec `json:"adapters,omitempty"`
 }
 
 type ModelSpec struct {
@@ -277,4 +289,18 @@ type AssistantSpec struct {
 	Capabilities   []string          `json:"capabilities,omitempty"`
 	Protocol       string            `json:"protocol,omitempty"`
 	MaxOutputBytes int               `json:"max_output_bytes,omitempty"`
+}
+
+// DomainAdapterSpec binds neutral SCM/tracker/CI operations to either a
+// process protocol implementation or an MCP stdio server. Operation maps are
+// transport details and never appear in workflows.
+type DomainAdapterSpec struct {
+	Domain              string            `json:"domain"`
+	Transport           string            `json:"transport"`
+	Argv                []string          `json:"argv"`
+	Env                 map[string]string `json:"env,omitempty"`
+	Operations          map[string]string `json:"operations,omitempty"`
+	ReconcileOperations map[string]string `json:"reconcile_operations,omitempty"`
+	Timeout             string            `json:"timeout,omitempty"`
+	MaxOutputBytes      int               `json:"max_output_bytes,omitempty"`
 }

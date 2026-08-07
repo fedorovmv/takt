@@ -561,3 +561,17 @@ Router не должен обучаться на собственных выво
 Итоговая цель — не максимально сложный agent framework, а минимально заметный
 control plane, который автоматически усиливает процесс там, где цена ошибки
 этого требует.
+
+## 20. Реализация в v0.1.41-alpha
+
+P3 Adapter Platform реализует следующий слой переносимости без изменения пользовательского `/takt` пути:
+
+- `sdk/agentadapter` проверяет общий `takt-assistant/v1alpha2` contract внешних coding-agent wrappers;
+- `sdk/domainadapter` задаёт public process contract и core operations для SCM/tracker/CI;
+- workflow использует нейтральный `adapter` Node action, а provider/transport остаётся в Config;
+- process и MCP transports делают capability discovery до вызова;
+- mutating adapter с `side_effect: reconcile` использует durable idempotency key/receipt и fail-closed reconciliation;
+- fake adapters и `examples/adapter-platform` дают provider-neutral E2E без GitHub/Jira names;
+- пять пользовательских `takt.task.*` MCP tools не расширяются.
+
+Следующий приоритет — package distribution, чтобы workflow, roles, skills, scripts и adapter requirements устанавливались и фиксировались одним переносимым пакетом.

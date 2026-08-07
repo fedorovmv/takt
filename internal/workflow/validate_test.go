@@ -225,3 +225,21 @@ func TestValidateExternalSideEffectContract(t *testing.T) {
 		t.Fatalf("local side effect error = %v", err)
 	}
 }
+
+func TestValidateDomainAdapterNode(t *testing.T) {
+	valid := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "adapter"}, Nodes: []spec.Node{{
+		ID: "publish", Adapter: &spec.AdapterCallSpec{Name: "scm", Operation: "change.create", Input: `{"title":"change"}`}, SideEffect: &spec.SideEffectSpec{Mode: "reconcile"}, OutputFormat: &spec.OutputFormat{Type: "object"},
+	}}}
+	if err := Validate(valid); err != nil {
+		t.Fatalf("valid adapter node rejected: %v", err)
+	}
+	valid.Nodes[0].Adapter.Operation = "Change.Create"
+	if err := Validate(valid); err == nil || !strings.Contains(err.Error(), "adapter.operation") {
+		t.Fatalf("invalid operation error = %v", err)
+	}
+	valid.Nodes[0].Adapter.Operation = "change.create"
+	valid.Nodes[0].Bash = "true"
+	if err := Validate(valid); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("multiple actions error = %v", err)
+	}
+}
