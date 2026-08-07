@@ -2,7 +2,7 @@ apiVersion: takt/v1alpha1
 kind: BlockPackage
 metadata:
   name: code-core
-  version: 0.4.0
+  version: 0.5.0
   scope: builtin
   description: Trusted core blocks for bounded Dynamic Takt engineering plans.
 roles:
@@ -159,6 +159,23 @@ blocks:
     capabilities: [repository.read]
     integrations: [filesystem]
     output_paths: [summary, completed, unresolved, next_actions]
+  repository-change:
+    workflow: dynamic-repository-change.yaml
+    description: Own one repository worktree through inspect, implementation, validation and review.
+    capabilities: [repository.read, repository.write, shell]
+    integrations: [filesystem, git]
+    output_paths: [summary, changed_files, checks, approved, findings, evidence]
+  integration-verify:
+    workflow: dynamic-integration-verify.yaml
+    description: Verify completed repository changes together using their persisted outputs and execution workspaces.
+    capabilities: [repository.read, shell]
+    integrations: [filesystem, git]
+    output_paths: [summary, passed, checks, issues, evidence]
+    checks:
+      - name: integration-verification
+        path: passed
+        level: required
+        reaction: deny
 templates:
   research: evidence-first-research
   implementation: bounded-code-change

@@ -61,7 +61,17 @@ func Satisfies(version, constraint string) bool {
 	}
 	if strings.HasPrefix(constraint, "^") {
 		c, e := parseVersion(strings.TrimSpace(strings.TrimPrefix(constraint, "^")))
-		return e == nil && v.major == c.major && compare(v, c) >= 0
+		if e != nil || compare(v, c) < 0 {
+			return false
+		}
+		upper := semver{major: c.major + 1}
+		if c.major == 0 {
+			upper = semver{minor: c.minor + 1}
+			if c.minor == 0 {
+				upper = semver{patch: c.patch + 1}
+			}
+		}
+		return compare(v, upper) < 0
 	}
 	c, e := parseVersion(constraint)
 	return e == nil && compare(v, c) == 0

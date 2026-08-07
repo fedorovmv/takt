@@ -9,6 +9,7 @@
 1. `docs/01-project.md`;
 1. `docs/05-implementation-status.md`;
 1. `skills/takt/SKILL.md`;
+1. `docs/57-multi-repo-dynamic-workflows-v0.1.43.md`;
 1. `docs/56-portable-package-distribution-v0.1.42.md`;
 1. `docs/55-adapter-platform-v0.1.41.md`;
 1. `docs/54-evidence-baseline-failure-routing-v0.1.40.md`;
@@ -89,6 +90,7 @@
 | Script-узлы и типизированные артефакты | `43-script-nodes-typed-artifacts-v0.1.29.md` | фактический |
 | Динамический fan-out governed children | `42-governed-child-fanout-v0.1.28.md` | фактический |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
+| Multi-repo Dynamic Workflows | `57-multi-repo-dynamic-workflows-v0.1.43.md`, `../schemas/workspace.schema.json` | фактический |
 | Переносимые BlockPackage и lock/policy | `56-portable-package-distribution-v0.1.42.md`, `03-specification.md` | фактический |
 | Domain Adapter Platform | `55-adapter-platform-v0.1.41.md`, `../schemas/domain-adapter-protocol.schema.json` | фактический |
 | Локальный MCP control plane | `44-local-mcp-control-plane-v0.1.30.md` | фактический |

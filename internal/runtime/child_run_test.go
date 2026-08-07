@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -320,5 +321,81 @@ func TestCancelRejectsFailedRun(t *testing.T) {
 	got, err := (&Runner{}).Cancel(state, "late cancel")
 	if err == nil || got.Status != store.RunFailed || !strings.Contains(err.Error(), "cannot cancel terminal run") {
 		t.Fatalf("failed run status was not preserved: state=%+v err=%v", got, err)
+	}
+}
+
+func TestGovernedChildRunCanOwnRepositoryWorktree(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, repo, "init", "-q")
+	runGitTest(t, repo, "config", "user.email", "test@example.com")
+	runGitTest(t, repo, "config", "user.name", "Test")
+	mustWriteFile(t, filepath.Join(repo, "base.txt"), "base\n")
+	runGitTest(t, repo, "add", ".")
+	runGitTest(t, repo, "commit", "-qm", "base")
+
+	childPath := filepath.Join(root, "child.yaml")
+	parentPath := filepath.Join(root, "parent.yaml")
+	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child-repo
+nodes:
+  - id: change
+    bash: printf changed > changed.txt; printf '{"summary":"changed"}'
+`)
+	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent-repo
+nodes:
+  - id: repo-change
+    workflow:
+      path: child.yaml
+      repository: repo
+      isolation: worktree
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := New(wf, &spec.Config{}, parentPath, "<config>", root)
+	state, err := runner.Start(context.Background(), "change repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := state.Nodes["repo-change"]
+	if node == nil || node.ChildRunID == "" || node.ChildControlWorkspace != repo || node.ChildExecutionWorkspace == "" || node.ChildExecutionWorkspace == repo || node.ChildBranch == "" || node.ChildBaseCommit == "" {
+		t.Fatalf("child metadata not captured: %+v", node)
+	}
+	if _, err := os.Stat(filepath.Join(node.ChildExecutionWorkspace, "changed.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "changed.txt")); !os.IsNotExist(err) {
+		t.Fatalf("base checkout was modified: %v", err)
+	}
+}
+
+func TestChildRepositoryRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "repo")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	r := &Runner{ControlWorkspace: root}
+	if _, err := r.resolveChildControlWorkspace("repo"); err == nil || !strings.Contains(err.Error(), "outside") {
+		t.Fatalf("expected escape rejection, got %v", err)
+	}
+}
+
+func runGitTest(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
 	}
 }

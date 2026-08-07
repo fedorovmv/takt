@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.43-alpha
+
+- Добавлен bounded multi-repo workspace catalog (`.takt/workspace.yaml`) с Git repository IDs, dependency graph, automatic local discovery и fingerprint HEAD/path/dependencies.
+- Dynamic WorkflowPlan получил `repository` и `publish_change`; Router/Planner/Replanner получают repository catalog и adapter preflight, а Go validation проверяет реальные repositories, dependency order и одного mutating owner на repo.
+- Repository phases используют обычные governed child Runs с отдельными managed worktrees. Parent state сохраняет child workspace/branch/base commit; completed repository phases сохраняются при retry/replan.
+- Добавлены per-repository candidate SHA/EvidenceManifest, aggregation actual Git diff как `repo/path`, общий multi-repo candidate fingerprint, trusted `repository-change` и `integration-verify` blocks.
+- `publish_change` компилируется в provider-neutral `scm/change.create` с существующим idempotency/reconciliation contract; план хранит output каждого change и deterministic merge order.
+- Закрыты замечания v0.1.42: security-negative package tests, path-boundary allowlist, scope-aware dependencies, npm-compatible caret для 0.x, tested lock rollback, executable portable-package example, non-zero adapter doctor, process stderr lifecycle и дополнительные conformance/package regressions.
+- Добавлены ADR-068/069, `schemas/workspace.schema.json`, `docs/57-multi-repo-dynamic-workflows-v0.1.43.md` и `scripts/test-multi-repo.sh`. Профиль `code` обновлён до 0.16.0, `code-core` — до 0.5.0, Takt skill — до 0.25.0.
+
 ## v0.1.42-alpha
 
 - Добавлена Portable Package Distribution поверх существующего `BlockPackage`: `takt package install|update|uninstall|list|sync|doctor|sign`, local/Git sources и автоматическое подключение locked packages к profile catalog.

@@ -72,6 +72,7 @@ type Block struct {
 type Dependency struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
+	Scope   string `json:"scope,omitempty"`
 }
 
 type AdapterRequirement struct {

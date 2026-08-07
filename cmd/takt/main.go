@@ -418,7 +418,14 @@ func adapterCmd(args []string) error {
 		if len(problems) > 0 {
 			status = "error"
 		}
-		return printResult(*jsonOut, map[string]any{"name": name, "status": status, "transport": spec.Transport, "declaration": declaration, "missing_core_operations": missingCore, "problems": problems})
+		report := map[string]any{"name": name, "status": status, "transport": spec.Transport, "declaration": declaration, "missing_core_operations": missingCore, "problems": problems}
+		if err := printResult(*jsonOut, report); err != nil {
+			return err
+		}
+		if status == "error" {
+			return fmt.Errorf("adapter doctor found configuration problems")
+		}
+		return nil
 	default:
 		return fmt.Errorf("usage: takt adapter <list|describe|doctor> ...")
 	}

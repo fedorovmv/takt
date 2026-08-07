@@ -252,6 +252,16 @@ func nodeFieldLookup(n store.NodeState, field string) (string, bool) {
 		return strconv.Itoa(n.ExitCode), true
 	case "status":
 		return n.Status, true
+	case "child_run_id":
+		return n.ChildRunID, true
+	case "child_control_workspace":
+		return n.ChildControlWorkspace, true
+	case "child_execution_workspace":
+		return n.ChildExecutionWorkspace, true
+	case "child_branch":
+		return n.ChildBranch, true
+	case "child_base_commit":
+		return n.ChildBaseCommit, true
 	default:
 		return "", false
 	}

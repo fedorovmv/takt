@@ -170,3 +170,13 @@ func TestTranscriptRejectsStructuralFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestTranscriptRejectsDuplicateToolCallID(t *testing.T) {
+	stream := `{"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","capabilities":["tool_control"],"tool_control":true}}
+{"protocol_version":"takt-assistant/v1alpha2","type":"tool.request","tool_request":{"call_id":"dup","tool":"read"}}
+{"protocol_version":"takt-assistant/v1alpha2","type":"tool.request","tool_request":{"call_id":"dup","tool":"read"}}
+{"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha2","type":"result","status":"completed","exit_code":0}}`
+	if _, err := ValidateTranscript(strings.NewReader(stream), Options{}); err == nil || !strings.Contains(err.Error(), "duplicate tool request") {
+		t.Fatalf("expected duplicate call_id rejection, got %v", err)
+	}
+}

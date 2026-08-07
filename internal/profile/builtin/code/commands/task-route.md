@@ -8,7 +8,7 @@ Choose exactly one route:
 
 1. workflow — a listed specialized workflow already matches the requested lifecycle closely.
 2. template — use the simple-reliable template for ordinary repository work. This is the preferred fallback.
-3. dynamic — only when neither a specialized workflow nor the stable template can express the required decomposition, fan-out or checkpoint structure.
+3. dynamic — when neither a specialized workflow nor the stable template can express the required decomposition, fan-out, checkpoint structure, or a coordinated change across multiple repositories.
 
 The simple-reliable template always performs investigation, implementation, deterministic validation and independent review. Request progressive controls only when the task justifies them:
 
@@ -24,7 +24,8 @@ Rules:
 - Prefer template over dynamic for normal feature, bug-fix, refactor and investigation work.
 - Do not weaken controls implied by deterministic_signals.
 - A low-confidence non-workflow route must set inspect_first=true.
-- Do not invent workflow names or blocks.
+- The request may include a repository catalog. A task that materially changes multiple repositories should route to dynamic so Takt can assign one governed child Run/worktree per repository.
+- Do not invent workflow names, blocks, or repository IDs.
 - confidence is between 0 and 1.
 - Return one JSON object only.
 

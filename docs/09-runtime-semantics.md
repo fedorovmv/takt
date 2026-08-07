@@ -413,3 +413,9 @@ JSON-RPC cancellation отменяет контекст текущего MCP-з�
 Для `side_effect.mode: reconcile` adapter обязан объявить reconcile для этой операции до первого mutating-вызова. Неопределённый transport/result не переводится в обычный retry: runtime сначала вызывает `Reconcile` с тем же durable idempotency key и receipt. `applied` принимается как завершённый эффект, `not_applied` допускает один повтор, `unknown` классифицируется как `external_state_unknown` и требует внешнего разрешения.
 
 Process и MCP являются transport-реализациями одной границы. Workflow и scheduler не знают имён провайдеров; `NodeState.domain_operation` сохраняет фактически обнаруженные capabilities и reconciliation provenance. Эта модель продолжает ADR-063 и не вводит отдельный integration runtime.
+
+## Multi-repo repository child lifecycle
+
+`v0.1.43-alpha` разрешает governed child Run выбрать `workflow.repository`. Runtime разрешает repository path только внутри общего control workspace, повторяет проверку после `EvalSymlinks` и использует выбранный Git repository как child control workspace. `isolation: worktree` создаёт отдельный repository worktree; он удерживается до завершения Dynamic Plan, чтобы downstream repositories, integration verification и evidence могли читать фактический candidate. Parent `NodeState` сохраняет child control/execution workspace, branch и base commit.
+
+Repository-aware Dynamic Plan не меняет retry/replan semantics: completed repository phase остаётся completed, а `PendingPhases` и operator retry работают с незавершённым dependency tail. Per-repository Git diffs агрегируются с prefix repository ID и проходят тот же post-action declared-change gate.

@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.24.0" \
-  "VERSION|0.1.42-alpha" \
-  "internal/version/version.go|0.1.42-alpha" \
+  "skills/takt/VERSION|0.25.0" \
+  "VERSION|0.1.43-alpha" \
+  "internal/version/version.go|0.1.43-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -116,6 +116,12 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-065" \
   "ARCHITECTURE_DECISIONS.md|ADR-066" \
   "ARCHITECTURE_DECISIONS.md|ADR-067" \
+  "ARCHITECTURE_DECISIONS.md|ADR-068" \
+  "ARCHITECTURE_DECISIONS.md|ADR-069" \
+  "docs/57-multi-repo-dynamic-workflows-v0.1.43.md|Multi-repo Dynamic Workflows" \
+  "docs/06-roadmap.md|Выполнено в v0.1.43-alpha" \
+  "schemas/workspace.schema.json|Takt Workspace v1alpha1" \
+  "scripts/test-multi-repo.sh|multi-repo dynamic workflow contract: PASS" \
   "docs/56-portable-package-distribution-v0.1.42.md|Portable Package Distribution" \
   "docs/06-roadmap.md|Выполнено в v0.1.42-alpha" \
   "docs/03-specification.md|takt package install" \
@@ -218,7 +224,7 @@ for check in \
   "scripts/test-child-fanout.sh|governed child fan-out contract: PASS" \
   "schemas/workflow.schema.json|fan_out" \
   "schemas/run-state.schema.json|child_runs" \
-  "internal/profile/builtin/code/VERSION|0.15.0" \
+  "internal/profile/builtin/code/VERSION|0.16.0" \
   "README.md|Динамический fan-out v0.1.28" \
   "docs/12-document-map.md|42-governed-child-fanout-v0.1.28.md" \
   "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \

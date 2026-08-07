@@ -140,6 +140,7 @@ type WorkflowRunSpec struct {
 	Input      string              `json:"input,omitempty"`
 	OutputNode string              `json:"output_node,omitempty"`
 	Isolation  string              `json:"isolation,omitempty"`
+	Repository string              `json:"repository,omitempty"`
 	Policy     *PolicySpec         `json:"policy,omitempty"`
 	FanOut     *WorkflowFanOutSpec `json:"fan_out,omitempty"`
 }

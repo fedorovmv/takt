@@ -19,6 +19,22 @@ cp examples/adapter-platform/workflow.yaml "$tmp/work/workflow.yaml"
 grep -q 'item.get' "$tmp/tracker.json"
 grep -q 'change.create' "$tmp/scm.json"
 
+# Doctor must be an actionable health check: a configured reconcile mapping
+# that the adapter does not declare produces a report and a non-zero exit.
+python - "$tmp/work/config.yaml" "$tmp/work/bad-config.yaml" <<'PY'
+from pathlib import Path
+import sys
+s=Path(sys.argv[1]).read_text()
+s=s.replace('      change.review: scm.change.review.reconcile', '      change.review: scm.change.review.reconcile\n      repository.get: scm.repository.get.reconcile')
+Path(sys.argv[2]).write_text(s)
+PY
+if "$tmp/bin/takt" adapter doctor scm --workspace "$tmp/work" --config bad-config.yaml --json > "$tmp/bad-doctor.json" 2>/dev/null; then
+  echo "adapter doctor accepted a broken configured reconcile capability" >&2
+  exit 1
+fi
+grep -q '"status": "error"' "$tmp/bad-doctor.json"
+grep -q 'configured reconcile operation not declared: repository.get' "$tmp/bad-doctor.json"
+
 "$tmp/bin/takt" validate "$tmp/work/workflow.yaml" --config "$tmp/work/config.yaml"
 "$tmp/bin/takt" run "$tmp/work/workflow.yaml" --config "$tmp/work/config.yaml" --workspace "$tmp/work" --json > "$tmp/run.json"
 grep -q '"status": "completed"' "$tmp/run.json"

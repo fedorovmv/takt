@@ -130,6 +130,9 @@ func (s Store) Load(id string) (*Record, error) {
 	if record.Results == nil {
 		record.Results = map[string]string{}
 	}
+	if record.RepositoryExecutions == nil {
+		record.RepositoryExecutions = map[string]RepositoryExecution{}
+	}
 	return &record, nil
 }
 

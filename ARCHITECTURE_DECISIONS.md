@@ -444,3 +444,23 @@ Package distribution не вводит новый workflow/package runtime. `tak
 Project/global `PackagePolicy` могут ограничивать префиксы local/Git sources, требовать подпись для выбранных scopes и задавать trusted Ed25519 public keys. Digest строится по всему дереву пакета, кроме `.git` и envelope `package.sig`; lock хранит SHA-256, source commit и факт проверки подписи. Установка сначала полностью проверяет staged content и dependency graph, только затем заменяет установленную версию и lock entry.
 
 **Причина.** Корпоративный package может нести workflow, scripts, skills и MCP-конфигурацию, то есть исполняемый trusted content. Проверка только имени/версии создаёт ложное чувство воспроизводимости; checksum/source/signature policy делает изменение поставки наблюдаемым и fail-closed.
+
+## ADR-068. Multi-repo uses repository-owned governed child Runs, not a second runtime
+
+**Статус:** принято.
+
+`.takt/workspace.yaml` описывает bounded catalog локальных Git-репозиториев и их зависимости. Repository-aware `WorkflowPlan` остаётся промежуточным планом компиляции. Каждая mutating repository phase компилируется в обычный governed child Run с `workflow.repository` и собственным managed worktree; scheduler, store, retry, pause, evidence и adapter semantics остаются общими.
+
+Repository path проверяется относительно control workspace и повторно после symlink resolution. Catalog fingerprint включает repository HEAD и проверяется перед execute/replan. Первый контракт допускает один mutating owner phase на repository: это сохраняет один кандидат/worktree на репозиторий и не создаёт скрытую модель межсессионного merge.
+
+**Причина.** Multi-repo должен расширять область задачи, а не вводить distributed runtime. Изоляция по child Run даёт существующие recovery/evidence guarantees и позволяет продолжать только незавершённый хвост.
+
+## ADR-069. Cross-repo publication is a neutral adapter action and evidence remains repository-addressable
+
+**Статус:** принято.
+
+`publish_change` не добавляет SCM-провайдера в WorkflowPlan. Compiler создаёт обычный `adapter` node `scm/change.create`, который использует Adapter Platform, durable idempotency key и reconciliation. Repository dependency graph формирует deterministic merge order; provider-specific dependency metadata является возможностью внешнего adapter, а не частью runtime.
+
+Каждый repository execution сохраняет candidate SHA, child worktree metadata, evidence и publisher output. Общий candidate fingerprint агрегирует repository fingerprints; фактический diff агрегируется как `<repository-id>/<path>` и сверяется с repository worker `changed_files`. Integration verification является обычным trusted read-only block.
+
+**Причина.** Пользователь должен получить несколько переносимых change requests и общий verdict без потери доказательств конкретного репозитория и без GitHub-specific orchestration.

@@ -73,6 +73,11 @@ nodes:
               objective:
                 type: string
                 minLength: 1
+              repository:
+                type: string
+                pattern: "^[a-z][a-z0-9-]{0,62}$"
+              publish_change:
+                type: boolean
               depends_on:
                 type: array
                 uniqueItems: true

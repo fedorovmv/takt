@@ -134,13 +134,37 @@ func clearPlanFailure(record *dynamicplan.Record) {
 }
 
 func (s *Service) dynamicCandidateSHA(ctx context.Context, record *dynamicplan.Record) (string, error) {
-	if record == nil || strings.TrimSpace(record.ExecutionWorkspace) == "" || strings.TrimSpace(record.ExecutionBaseCommit) == "" {
+	if record == nil {
 		return "", nil
 	}
-	workspace := filepath.Clean(record.ExecutionWorkspace)
+	if len(record.RepositoryExecutions) > 0 {
+		keys := make([]string, 0, len(record.RepositoryExecutions))
+		for repo, execution := range record.RepositoryExecutions {
+			if strings.TrimSpace(execution.CandidateSHA) != "" {
+				keys = append(keys, repo)
+			}
+		}
+		if len(keys) > 0 {
+			sort.Strings(keys)
+			h := sha256.New()
+			for _, repo := range keys {
+				execution := record.RepositoryExecutions[repo]
+				_, _ = h.Write([]byte(repo + "\x00" + execution.CandidateSHA + "\x00"))
+			}
+			return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+		}
+	}
+	if strings.TrimSpace(record.ExecutionWorkspace) == "" || strings.TrimSpace(record.ExecutionBaseCommit) == "" {
+		return "", nil
+	}
+	return candidateSHAForWorkspace(ctx, record.ExecutionWorkspace, record.ExecutionBaseCommit)
+}
+
+func candidateSHAForWorkspace(ctx context.Context, workspace, baseCommit string) (string, error) {
+	workspace = filepath.Clean(workspace)
 	h := sha256.New()
-	_, _ = h.Write([]byte("base\x00" + record.ExecutionBaseCommit + "\x00"))
-	cmd := exec.CommandContext(ctx, "git", "-C", workspace, "diff", "--binary", record.ExecutionBaseCommit, "--")
+	_, _ = h.Write([]byte("base\x00" + baseCommit + "\x00"))
+	cmd := exec.CommandContext(ctx, "git", "-C", workspace, "diff", "--binary", baseCommit, "--")
 	diff, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("hash dynamic candidate diff: %w", err)

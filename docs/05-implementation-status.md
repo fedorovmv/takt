@@ -140,9 +140,9 @@
 - public `sdk/agentadapter` envelopes/validators, shared fixtures и conformance contract на реальном fake wrapper;
 - schemas lock/policy/signature и сквозной package distribution contract.
 
-### Профиль code 0.15.0
+### Профиль code 0.16.0
 
-- встроенный пакет `code-core` с девятью атомарными блоками Dynamic Takt, включая baseline и independent test-design;
+- встроенный пакет `code-core` с одиннадцатью блоками Dynamic Takt, включая baseline, independent test-design, repository-change и integration-verify;
 - внутренние роли `baseline-observer|investigator|implementer|test-designer|validator|verifier` и fresh bounded `TaskBrief` для trusted phases;
 - structured required/preferred checks, реакции `deny|repair|warn` и одна bounded automatic repair-итерация для recoverable technical failures;
 
@@ -208,4 +208,4 @@ Tool/skills/MCP policy теперь является контрактом ядр
 
 ## Ближайший целевой срез
 
-Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief, реакции `deny|repair|warn`, EvidenceManifest, baseline classification, parking и external side-effect reconciliation реализованы к `v0.1.40-alpha`; Adapter Platform и conformance kit — к `v0.1.41-alpha`, Portable Package Distribution — к `v0.1.42-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — multi-repo orchestration; затем runtime/security hardening и предметный Route DSL benchmark.
+Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief, реакции `deny|repair|warn`, EvidenceManifest, baseline classification, parking и external side-effect reconciliation реализованы к `v0.1.40-alpha`; Adapter Platform и conformance kit — к `v0.1.41-alpha`, Portable Package Distribution — к `v0.1.42-alpha`, Multi-repo Dynamic Workflows — к `v0.1.43-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — runtime/security hardening и предметный Route DSL benchmark.

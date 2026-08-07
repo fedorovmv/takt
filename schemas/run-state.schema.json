@@ -334,6 +334,22 @@
         },
         "domain_operation": {
           "$ref": "#/$defs/domainOperationState"
+        },
+        "child_control_workspace": {
+          "type": "string",
+          "description": "Control workspace used by a governed child Run."
+        },
+        "child_execution_workspace": {
+          "type": "string",
+          "description": "Execution workspace/worktree used by a governed child Run."
+        },
+        "child_branch": {
+          "type": "string",
+          "description": "Managed child worktree branch."
+        },
+        "child_base_commit": {
+          "type": "string",
+          "description": "Base commit of the managed child worktree."
         }
       }
     },

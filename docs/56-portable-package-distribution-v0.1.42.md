@@ -105,3 +105,7 @@ Package manager копирует весь каталог поставки. Об�
 ## Границы релиза
 
 Пакетный registry/server не добавлен: для локального trusted runtime достаточно local/Git sources. Production GitHub/GitLab/корпоративные adapters остаются отдельными пакетами поверх `sdk/domainadapter`. Multi-repo orchestration остаётся следующим крупным продуктовым срезом.
+
+## Уточнения совместимости, закреплённые в v0.1.43
+
+`dependency.scope` снимает неоднозначность одноимённых пакетов в `global|corporate|project`; без scope несколько совпадений fail-closed. Caret использует semver compatible-update rules: `^1.2.3 < 2.0.0`, `^0.1.42 < 0.2.0`, `^0.0.3 < 0.0.4`. Local source allowlist сравнивается по границе нормализованного пути, а не строковому prefix. Release E2E v0.1.43 устанавливает и реально выполняет `examples/portable-package` из locked copy.

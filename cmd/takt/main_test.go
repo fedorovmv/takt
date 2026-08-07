@@ -541,3 +541,50 @@ func TestAdapterCLIHelper(t *testing.T) {
 	_, _ = os.Stdout.WriteString(`{"apiVersion":"takt-domain-adapter/v1alpha1","kind":"DescribeResponse","declaration":{"apiVersion":"takt-domain-adapter/v1alpha1","kind":"AdapterCapabilities","domain":"scm","capabilities":["change.create"],"reconcile":[]}}` + "\n")
 	os.Exit(0)
 }
+
+func TestPackageCmdProjectLifecycle(t *testing.T) {
+	workspace := t.TempDir()
+	pkg := filepath.Join(t.TempDir(), "pkg")
+	if err := os.MkdirAll(pkg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkg, "workflow.yaml"), []byte(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: cli-package
+nodes:
+  - id: done
+    prompt: Return JSON summary.
+    output_format:
+      type: object
+      properties:
+        summary:
+          type: string
+      required: [summary]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkg, "package.yaml"), []byte(`apiVersion: takt/v1alpha1
+kind: BlockPackage
+metadata:
+  name: cli-package
+  version: 1.0.0
+  scope: project
+blocks:
+  cli-package:
+    workflow: workflow.yaml
+    output_paths: [summary]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"install", pkg, "--scope", "project", "--workspace", workspace},
+		{"list", "--workspace", workspace},
+		{"doctor", "--workspace", workspace},
+		{"uninstall", "cli-package", "--scope", "project", "--workspace", workspace},
+	} {
+		if err := packageCmd(args); err != nil {
+			t.Fatalf("packageCmd(%v): %v", args, err)
+		}
+	}
+}

@@ -2,6 +2,9 @@ apiVersion: takt/v1alpha1
 kind: Workflow
 metadata:
   name: portable-review
+defaults:
+  assistant: coding-agent
+  model: review
 nodes:
   - id: inventory
     script:

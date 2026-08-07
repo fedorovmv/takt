@@ -185,8 +185,8 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
-		_ = cmd.Wait()
 		<-stderrDone
+		_ = cmd.Wait()
 	}()
 
 	protocolRequest := buildProtocolRequest(ctx, req, p.spec, env, time.Now())
@@ -196,7 +196,6 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 	if err := encoder.Encode(protocolRequest); err != nil {
 		_ = stdin.Close()
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
 		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 request", Err: err}
 	}
 
@@ -215,7 +214,6 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 		if err := decoder.Decode(&message); err != nil {
 			_ = stdin.Close()
 			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
 			return Result{Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1}, &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "assistant process v1alpha2", Err: fmt.Errorf("decode stream record: %w", err)}
 		}
 		if message.ProtocolVersion != ProtocolV1Alpha2 {
@@ -267,7 +265,6 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 	_ = stdin.Close()
 	if err := scanner.Err(); err != nil {
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
 		return Result{Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1, Truncated: rawOut.Truncated() || rawErr.Truncated()}, &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "assistant process v1alpha2 stream", Err: err}
 	}
 	// Drain stderr before Wait closes the StderrPipe. os/exec documents that

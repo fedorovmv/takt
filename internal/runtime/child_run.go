@@ -83,7 +83,11 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 		childState = nil
 	}
 
-	childRunner := New(childWorkflow, r.Config, childPath, r.ConfigPath, r.ControlWorkspace)
+	childControlWorkspace, err := r.resolveChildControlWorkspace(definition.Repository)
+	if err != nil {
+		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child repository", Err: err}
+	}
+	childRunner := New(childWorkflow, r.Config, childPath, r.ConfigPath, childControlWorkspace)
 	childRunner.Store = r.Store
 	childRunner.Assistants = r.Assistants
 	if childState == nil {
@@ -120,7 +124,7 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 		case "none":
 			value := false
 			options.Worktree = &value
-			childRunner.SetExecutionWorkspace(r.ControlWorkspace)
+			childRunner.SetExecutionWorkspace(childControlWorkspace)
 		case "worktree":
 			value := true
 			options.Worktree = &value
@@ -134,6 +138,7 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 		childState, err = childRunner.Resume(ctx, childState)
 	}
 
+	captureChildRunMetadata(nodeState, childState, childControlWorkspace)
 	if errors.Is(err, ErrPaused) || (childState != nil && childState.Status == store.RunPaused) {
 		return childExecResult(childWorkflow, childState, definition.OutputNode), ErrPaused
 	}
@@ -164,6 +169,63 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 		return execResult{}, commitErr
 	}
 	return childExecResult(childWorkflow, childState, definition.OutputNode), nil
+}
+
+func (r *Runner) resolveChildControlWorkspace(repository string) (string, error) {
+	repository = strings.TrimSpace(repository)
+	if repository == "" || repository == "." {
+		return r.ControlWorkspace, nil
+	}
+	if filepath.IsAbs(repository) {
+		return "", fmt.Errorf("repository %q must be relative to control workspace", repository)
+	}
+	root, err := filepath.Abs(r.ControlWorkspace)
+	if err != nil {
+		return "", err
+	}
+	candidate, err := filepath.Abs(filepath.Join(root, repository))
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(root, candidate)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("repository %q escapes control workspace", repository)
+	}
+	rootReal, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
+	candidateReal, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", fmt.Errorf("repository %q: %w", repository, err)
+	}
+	rel, err = filepath.Rel(rootReal, candidateReal)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("repository %q resolves outside control workspace", repository)
+	}
+	info, err := os.Stat(candidateReal)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("repository %q is not a directory", repository)
+	}
+	return candidateReal, nil
+}
+
+func captureChildRunMetadata(node *store.NodeState, child *store.RunState, controlWorkspace string) {
+	if node == nil || child == nil {
+		return
+	}
+	node.ChildControlWorkspace = controlWorkspace
+	node.ChildExecutionWorkspace = child.ExecutionWorkspace
+	if child.Worktree != nil {
+		node.ChildBranch = child.Worktree.Branch
+		node.ChildBaseCommit = child.Worktree.BaseCommit
+		if node.ChildExecutionWorkspace == "" {
+			node.ChildExecutionWorkspace = child.Worktree.ExecutionWorkspace
+		}
+	}
 }
 
 func childExecResult(wf *spec.Workflow, state *store.RunState, outputNode string) execResult {

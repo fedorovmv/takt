@@ -7,6 +7,8 @@ trap 'rm -rf "$tmp"' EXIT
 export HOME="$tmp/home"
 mkdir -p "$HOME" "$tmp/bin" "$tmp/project" "$tmp/pkg"
 go build -o "$tmp/bin/takt" ./cmd/takt
+go build -o "$tmp/bin/takt-fake-assistant" ./cmd/takt-fake-assistant
+export PATH="$tmp/bin:$PATH"
 
 cat > "$tmp/pkg/workflow.yaml" <<'YAML'
 apiVersion: takt/v1alpha1
@@ -74,5 +76,39 @@ if "$tmp/bin/takt" block list --profile code --workspace "$tmp/project" --json |
   echo "uninstalled package remains in profile catalog" >&2
   exit 1
 fi
+
+# The shipped example is part of the executable release contract, not just
+# documentation. Install the real directory and run its workflow from the
+# locked copy so commands/, scripts/, skills/ and MCP resolution are exercised.
+cat > "$tmp/project/.takt/config.yaml" <<'YAML'
+apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: fixture
+models:
+  routing:
+    provider: local
+    id: routing
+  implementation:
+    provider: local
+    id: implementation
+  review:
+    provider: local
+    id: review
+assistants:
+  fixture:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: [takt-fake-assistant, --case, portable-package]
+    capabilities: [skills, mcp]
+YAML
+"$tmp/bin/takt" package install "$root/examples/portable-package" --scope project --workspace "$tmp/project" --json > "$tmp/example-install.json"
+example_root="$tmp/project/.takt/packages/project/portable-review/1.0.0"
+test -x "$example_root/scripts/inventory.sh"
+test -f "$example_root/commands/package-review.md"
+test -f "$example_root/skills/review/SKILL.md"
+test -f "$example_root/mcp.json"
+"$tmp/bin/takt" run "$example_root/workflow.yaml" --workspace "$tmp/project" --config "$tmp/project/.takt/config.yaml" --json > "$tmp/example-run.json"
+grep -q '"status": "completed"' "$tmp/example-run.json"
+grep -q 'portable package review passed' "$tmp/example-run.json"
 
 echo "portable package distribution contract: PASS"

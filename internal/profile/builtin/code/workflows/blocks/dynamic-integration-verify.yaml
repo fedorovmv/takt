@@ -1,0 +1,26 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: dynamic-integration-verify
+  description: Read-only integration verification across completed repository child Runs.
+defaults:
+  assistant: coding-agent
+  model: review
+  session: fresh
+nodes:
+  - id: result
+    prompt: |
+      Verify the combined multi-repository result. Dependency results include each completed repository result and its execution workspace. Inspect those workspaces as needed. Do not modify files.
+      Return JSON only: {"summary":"...","passed":true,"checks":["..."],"issues":["..."],"evidence":["..."]}.
+      Input:
+      ${input}
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary: {"type":"string","minLength":1}
+        passed: {"type":"boolean"}
+        checks: {"type":"array","items":{"type":"string"}}
+        issues: {"type":"array","items":{"type":"string"}}
+        evidence: {"type":"array","items":{"type":"string"}}
+      required: [summary, passed, checks, issues, evidence]

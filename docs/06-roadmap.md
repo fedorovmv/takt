@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.42-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.43-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -83,15 +83,11 @@ Dynamic Plan хранит внутренний `EvidenceManifest` с baseline pr
 
 Пакет также объявляет Takt/adapter requirements. Required capabilities проверяются до Run; preferred availability передаётся semantic Router/Planner. Conformance kit `v1alpha2` получил публичные envelopes/validators, общие fixtures и реальное использование fake wrapper contract. Полный срез: `56-portable-package-distribution-v0.1.42.md`.
 
-## Приоритет 1. Multi-repo dynamic workflow
+## Выполнено в v0.1.43-alpha. Multi-repo Dynamic Workflows
 
-- определение затронутых репозиториев;
-- dependency graph;
-- отдельные worktree и child Run;
-- несколько change request через нейтральный SCM adapter;
-- интеграционная проверка и общий порядок слияния.
+Добавлены `.takt/workspace.yaml`, bounded discovery локальных Git-репозиториев, repository-aware Router/Planner/Replanner, проверяемый dependency graph, отдельный governed child Run + managed worktree на изменяемый repository, cross-repo TaskBrief context, per-repository candidate SHA/EvidenceManifest и общий content fingerprint. `publish_change` компилируется в нейтральный `scm/change.create`, а `integration-verify` выполняет общий required check. Completed repository phases сохраняются при retry/replan; release E2E проверяет цепочку `api -> client -> service`. Полный срез: `57-multi-repo-dynamic-workflows-v0.1.43.md`.
 
-## Приоритет 2. Усиление runtime и безопасность локального исполнения
+## Приоритет 1. Усиление runtime и безопасность локального исполнения
 
 - раннее завершение `one_success` и `all_success` с отменой ненужных детей;
 - нормализованные diagnostics и fingerprints ошибок;

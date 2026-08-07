@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"takt/internal/blockcatalog"
 	"takt/internal/profile"
 	"takt/internal/rolecontract"
+	"takt/internal/workspacecatalog"
 )
 
 func validPlan() Plan {
@@ -165,5 +167,101 @@ func TestCompileTrustedRoleCreatesTaskBriefAndVerifierPolicy(t *testing.T) {
 	}
 	if !testOnly.Worktree.Enabled {
 		t.Fatal("test-design repository.write capability must enable a managed worktree without relying on the block name")
+	}
+}
+
+func TestMultiRepoPlanValidatesDependenciesAndCompilesIsolatedChildren(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := profile.Resolve("code", workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := blockcatalog.Load(resolved.BlockPackagePaths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repositories := &workspacecatalog.Catalog{Root: workspace, Fingerprint: "repos", Repositories: []workspacecatalog.ResolvedRepository{
+		{ID: "api", Path: "api"},
+		{ID: "client", Path: "client", DependsOn: []string{"api"}},
+	}}
+	plan := Plan{APIVersion: APIVersion, Kind: Kind, Decision: "planned", Goal: "change API and client", Reason: "cross repo", Budget: Budget{MaxChildRuns: 12, MaxParallel: 3, MaxIterations: 2, MaxTokens: 10000}, Phases: []Phase{
+		{ID: "api-change", Uses: "repository-change", Objective: "change API", Repository: "api", PublishChange: true, Strategy: "task"},
+		{ID: "client-change", Uses: "repository-change", Objective: "change client", Repository: "client", PublishChange: true, DependsOn: []string{"api-change"}, Strategy: "task"},
+		{ID: "integration", Uses: "integration-verify", Objective: "verify together", DependsOn: []string{"client-change"}, Strategy: "task"},
+	}}
+	if err := ValidateWithCatalogAndRepositories(plan, catalog, repositories); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := Compile(plan.Phases, plan.Budget, CompileOptions{WorkflowName: "multi", Goal: plan.Goal, Catalog: catalog, Repositories: repositories})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wf.Worktree.Enabled {
+		t.Fatal("wrapper workflow must not own one shared worktree for repository phases")
+	}
+	if wf.Nodes[0].WorkflowRun == nil || wf.Nodes[0].WorkflowRun.Repository != "api" || wf.Nodes[0].WorkflowRun.Isolation != "worktree" {
+		t.Fatalf("api node=%#v", wf.Nodes[0])
+	}
+	if wf.Nodes[1].WorkflowRun == nil || wf.Nodes[1].WorkflowRun.Repository != "client" || wf.Nodes[1].WorkflowRun.Isolation != "worktree" {
+		t.Fatalf("client node=%#v", wf.Nodes[1])
+	}
+	publish := false
+	integrationDeps := map[string]bool{}
+	for _, node := range wf.Nodes {
+		if node.ID == "api-change-publish" && node.Adapter != nil && node.Adapter.Operation == "change.create" {
+			publish = true
+		}
+		if node.ID == "integration" {
+			for _, dep := range node.DependsOn {
+				integrationDeps[dep] = true
+			}
+		}
+	}
+	if !publish {
+		t.Fatal("neutral SCM publisher node missing")
+	}
+	if !integrationDeps["api-change"] || !integrationDeps["client-change"] {
+		t.Fatalf("integration dependencies=%v; expected every repository ancestor so their workspaces are available", integrationDeps)
+	}
+	if got := RepositoryMergeOrder(plan); len(got) != 2 || got[0] != "api" || got[1] != "client" {
+		t.Fatalf("merge order=%v", got)
+	}
+}
+
+func TestMultiRepoPlanRejectsMissingRepositoryDependencyAndMultipleWriters(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	resolved, _ := profile.Resolve("code", workspace)
+	catalog, _ := blockcatalog.Load(resolved.BlockPackagePaths)
+	repositories := &workspacecatalog.Catalog{Repositories: []workspacecatalog.ResolvedRepository{{ID: "api"}, {ID: "client", DependsOn: []string{"api"}}}}
+	plan := Plan{APIVersion: APIVersion, Kind: Kind, Decision: "planned", Goal: "x", Reason: "x", Budget: Budget{MaxChildRuns: 8, MaxParallel: 2, MaxIterations: 2, MaxTokens: 1000}, Phases: []Phase{
+		{ID: "api", Uses: "repository-change", Objective: "api", Repository: "api", Strategy: "task"},
+		{ID: "client", Uses: "repository-change", Objective: "client", Repository: "client", Strategy: "task"},
+	}}
+	if err := ValidateWithCatalogAndRepositories(plan, catalog, repositories); err == nil || !strings.Contains(err.Error(), "repository dependency") {
+		t.Fatalf("err=%v", err)
+	}
+	plan.Phases[1].DependsOn = []string{"api"}
+	plan.Phases = append(plan.Phases, Phase{ID: "api-again", Uses: "repository-change", Objective: "again", Repository: "api", DependsOn: []string{"client"}, Strategy: "task"})
+	if err := ValidateWithCatalogAndRepositories(plan, catalog, repositories); err == nil || !strings.Contains(err.Error(), "multiple mutating phases") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestPendingPhasesPreserveCompletedMultiRepoWork(t *testing.T) {
+	plan := Plan{Phases: []Phase{
+		{ID: "api-change", Repository: "api"},
+		{ID: "client-change", Repository: "client", DependsOn: []string{"api-change"}},
+		{ID: "service-change", Repository: "service", DependsOn: []string{"client-change"}},
+		{ID: "integration", DependsOn: []string{"service-change"}},
+	}}
+	pending := PendingPhases(plan, []string{"api-change", "client-change"})
+	if len(pending) != 2 || pending[0].ID != "service-change" || pending[1].ID != "integration" {
+		t.Fatalf("pending=%#v", pending)
 	}
 }

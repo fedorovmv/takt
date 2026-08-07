@@ -11,6 +11,7 @@ import (
 	"takt/internal/blockcatalog"
 	"takt/internal/evidence"
 	"takt/internal/rolecontract"
+	"takt/internal/workspacecatalog"
 )
 
 const (
@@ -30,6 +31,8 @@ var AllowedBlocks = map[string]string{
 	"review":             "dynamic-review.yaml",
 	"adversarial-verify": "dynamic-adversarial-verify.yaml",
 	"synthesize":         "dynamic-synthesize.yaml",
+	"repository-change":  "dynamic-repository-change.yaml",
+	"integration-verify": "dynamic-integration-verify.yaml",
 }
 
 type Budget struct {
@@ -40,14 +43,16 @@ type Budget struct {
 }
 
 type Phase struct {
-	ID          string   `json:"id"`
-	Uses        string   `json:"uses"`
-	Objective   string   `json:"objective"`
-	DependsOn   []string `json:"depends_on,omitempty"`
-	Strategy    string   `json:"strategy,omitempty"`
-	Source      string   `json:"source,omitempty"`
-	MaxParallel int      `json:"max_parallel,omitempty"`
-	Checkpoint  bool     `json:"checkpoint,omitempty"`
+	ID            string   `json:"id"`
+	Uses          string   `json:"uses"`
+	Objective     string   `json:"objective"`
+	Repository    string   `json:"repository,omitempty"`
+	PublishChange bool     `json:"publish_change,omitempty"`
+	DependsOn     []string `json:"depends_on,omitempty"`
+	Strategy      string   `json:"strategy,omitempty"`
+	Source        string   `json:"source,omitempty"`
+	MaxParallel   int      `json:"max_parallel,omitempty"`
+	Checkpoint    bool     `json:"checkpoint,omitempty"`
 }
 
 type Plan struct {
@@ -74,46 +79,62 @@ type Steering struct {
 	Applied   bool      `json:"applied,omitempty"`
 }
 
+type RepositoryExecution struct {
+	Repository         string             `json:"repository"`
+	RunID              string             `json:"run_id,omitempty"`
+	ControlWorkspace   string             `json:"control_workspace,omitempty"`
+	ExecutionWorkspace string             `json:"execution_workspace,omitempty"`
+	Branch             string             `json:"branch,omitempty"`
+	BaseCommit         string             `json:"base_commit,omitempty"`
+	CandidateSHA       string             `json:"candidate_sha,omitempty"`
+	Evidence           *evidence.Manifest `json:"evidence,omitempty"`
+	ChangeOutput       string             `json:"change_output,omitempty"`
+	Status             string             `json:"status,omitempty"`
+}
+
 type Record struct {
-	ID                      string                     `json:"id"`
-	Status                  string                     `json:"status"`
-	Profile                 string                     `json:"profile"`
-	ConfigPath              string                     `json:"config_path"`
-	BlockPackagePaths       []string                   `json:"block_package_paths,omitempty"`
-	BlockCatalogFingerprint string                     `json:"block_catalog_fingerprint,omitempty"`
-	CreatedAt               time.Time                  `json:"created_at"`
-	UpdatedAt               time.Time                  `json:"updated_at"`
-	RequiresConfirmation    bool                       `json:"requires_confirmation"`
-	ConfirmedAt             *time.Time                 `json:"confirmed_at,omitempty"`
-	ForkedFromPlanID        string                     `json:"forked_from_plan_id,omitempty"`
-	ForkSourceFingerprint   string                     `json:"fork_source_fingerprint,omitempty"`
-	RouterRunID             string                     `json:"router_run_id,omitempty"`
-	RouterError             string                     `json:"router_error,omitempty"`
-	Route                   json.RawMessage            `json:"route,omitempty"`
-	PlannerRunID            string                     `json:"planner_run_id,omitempty"`
-	ReplannerRunIDs         []string                   `json:"replanner_run_ids,omitempty"`
-	ExecutionRunIDs         []string                   `json:"execution_run_ids,omitempty"`
-	ExecutionWorkspace      string                     `json:"execution_workspace,omitempty"`
-	ExecutionBaseCommit     string                     `json:"execution_base_commit,omitempty"`
-	ExecutionWorktreeRunID  string                     `json:"execution_worktree_run_id,omitempty"`
-	Detached                bool                       `json:"detached,omitempty"`
-	CurrentRunID            string                     `json:"current_run_id,omitempty"`
-	CurrentSegment          int                        `json:"current_segment,omitempty"`
-	PendingSegments         [][]Phase                  `json:"pending_segments,omitempty"`
-	CompletedPhases         []string                   `json:"completed_phases,omitempty"`
-	Results                 map[string]string          `json:"results,omitempty"`
-	CheckResults            []rolecontract.CheckResult `json:"check_results,omitempty"`
-	Warnings                []string                   `json:"warnings,omitempty"`
-	RepairAttempts          map[string]int             `json:"repair_attempts,omitempty"`
-	RepairGeneration        int                        `json:"repair_generation,omitempty"`
-	DeferredSegments        [][]Phase                  `json:"deferred_segments,omitempty"`
-	Evidence                *evidence.Manifest         `json:"evidence,omitempty"`
-	Failure                 *evidence.Failure          `json:"failure,omitempty"`
-	ParkedAt                *time.Time                 `json:"parked_at,omitempty"`
-	Steering                []Steering                 `json:"steering,omitempty"`
-	LastError               string                     `json:"last_error,omitempty"`
-	PromotedPath            string                     `json:"promoted_path,omitempty"`
-	Revisions               []Revision                 `json:"revisions"`
+	ID                           string                         `json:"id"`
+	Status                       string                         `json:"status"`
+	Profile                      string                         `json:"profile"`
+	ConfigPath                   string                         `json:"config_path"`
+	BlockPackagePaths            []string                       `json:"block_package_paths,omitempty"`
+	BlockCatalogFingerprint      string                         `json:"block_catalog_fingerprint,omitempty"`
+	RepositoryCatalogFingerprint string                         `json:"repository_catalog_fingerprint,omitempty"`
+	RepositoryExecutions         map[string]RepositoryExecution `json:"repository_executions,omitempty"`
+	MergeOrder                   []string                       `json:"merge_order,omitempty"`
+	CreatedAt                    time.Time                      `json:"created_at"`
+	UpdatedAt                    time.Time                      `json:"updated_at"`
+	RequiresConfirmation         bool                           `json:"requires_confirmation"`
+	ConfirmedAt                  *time.Time                     `json:"confirmed_at,omitempty"`
+	ForkedFromPlanID             string                         `json:"forked_from_plan_id,omitempty"`
+	ForkSourceFingerprint        string                         `json:"fork_source_fingerprint,omitempty"`
+	RouterRunID                  string                         `json:"router_run_id,omitempty"`
+	RouterError                  string                         `json:"router_error,omitempty"`
+	Route                        json.RawMessage                `json:"route,omitempty"`
+	PlannerRunID                 string                         `json:"planner_run_id,omitempty"`
+	ReplannerRunIDs              []string                       `json:"replanner_run_ids,omitempty"`
+	ExecutionRunIDs              []string                       `json:"execution_run_ids,omitempty"`
+	ExecutionWorkspace           string                         `json:"execution_workspace,omitempty"`
+	ExecutionBaseCommit          string                         `json:"execution_base_commit,omitempty"`
+	ExecutionWorktreeRunID       string                         `json:"execution_worktree_run_id,omitempty"`
+	Detached                     bool                           `json:"detached,omitempty"`
+	CurrentRunID                 string                         `json:"current_run_id,omitempty"`
+	CurrentSegment               int                            `json:"current_segment,omitempty"`
+	PendingSegments              [][]Phase                      `json:"pending_segments,omitempty"`
+	CompletedPhases              []string                       `json:"completed_phases,omitempty"`
+	Results                      map[string]string              `json:"results,omitempty"`
+	CheckResults                 []rolecontract.CheckResult     `json:"check_results,omitempty"`
+	Warnings                     []string                       `json:"warnings,omitempty"`
+	RepairAttempts               map[string]int                 `json:"repair_attempts,omitempty"`
+	RepairGeneration             int                            `json:"repair_generation,omitempty"`
+	DeferredSegments             [][]Phase                      `json:"deferred_segments,omitempty"`
+	Evidence                     *evidence.Manifest             `json:"evidence,omitempty"`
+	Failure                      *evidence.Failure              `json:"failure,omitempty"`
+	ParkedAt                     *time.Time                     `json:"parked_at,omitempty"`
+	Steering                     []Steering                     `json:"steering,omitempty"`
+	LastError                    string                         `json:"last_error,omitempty"`
+	PromotedPath                 string                         `json:"promoted_path,omitempty"`
+	Revisions                    []Revision                     `json:"revisions"`
 }
 
 type ReplanDecision struct {
@@ -152,10 +173,14 @@ func Normalize(plan *Plan) {
 }
 
 func Validate(plan Plan) error {
-	return ValidateWithCatalog(plan, nil)
+	return ValidateWithCatalogAndRepositories(plan, nil, nil)
 }
 
 func ValidateWithCatalog(plan Plan, catalog *blockcatalog.Catalog) error {
+	return ValidateWithCatalogAndRepositories(plan, catalog, nil)
+}
+
+func ValidateWithCatalogAndRepositories(plan Plan, catalog *blockcatalog.Catalog, repositories *workspacecatalog.Catalog) error {
 	if plan.APIVersion != APIVersion || plan.Kind != Kind {
 		return fmt.Errorf("plan must use apiVersion %s and kind %s", APIVersion, Kind)
 	}
@@ -214,6 +239,20 @@ func ValidateWithCatalog(plan Plan, catalog *blockcatalog.Catalog) error {
 		if strings.TrimSpace(phase.Objective) == "" {
 			return fmt.Errorf("phase %q objective is required", phase.ID)
 		}
+		if phase.Repository != "" {
+			if repositories == nil {
+				return fmt.Errorf("phase %q targets repository %q but no workspace repository catalog is available", phase.ID, phase.Repository)
+			}
+			if _, ok := repositories.Get(phase.Repository); !ok {
+				return fmt.Errorf("phase %q targets unknown repository %q", phase.ID, phase.Repository)
+			}
+			if phase.Strategy == "map" {
+				return fmt.Errorf("phase %q cannot combine repository targeting with map strategy in %s", phase.ID, APIVersion)
+			}
+		}
+		if phase.PublishChange && phase.Repository == "" {
+			return fmt.Errorf("phase %q publish_change requires repository", phase.ID)
+		}
 		if phase.Strategy != "task" && phase.Strategy != "map" {
 			return fmt.Errorf("phase %q strategy must be task or map", phase.ID)
 		}
@@ -259,6 +298,11 @@ func ValidateWithCatalog(plan Plan, catalog *blockcatalog.Catalog) error {
 			}
 		}
 	}
+	if repositories != nil {
+		if err := validateRepositoryPlan(plan, catalog, repositories); err != nil {
+			return err
+		}
+	}
 	if catalog != nil {
 		if err := catalog.ValidateBudget(plan.Budget.MaxChildRuns, plan.Budget.MaxParallel, plan.Budget.MaxIterations, plan.Budget.MaxTokens); err != nil {
 			return err
@@ -268,6 +312,82 @@ func ValidateWithCatalog(plan Plan, catalog *blockcatalog.Catalog) error {
 		}
 	}
 	return nil
+}
+
+func validateRepositoryPlan(plan Plan, catalog *blockcatalog.Catalog, repositories *workspacecatalog.Catalog) error {
+	phaseByRepo := map[string]string{}
+	writesByRepo := map[string]string{}
+	phaseByID := map[string]Phase{}
+	for _, phase := range plan.Phases {
+		phaseByID[phase.ID] = phase
+		if phase.Repository == "" {
+			continue
+		}
+		if _, exists := phaseByRepo[phase.Repository]; !exists {
+			phaseByRepo[phase.Repository] = phase.ID
+		}
+		writes := phase.Uses == "implement" || phase.Uses == "repository-change"
+		if catalog != nil {
+			if block, ok := catalog.Block(phase.Uses); ok {
+				writes = false
+				for _, capability := range block.Capabilities {
+					if capability == "repository.write" {
+						writes = true
+						break
+					}
+				}
+			}
+		}
+		if writes {
+			if previous := writesByRepo[phase.Repository]; previous != "" {
+				return fmt.Errorf("repository %q has multiple mutating phases %q and %q; use one repository-change phase so one child Run owns its worktree", phase.Repository, previous, phase.ID)
+			}
+			writesByRepo[phase.Repository] = phase.ID
+		}
+	}
+	for repoID, phaseID := range phaseByRepo {
+		repo, _ := repositories.Get(repoID)
+		for _, depRepo := range repo.DependsOn {
+			depPhase := phaseByRepo[depRepo]
+			if depPhase == "" {
+				continue
+			}
+			if !phaseTransitivelyDependsOn(phaseByID, phaseID, depPhase, map[string]bool{}) {
+				return fmt.Errorf("repository phase %q for %s must depend on phase %q for repository dependency %s", phaseID, repoID, depPhase, depRepo)
+			}
+		}
+	}
+	return nil
+}
+
+func phaseTransitivelyDependsOn(phases map[string]Phase, phaseID, dependency string, visiting map[string]bool) bool {
+	if phaseID == dependency {
+		return true
+	}
+	if visiting[phaseID] {
+		return false
+	}
+	visiting[phaseID] = true
+	for _, dep := range phases[phaseID].DependsOn {
+		if dep == dependency || phaseTransitivelyDependsOn(phases, dep, dependency, visiting) {
+			delete(visiting, phaseID)
+			return true
+		}
+	}
+	delete(visiting, phaseID)
+	return false
+}
+
+func RepositoryMergeOrder(plan Plan) []string {
+	var order []string
+	seen := map[string]bool{}
+	for _, phase := range plan.Phases {
+		if phase.Repository != "" && !seen[phase.Repository] {
+			seen[phase.Repository] = true
+			order = append(order, phase.Repository)
+		}
+	}
+	return order
 }
 
 func SourcePhaseID(source string) (string, error) {

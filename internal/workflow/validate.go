@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -125,6 +126,17 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			case "", "inherit", "worktree", "none":
 			default:
 				return fmt.Errorf("node %q workflow.isolation must be inherit, worktree, or none", n.ID)
+			}
+			if strings.TrimSpace(n.WorkflowRun.Repository) != "" {
+				if filepath.IsAbs(n.WorkflowRun.Repository) {
+					return fmt.Errorf("node %q workflow.repository must be relative to the control workspace", n.ID)
+				}
+				if n.WorkflowRun.Isolation == "inherit" {
+					return fmt.Errorf("node %q workflow.repository cannot use isolation inherit", n.ID)
+				}
+				if n.WorkflowRun.FanOut != nil {
+					return fmt.Errorf("node %q workflow.repository does not support fan_out in v0.1.43", n.ID)
+				}
 			}
 			if fanOut := n.WorkflowRun.FanOut; fanOut != nil {
 				if _, err := fanOutSourceNode(fanOut.ItemsFrom); err != nil {

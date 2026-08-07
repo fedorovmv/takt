@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.42-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.43-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -137,7 +137,7 @@ adapters:
 
 Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`/`maxItems`, `uniqueItems`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `minProperties`/`maxProperties`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
 
-Это используется шестью основными процессами профиля `code` 0.15.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+Это используется шестью основными процессами профиля `code` 0.16.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
 
 ## 3.1. Внешний исполнитель AI-узла
 
@@ -207,7 +207,7 @@ Takt передаёт выбранную модель как `<provider>/<id>`, 
 
 ## Dynamic Takt
 
-Высокоуровневый `takt plan`/`takt.plan` возвращает решение `existing|planned`. `planned` использует `takt/v1alpha1 WorkflowPlan`: цель, жёсткие budgets, упорядоченные фазы `task|map`, зависимости, источник map и явные checkpoint. `uses` обязан ссылаться на разрешённый блок профиля. План проходит строгую проверку и компилируется в обычный `takt/v1alpha1 Workflow`; отдельная runtime-семантика для WorkflowPlan отсутствует.
+Высокоуровневый `takt plan`/`takt.plan` возвращает решение `existing|planned`. `planned` использует `takt/v1alpha1 WorkflowPlan`: цель, жёсткие budgets, упорядоченные фазы `task|map`, зависимости, источник map и явные checkpoint. `uses` обязан ссылаться на разрешённый блок профиля. Начиная с v0.1.43 phase может содержать `repository` и `publish_change`; repository обязан существовать в Workspace catalog, его dependency graph должен быть отражён зависимостями фаз, а один repository имеет не более одного mutating owner phase. План проходит строгую проверку и компилируется в обычный `takt/v1alpha1 Workflow`; отдельная runtime-семантика для WorkflowPlan отсутствует.
 
 `takt execute` требует подтверждение planned-плана. Перепланировщик вызывается только после checkpoint и возвращает `continue|replace_remaining|finish|ask_user`. `replace_remaining` создаёт новую revision и не изменяет завершённые фазы. `takt steer` сохраняет уточнение до ближайшего checkpoint. Completed planned-план может быть продвинут через `takt plan promote` в `.takt/workflows/generated/` после повторной загрузки и Validate.
 
@@ -224,6 +224,14 @@ Local/Git sources фиксируются в `.takt/takt.lock.json` (global — `
 Начиная с v0.1.39-alpha пакет также может объявлять внутренние `roles`. Блок связывается с ролью и получает bounded `TaskBrief`, context recipe, `expected|allowed|protected|forbidden` scope и `checks` с `required|preferred` + `deny|repair|warn`. Эти роли не являются глобальными агентами кодинг-хоста. Машиночитаемые схемы: `schemas/block-package.schema.json`, `schemas/task-brief.schema.json`, `schemas/package-lock.schema.json`, `schemas/package-policy.schema.json`, `schemas/package-signature.schema.json`.
 
 Каталог загружается до планирования. Workflow блока проходит обычный Load/Validate, обязан иметь один публичный terminal output и не может запускать governed child Run. Каждый `output_path` обязан существовать в terminal `output_format`; источник `map` должен точно совпасть с объявленным путём типа `array`. Fingerprint манифеста и транзитивного исполняемого содержимого сохраняется в плане и проверяется до execute/replan/promote.
+
+Зависимость пакета может указывать `scope: global|corporate|project`; без scope одноимённые пакеты в нескольких scopes считаются неоднозначными и проверка завершается ошибкой. Ограничение `^` использует semver compatible-update semantics: для `0.x` фиксируется minor (`^0.1.42` принимает `0.1.x`, но не `0.2.0`), а для `0.0.x` фиксируется patch.
+
+### Workspace и multi-repo
+
+`.takt/workspace.yaml` обязан явно содержать `apiVersion: takt/v1alpha1`, `kind: Workspace` и список `repositories` с `id`, относительным `path` и необязательным `depends_on`. Repository ID соответствует `[a-z][a-z0-9-]{0,62}`. Путь обязан оставаться внутри control workspace после symlink resolution и вести в Git repository; IDs уникальны, dependency graph ацикличен. При отсутствии manifest Takt выполняет bounded discovery одного root Git repository либо immediate child repositories. Схема — `schemas/workspace.schema.json`.
+
+Governed child `workflow` может задать `repository`: относительный repository path внутри общего control workspace. Такой child не может использовать `isolation: inherit`; mutating multi-repo phase использует отдельный `worktree`. Parent NodeState сохраняет `child_control_workspace`, `child_execution_workspace`, `child_branch`, `child_base_commit`, а Dynamic Plan сохраняет per-repository candidate/evidence.
 
 CLI пакетов: `takt package install|update|uninstall|list|sync|doctor|sign`. CLI каталога: `takt block list|describe|validate`. MCP для authoring сохраняет `takt.block.list|describe`; package mutation намеренно остаётся операторской CLI-операцией и не добавляет новые public agent tools.
 

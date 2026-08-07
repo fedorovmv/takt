@@ -18,6 +18,7 @@ description: Создаёт, устанавливает, изменяет, пр�
    - `bash` — короткая детерминированная shell-команда;
    - `script` — версионируемый command/Python/Node/Go-скрипт с fingerprint исходника и зависимостей;
    - `adapter` — нейтральная SCM/tracker/CI операция через именованный process/MCP adapter; provider-specific имя остаётся только в config;
+   - multi-repo — используй `.takt/workspace.yaml` и repository-aware Dynamic Plan; каждый изменяемый repository получает отдельный governed child Run/worktree, а публикация идёт через нейтральный SCM adapter.
    - hook с `retry` — проверка и исправление результата;
    - `approval` — отдельное сохраняемое решение пользователя;
    - `loop_group` — только когда нужен повтор вложенного DAG, а обычных attempts недостаточно;

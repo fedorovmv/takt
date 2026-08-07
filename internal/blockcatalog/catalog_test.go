@@ -23,7 +23,7 @@ func TestBuiltinCodeCatalogLoadsTrustedBlocksAndGovernance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Blocks) != 9 || catalog.Fingerprint == "" {
+	if len(catalog.Blocks) != 11 || catalog.Fingerprint == "" {
 		t.Fatalf("unexpected catalog: %#v", catalog)
 	}
 	block, ok := catalog.Block("adversarial-verify")
@@ -82,7 +82,7 @@ func TestCorporatePackageNarrowsCatalogAndAppliesGovernance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Blocks) != 12 {
+	if len(catalog.Blocks) != 14 {
 		t.Fatalf("blocks=%d", len(catalog.Blocks))
 	}
 	if catalog.Governance.Limits.MaxChildRuns != 48 || catalog.Governance.BranchRules.Prefix != "feature/" {

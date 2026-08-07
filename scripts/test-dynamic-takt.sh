@@ -47,7 +47,9 @@ for file in \
   "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-validate.yaml" \
   "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-review.yaml" \
   "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-adversarial-verify.yaml" \
-  "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-synthesize.yaml"
+  "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-synthesize.yaml" \
+  "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-repository-change.yaml" \
+  "$TMP/project/.takt/profiles/code/workflows/blocks/dynamic-integration-verify.yaml"
 do
   "$ROOT/bin/takt" validate "$file" --workspace "$TMP/project" --config "$TMP/project/.takt/config.yaml" --json >/dev/null
 done
@@ -66,7 +68,7 @@ grep -q 'Dynamic Takt из кодинг-агента' "$ROOT/skills/takt/SKILL.m
 python3 - "$TMP/blocks.json" <<'PY'
 import json,sys
 value=json.load(open(sys.argv[1]))['result']
-assert len(value['blocks'])==9, value
+assert len(value['blocks'])==11, value
 assert any(b['name']=='adversarial-verify' and b['workflow_path'].endswith('dynamic-adversarial-verify.yaml') for b in value['blocks']), value
 assert value['fingerprint'], value
 PY

@@ -10,6 +10,7 @@ import (
 	"takt/internal/blockcatalog"
 	"takt/internal/rolecontract"
 	"takt/internal/spec"
+	"takt/internal/workspacecatalog"
 )
 
 type CompileOptions struct {
@@ -22,6 +23,7 @@ type CompileOptions struct {
 	Catalog           *blockcatalog.Catalog
 	GovernanceContext string
 	Signals           []string
+	Repositories      *workspacecatalog.Catalog
 }
 
 func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workflow, error) {
@@ -35,16 +37,18 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 		Defaults:   spec.Defaults{Assistant: "opencode", Model: "implementation", Session: "fresh"},
 	}
 	for _, phase := range phases {
-		if phaseRequiresWorktree(options, phase) {
+		if phase.Repository == "" && phaseRequiresWorktree(options, phase) {
 			wf.Worktree = spec.WorktreeSpec{Enabled: true, Cleanup: "manual"}
 			break
 		}
 	}
 	phaseSet := map[string]bool{}
+	phaseByID := map[string]Phase{}
 	nonMapRuns := 0
 	mapRuns := 0
 	for _, phase := range phases {
 		phaseSet[phase.ID] = true
+		phaseByID[phase.ID] = phase
 		if phase.Strategy == "map" {
 			mapRuns++
 		} else {
@@ -66,11 +70,44 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 				blockPath = filepath.ToSlash(rel)
 			}
 		}
-		input, err := phaseInput(options.Goal, phase, options.Context, options.GovernanceContext, options.Promoted, options.Signals, resolvedBlock)
+		// Only dependencies compiled into this segment may be referenced through
+		// nodes.* templates. Results from phases before a replanning checkpoint are
+		// already carried in options.Context; referencing their old node IDs would
+		// make the generated segment invalid on its own.
+		phaseForInput := phase
+		phaseForInput.DependsOn = internalDependencies(phase.DependsOn, phaseSet)
+		if phase.Uses == "integration-verify" {
+			for _, candidate := range phases {
+				if candidate.Repository == "" || candidate.ID == phase.ID {
+					continue
+				}
+				if phaseTransitivelyDependsOn(phaseByID, phase.ID, candidate.ID, map[string]bool{}) && !containsDependency(phaseForInput.DependsOn, candidate.ID) {
+					phaseForInput.DependsOn = append(phaseForInput.DependsOn, candidate.ID)
+				}
+			}
+		}
+		input, err := phaseInput(options.Goal, phaseForInput, options.Context, options.GovernanceContext, options.Promoted, options.Signals, resolvedBlock)
 		if err != nil {
 			return nil, err
 		}
-		node := spec.Node{ID: phase.ID, DependsOn: internalDependencies(phase.DependsOn, phaseSet), WorkflowRun: &spec.WorkflowRunSpec{Path: blockPath, Input: input, Isolation: "inherit", Policy: blockPolicy}}
+		isolation := "inherit"
+		repositoryPath := ""
+		if phase.Repository != "" {
+			if options.Repositories == nil {
+				return nil, fmt.Errorf("phase %q targets repository %q without a resolved workspace catalog", phase.ID, phase.Repository)
+			}
+			repo, ok := options.Repositories.Get(phase.Repository)
+			if !ok {
+				return nil, fmt.Errorf("phase %q targets unknown repository %q", phase.ID, phase.Repository)
+			}
+			repositoryPath = repo.Path
+			if phaseRequiresWorktree(options, phase) {
+				isolation = "worktree"
+			} else {
+				isolation = "none"
+			}
+		}
+		node := spec.Node{ID: phase.ID, DependsOn: append([]string(nil), phaseForInput.DependsOn...), WorkflowRun: &spec.WorkflowRunSpec{Path: blockPath, Input: input, Isolation: isolation, Repository: repositoryPath, Policy: blockPolicy}}
 		if phase.Strategy == "map" {
 			source, err := RuntimeSource(phase.Source)
 			if err != nil {
@@ -80,7 +117,7 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 			if !phaseSet[sourceID] {
 				return nil, fmt.Errorf("map phase %q source %q crosses a replanning checkpoint; keep producer and map phase in the same segment", phase.ID, sourceID)
 			}
-			fanInput, inputErr := phaseFanOutInput(options.Goal, phase, options.Context, options.GovernanceContext, options.Promoted, options.Signals, resolvedBlock)
+			fanInput, inputErr := phaseFanOutInput(options.Goal, phaseForInput, options.Context, options.GovernanceContext, options.Promoted, options.Signals, resolvedBlock)
 			if inputErr != nil {
 				return nil, inputErr
 			}
@@ -92,6 +129,22 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 			node.WorkflowRun.FanOut = &spec.WorkflowFanOutSpec{ItemsFrom: source, As: "item", MaxParallel: phase.MaxParallel, MaxItems: maxItems, Join: "all_success"}
 		}
 		wf.Nodes = append(wf.Nodes, node)
+	}
+	for _, phase := range phases {
+		if !phase.PublishChange {
+			continue
+		}
+		payload, _ := json.Marshal(map[string]any{
+			"repository":  phase.Repository,
+			"title":       phase.Objective,
+			"head":        "${nodes." + phase.ID + ".child_branch}",
+			"base_commit": "${nodes." + phase.ID + ".child_base_commit}",
+		})
+		wf.Nodes = append(wf.Nodes, spec.Node{
+			ID: phase.ID + "-publish", DependsOn: []string{phase.ID},
+			Adapter:    &spec.AdapterCallSpec{Name: "scm", Operation: "change.create", Input: string(payload)},
+			SideEffect: &spec.SideEffectSpec{Mode: "reconcile"},
+		})
 	}
 	applySegmentParallelLimit(wf.Nodes, budget.MaxParallel)
 	return wf, nil
@@ -175,8 +228,9 @@ func phaseInput(goal string, phase Phase, context, governance string, promoted b
 	if promoted {
 		goal = "${input}"
 	}
+	dependencyContext := dependencyInput(phase)
 	if block == nil || block.RoleDefinition == nil || block.Role == "" {
-		return fmt.Sprintf("Goal: %s\n\nPhase objective: %s\n\nTrusted package governance:\n%s\n\nPrior dynamic context:\n%s", goal, phase.Objective, governance, context), nil
+		return fmt.Sprintf("Goal: %s\n\nPhase objective: %s\n\nRepository: %s\n\nCurrent dependency results:\n%s\n\nTrusted package governance:\n%s\n\nPrior dynamic context:\n%s", goal, phase.Objective, phase.Repository, dependencyContext, governance, context), nil
 	}
 	prior := map[string]string{}
 	if strings.TrimSpace(context) != "" {
@@ -194,6 +248,21 @@ func phaseInput(goal string, phase Phase, context, governance string, promoted b
 	if brief.Context == nil {
 		brief.Context = map[string]any{}
 	}
+	if phase.Repository != "" {
+		brief.Context["repository"] = phase.Repository
+	}
+	if len(phase.DependsOn) > 0 {
+		deps := map[string]any{}
+		for _, dep := range phase.DependsOn {
+			deps[dep] = map[string]any{
+				"output":              "${nodes." + dep + ".output}",
+				"execution_workspace": "${nodes." + dep + ".child_execution_workspace}",
+				"branch":              "${nodes." + dep + ".child_branch}",
+				"base_commit":         "${nodes." + dep + ".child_base_commit}",
+			}
+		}
+		brief.Context["dependency_results"] = deps
+	}
 	if strings.TrimSpace(governance) != "" {
 		var value any
 		if err := json.Unmarshal([]byte(governance), &value); err == nil {
@@ -201,6 +270,17 @@ func phaseInput(goal string, phase Phase, context, governance string, promoted b
 		}
 	}
 	return rolecontract.EncodeBrief(brief), nil
+}
+
+func dependencyInput(phase Phase) string {
+	if len(phase.DependsOn) == 0 {
+		return "none"
+	}
+	var lines []string
+	for _, dep := range phase.DependsOn {
+		lines = append(lines, fmt.Sprintf("%s: output=${nodes.%s.output}; workspace=${nodes.%s.child_execution_workspace}; branch=${nodes.%s.child_branch}; base_commit=${nodes.%s.child_base_commit}", dep, dep, dep, dep, dep))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func phaseFanOutInput(goal string, phase Phase, context, governance string, promoted bool, signals []string, block *blockcatalog.ResolvedBlock) (string, error) {

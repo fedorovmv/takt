@@ -4,45 +4,133 @@
   "title": "Takt WorkflowPlan",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "decision", "goal", "reason", "budget", "phases"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "decision",
+    "goal",
+    "reason",
+    "budget",
+    "phases"
+  ],
   "properties": {
-    "apiVersion": {"const": "takt/v1alpha1"},
-    "kind": {"const": "WorkflowPlan"},
-    "decision": {"enum": ["existing", "planned"]},
-    "goal": {"type": "string", "minLength": 1},
-    "existing_workflow": {"type": "string"},
-    "reason": {"type": "string", "minLength": 1},
+    "apiVersion": {
+      "const": "takt/v1alpha1"
+    },
+    "kind": {
+      "const": "WorkflowPlan"
+    },
+    "decision": {
+      "enum": [
+        "existing",
+        "planned"
+      ]
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "existing_workflow": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
     "budget": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["max_child_runs", "max_parallel", "max_iterations", "max_tokens"],
+      "required": [
+        "max_child_runs",
+        "max_parallel",
+        "max_iterations",
+        "max_tokens"
+      ],
       "properties": {
-        "max_child_runs": {"type": "integer", "minimum": 1, "maximum": 256},
-        "max_parallel": {"type": "integer", "minimum": 1, "maximum": 64},
-        "max_iterations": {"type": "integer", "minimum": 1, "maximum": 16},
-        "max_tokens": {"type": "integer", "minimum": 1}
+        "max_child_runs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 256
+        },
+        "max_parallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "phases": {
       "type": "array",
       "maxItems": 256,
-      "items": {"$ref": "#/$defs/phase"}
+      "items": {
+        "$ref": "#/$defs/phase"
+      }
     }
   },
   "$defs": {
     "phase": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "uses", "objective", "strategy"],
+      "required": [
+        "id",
+        "uses",
+        "objective",
+        "strategy"
+      ],
       "properties": {
-        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
-        "uses": {"enum": ["discover", "investigate", "implement", "validate", "review", "adversarial-verify", "synthesize"]},
-        "objective": {"type": "string", "minLength": 1},
-        "depends_on": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
-        "strategy": {"enum": ["task", "map"]},
-        "source": {"type": "string"},
-        "max_parallel": {"type": "integer", "minimum": 1, "maximum": 64},
-        "checkpoint": {"type": "boolean"}
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,62}$"
+        },
+        "uses": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,62}$",
+          "description": "Trusted block name from the resolved catalog."
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "strategy": {
+          "enum": [
+            "task",
+            "map"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "max_parallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "checkpoint": {
+          "type": "boolean"
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,62}$"
+        },
+        "publish_change": {
+          "type": "boolean"
+        }
       }
     }
   }

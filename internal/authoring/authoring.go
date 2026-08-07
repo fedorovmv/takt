@@ -251,12 +251,19 @@ func analyzeTemplate(value, path string, current spec.Node, byID, local map[stri
 
 func validateNodePath(source spec.Node, parts []string, path string, expression expression) []Diagnostic {
 	if len(parts) == 0 {
-		return []Diagnostic{{Code: "template.node_field_missing", Severity: "error", Path: path, Message: "node reference requires output, status, exit_code, or artifacts"}}
+		return []Diagnostic{{Code: "template.node_field_missing", Severity: "error", Path: path, Message: "node reference requires output, status, exit_code, child metadata, or artifacts"}}
 	}
 	switch parts[0] {
 	case "status", "exit_code":
 		if len(parts) != 1 {
 			return []Diagnostic{{Code: "template.node_field_invalid", Severity: "error", Path: path, Message: fmt.Sprintf("%s does not support nested fields", parts[0])}}
+		}
+	case "child_run_id", "child_control_workspace", "child_execution_workspace", "child_branch", "child_base_commit":
+		if len(parts) != 1 {
+			return []Diagnostic{{Code: "template.node_field_invalid", Severity: "error", Path: path, Message: fmt.Sprintf("%s does not support nested fields", parts[0])}}
+		}
+		if source.WorkflowRun == nil {
+			return []Diagnostic{{Code: "template.node_field_invalid", Severity: "error", Path: path, Message: fmt.Sprintf("%s is only available on governed child workflow nodes", parts[0])}}
 		}
 	case "output":
 		if len(parts) == 1 {

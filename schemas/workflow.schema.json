@@ -1123,6 +1123,11 @@
         },
         "fan_out": {
           "$ref": "#/$defs/workflowFanOut"
+        },
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative repository path within the control workspace. Repository child Runs must use isolation worktree or none; inherit is rejected."
         }
       }
     },

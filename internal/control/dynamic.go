@@ -22,6 +22,7 @@ import (
 	"takt/internal/store"
 	"takt/internal/taskroute"
 	"takt/internal/workflow"
+	"takt/internal/workspacecatalog"
 )
 
 type PlanRequest struct {
@@ -100,6 +101,10 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 	if err != nil {
 		return nil, err
 	}
+	repositories, err := workspacecatalog.Load(ctx, s.Workspace)
+	if err != nil {
+		return nil, fmt.Errorf("resolve workspace repositories: %w", err)
+	}
 	preflightConfig, err := cfgpkg.Load(resolved.ConfigPath)
 	if err != nil {
 		return nil, err
@@ -124,7 +129,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 			plan.Goal = goal
 		}
 	} else {
-		route, routerRunID, err = s.routeTask(ctx, resolved, catalog, goal, workflows, adapterPreflight)
+		route, routerRunID, err = s.routeTask(ctx, resolved, catalog, repositories, goal, workflows, adapterPreflight)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
@@ -161,7 +166,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 			}
 		default:
 			plannerPath := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "dynamic-plan.yaml")
-			plannerInput, encodeErr := json.Marshal(map[string]any{"goal": goal, "existing_workflows": workflows, "trusted_catalog": catalog.PlannerView(), "adapter_preflight": adapterPreflight})
+			plannerInput, encodeErr := json.Marshal(map[string]any{"goal": goal, "existing_workflows": workflows, "trusted_catalog": catalog.PlannerView(), "adapter_preflight": adapterPreflight, "repositories": repositories.PlannerView()})
 			if encodeErr != nil {
 				return nil, fmt.Errorf("encode dynamic planner input: %w", encodeErr)
 			}
@@ -185,7 +190,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 	if plan.Decision == "existing" && !strings.Contains(plan.ExistingWorkflow, ":") {
 		plan.ExistingWorkflow = profileName + ":" + plan.ExistingWorkflow
 	}
-	if err := dynamicplan.ValidateWithCatalog(plan, catalog); err != nil {
+	if err := dynamicplan.ValidateWithCatalogAndRepositories(plan, catalog, repositories); err != nil {
 		return nil, err
 	}
 	if plan.Decision == "existing" {
@@ -210,6 +215,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 		CreatedAt: now, UpdatedAt: now, RequiresConfirmation: plan.Decision == "planned",
 		RouterRunID: routerRunID, RouterError: routerError, Route: routeRaw, PlannerRunID: plannerRunID, Results: map[string]string{},
 		BlockPackagePaths: append([]string(nil), resolved.BlockPackagePaths...), BlockCatalogFingerprint: catalog.Fingerprint,
+		RepositoryCatalogFingerprint: repositories.Fingerprint, RepositoryExecutions: map[string]dynamicplan.RepositoryExecution{}, MergeOrder: dynamicplan.RepositoryMergeOrder(plan),
 		Revisions: []dynamicplan.Revision{{Number: 1, Reason: "initial plan", CreatedAt: now, Plan: plan}},
 	}
 	if plan.Decision == "planned" {
@@ -526,6 +532,10 @@ func (s *Service) PromotePlanWithOptions(planID, name string, options PromotePla
 	if err != nil {
 		return nil, err
 	}
+	repositories, err := s.repositoriesForRecord(context.Background(), record)
+	if err != nil {
+		return nil, err
+	}
 	name = dynamicplan.SafeWorkflowName(name)
 	output := filepath.Join(s.Workspace, ".takt", "workflows", "generated", name+".yaml")
 	if !options.Force {
@@ -536,7 +546,7 @@ func (s *Service) PromotePlanWithOptions(planID, name string, options PromotePla
 		}
 	}
 	blocks := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "blocks")
-	wf, err := dynamicplan.Compile(plan.Phases, plan.Budget, dynamicplan.CompileOptions{WorkflowName: name, OutputPath: output, BlocksDir: blocks, Goal: plan.Goal, Promoted: true, Catalog: catalog, GovernanceContext: catalog.GovernanceJSON(), Signals: routeSignals(record)})
+	wf, err := dynamicplan.Compile(plan.Phases, plan.Budget, dynamicplan.CompileOptions{WorkflowName: name, OutputPath: output, BlocksDir: blocks, Goal: plan.Goal, Promoted: true, Catalog: catalog, GovernanceContext: catalog.GovernanceJSON(), Signals: routeSignals(record), Repositories: repositories})
 	if err != nil {
 		return nil, err
 	}
@@ -664,6 +674,28 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 	for _, phase := range segment {
 		if node := run.Nodes[phase.ID]; node != nil {
 			record.Results[phase.ID] = node.Output
+			if phase.Repository != "" {
+				execution := record.RepositoryExecutions[phase.Repository]
+				execution.Repository = phase.Repository
+				execution.RunID = node.ChildRunID
+				execution.ControlWorkspace = node.ChildControlWorkspace
+				execution.ExecutionWorkspace = node.ChildExecutionWorkspace
+				execution.Branch = node.ChildBranch
+				execution.BaseCommit = node.ChildBaseCommit
+				execution.Status = "completed"
+				if execution.ExecutionWorkspace != "" && execution.BaseCommit != "" {
+					sha, shaErr := candidateSHAForWorkspace(ctx, execution.ExecutionWorkspace, execution.BaseCommit)
+					if shaErr != nil {
+						return shaErr
+					}
+					execution.CandidateSHA = sha
+					execution.Evidence = repositoryEvidence(phase, node.Output, sha)
+				}
+				if publish := run.Nodes[phase.ID+"-publish"]; publish != nil {
+					execution.ChangeOutput = publish.Output
+				}
+				record.RepositoryExecutions[phase.Repository] = execution
+			}
 		}
 		if !containsString(record.CompletedPhases, phase.ID) {
 			record.CompletedPhases = append(record.CompletedPhases, phase.ID)
@@ -741,6 +773,34 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 	return st.Save(record)
 }
 
+func repositoryEvidence(phase dynamicplan.Phase, output, candidateSHA string) *evidence.Manifest {
+	manifest := evidence.NewManifest()
+	manifest.CandidateSHA = candidateSHA
+	passed := true
+	var value map[string]any
+	if json.Unmarshal([]byte(output), &value) == nil {
+		if approved, ok := value["approved"].(bool); ok {
+			passed = approved
+		}
+		if validated, ok := value["passed"].(bool); ok {
+			passed = passed && validated
+		}
+	}
+	status := evidence.VerdictPass
+	reason := "repository child Run completed and its current candidate is captured"
+	if !passed {
+		status = evidence.VerdictFail
+		reason = "repository child Run reported an unsuccessful verification result"
+	}
+	manifest.Acceptance[evidence.AcceptanceID(phase.Uses, "repository-result")] = evidence.Acceptance{
+		ID: evidence.AcceptanceID(phase.Uses, "repository-result"), Block: phase.Uses, Check: "repository-result", PhaseID: phase.ID,
+		Status: map[bool]string{true: "passed", false: "failed"}[passed], Level: rolecontract.CheckRequired, CandidateSHA: candidateSHA, Evidence: outputEvidence(output),
+	}
+	manifest.Verdict = &evidence.Verdict{Status: status, CandidateSHA: candidateSHA, Reason: reason, CreatedAt: time.Now().UTC()}
+	manifest.UpdatedAt = time.Now().UTC()
+	return manifest
+}
+
 func applyControlDeny(record *dynamicplan.Record, outcome segmentControlOutcome) bool {
 	if outcome.DenyReason == "" {
 		return false
@@ -764,7 +824,7 @@ type controlFailure struct {
 func evaluateSegmentControls(record *dynamicplan.Record, segment []dynamicplan.Phase, catalog *blockcatalog.Catalog, actualChanges []string, candidateSHA string) (segmentControlOutcome, error) {
 	var outcome segmentControlOutcome
 	if len(actualChanges) > 0 {
-		declared := declaredChanges(record.Results)
+		declared := declaredChanges(record)
 		var undeclared []string
 		for _, path := range actualChanges {
 			if !declared[path] {
@@ -929,9 +989,20 @@ func (s *Service) scheduleAutomaticRepair(ctx context.Context, record *dynamicpl
 	return true, nil
 }
 
-func declaredChanges(results map[string]string) map[string]bool {
+func declaredChanges(record *dynamicplan.Record) map[string]bool {
 	out := map[string]bool{}
-	for _, output := range results {
+	repositories := map[string]string{}
+	if record != nil && len(record.Revisions) > 0 {
+		for _, phase := range latestPlan(record).Phases {
+			if phase.Repository != "" {
+				repositories[phase.ID] = phase.Repository
+			}
+		}
+	}
+	if record == nil {
+		return out
+	}
+	for phaseID, output := range record.Results {
 		var value map[string]any
 		if err := json.Unmarshal([]byte(output), &value); err != nil {
 			continue
@@ -948,6 +1019,9 @@ func declaredChanges(results map[string]string) map[string]bool {
 			path = filepath.ToSlash(strings.TrimSpace(path))
 			path = strings.TrimPrefix(path, "./")
 			if path != "" {
+				if repo := strings.TrimSpace(repositories[phaseID]); repo != "" {
+					path = filepath.ToSlash(filepath.Join(repo, filepath.FromSlash(path)))
+				}
 				out[path] = true
 			}
 		}
@@ -956,17 +1030,48 @@ func declaredChanges(results map[string]string) map[string]bool {
 }
 
 func (s *Service) dynamicActualChanges(ctx context.Context, record *dynamicplan.Record) ([]string, error) {
+	if record != nil && len(record.RepositoryExecutions) > 0 {
+		changed := map[string]bool{}
+		var repos []string
+		for repo := range record.RepositoryExecutions {
+			repos = append(repos, repo)
+		}
+		sort.Strings(repos)
+		for _, repo := range repos {
+			execution := record.RepositoryExecutions[repo]
+			if execution.ExecutionWorkspace == "" || execution.BaseCommit == "" {
+				continue
+			}
+			paths, err := gitWorkspaceChanges(ctx, execution.ExecutionWorkspace, execution.BaseCommit)
+			if err != nil {
+				return nil, fmt.Errorf("inspect repository %s changes: %w", repo, err)
+			}
+			for _, path := range paths {
+				changed[filepath.ToSlash(filepath.Join(repo, filepath.FromSlash(path)))] = true
+			}
+		}
+		out := make([]string, 0, len(changed))
+		for path := range changed {
+			out = append(out, path)
+		}
+		sort.Strings(out)
+		return out, nil
+	}
 	if record == nil || strings.TrimSpace(record.ExecutionWorkspace) == "" || strings.TrimSpace(record.ExecutionBaseCommit) == "" {
 		return nil, nil
 	}
-	workspace := filepath.Clean(record.ExecutionWorkspace)
+	return gitWorkspaceChanges(ctx, record.ExecutionWorkspace, record.ExecutionBaseCommit)
+}
+
+func gitWorkspaceChanges(ctx context.Context, executionWorkspace, baseCommit string) ([]string, error) {
+	workspace := filepath.Clean(executionWorkspace)
 	info, err := os.Stat(workspace)
 	if err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("dynamic execution workspace is unavailable at %s", workspace)
 	}
 	changed := map[string]bool{}
 	commands := [][]string{
-		{"-C", workspace, "diff", "--name-only", "-z", record.ExecutionBaseCommit, "--"},
+		{"-C", workspace, "diff", "--name-only", "-z", baseCommit, "--"},
 		{"-C", workspace, "ls-files", "--others", "--exclude-standard", "-z"},
 	}
 	for _, args := range commands {
@@ -1013,7 +1118,11 @@ func (s *Service) replanAtCheckpoint(ctx context.Context, record *dynamicplan.Re
 	if err != nil {
 		return err
 	}
-	payload := map[string]any{"goal": plan.Goal, "current_plan": plan, "completed_phases": record.CompletedPhases, "results": record.Results, "remaining_phases": remaining, "remaining_budget": plan.Budget, "steering": pendingSteering(record), "trusted_catalog": catalog.PlannerView()}
+	repositories, err := s.repositoriesForRecord(ctx, record)
+	if err != nil {
+		return err
+	}
+	payload := map[string]any{"goal": plan.Goal, "current_plan": plan, "completed_phases": record.CompletedPhases, "results": record.Results, "remaining_phases": remaining, "remaining_budget": plan.Budget, "steering": pendingSteering(record), "trusted_catalog": catalog.PlannerView(), "repositories": repositories.PlannerView(), "repository_executions": record.RepositoryExecutions}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("encode dynamic replanner input: %w", err)
@@ -1064,13 +1173,14 @@ func (s *Service) replanAtCheckpoint(ctx context.Context, record *dynamicplan.Re
 		revised := plan
 		revised.Phases = combined
 		dynamicplan.Normalize(&revised)
-		if err := dynamicplan.ValidateWithCatalog(revised, catalog); err != nil {
+		if err := dynamicplan.ValidateWithCatalogAndRepositories(revised, catalog, repositories); err != nil {
 			return fmt.Errorf("validate revised plan: %w", err)
 		}
 		if len(record.Revisions) >= revised.Budget.MaxIterations {
 			return fmt.Errorf("plan revision limit reached: %d of %d", len(record.Revisions), revised.Budget.MaxIterations)
 		}
 		record.Revisions = append(record.Revisions, dynamicplan.Revision{Number: len(record.Revisions) + 1, Reason: decision.Reason, CreatedAt: time.Now().UTC(), Plan: revised})
+		record.MergeOrder = dynamicplan.RepositoryMergeOrder(revised)
 		record.PendingSegments = dynamicplan.Segments(dynamicplan.PendingPhases(revised, record.CompletedPhases))
 		record.CurrentSegment = 0
 		if len(record.PendingSegments) == 0 {
@@ -1119,6 +1229,10 @@ func (s *Service) startDynamicSegment(ctx context.Context, record *dynamicplan.R
 	if err != nil {
 		return err
 	}
+	repositories, err := s.repositoriesForRecord(ctx, record)
+	if err != nil {
+		return err
+	}
 	segmentName := fmt.Sprintf("execution-%03d-revision-%03d-segment-%03d.yaml", len(record.ExecutionRunIDs)+1, len(record.Revisions), record.CurrentSegment+1)
 	path := filepath.Join((dynamicplan.Store{Workspace: s.Workspace}).Dir(record.ID), segmentName)
 	contextRaw, _ := json.Marshal(map[string]any{"goal": plan.Goal, "results": record.Results, "steering": pendingSteering(record)})
@@ -1131,7 +1245,7 @@ func (s *Service) startDynamicSegment(ctx context.Context, record *dynamicplan.R
 	if segmentBudget.MaxChildRuns < 1 {
 		return fmt.Errorf("dynamic plan run budget exhausted: used %d of %d, segment wrapper requires one additional Run", usedRuns, plan.Budget.MaxChildRuns)
 	}
-	wf, err := dynamicplan.Compile(record.PendingSegments[record.CurrentSegment], segmentBudget, dynamicplan.CompileOptions{WorkflowName: fmt.Sprintf("dynamic-%s-r%d-s%d", strings.TrimPrefix(record.ID, "plan-"), len(record.Revisions), record.CurrentSegment+1), OutputPath: path, BlocksDir: blocks, Goal: plan.Goal, Context: string(contextRaw), Catalog: catalog, GovernanceContext: catalog.GovernanceJSON(), Signals: routeSignals(record)})
+	wf, err := dynamicplan.Compile(record.PendingSegments[record.CurrentSegment], segmentBudget, dynamicplan.CompileOptions{WorkflowName: fmt.Sprintf("dynamic-%s-r%d-s%d", strings.TrimPrefix(record.ID, "plan-"), len(record.Revisions), record.CurrentSegment+1), OutputPath: path, BlocksDir: blocks, Goal: plan.Goal, Context: string(contextRaw), Catalog: catalog, GovernanceContext: catalog.GovernanceJSON(), Signals: routeSignals(record), Repositories: repositories})
 	if err != nil {
 		return err
 	}
@@ -1155,6 +1269,17 @@ func (s *Service) startDynamicSegment(ctx context.Context, record *dynamicplan.R
 	record.ExecutionRunIDs = append(record.ExecutionRunIDs, started.RunID)
 	record.UpdatedAt = time.Now().UTC()
 	return nil
+}
+
+func (s *Service) repositoriesForRecord(ctx context.Context, record *dynamicplan.Record) (*workspacecatalog.Catalog, error) {
+	repositories, err := workspacecatalog.Load(ctx, s.Workspace)
+	if err != nil {
+		return nil, fmt.Errorf("resolve workspace repositories: %w", err)
+	}
+	if record != nil && record.RepositoryCatalogFingerprint != "" && repositories.Fingerprint != record.RepositoryCatalogFingerprint {
+		return nil, fmt.Errorf("workspace repository catalog changed since planning: stored=%s current=%s", record.RepositoryCatalogFingerprint, repositories.Fingerprint)
+	}
+	return repositories, nil
 }
 
 func (s *Service) resolvePlanRecord(planID, runID string) (*dynamicplan.Record, error) {

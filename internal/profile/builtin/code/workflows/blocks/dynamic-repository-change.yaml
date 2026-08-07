@@ -1,0 +1,97 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: dynamic-repository-change
+  description: One governed child Run owns inspect, implementation, validation and review for one repository worktree.
+defaults:
+  assistant: coding-agent
+  model: implementation
+  session: fresh
+nodes:
+  - id: investigate
+    prompt: |
+      Inspect the repository for this bounded objective. Do not modify files.
+      Return JSON only: {"summary":"...","findings":["..."],"evidence":["..."]}.
+      Input:
+      ${input}
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary: {"type":"string","minLength":1}
+        findings: {"type":"array","items":{"type":"string"}}
+        evidence: {"type":"array","items":{"type":"string"}}
+      required: [summary, findings, evidence]
+  - id: implement
+    depends_on: [investigate]
+    prompt: |
+      Implement the requested repository change in the current worktree. Keep the change bounded and run focused checks.
+      Investigation:
+      ${nodes.investigate.output}
+      Task:
+      ${input}
+      Return JSON only: {"summary":"...","changed_files":["..."],"tests":["..."]}.
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary: {"type":"string","minLength":1}
+        changed_files: {"type":"array","uniqueItems":true,"items":{"type":"string"}}
+        tests: {"type":"array","items":{"type":"string"}}
+      required: [summary, changed_files, tests]
+  - id: validate
+    depends_on: [implement]
+    model: review
+    prompt: |
+      Validate the actual repository state and implementation. Run deterministic checks where available. Do not modify files.
+      Implementation report:
+      ${nodes.implement.output}
+      Return JSON only: {"summary":"...","passed":true,"checks":["..."],"issues":["..."]}.
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary: {"type":"string","minLength":1}
+        passed: {"type":"boolean"}
+        checks: {"type":"array","items":{"type":"string"}}
+        issues: {"type":"array","items":{"type":"string"}}
+      required: [summary, passed, checks, issues]
+  - id: review
+    depends_on: [validate]
+    model: review
+    prompt: |
+      Independently review the change, the diff, and validation. Do not modify files.
+      Implementation:
+      ${nodes.implement.output}
+      Validation:
+      ${nodes.validate.output}
+      Return JSON only: {"summary":"...","approved":true,"findings":["..."],"evidence":["..."]}.
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary: {"type":"string","minLength":1}
+        approved: {"type":"boolean"}
+        findings: {"type":"array","items":{"type":"string"}}
+        evidence: {"type":"array","items":{"type":"string"}}
+      required: [summary, approved, findings, evidence]
+  - id: result
+    depends_on: [review]
+    model: review
+    prompt: |
+      Produce the final repository result from the reports below. approved must be true only when validation passed and review approved. Copy changed_files exactly from implementation and checks from validation.
+      Implementation: ${nodes.implement.output}
+      Validation: ${nodes.validate.output}
+      Review: ${nodes.review.output}
+      Return JSON only: {"summary":"...","changed_files":["..."],"checks":["..."],"approved":true,"findings":["..."],"evidence":["..."]}.
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        summary: {"type":"string","minLength":1}
+        changed_files: {"type":"array","uniqueItems":true,"items":{"type":"string"}}
+        checks: {"type":"array","items":{"type":"string"}}
+        approved: {"type":"boolean"}
+        findings: {"type":"array","items":{"type":"string"}}
+        evidence: {"type":"array","items":{"type":"string"}}
+      required: [summary, changed_files, checks, approved, findings, evidence]

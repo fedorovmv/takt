@@ -10,9 +10,10 @@ import (
 	"takt/internal/profile"
 	"takt/internal/store"
 	"takt/internal/taskroute"
+	"takt/internal/workspacecatalog"
 )
 
-func (s *Service) routeTask(ctx context.Context, resolved *profile.Resolved, catalog *blockcatalog.Catalog, goal string, workflows []WorkflowListEntry, adapterPreflight []AdapterPreflightStatus) (*taskroute.Decision, string, error) {
+func (s *Service) routeTask(ctx context.Context, resolved *profile.Resolved, catalog *blockcatalog.Catalog, repositories *workspacecatalog.Catalog, goal string, workflows []WorkflowListEntry, adapterPreflight []AdapterPreflightStatus) (*taskroute.Decision, string, error) {
 	if resolved == nil || strings.TrimSpace(resolved.RouterPath) == "" {
 		return nil, "", fmt.Errorf("semantic router is not configured")
 	}
@@ -31,6 +32,7 @@ func (s *Service) routeTask(ctx context.Context, resolved *profile.Resolved, cat
 		"existing_workflows":    routedWorkflows,
 		"trusted_catalog":       catalog.PlannerView(),
 		"adapter_preflight":     adapterPreflight,
+		"repositories":          repositories.PlannerView(),
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("encode task router input: %w", err)

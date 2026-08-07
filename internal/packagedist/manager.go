@@ -22,7 +22,10 @@ import (
 	"takt/internal/yamlmini"
 )
 
-type Manager struct{ Workspace, Home string }
+type Manager struct {
+	Workspace, Home string
+	saveLock        func(string, Lock) error
+}
 
 func New(workspace string) (*Manager, error) {
 	w, e := filepath.Abs(workspace)
@@ -33,7 +36,7 @@ func New(workspace string) (*Manager, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &Manager{Workspace: w, Home: h}, nil
+	return &Manager{Workspace: w, Home: h, saveLock: saveLock}, nil
 }
 
 func (m *Manager) projectLockPath() string {
@@ -132,7 +135,7 @@ func (m *Manager) Uninstall(name, scope string) error {
 	if err != nil {
 		return err
 	}
-	if err := m.validateDependencyGraph(nil, entry.Name); err != nil {
+	if err := m.validateDependencyGraph(nil, entry.Name, entry.Scope); err != nil {
 		return err
 	}
 	lockPath := m.lockPath(entry.Scope)
@@ -147,7 +150,7 @@ func (m *Manager) Uninstall(name, scope string) error {
 		}
 	}
 	lock.Packages = out
-	if err := saveLock(lockPath, lock); err != nil {
+	if err := m.writeLock(lockPath, lock); err != nil {
 		return err
 	}
 	return os.RemoveAll(filepath.Join(m.installBase(entry.Scope), entry.Name))
@@ -177,10 +180,6 @@ func (m *Manager) Doctor() (*DoctorReport, error) {
 		return nil, err
 	}
 	report := &DoctorReport{Status: "ready"}
-	installed := map[string]LockedPackage{}
-	for _, p := range entries {
-		installed[p.Name] = p
-	}
 	policies, err := m.policies()
 	if err != nil {
 		return nil, err
@@ -208,9 +207,11 @@ func (m *Manager) Doctor() (*DoctorReport, error) {
 				item.Problems = append(item.Problems, fmt.Sprintf("requires Takt %s, current %s", pkg.Requirements.Takt, version.Value))
 			}
 			for _, dep := range pkg.Dependencies {
-				p, ok := installed[dep.Name]
-				if !ok || !Satisfies(p.Version, dep.Version) {
-					item.Problems = append(item.Problems, fmt.Sprintf("dependency %s %s is not satisfied", dep.Name, dep.Version))
+				p, depErr := resolveLockedDependency(entries, dep)
+				if depErr != nil {
+					item.Problems = append(item.Problems, depErr.Error())
+				} else if !Satisfies(p.Version, dep.Version) {
+					item.Problems = append(item.Problems, fmt.Sprintf("dependency %s %s is not satisfied by %s/%s %s", dep.Name, dep.Version, p.Scope, p.Name, p.Version))
 				}
 			}
 			verified, key, verifyErr := verifyPackageSignature(root, entry.Scope, policies)
@@ -229,6 +230,29 @@ func (m *Manager) Doctor() (*DoctorReport, error) {
 		report.Packages = append(report.Packages, item)
 	}
 	return report, nil
+}
+
+func resolveLockedDependency(entries []LockedPackage, dep blockcatalog.Dependency) (LockedPackage, error) {
+	var matches []LockedPackage
+	for _, p := range entries {
+		if p.Name != dep.Name {
+			continue
+		}
+		if dep.Scope != "" && p.Scope != dep.Scope {
+			continue
+		}
+		matches = append(matches, p)
+	}
+	if len(matches) == 0 {
+		if dep.Scope != "" {
+			return LockedPackage{}, fmt.Errorf("dependency %s %s in scope %s is not installed", dep.Name, dep.Version, dep.Scope)
+		}
+		return LockedPackage{}, fmt.Errorf("dependency %s %s is not installed", dep.Name, dep.Version)
+	}
+	if dep.Scope == "" && len(matches) > 1 {
+		return LockedPackage{}, fmt.Errorf("dependency %s is ambiguous across scopes; specify dependency.scope", dep.Name)
+	}
+	return matches[0], nil
 }
 
 func (m *Manager) installStaged(staged string, src Source, scope string, exact bool, previous *LockedPackage) (*LockedPackage, error) {
@@ -265,7 +289,7 @@ func (m *Manager) installStaged(staged string, src Source, scope string, exact b
 		return nil, err
 	}
 	candidate := &packageCandidate{Name: pkg.Metadata.Name, Version: pkg.Metadata.Version, Scope: scope, Manifest: pkg}
-	if err := m.validateDependencyGraph(candidate, ""); err != nil {
+	if err := m.validateDependencyGraph(candidate, "", ""); err != nil {
 		return nil, err
 	}
 	entry := LockedPackage{Name: pkg.Metadata.Name, Version: pkg.Metadata.Version, Scope: scope, Source: src, Checksum: checksum, SignatureKeyID: key, SignatureVerified: verified, InstalledAt: time.Now().UTC()}
@@ -323,7 +347,7 @@ func (m *Manager) installStaged(staged string, src Source, scope string, exact b
 	}
 	lock.Packages = append(out, entry)
 	sort.Slice(lock.Packages, func(i, j int) bool { return lock.Packages[i].Name < lock.Packages[j].Name })
-	if err := saveLock(lockPath, lock); err != nil {
+	if err := m.writeLock(lockPath, lock); err != nil {
 		rollbackTarget()
 		return nil, err
 	}
@@ -432,6 +456,13 @@ func loadLock(path string) (Lock, error) {
 	}
 	return l, nil
 }
+func (m *Manager) writeLock(path string, l Lock) error {
+	if m.saveLock != nil {
+		return m.saveLock(path, l)
+	}
+	return saveLock(path, l)
+}
+
 func saveLock(path string, l Lock) error {
 	l.APIVersion = LockAPIVersion
 	l.Kind = LockKind
@@ -550,8 +581,8 @@ func validateSourcePolicy(src Source, policies []Policy) error {
 			continue
 		}
 		ok := false
-		for _, prefix := range p.AllowedSources {
-			if strings.HasPrefix(actual, prefix) {
+		for _, allowed := range p.AllowedSources {
+			if sourceAllowed(src, strings.TrimSpace(allowed)) {
 				ok = true
 				break
 			}
@@ -562,6 +593,36 @@ func validateSourcePolicy(src Source, policies []Policy) error {
 	}
 	return nil
 }
+
+func sourceAllowed(src Source, allowed string) bool {
+	prefix := src.Type + ":"
+	if !strings.HasPrefix(allowed, prefix) {
+		return false
+	}
+	want := strings.TrimSpace(strings.TrimPrefix(allowed, prefix))
+	if want == "" {
+		return false
+	}
+	if src.Type != "local" {
+		return strings.HasPrefix(src.Location, want)
+	}
+	actual, err := filepath.Abs(src.Location)
+	if err != nil {
+		return false
+	}
+	base, err := filepath.Abs(want)
+	if err != nil {
+		return false
+	}
+	actual = filepath.Clean(actual)
+	base = filepath.Clean(base)
+	rel, err := filepath.Rel(base, actual)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
 func verifyPackageSignature(root, scope string, policies []Policy) (bool, string, error) {
 	required := false
 	keys := map[string]string{}
@@ -651,7 +712,9 @@ type packageCandidate struct {
 	Manifest             blockcatalog.Package
 }
 
-func (m *Manager) validateDependencyGraph(candidate *packageCandidate, removing string) error {
+func packageKey(scope, name string) string { return scope + "\x00" + name }
+
+func (m *Manager) validateDependencyGraph(candidate *packageCandidate, removingName, removingScope string) error {
 	entries, err := m.List()
 	if err != nil {
 		return err
@@ -659,25 +722,50 @@ func (m *Manager) validateDependencyGraph(candidate *packageCandidate, removing 
 	versions := map[string]string{}
 	manifests := map[string]blockcatalog.Package{}
 	for _, entry := range entries {
-		if entry.Name == removing {
+		if entry.Name == removingName && entry.Scope == removingScope {
 			continue
 		}
 		pkg, _, readErr := readManifest(m.manifestPath(entry))
 		if readErr != nil {
 			return readErr
 		}
-		versions[entry.Name] = entry.Version
-		manifests[entry.Name] = pkg
+		key := packageKey(entry.Scope, entry.Name)
+		versions[key] = entry.Version
+		manifests[key] = pkg
 	}
 	if candidate != nil {
-		versions[candidate.Name] = candidate.Version
-		manifests[candidate.Name] = candidate.Manifest
+		key := packageKey(candidate.Scope, candidate.Name)
+		versions[key] = candidate.Version
+		manifests[key] = candidate.Manifest
 	}
-	for name, pkg := range manifests {
+	for key, pkg := range manifests {
 		for _, dep := range pkg.Dependencies {
-			version, ok := versions[dep.Name]
-			if !ok || !Satisfies(version, dep.Version) {
-				return fmt.Errorf("package %s requires dependency %s %s; installed version is %q", name, dep.Name, dep.Version, version)
+			if dep.Scope != "" && !validScope(dep.Scope) {
+				return fmt.Errorf("package %s dependency %s has invalid scope %q", key, dep.Name, dep.Scope)
+			}
+			var depKey, installedVersion string
+			if dep.Scope != "" {
+				depKey = packageKey(dep.Scope, dep.Name)
+				installedVersion = versions[depKey]
+			} else {
+				var matches []string
+				for candidateKey := range versions {
+					parts := strings.SplitN(candidateKey, "\x00", 2)
+					if len(parts) == 2 && parts[1] == dep.Name {
+						matches = append(matches, candidateKey)
+					}
+				}
+				sort.Strings(matches)
+				if len(matches) > 1 {
+					return fmt.Errorf("package %s dependency %s is ambiguous across scopes; specify dependency.scope", key, dep.Name)
+				}
+				if len(matches) == 1 {
+					depKey = matches[0]
+					installedVersion = versions[depKey]
+				}
+			}
+			if depKey == "" || !Satisfies(installedVersion, dep.Version) {
+				return fmt.Errorf("package %s requires dependency %s %s; installed version is %q", key, dep.Name, dep.Version, installedVersion)
 			}
 		}
 	}

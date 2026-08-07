@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -139,6 +140,12 @@ func main() {
 	case "resume-failed":
 		result := successResult(request, "replacement-session", false, 0)
 		writeResult(result)
+	case "multi-repo":
+		writeResult(multiRepoResult(request))
+	case "portable-package":
+		result := successResult(request, sessionID(request), request.Session.Mode == "resume", 0)
+		result.Output = `{"summary":"portable package review passed"}`
+		writeResult(result)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown case %q\n", *caseName)
 		os.Exit(64)
@@ -215,6 +222,46 @@ func successResult(request assistant.ProtocolRequest, id string, resumed bool, c
 		ResolvedModel:   &request.Model,
 		Usage:           &assistant.ProtocolUsage{InputTokens: 100, OutputTokens: 25},
 	}
+}
+
+func multiRepoResult(request assistant.ProtocolRequest) assistant.ProtocolResult {
+	result := successResult(request, sessionID(request), request.Session.Mode == "resume", 0)
+	var output string
+	switch request.NodeID {
+	case "route":
+		if !strings.Contains(request.Prompt, `"adapter_preflight"`) || !strings.Contains(request.Prompt, `"repositories"`) || !strings.Contains(request.Prompt, `"api"`) {
+			writeProtocolFailure(78, "multi-repo router payload missing adapter_preflight or repository catalog")
+			return result
+		}
+		output = `{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"dynamic","reason":"multi-repository task needs repository-specific worktrees","confidence":0.99,"signals":["multi_repo"],"controls":{"inspect_first":true,"baseline":false,"independent_tests":false,"enhanced_review":false,"max_parallel":2}}`
+	case "plan":
+		if !strings.Contains(request.Prompt, `"adapter_preflight"`) || !strings.Contains(request.Prompt, `"repositories"`) || !strings.Contains(request.Prompt, `"depends_on"`) {
+			writeProtocolFailure(79, "multi-repo planner payload missing adapter_preflight or repository dependency graph")
+			return result
+		}
+		output = `{"apiVersion":"takt/v1alpha1","kind":"WorkflowPlan","decision":"planned","goal":"update three repositories","reason":"repository dependency graph requires isolated child Runs","budget":{"max_child_runs":40,"max_parallel":3,"max_iterations":2,"max_tokens":100000},"phases":[{"id":"api-change","uses":"repository-change","objective":"update api","repository":"api","publish_change":true,"strategy":"task"},{"id":"client-change","uses":"repository-change","objective":"update client","repository":"client","publish_change":true,"depends_on":["api-change"],"strategy":"task"},{"id":"service-change","uses":"repository-change","objective":"update service","repository":"service","publish_change":true,"depends_on":["client-change"],"strategy":"task"},{"id":"integration","uses":"integration-verify","objective":"verify repositories together","depends_on":["service-change"],"strategy":"task"}]}`
+	case "investigate":
+		output = `{"summary":"scope inspected","findings":["bounded change"],"evidence":["repository inspected"]}`
+	case "implement":
+		if strings.TrimSpace(request.Workspace) != "" {
+			_ = os.WriteFile(filepath.Join(request.Workspace, "takt-multi-repo.txt"), []byte("changed by multi-repo fixture\n"), 0o644)
+		}
+		output = `{"summary":"change implemented","changed_files":["takt-multi-repo.txt"],"tests":["fixture check: pass"]}`
+	case "validate":
+		output = `{"summary":"validation passed","passed":true,"checks":["fixture check"],"issues":[]}`
+	case "review":
+		output = `{"summary":"review approved","approved":true,"findings":[],"evidence":["diff reviewed"]}`
+	case "result":
+		if strings.Contains(request.Prompt, "combined multi-repository") || strings.Contains(request.Prompt, "multi-repository result") {
+			output = `{"summary":"integration passed","passed":true,"checks":["cross-repo fixture"],"issues":[],"evidence":["dependency workspaces inspected"]}`
+		} else {
+			output = `{"summary":"repository change complete","changed_files":["takt-multi-repo.txt"],"checks":["fixture check"],"approved":true,"findings":[],"evidence":["validation and review passed"]}`
+		}
+	default:
+		output = `{"summary":"fixture completed"}`
+	}
+	result.Output = output
+	return result
 }
 
 func sessionID(request assistant.ProtocolRequest) string {

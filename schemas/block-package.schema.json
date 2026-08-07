@@ -322,7 +322,15 @@
         "version": {
           "type": "string",
           "minLength": 1,
-          "description": "Exact, >=, ^, or * package version constraint."
+          "description": "Exact, >=, ^, or * package version constraint. Caret follows semver compatible-update rules, including minor pinning for 0.x (for example ^0.1.42 < 0.2.0)."
+        },
+        "scope": {
+          "enum": [
+            "global",
+            "corporate",
+            "project"
+          ],
+          "description": "Optional scope disambiguation when the same dependency name is installed in multiple scopes."
         }
       }
     },
