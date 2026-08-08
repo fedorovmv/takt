@@ -34,9 +34,9 @@ script:
     TOKEN: secret://CORP_TOKEN
 ```
 
-`secret://NAME` resolves from the current process environment immediately before execution. The resolved value is registered with the runtime redactor even when it is short. Takt also heuristically registers values of environment variables whose names look secret-bearing; this heuristic is defense-in-depth and is not a replacement for explicit `SecretRef`.
+`secret://NAME` resolves from the current process environment immediately before execution. Templated environment values are scanned again after request rendering so a rendered `secret://NAME` reference is registered before execution. The resolved value is registered with the runtime redactor even when it is short. Takt also heuristically registers values of environment variables whose names look secret-bearing; this heuristic is defense-in-depth and is not a replacement for explicit `SecretRef`.
 
-Before persistence, Takt redacts known secrets from Run state, node/execution output, diagnostics, event data and textual artifacts. A non-text artifact containing a known secret is rejected instead of being stored. Foreground control/CLI responses are reloaded from the durable Store after execution so a resolved secret is not returned from the live in-memory state.
+Before persistence, Takt redacts known secrets from Run state, approvals, node/execution output, diagnostics, domain receipts, external tool inputs/results, event data and textual artifacts. The same persistence boundary is used by runtime and control/external worker paths. A non-text artifact containing a known secret is rejected instead of being stored. Foreground control/CLI responses are reloaded from the durable Store after execution so a resolved secret is not returned from the live in-memory state.
 
 Limitations:
 

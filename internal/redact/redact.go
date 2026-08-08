@@ -81,6 +81,42 @@ func (r *Redactor) Resolve(value string) (string, error) {
 	return resolved, nil
 }
 
+// RegisterReferences finds explicit secret://ENV_NAME references in a value and
+// registers the current environment values for persistence redaction. Missing
+// variables are ignored here; Resolve remains the fail-closed execution gate.
+func (r *Redactor) RegisterReferences(value string) {
+	if r == nil || value == "" {
+		return
+	}
+	for offset := 0; ; {
+		index := strings.Index(value[offset:], SecretPrefix)
+		if index < 0 {
+			return
+		}
+		start := offset + index + len(SecretPrefix)
+		end := start
+		for end < len(value) {
+			b := value[end]
+			if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_') {
+				break
+			}
+			end++
+		}
+		if end > start {
+			if actual, ok := os.LookupEnv(value[start:end]); ok && actual != "" {
+				r.AddSecret(actual)
+			}
+		}
+		offset = end
+		if offset <= start {
+			offset = start + 1
+		}
+		if offset >= len(value) {
+			return
+		}
+	}
+}
+
 type MissingSecretError struct{ Name string }
 
 func (e *MissingSecretError) Error() string {

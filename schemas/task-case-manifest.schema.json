@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/task-case-manifest.schema.json",
+  "title": "Takt Task Case Manifest v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "cases"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "takt/evaluation/v1alpha1"
+    },
+    "kind": {
+      "const": "TaskCaseManifest"
+    },
+    "cases": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "goal",
+          "expected_route"
+        ],
+        "properties": {
+          "goal": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected_route": {
+            "enum": [
+              "workflow",
+              "template",
+              "dynamic"
+            ]
+          },
+          "expected_template": {
+            "type": "string"
+          },
+          "expected_workflow": {
+            "type": "string"
+          },
+          "expected_status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "min_plan_revisions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "allow_needs_input": {
+            "type": "boolean"
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}

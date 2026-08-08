@@ -1386,4 +1386,120 @@ func TestValidationScriptCannotBypassRequiredOSSandbox(t *testing.T) {
 	if state.Nodes["validate"].Sandbox.Status != "degraded" || !strings.Contains(state.Nodes["validate"].Error, "sandbox") {
 		t.Fatalf("unexpected sandbox failure state: %+v", state.Nodes["validate"])
 	}
+	persisted, loadErr := r.Store.Load(state.ID)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if persisted.Nodes["validate"].Sandbox == nil || persisted.Nodes["validate"].Sandbox.Status != "degraded" {
+		t.Fatalf("degraded sandbox decision was not durable: %+v", persisted.Nodes["validate"])
+	}
+}
+
+func TestAfterHookCannotBypassRequiredOSSandbox(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "hook-sandbox"}, Nodes: []spec.Node{{
+		ID: "worker", Prompt: "complete fixture", Assistant: "demo", Model: "m", Sandbox: &spec.SandboxSpec{Enforcement: "required", Network: "deny"},
+		Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{ID: "verify", Bash: "true", OnFailure: spec.HookDecision{Action: "fail"}}}},
+	}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "fixture", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("required OS sandbox on hook should fail closed when backend is unavailable")
+	}
+	if state == nil || state.Nodes["worker"] == nil || !strings.Contains(state.Nodes["worker"].Error, "sandbox") {
+		t.Fatalf("unexpected hook sandbox state: %+v err=%v", state, err)
+	}
+}
+
+func TestRetryBackoffDeadlineSurvivesPauseAndNewRunnerResume(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "backoff-resume"}, Nodes: []spec.Node{{
+		ID:       "work",
+		Bash:     `n=0; test -f count && n=$(cat count); n=$((n+1)); printf %s "$n" > count; if test "$n" -lt 2; then echo transient >&2; exit 7; fi; echo done`,
+		Attempts: spec.AttemptsSpec{Max: 2, RetryOn: []string{"exit"}, Backoff: &spec.BackoffSpec{Initial: "500ms"}},
+	}}}
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
+	runID := "retry-backoff-resume"
+	first := New(wf, &spec.Config{}, workflowPath, configPath, dir)
+	resultCh := make(chan error, 1)
+	go func() {
+		_, err := first.StartWithOptions(context.Background(), "", StartOptions{RunID: runID})
+		resultCh <- err
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		loaded, err := first.Store.Load(runID)
+		if err == nil && loaded.Nodes["work"] != nil && loaded.Nodes["work"].Retry != nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := (store.FS{Workspace: dir}).RequestPause(runID); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-resultCh; !errors.Is(err, ErrPaused) {
+		t.Fatalf("start error=%v want ErrPaused", err)
+	}
+	persisted, err := first.Store.Load(runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.Nodes["work"] == nil || persisted.Nodes["work"].Retry == nil {
+		t.Fatalf("retry deadline lost across pause: %+v", persisted.Nodes["work"])
+	}
+
+	second := New(wf, &spec.Config{}, workflowPath, configPath, dir)
+	remaining := time.Until(persisted.Nodes["work"].Retry.NotBefore)
+	if remaining <= 100*time.Millisecond {
+		t.Fatalf("insufficient persisted backoff remaining for restart test: %v", remaining)
+	}
+	started := time.Now()
+	resumed, err := second.Resume(context.Background(), persisted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed+30*time.Millisecond < remaining {
+		t.Fatalf("resume recomputed or skipped persisted deadline: elapsed=%v remaining=%v", elapsed, remaining)
+	}
+	if resumed.Status != store.RunCompleted || resumed.Nodes["work"].Attempts != 2 {
+		t.Fatalf("resumed state=%+v", resumed.Nodes["work"])
+	}
+}
+
+func TestCanonicalNodePathIsPersistedInStateAndEvents(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "node-path"}, Nodes: []spec.Node{{ID: "batch__1__append", Bash: "true"}}}
+	r := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := r.Store.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := persisted.Nodes["batch__1__append"].Path; got != "/batch[1]/append" {
+		t.Fatalf("node path=%q", got)
+	}
+	events, err := (store.FS{Workspace: dir}).ReadEvents(state.ID, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	for _, event := range events {
+		if event.NodeID != "batch__1__append" {
+			continue
+		}
+		if got, _ := event.Data["node_path"].(string); got != "/batch[1]/append" {
+			t.Fatalf("event %s node_path=%q", event.Type, got)
+		}
+		seen = true
+	}
+	if !seen {
+		t.Fatal("no node events observed")
+	}
 }

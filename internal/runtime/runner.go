@@ -89,14 +89,7 @@ func runtimeRedactor(cfg *spec.Config) *redact.Redactor {
 	}
 	register := func(values map[string]string) {
 		for _, value := range values {
-			trimmed := strings.TrimSpace(value)
-			if !strings.HasPrefix(trimmed, redact.SecretPrefix) {
-				continue
-			}
-			name := strings.TrimSpace(strings.TrimPrefix(trimmed, redact.SecretPrefix))
-			if actual, ok := os.LookupEnv(name); ok {
-				r.AddSecret(actual)
-			}
+			r.RegisterReferences(value)
 		}
 	}
 	for _, assistantSpec := range cfg.Assistants {
@@ -1043,12 +1036,21 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 			sessionEvent = assistant.EventSessionResumed
 		}
 		collector.Emit(assistant.Event{Type: sessionEvent, Provider: resolved.Model.Provider, SessionID: resolved.SessionID, Data: map[string]any{"assistant": resolved.AssistantName, "attempt": state.Nodes[node.ID].Attempts}})
-		result, err := adapter.Run(ctx, assistant.Request{
+		request := assistant.Request{
 			RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts,
 			Prompt: resolved.Prompt, Workspace: r.Workspace, ModelName: resolved.ModelName, Model: resolved.Model,
 			SessionMode: resolved.SessionMode, SessionID: resolved.SessionID, NativeHooks: node.NativeHooks, Policy: resolved.Policy,
 			Emit: collector.Emit,
-		})
+		}
+		if r.redactor == nil {
+			r.redactor = runtimeRedactor(r.Config)
+		}
+		if r.Config != nil {
+			for _, assistantSpec := range r.Config.Assistants {
+				assistant.RegisterRenderedEnvSecrets(r.redactor, assistantSpec, request)
+			}
+		}
+		result, err := adapter.Run(ctx, request)
 		if errors.Is(context.Cause(ctx), ErrIdleTimeout) {
 			err = &execution.Error{Kind: execution.KindTimedOut, ExitCode: -1, Op: "assistant idle timeout", Err: ErrIdleTimeout}
 		}
@@ -1579,13 +1581,13 @@ func (r *Runner) scheduleRetry(state *store.RunState, node spec.Node, kind, phas
 	if err != nil {
 		return err
 	}
-	data := map[string]any{"feedback": feedback, "phase": phase, "kind": kind, "next_attempt": ns.Attempts + 1}
+	fingerprint := ""
+	if ns.Diagnostic != nil {
+		fingerprint = ns.Diagnostic.Fingerprint
+	}
+	data := map[string]any{"feedback": feedback, "phase": phase, "kind": kind, "next_attempt": ns.Attempts + 1, "fingerprint": fingerprint}
 	if delay > 0 {
 		notBefore := time.Now().UTC().Add(delay)
-		fingerprint := ""
-		if ns.Diagnostic != nil {
-			fingerprint = ns.Diagnostic.Fingerprint
-		}
 		ns.Retry = &store.RetryState{NextAttempt: ns.Attempts + 1, NotBefore: notBefore, Delay: delay.String(), Kind: kind, Fingerprint: fingerprint}
 		data["delay"] = delay.String()
 		data["not_before"] = notBefore

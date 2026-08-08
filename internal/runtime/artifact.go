@@ -13,6 +13,7 @@ import (
 
 	"takt/internal/artifacttype"
 	"takt/internal/assistant"
+	"takt/internal/redact"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
@@ -76,7 +77,7 @@ func (r *Runner) captureDeclaredArtifact(state *store.RunState, node spec.Node, 
 	if r.redactor != nil {
 		redacted, found := r.redactor.Bytes(data)
 		if found {
-			if textualArtifactMIME(mime) {
+			if redact.TextualMIME(mime) {
 				data = redacted
 			} else {
 				return fmt.Errorf("artifact %s contains a known secret and cannot be persisted as non-text content", node.OutputType)
@@ -175,11 +176,6 @@ func resolveExistingSymlinkPrefix(path string) (string, error) {
 		evaluated = filepath.Join(evaluated, suffix[i])
 	}
 	return filepath.Clean(evaluated), nil
-}
-
-func textualArtifactMIME(mime string) bool {
-	base := strings.ToLower(strings.TrimSpace(strings.Split(mime, ";")[0]))
-	return strings.HasPrefix(base, "text/") || base == "application/json" || base == "application/xml" || strings.HasSuffix(base, "+json") || strings.HasSuffix(base, "+xml")
 }
 
 func copyArtifactFile(source, destination string) error {

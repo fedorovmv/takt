@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.46-alpha
+
+- закрыт общий persistence redaction для control/external worker paths, approval, external tool I/O/results/artifacts и domain receipts;
+- templated SecretRef регистрируется после render adapter env;
+- external non-text artifact с known secret блокируется fail-closed;
+- добавлен `takt eval task-benchmark` для полного `Task Router → Dynamic Plan → replan` пути;
+- добавлены `TaskEvaluationMatrix`, `TaskCaseManifest`, task report, pairwise outcomes и task-level regression gates;
+- immediate retry events несут diagnostic fingerprint;
+- `repeat: 0` больше не нормализуется молча;
+- расширено покрытие stability/time-to-valid/failed-execution-cost/gates;
+- добавлены task evaluation schemas и усилены matrix/compare report schemas;
+- macOS portability: adapter-platform python3 fallback и sandbox-exec regression coverage;
+- backlog, implementation status, roadmap, README и evaluation plan пересобраны вокруг evidence → stabilization → external seams → learning loop.
+- Takt skill обновлён до 0.28.0; профиль `code` остаётся 0.16.0.
+
 ## v0.1.45-alpha
 
 - Evaluation runner получил `EvaluationMatrix` и `CaseManifest`: `takt eval benchmark` запускает несколько agent-neutral workflow-стратегий на одном corpus/repeat, а `takt eval compare` строит парные переходы baseline/candidate и category breakdown.

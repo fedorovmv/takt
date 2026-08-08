@@ -60,19 +60,97 @@
       "type": "array",
       "minItems": 2,
       "items": {
-        "type": "object"
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "output_dir",
+          "strategy",
+          "benchmark",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "output_dir": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": "object"
+          },
+          "benchmark": {
+            "type": "object"
+          },
+          "summary": {
+            "type": "object"
+          }
+        }
       }
     },
     "comparisons": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "required": [
+          "report_version",
+          "benchmark",
+          "baseline",
+          "candidate",
+          "metrics",
+          "paired_outcomes",
+          "cases"
+        ],
+        "properties": {
+          "report_version": {
+            "const": "takt-evaluation-compare/v1alpha1"
+          },
+          "benchmark": {
+            "type": "object"
+          },
+          "baseline": {
+            "type": "object"
+          },
+          "candidate": {
+            "type": "object"
+          },
+          "metrics": {
+            "type": "object"
+          },
+          "paired_outcomes": {
+            "type": "object"
+          },
+          "cases": {
+            "type": "array"
+          },
+          "by_category": {
+            "type": "array"
+          }
+        }
       }
     },
     "gates": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "strategy",
+          "passed",
+          "message"
+        ],
+        "properties": {
+          "strategy": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
       }
     },
     "passed": {

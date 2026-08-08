@@ -120,8 +120,13 @@ outer__002__inner__003   -> /outer[2]/inner[3]
 - добавлены прямые regressions для multi-repo integrity deny, replanner repository payload, repository fingerprint drift, dependency-results TaskBrief и node-level `workflow.repository` правил;
 - retry родительского governed workflow переиспользует уже `completed` child Run. Новый child создаётся только когда предыдущий не завершился успешно; это предотвращает повторную mutating работу в уже завершённом repository.
 
-GitHub Actions release gate выполняется на `ubuntu-latest` и `macos-latest`.
+Репозиторий содержит GitHub Actions matrix `ubuntu-latest` + `macos-latest`, но наличие workflow-файла само по себе не доказывает прогон конкретного локально собранного релиза. Release contract подтверждается только фактически выполненными командами, перечисленными в `TEST_RESULTS.md`.
 
 ## Release contract
 
 `scripts/test-runtime-reliability-security.sh` фиксирует основные свойства среза: durable backoff/fingerprint, SecretRef/redaction, binary artifact fail-closed, validation sandbox, fan-out short-circuit, reuse completed child, canonical NodePath и regressions ревью `v0.1.43`.
+
+
+### Уточнение redaction после ревью
+
+Исправление в `v0.1.46-alpha` распространило тот же persistence redactor на control/external paths: approval answers, external assistant/tool events, external results/artifacts и domain receipts. Text artifact редактируется до записи, non-text artifact с известным secret отклоняется. SecretRef, появившийся только после template rendering adapter/assistant env, также регистрируется до execution.

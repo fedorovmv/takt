@@ -39,7 +39,7 @@ type MatrixBenchmark struct {
 	Cases             string          `json:"cases"`
 	CaseManifest      string          `json:"case_manifest,omitempty"`
 	WorkspaceTemplate string          `json:"workspace_template"`
-	Repeat            int             `json:"repeat,omitempty"`
+	Repeat            *int            `json:"repeat,omitempty"`
 	ApprovalAnswer    string          `json:"approval_answer,omitempty"`
 	QualityNode       string          `json:"quality_node"`
 	GenerationNode    string          `json:"generation_node"`
@@ -133,8 +133,8 @@ func validateMatrix(matrix *Matrix) error {
 	if strings.TrimSpace(matrix.Metadata.Name) == "" || strings.TrimSpace(matrix.Benchmark.ID) == "" {
 		return fmt.Errorf("evaluation matrix metadata.name and benchmark.id are required")
 	}
-	if matrix.Benchmark.Repeat < 0 {
-		return fmt.Errorf("benchmark.repeat must be >= 0")
+	if matrix.Benchmark.Repeat != nil && *matrix.Benchmark.Repeat < 1 {
+		return fmt.Errorf("benchmark.repeat must be >= 1 when specified")
 	}
 	if strings.TrimSpace(matrix.Benchmark.Cases) == "" || strings.TrimSpace(matrix.Benchmark.WorkspaceTemplate) == "" || strings.TrimSpace(matrix.Benchmark.QualityNode) == "" || strings.TrimSpace(matrix.Benchmark.GenerationNode) == "" {
 		return fmt.Errorf("benchmark cases, workspace_template, quality_node, and generation_node are required")
@@ -221,12 +221,12 @@ func RunMatrix(ctx context.Context, opts MatrixRunOptions) (*MatrixReport, error
 		MatrixPath: matrixPath, MatrixFingerprint: matrixFingerprint, BenchmarkID: matrix.Benchmark.ID,
 		BaselineStrategy: matrix.Benchmark.BaselineStrategy, Passed: true,
 	}
-	repeat := matrix.Benchmark.Repeat
+	repeat := 1
+	if matrix.Benchmark.Repeat != nil {
+		repeat = *matrix.Benchmark.Repeat
+	}
 	if opts.Repeat > 0 {
 		repeat = opts.Repeat
-	}
-	if repeat <= 0 {
-		repeat = 1
 	}
 	report.Repeat = repeat
 	cases := resolveMatrixPath(baseDir, matrix.Benchmark.Cases)

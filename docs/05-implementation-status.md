@@ -1,211 +1,121 @@
-# Состояние реализации
+# Текущее состояние реализации
 
-## Реализовано
+Статус после `v0.1.46-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
-### Форматы и загрузка
+## Ядро runtime — реализовано
 
-- workflow/config/profile в YAML и JSON со строгим decode неизвестных полей и path-aware `did you mean`;
-- документированный YAML subset с block scalar;
-- JSON Schemas для config, workflow, profile, state, events, Markdown-команд и assistant protocol;
-- проверка ссылок, ID, циклов DAG, рекурсии structural и governed workflow и глубины композиции 16;
-- именованный каталог workflow в профиле и селектор `profile:workflow`;
-- `takt workflow list` и `takt workflow describe`;
-- расширенный проверяемый JSON `output_format` для `command`, `prompt` и `script`;
-- authoring diagnostics: output/artifact references, dependency direction, suspicious combinations и `--warnings-as-errors`;
-- capability preflight выполняется уже в `takt validate`, включая governed child definitions.
+- один DAG scheduler для root/composition/dynamic compiled workflows;
+- dependencies, `when`, trigger rules, `always_run`, retries/backoff, hooks, timeout/cancel;
+- sequential/parallel `foreach`, `loop_group`, `subworkflow`, governed child `workflow`;
+- parallel waves и governed fan-out с `all_done|all_success|one_success` short-circuit;
+- durable Run state/events/revisions, resume, pause, abandon, recovery и child lifecycle;
+- canonical `NodeState.path`, diagnostic fingerprints и durable retry deadline;
+- managed Git worktree, repository catalog и multi-repo governed child Runs;
+- script/command/assistant/adapter/approval actions и typed artifacts.
 
-### Runtime
+## Coding-agent integration — реализовано, live strict conformance ограничено
 
-- DAG с `depends_on`, `when`, JSON-путями и правилами `all_success`, `all_done`, `none_failed_min_one_success`, `one_success`;
-- реальные параллельные волны независимых простых `command`, `prompt`, `bash`, `script`;
-- одна scheduler-семантика root DAG, `loop_group`, скомпилированных `subworkflow` и `foreach`;
-- `command`, `prompt`, `bash`, `script`, `adapter`, `approval`, `loop_group`, `subworkflow`, последовательный и параллельный `foreach`;
-- approval внутри `loop_group` с pause/resume той же итерации;
-- inline `foreach.items` и внешний `items_from.path` с fingerprint исходного файла;
-- детерминированный массив результатов `foreach` в порядке входа независимо от порядка завершения;
-- публичная проекция Run без внутренних `__`-ID;
-- defaults `assistant`, `model`, `session` на structural container;
-- portable hooks, retry с feedback, timeout/cancellation, activity-based `idle_timeout`, `allow_failure` и cleanup `always_run`;
-- fingerprints workflow/config/commands/subworkflow/items source;
-- файловые state/events/artifacts, revision consistency и блокировка Run;
-- script runtime `command|python|node|go|validation` с file/inline source, args, env, working directory, timeout/cancellation и structured output;
-- fingerprint исходника script и явно объявленных dependencies;
-- типизированные `output_type`/`output_mime`/`output_path` артефакты с SHA-256 и producer metadata;
-- строгий renderer `${path}`/`${path?}`/`${path:-default}` и ссылки `${nodes.<id>.artifacts.<type>.<field>}`;
-- CLI `takt artifacts` и передача артефактов parent/child/fan-out;
-- управляемая Git worktree isolation с отдельной веткой, control/execution workspace, safe cleanup и resume;
-- CLI `worktree list/remove/prune` и persisted Run overrides.
+- process protocol `takt-assistant/v1alpha1|v1alpha2`;
+- Pi и OpenCode adapters;
+- external executor и controlled tool lifecycle;
+- `sdk/agentadapter` conformance kit;
+- logical `coding-agent` + `default_assistant`;
+- host-control core и Pi/OpenCode integrations;
+- MCP surfaces agent/host/worker/operator.
 
-### Локальный MCP, daemon и управляемый worker lifecycle
+Bundled Pi/OpenCode host integrations остаются `guarded`, пока command/input/tool/completion/recovery contract не подтверждён live smoke на конкретной версии host.
 
-- прямой `takt mcp` и `takt mcp --daemon` через локальный Unix socket;
-- `takt daemon start|status|stop|serve` без БД: background Runs, event subscriptions, несколько клиентов, recovery потерянных локальных executor и notification dispatch;
-- legacy initialization `2025-03-26|2025-06-18|2025-11-25` и stateless discovery `2026-07-28`;
-- 54 internal operations разделены на surfaces; основная LLM видит пять `takt.task.*`, host и external worker получают только собственные протоколы;
-- detached start с durable `run_id`;
-- indexed revision cursor и bounded long polling событий без полного пересканирования журнала;
-- structured/text tool results, bounded artifact content, request cancellation и strict arguments;
-- MCP и daemon используют существующие fingerprints, locks, store и parent/child lifecycle;
-- concurrent control mutations сериализуются bounded retry, а daemon shutdown ожидает monitor goroutines;
-- claimed external `idle_timeout` обслуживается daemon и закрывает зависшие tool calls как cancelled перед `timed_out`.
-- `executor: external` передаёт один command/prompt узел внешнему worker через durable claim/lease/token, capability preflight, normalized events и обычные retry/hooks/output/artifact semantics.
-- event protocol v2 сохраняет `assistant.session.started|session.resumed|message|tool.requested|tool.allowed|tool.denied|tool.started|tool.completed|artifact.declared|usage|diagnostic|completed|failed`;
-- capability declaration различает наблюдательные events и настоящий `tool_control`; OpenCode/Pi не заявляют pre-execution interception;
-- внешний executor применяет node policy до запуска инструмента, поддерживает blocking approval, отдельную отмену и запрещает terminal-result при незавершённых tool calls;
-- process protocol `takt-assistant/v1alpha2` поддерживает двунаправленный tool decision channel.
+## Dynamic Takt — реализовано
 
-### Governed child Runs
+- Task Router `workflow|template|dynamic`;
+- `simple-reliable` template с monotonic controls;
+- bounded `WorkflowPlan` из trusted blocks;
+- preview/confirmation, budgets, checkpoints, replan, steering, immutable revisions;
+- Role Contract, bounded TaskBrief и scope/check policies;
+- EvidenceManifest, baseline classification, parking и repair routing;
+- promotion успешного динамического плана в project workflow.
 
-- узел `workflow` запускает подключённое определение как отдельный Run, а не разворачивает его в DAG родителя;
-- отдельные Run ID, state, events, artifacts, fingerprints, output и usage;
-- `parent_run_id`, `parent_node_id`, direct `child_run_ids` и current/history links на узле;
-- передача input и публичного output через `output_node` либо единственный terminal-узел;
-- failure/cancellation ребёнка определяют результат родительского узла;
-- approval ребёнка приостанавливает родителя; `takt answer` через корневой Run продолжает ребёнка и всю parent chain;
-- durable cancellation marker останавливает активный узел, а `takt cancel` каскадно отменяет дерево;
-- `takt children` показывает прямых детей, `takt status` работает для любого ребёнка;
-- режимы `isolation: inherit|worktree|none` и собственная worktree policy ребёнка;
-- retry родительского `workflow`-узла создаёт новый child Run, сохраняя прошлые child attempts;
-- рекурсивный fingerprint статически подключённых детей, запрет рекурсии и предел глубины 16;
-- contract suite `scripts/test-child-runs.sh`;
-- динамический fan-out из JSON-массива upstream-узла: устойчивые Run ID, `max_parallel`, resume, ordered aggregation, `all_success|all_done|one_success`, выборочная и каскадная отмена;
-- contract suite `scripts/test-child-fanout.sh`.
+## Интеграции и доставка — реализованы как платформенные contracts
 
+- neutral SCM/Tracker/CI domain operations;
+- process/MCP transports;
+- capability discovery;
+- durable idempotency/receipt/reconciliation;
+- portable BlockPackage install/update/sync/sign, lock/dependencies/scopes/source/signature policy;
+- Agent Adapter SDK.
 
-### Dynamic Takt и доверенные блоки
+Production provider adapters намеренно не встроены в ядро. Fake adapters доказывают контракт; GitHub/корпоративные реализации остаются внешними поставками.
 
-- решение `existing|planned` по естественной цели;
-- ограниченный `WorkflowPlan` с budgets, `task|map`, dependencies и checkpoint;
-- явно подключённые `BlockPackage` со scope `builtin|corporate|project`;
-- типизированные выходы блоков, capabilities, integrations, templates и governance;
-- обязательные блоки/проверки, branch/change-request rules, security policy и сужаемые бюджеты;
-- fingerprint каталога, блокирующий execute/replan/promote после изменения;
-- встроенный каталог `discover|investigate|implement|validate|review|adversarial-verify|synthesize`;
-- компиляция каждого сегмента в обычный Takt Workflow без второго runtime;
-- preview и обязательное подтверждение planned-плана;
-- hard cap child Run/fan-out, parallelism, revisions и token usage на границах фаз;
-- checkpoint replanning с immutable revisions незавершённого хвоста;
-- `takt plan|execute|steer`, phase/run/artifact view и promotion в `.takt/workflows/generated`;
-- MCP `takt.plan`, `takt.plan.get`, `takt.execute`, `takt.run.steer`, `takt.plan.promote`;
-- логический `coding-agent`: конкретный Pi/OpenCode/process adapter выбирается через `default_assistant`; отдельные worker-сессии исполняют фазы.
-- внутренний `EvidenceManifest` сохраняет baseline, check evidence и verdict, связанный с candidate content SHA-256;
-- известные baseline failures не считаются новой regression и не запускают automatic repair;
-- `parked` хранит failure code, owner и безопасное продолжение и попадает в attention;
-- external `side_effect.mode: reconcile` блокирует повтор внешней мутации при неизвестном исходе до reconciliation + receipt.
+## Локальная эксплуатация — реализована
 
+- stdio MCP и локальный daemon через Unix socket;
+- background Runs и event subscriptions;
+- run registry/attention/result summary;
+- pause/resume/retry/fork/abandon/recovery;
+- local notification sinks;
+- local single-user trust model.
 
-### Simple Reliable Task Router
+## Security/reliability — реализовано для локальной trusted модели
 
-- высокоуровневый `takt task start|status|respond|stop|explain`;
-- route `workflow|template|dynamic` с JSON-схемой и проверкой ссылок;
-- `simple-reliable`: investigate → implement → validate → review;
-- прогрессивные controls baseline, independent tests, enhanced review, inspect checkpoint и max_parallel;
-- детерминированные risk signals могут только усилить controls;
-- invalid/unavailable semantic router даёт durable inspect-first fallback;
-- MCP surfaces `agent|host|worker|operator|all`;
-- `SessionAdapter` и `takt-assistant/v1alpha2` как нейтральная граница Codex/Oh My Pi/Qwen CLI и других wrappers.
+- `secret://ENV_NAME` и fail-closed resolution;
+- общий persistence redaction runtime + control/external paths;
+- redaction approval, external tool I/O/results, domain receipts и textual artifacts;
+- binary artifact с известным secret блокируется;
+- templated SecretRef регистрируется после render;
+- local OS sandbox для `bash/script/validation/hooks`: bwrap Linux, sandbox-exec macOS, `required|optional`;
+- assistant sandbox остаётся capability contract конкретного coding-agent;
+- external mutating side effects используют idempotency/reconciliation.
 
-### Coding Agent Host Control и автономные Run
+Это не multi-user security boundary. Vault/RBAC/container orchestration и untrusted workflow execution не заявляются.
 
-- durable host sessions с begin/confirm/find/get/release и межпроцессной сериализацией;
-- default-deny tool guard с точным allowlist и игнорированием клиентского `read_only`;
-- `strict` доступен только адаптеру с command/input/tool/completion/recovery capabilities; bundled Pi/OpenCode integrations честно заявляют `guarded`;
-- fail-closed local cache bundled extensions при потере daemon, перехват steering и пользовательского shell;
-- реестр Run и attention queue с причинами approval/question/tool approval/failure/paused;
-- безопасная пауза на границе узла и fan-out batch, каскадный marker для governed child Runs и resume остатка;
-- operator retry failed-узла и зависимого хвоста, fork и отдельное состояние `abandoned`;
-- PID-based recovery после daemon restart с событием `worker_lost`, recovery count и продолжением parent chain;
-- агрегированный `run summary` с descendants, usage, artifacts, retry/recovery history;
-- durable notification inbox, desktop/process sinks, дедупликация и ack;
-- Pi/OpenCode команды runs, attention, pause, resume и result.
+## Evaluation — реализовано
 
-### Domain Adapter Platform v0.1.41
+### Workflow-level
 
-- нейтральные `scm|tracker|ci` contracts и именованные adapters в Config;
-- `adapter` как обычный Node action единого scheduler с `output_format`;
-- строгий process protocol `takt-domain-adapter/v1alpha1` и MCP stdio transport;
-- capability discovery/preflight до внешнего вызова;
-- durable idempotency key, receipt и reconcile state для mutating operations;
-- `sdk/agentadapter` conformance kit для внешних coding-agent wrappers;
-- CLI `takt adapter list|describe|doctor`, fake domain adapter и provider-neutral E2E.
+`eval run/report/benchmark/compare`:
 
-### Portable Package Distribution v0.1.42
+- EvaluationMatrix/CaseManifest;
+- repeat и pairwise outcomes;
+- strategy/benchmark/validator/workspace fingerprints;
+- success@1/final success/attempts/score/cost;
+- true time-to-valid из durable events;
+- failed-execution cost;
+- diagnostic fingerprints и stable/unstable cases;
+- category breakdown и regression gates.
 
-- `takt package install|update|uninstall|list|sync|doctor|sign` поверх прежнего `BlockPackage`;
-- local/Git sources, exact Git commit + content SHA-256 в lock;
-- области `global|corporate|project` и precedence `project > corporate > global > builtin` при fail-closed governance;
-- dependencies, `requirements.takt` и adapter requirements `required|preferred`;
-- ранний adapter capability preflight для package requirements до запуска Run и передача preferred availability Router/Planner;
-- `PackagePolicy` с allowlist источников, trusted Ed25519 keys и обязательной подписью для выбранных scopes;
-- public `sdk/agentadapter` envelopes/validators, shared fixtures и conformance contract на реальном fake wrapper;
-- schemas lock/policy/signature и сквозной package distribution contract.
+### Task-level — v0.1.46
 
-### Профиль code 0.16.0
+`eval task-benchmark` запускает настоящий control path и измеряет:
 
-- встроенный пакет `code-core` с одиннадцатью блоками Dynamic Takt, включая baseline, independent test-design, repository-change и integration-verify;
-- внутренние роли `baseline-observer|investigator|implementer|test-designer|validator|verifier` и fresh bounded `TaskBrief` для trusted phases;
-- structured required/preferred checks, реакции `deny|repair|warn` и одна bounded automatic repair-итерация для recoverable technical failures;
+- route accuracy;
+- final success;
+- plan revisions;
+- replanner/execution Runs;
+- replan expectation;
+- unexpected needs-input;
+- router fallback;
+- aggregate usage;
+- pairwise baseline/candidate transitions и gates.
 
-- 19 процессов разработки: assist, issue/PR flows, PIV, Ralph, idea/plan-to-PR, reviews, architecture, safe refactoring, PRD, workflow builder, Remotion и conflict resolution;
-- умный роутер как корневой Run с отдельным governed child Run выбранного процесса;
-- структурированный выбор маршрута с enum всех 19 процессов;
-- smart review динамически выбирает перспективы, а comprehensive review запускает пять governed child Runs через `workflow.fan_out`;
-- review perspectives формируются script-узлом; PIV, idea-to-PR и interactive PRD публикуют типизированные plan/PRD артефакты;
-- интерактивные PIV и PRD-циклы;
-- reusable `review-block` и `smart-review-block` как отдельные child Runs с `isolation: inherit`;
-- отдельный запуск любого процесса через `code:<workflow>`;
-- шесть основных процессов (`fix-github-issue`, `idea-to-pr`, `plan-to-pr`, `smart-pr-review`, `piv-loop`, `ralph-dag`) принимают строгие JSON-входы;
-- специализированные Git/issue/plan/review/PIV/Ralph/validation/recovery/PR-команды вместо универсальных каркасов;
-- обязательные типизированные checkpoint artifacts и ограниченные domain error codes;
-- явные Git decision trees и validation → recovery → revalidation;
-- сквозной contract на настоящем локальном Git repository, bare remote и fake `gh`.
+Deterministic fixture доказывает measurement correctness. Production quality требует реальных cases/models.
 
-### Assistants, protocol и evaluation
+## Предметные поставки
 
-- `mock`, `process`, `pi`, `opencode`;
-- per-node `allowed_tools`, `denied_tools`, explicit empty allowlists, skills, MCP, assistant-enforced filesystem/network policy and `requires`;
-- capability preflight before assistant invocation, persisted effective policy and child-Run inheritance;
-- Pi tool/skill CLI mapping, OpenCode permission/MCP mapping and path-skill prompt injection;
-- строгий `takt-assistant/v1alpha1`, fake contract suites, verified resume и usage;
-- Pi RPC и OpenCode JSON event stream с сохранением provider diagnostics;
-- Route DSL end-to-end и evaluation runner с изоляцией, fingerprints и quality envelopes;
-- отдельные execution records и атрибуция usage.
+- профиль `code` 0.16.0: 19 workflow и trusted block catalog;
+- Route DSL examples/eval corpus;
+- authoring skill;
+- multi-repo/reference fake adapters.
 
-### CLI
+## Фактические незакрытые gaps
 
-- `init`, `validate`, `run`, `answer`, `resume`, `status`, `children`, `cancel`, `events`, `command run`;
-- `runs`, `attention`, `run list|summary|watch|pause|resume|retry|fork|abandon|recover`;
-- `notify list|ack|test|dispatch` и `host begin|confirm|status|find|guard-tool|guard-completion|release`;
-- `validate --warnings-as-errors`; `run --daemon`; `mcp --daemon`; `daemon start|status|stop|serve`;
-- `worktree list`, `worktree remove`, `worktree prune`;
-- `package install|update|uninstall|list|sync|doctor|sign` и `adapter list|describe|doctor`;
-- `workflow list`, `workflow describe`;
-- `artifacts` с фильтрацией по узлу/типу и рекурсивным обходом child Runs;
-- единый JSON success/error envelope.
+1. Live Route DSL production evidence.
+2. Go + Document production evaluation.
+3. v0.2/v1beta1 contract stabilization и migration.
+4. Full iteration history / решение по nested `loop_group`.
+5. Live strict host conformance Pi/OpenCode.
+6. Один реальный external coding-agent wrapper и один production-like Domain Adapter.
+7. Structured task source adapter.
+8. Human-reviewed skill/block learning loop.
+9. Workflow graph/explain/scaffold и статический reject/revise contract.
 
-## Осознанно ограничено
-
-- обычная DAG-волна не исполняет одиночные `workflow`-узлы конкурентно; конкурентность governed children задаётся через `workflow.fan_out.max_parallel`;
-- `one_success` ожидает завершения всей группы и пока не отменяет остальные элементы досрочно;
-- `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` structural-группы задаются внутри дочернего workflow;
-- вложенные `loop_group` запрещены до path-based namespace;
-- `items_from` является статическим compile-time источником, а не output предыдущего узла;
-- язык условий и `output_format` остаются проверяемым subset, а не полной JSON Schema;
-- process protocol v1alpha1 не передаёт потоковые tool events; v1alpha2 передаёт;
-- native hooks передаются adapter, но не исполняются ядром.
-
-## Отличия от полной платформы Archon
-
-Все 19 пользовательских процессов, роутер, managed worktree, governed child Run lifecycle и локальный daemon реализованы. На уровне инфраструктуры отсутствуют:
-
-- удалённый server/Web UI, БД, внешние message adapters и многопользовательская авторизация — proposal для будущего нелокального режима. Локальные уведомления уже реализованы через inbox/desktop/process sinks.
-
-Tool/skills/MCP policy является контрактом ядра и adapters. Для `command/prompt` filesystem/network policy остаётся assistant-enforced. Начиная с v0.1.44 `bash/script` дополнительно поддерживают настоящий локальный OS wrapper (`bwrap` Linux / `sandbox-exec` macOS) с `required|optional`; это не превращает runtime в многопользовательскую security boundary.
-
-## Текущая граница безопасности
-
-Текущая версия — локальный однопользовательский trusted runtime. Daemon расширяет время жизни и число локальных клиентов, но не меняет trust boundary. Workflow, config, Markdown-команды, assistants и workspace считаются доверенными. `secret://ENV_NAME` и persistence redaction защищают durable state/events/artifacts от известных секретов, а node-level OS sandbox уменьшает blast radius локальных `bash/script`; separate child Run и Git worktree остаются lifecycle/change границами, а не изоляцией пользователей. Server/untrusted scope всё ещё требует отдельной threat model, авторизации, полноценной path/network политики и управления секретами.
-
-## Ближайший целевой срез
-
-Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief, реакции `deny|repair|warn`, EvidenceManifest, baseline classification, parking и external side-effect reconciliation реализованы к `v0.1.40-alpha`; Adapter Platform и conformance kit — к `v0.1.41-alpha`, Portable Package Distribution — к `v0.1.42-alpha`, Multi-repo Dynamic Workflows — к `v0.1.43-alpha`, runtime reliability/local security — к `v0.1.44-alpha`, сравнительный Route DSL evaluation/strategy benchmark — к `v0.1.45-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий продуктовый шаг — прогнать зафиксированную matrix со штатным Route DSL validator и реальными доступными моделями, после чего использовать evidence для v0.2 stabilization.
+Подробный порядок — `06-roadmap.md`; задачи — `14-backlog-v0.2.md`.

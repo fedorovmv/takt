@@ -117,8 +117,12 @@ func main() {
 func handleGeneric(prompt string) {
 	lower := strings.ToLower(prompt)
 	if strings.Contains(lower, "semantic task router for takt") {
+		if strings.TrimSpace(os.Getenv("FAKE_TASK_ROUTER_FORCE_TEMPLATE")) != "" {
+			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"template","template":"simple-reliable","reason":"fixture baseline forces the stable template","confidence":0.9,"signals":[],"controls":{"inspect_first":false,"baseline":false,"independent_tests":false,"enhanced_review":false,"max_parallel":2}}`)
+			return
+		}
 		switch {
-		case strings.Contains(lower, "fixture dynamic audit"):
+		case strings.Contains(lower, "fixture dynamic audit") || strings.Contains(lower, "fixture dynamic replan"):
 			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"dynamic","reason":"fixture requires task-specific decomposition","confidence":0.95,"signals":[],"controls":{"inspect_first":false,"baseline":false,"independent_tests":false,"enhanced_review":false,"max_parallel":2}}`)
 		case strings.Contains(lower, `"goal":"change the public api safely"`) || strings.Contains(lower, `"goal":"изменить публичный api"`):
 			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"template","template":"simple-reliable","reason":"protected fixture change","confidence":0.9,"signals":["public_api"],"controls":{"inspect_first":false,"baseline":false,"independent_tests":false,"enhanced_review":false,"max_parallel":1}}`)
@@ -136,10 +140,18 @@ func handleGeneric(prompt string) {
 		return
 	}
 	if strings.Contains(lower, "bounded planner for dynamic takt") {
-		fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"WorkflowPlan","decision":"planned","goal":"fixture dynamic audit","reason":"fixture needs discovery and synthesis","budget":{"max_child_runs":8,"max_parallel":2,"max_iterations":3,"max_tokens":100000},"phases":[{"id":"inventory","uses":"discover","objective":"discover fixture items","strategy":"task","checkpoint":true},{"id":"summary","uses":"synthesize","objective":"summarize fixture results","depends_on":["inventory"],"strategy":"task"}]}`)
+		goal := "fixture dynamic audit"
+		if strings.Contains(lower, "fixture dynamic replan") {
+			goal = "fixture dynamic replan"
+		}
+		fmt.Printf(`{"apiVersion":"takt/v1alpha1","kind":"WorkflowPlan","decision":"planned","goal":%q,"reason":"fixture needs discovery and synthesis","budget":{"max_child_runs":8,"max_parallel":2,"max_iterations":3,"max_tokens":100000},"phases":[{"id":"inventory","uses":"discover","objective":"discover fixture items","strategy":"task","checkpoint":true},{"id":"summary","uses":"synthesize","objective":"summarize fixture results","depends_on":["inventory"],"strategy":"task"}]}`, goal)
 		return
 	}
 	if strings.Contains(lower, "reassessing a dynamic takt plan") {
+		if strings.Contains(lower, "fixture dynamic replan") {
+			fmt.Print(`{"action":"replace_remaining","reason":"fixture checkpoint replaces the remaining synthesis phase","phases":[{"id":"summary-replanned","uses":"synthesize","objective":"summarize revised fixture results","depends_on":["inventory"],"strategy":"task"}]}`)
+			return
+		}
 		fmt.Print(`{"action":"continue","reason":"fixture evidence supports the remaining plan","phases":[]}`)
 		return
 	}

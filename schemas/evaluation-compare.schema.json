@@ -4,26 +4,255 @@
   "title": "Takt Evaluation Compare Report v1alpha1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["report_version", "benchmark", "baseline", "candidate", "metrics", "paired_outcomes", "cases"],
+  "required": [
+    "report_version",
+    "benchmark",
+    "baseline",
+    "candidate",
+    "metrics",
+    "paired_outcomes",
+    "cases"
+  ],
   "properties": {
-    "report_version": {"const": "takt-evaluation-compare/v1alpha1"},
-    "benchmark": {"type": "object"},
-    "baseline": {"type": "object"},
-    "candidate": {"type": "object"},
-    "metrics": {"type": "object"},
-    "paired_outcomes": {"$ref": "#/$defs/outcomes"},
-    "cases": {"type": "array", "items": {"type": "object"}},
-    "by_category": {"type": "array", "items": {"type": "object"}}
+    "report_version": {
+      "const": "takt-evaluation-compare/v1alpha1"
+    },
+    "benchmark": {
+      "type": "object",
+      "required": [
+        "id",
+        "fingerprint"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "required": [
+        "id",
+        "fingerprint"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "required": [
+        "id",
+        "fingerprint"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "success_at_1",
+        "final_success_rate",
+        "average_attempts_to_valid",
+        "average_score",
+        "cost_per_valid",
+        "average_time_to_valid_ms"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "success_at_1": {
+          "$ref": "#/$defs/metric"
+        },
+        "final_success_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "average_attempts_to_valid": {
+          "$ref": "#/$defs/metric"
+        },
+        "average_score": {
+          "$ref": "#/$defs/metric"
+        },
+        "cost_per_valid": {
+          "$ref": "#/$defs/metric"
+        },
+        "average_time_to_valid_ms": {
+          "$ref": "#/$defs/metric"
+        }
+      }
+    },
+    "paired_outcomes": {
+      "$ref": "#/$defs/outcomes"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "case_id",
+          "repeat",
+          "baseline_valid",
+          "candidate_valid",
+          "transition",
+          "baseline_time_to_valid_ms",
+          "candidate_time_to_valid_ms"
+        ],
+        "properties": {
+          "case_id": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "baseline_valid": {
+            "type": "boolean"
+          },
+          "candidate_valid": {
+            "type": "boolean"
+          },
+          "transition": {
+            "enum": [
+              "both_valid",
+              "baseline_only_valid",
+              "candidate_only_valid",
+              "both_invalid"
+            ]
+          },
+          "baseline_time_to_valid_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "candidate_time_to_valid_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "by_category": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "category",
+          "total",
+          "outcomes"
+        ],
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outcomes": {
+            "$ref": "#/$defs/outcomes"
+          }
+        }
+      }
+    }
   },
   "$defs": {
     "outcomes": {
-      "type": "object", "additionalProperties": false,
-      "required": ["both_valid", "baseline_only_valid", "candidate_only_valid", "both_invalid"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "both_valid",
+        "baseline_only_valid",
+        "candidate_only_valid",
+        "both_invalid"
+      ],
       "properties": {
-        "both_valid": {"type": "integer", "minimum": 0},
-        "baseline_only_valid": {"type": "integer", "minimum": 0},
-        "candidate_only_valid": {"type": "integer", "minimum": 0},
-        "both_invalid": {"type": "integer", "minimum": 0}
+        "both_valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseline_only_valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_only_valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "both_invalid": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline",
+        "candidate",
+        "delta",
+        "delta_percent"
+      ],
+      "properties": {
+        "baseline": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "candidate": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "delta": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "delta_percent": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "delta_percentage_points": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
       }
     }
   }

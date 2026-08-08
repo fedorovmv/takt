@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"takt/internal/execution"
+	"takt/internal/redact"
 	"takt/internal/spec"
 	agentadaptersdk "takt/sdk/agentadapter"
 )
@@ -355,5 +356,19 @@ func TestProtocolRequestCarriesNodePolicy(t *testing.T) {
 	protocol := buildProtocolRequest(context.Background(), req, spec.AssistantSpec{}, nil, time.Now())
 	if protocol.Policy == nil || !protocol.Policy.ToolsRestricted || len(protocol.Policy.AllowedTools) != 1 || protocol.Policy.Requires[0] != "custom" {
 		t.Fatalf("policy was not included in protocol request: %+v", protocol.Policy)
+	}
+}
+
+func TestRegisterRenderedEnvSecretsAfterRequestTemplating(t *testing.T) {
+	const name = "TAKT_RENDERED_REF_VALUE"
+	const secret = "short"
+	t.Setenv(name, secret)
+	r := redact.NewFromEnvironment()
+	if got := r.String(secret); got != secret {
+		t.Fatalf("test precondition failed: secret auto-registered: %q", got)
+	}
+	RegisterRenderedEnvSecrets(r, spec.AssistantSpec{Env: map[string]string{"TOKEN": "{{prompt}}"}}, Request{Prompt: "secret://" + name})
+	if got := r.String(secret); got != "<redacted>" {
+		t.Fatalf("rendered SecretRef was not registered: %q", got)
 	}
 }

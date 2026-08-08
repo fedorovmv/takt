@@ -1057,3 +1057,109 @@ strategies:
 		t.Fatalf("expected negative regression error, got %v", err)
 	}
 }
+
+func TestMatrixRejectsExplicitZeroRepeat(t *testing.T) {
+	zero := 0
+	matrix := Matrix{APIVersion: MatrixAPIVersion, Kind: MatrixKind, Metadata: MatrixMetadata{Name: "x"}, Benchmark: MatrixBenchmark{ID: "x", BaselineStrategy: "a", Cases: "cases", WorkspaceTemplate: "workspace", QualityNode: "quality", GenerationNode: "generation", Repeat: &zero}, Strategies: []MatrixStrategy{{ID: "a", Workflow: "a.yaml", Config: "a-config.yaml"}, {ID: "b", Workflow: "b.yaml", Config: "b-config.yaml"}}}
+	if err := validateMatrix(&matrix); err == nil || !strings.Contains(err.Error(), "repeat") {
+		t.Fatalf("expected repeat validation error, got %v", err)
+	}
+}
+
+func TestFinishReportClassifiesStableAndUnstableCases(t *testing.T) {
+	report := &SuiteReport{StartedAt: time.Now().UTC(), Summary: newSummary(), Runs: []RunRecord{
+		{CaseID: "stable-valid", Repeat: 1, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: true}},
+		{CaseID: "stable-valid", Repeat: 2, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: true}},
+		{CaseID: "stable-invalid", Repeat: 1, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: false}},
+		{CaseID: "stable-invalid", Repeat: 2, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: false}},
+		{CaseID: "unstable", Repeat: 1, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: true}},
+		{CaseID: "unstable", Repeat: 2, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: false}},
+	}}
+	for _, run := range report.Runs {
+		addSummary(&report.Summary, run)
+	}
+	finishReport(report)
+	if report.Summary.StableValidCases != 1 || report.Summary.StableInvalidCases != 1 || report.Summary.UnstableCases != 1 {
+		t.Fatalf("stability summary = %+v", report.Summary)
+	}
+}
+
+func TestAddSummaryCountsFailedExecutionCost(t *testing.T) {
+	summary := newSummary()
+	addSummary(&summary, RunRecord{Status: "completed", Nodes: map[string]NodeRecord{
+		"implement": {Executions: []ExecutionRecord{
+			{Status: "failed", Usage: &store.Usage{Cost: 1.25}},
+			{Status: "completed", Usage: &store.Usage{Cost: 0.75}},
+		}},
+	}})
+	if summary.FailedExecutions != 1 || math.Abs(summary.FailedExecutionCost-1.25) > 1e-9 {
+		t.Fatalf("failed execution summary = %+v", summary)
+	}
+}
+
+func TestApplyRuntimeMetricsUsesDurableEventTimesAndImmediateRetryFingerprint(t *testing.T) {
+	workspace := t.TempDir()
+	repository := store.FS{Workspace: workspace}
+	created := time.Date(2026, 8, 8, 9, 0, 0, 0, time.UTC)
+	state := &store.RunState{ID: "run-metrics", CreatedAt: created, Status: store.RunCompleted, Nodes: map[string]*store.NodeState{}}
+	if err := repository.Commit(state, store.Event{Type: "node.retry", NodeID: "implement", Time: created.Add(250 * time.Millisecond), Data: map[string]any{"fingerprint": strings.Repeat("a", 64)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Commit(state, store.Event{Type: "node.completed", NodeID: "quality", Time: created.Add(1500 * time.Millisecond)}); err != nil {
+		t.Fatal(err)
+	}
+	record := RunRecord{QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: true}}
+	applyRuntimeMetrics(&record, state, repository, "quality")
+	if record.TimeToValidMS == nil || *record.TimeToValidMS != 1500 {
+		t.Fatalf("time-to-valid = %v", record.TimeToValidMS)
+	}
+	if record.RetryScheduled != 1 || len(record.RetryFingerprints) != 1 || record.RetryFingerprints[0] != strings.Repeat("a", 64) {
+		t.Fatalf("retry metrics = %+v", record)
+	}
+}
+
+func TestEvaluateGateReturnsFailureWithoutLosingReportSemantics(t *testing.T) {
+	min := 0.9
+	gate := MatrixGate{Strategy: "candidate", FinalSuccessRateMin: &min}
+	baseline := &SuiteReport{Summary: newSummary()}
+	candidate := &SuiteReport{Summary: newSummary()}
+	value := 0.5
+	candidate.Summary.FinalSuccessRate = &value
+	results := evaluateGate(gate, baseline, candidate)
+	if len(results) != 1 || results[0].Passed {
+		t.Fatalf("gate results = %+v", results)
+	}
+}
+
+func TestTaskMatrixSummaryComparisonAndGate(t *testing.T) {
+	runs := []TaskRunRecord{
+		{CaseID: "ordinary", Repeat: 1, RouteCorrect: true, FinalSuccess: true, PlanRevisions: 1},
+		{CaseID: "dynamic", Repeat: 1, RouteCorrect: true, FinalSuccess: true, PlanRevisions: 2, ReplannerRuns: 1, ReplanExpected: true, ReplanExpectation: true},
+		{CaseID: "allowed-input", Repeat: 1, RouteCorrect: true, NeedsInput: true, NeedsInputAllowed: true, PlanRevisions: 1},
+	}
+	summary := summarizeTaskRuns(runs)
+	if summary.RouteAccuracy != 1 || math.Abs(summary.FinalSuccessRate-(2.0/3.0)) > 1e-9 || summary.ReplanExpectationRate != 1 || math.Abs(summary.AveragePlanRevisions-(4.0/3.0)) > 1e-9 || summary.UnexpectedNeedsInput != 0 {
+		t.Fatalf("task summary = %+v", summary)
+	}
+	baseline := TaskStrategyResult{ID: "baseline", Runs: []TaskRunRecord{{CaseID: "ordinary", Repeat: 1, RouteCorrect: true, FinalSuccess: true}, {CaseID: "dynamic", Repeat: 1, RouteCorrect: false, FinalSuccess: true}}}
+	candidate := TaskStrategyResult{ID: "candidate", Runs: runs}
+	comparison := compareTaskStrategies(baseline, candidate)
+	if comparison.CandidateOnlyRouteCorrect != 1 || comparison.BothRouteCorrect != 1 || comparison.BothSuccess != 2 {
+		t.Fatalf("task comparison = %+v", comparison)
+	}
+	min := 1.0
+	gate := TaskMatrixGate{Strategy: "candidate", RouteAccuracyMin: &min, ReplanExpectationRateMin: &min}
+	for _, result := range evaluateTaskGate(gate, summary) {
+		if !result.Passed {
+			t.Fatalf("unexpected task gate failure: %+v", result)
+		}
+	}
+}
+
+func TestTaskMatrixRejectsExplicitZeroRepeat(t *testing.T) {
+	zero := 0
+	matrix := TaskMatrix{APIVersion: MatrixAPIVersion, Kind: TaskMatrixKind, Metadata: MatrixMetadata{Name: "x"}, Benchmark: TaskMatrixBenchmark{ID: "x", BaselineStrategy: "a", Cases: "cases.yaml", Repeat: &zero}, Strategies: []TaskMatrixStrategy{{ID: "a", WorkspaceTemplate: "a"}, {ID: "b", WorkspaceTemplate: "b"}}}
+	if err := validateTaskMatrix(&matrix); err == nil || !strings.Contains(err.Error(), "repeat") {
+		t.Fatalf("expected repeat validation error, got %v", err)
+	}
+}

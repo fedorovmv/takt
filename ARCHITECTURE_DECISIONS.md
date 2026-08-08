@@ -501,3 +501,19 @@ Assistant sandbox без `enforcement` остаётся capability-контра�
 True time-to-valid вычисляется от `Run.CreatedAt` до durable `node.completed` выбранного quality-node при `valid=true`. Retry/failure fingerprints читаются из durable events/state. `experiment_fingerprint` зависит от benchmark ID, repeat и strategy/benchmark fingerprints, но не от временного пути matrix-файла. CaseManifest входит в benchmark identity.
 
 **Причина.** Амортизированное время всего эксперимента не отвечает на вопрос, когда появился первый корректный результат, а путь временного файла не должен создавать новую экспериментальную идентичность. Измерения должны переживать перенос каталога и опираться на сохранённые факты runtime.
+
+## ADR-074. Task-level evaluation measures the public control path, not a simulated planner
+
+**Статус:** принято.
+
+`TaskEvaluationMatrix` вызывает обычные `control.Plan` и `ExecutePlan`, использует builtin/profile Router, Dynamic Plan, checkpoint replanner и existing runtime. Evaluation package не реализует альтернативный Router или planner. Результат читается из durable `dynamicplan.Record` и Run state.
+
+**Причина.** Нужно измерять реальную пользовательскую семантику `/takt`, включая ошибочный route и фактическое `replace_remaining`. Benchmark, который только декодирует заранее подготовленный RouteDecision, не проверял бы главный слой Dynamic Takt.
+
+## ADR-075. Redaction является общей persistence boundary runtime и control/external paths
+
+**Статус:** принято.
+
+Known-secret redaction применяется перед durable commit независимо от того, кто изменяет Run: scheduler/runtime, control API или external worker protocol. External text artifacts редактируются до записи, non-text artifacts с known secret отклоняются. Explicit SecretRef регистрируется и после template rendering adapter environment.
+
+**Причина.** Append-only event stream и artifacts нельзя исправить следующим commit. Защита только в `Runner.commit` оставляет внешние worker/control paths отдельным обходом и противоречит заявленному durable security contract.

@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/task-evaluation-matrix.schema.json",
+  "title": "Takt Task Evaluation Matrix v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "benchmark",
+    "strategies"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "takt/evaluation/v1alpha1"
+    },
+    "kind": {
+      "const": "TaskEvaluationMatrix"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "benchmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "baseline_strategy",
+        "cases"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseline_strategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cases": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "strategies": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "workspace_template"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "workspace_template": {
+            "type": "string",
+            "minLength": 1
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "strategy"
+        ],
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "route_accuracy_min": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "final_success_rate_min": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "replan_expectation_rate_min": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "unexpected_needs_input_max": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "router_fallbacks_max": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

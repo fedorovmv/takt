@@ -17,3 +17,11 @@ func TestFingerprintNormalizesWorkspaceAndVolatileNumbers(t *testing.T) {
 		t.Fatalf("unexpected diagnostic: %+v", a)
 	}
 }
+
+func TestFingerprintDistinguishesDifferentFailures(t *testing.T) {
+	a := FromError("TEST_FAILURE", &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "validate", Err: fmt.Errorf("unknown endpoint alpha")}, false)
+	b := FromError("TEST_FAILURE", &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "validate", Err: fmt.Errorf("type mismatch beta")}, false)
+	if a.Fingerprint == b.Fingerprint {
+		t.Fatalf("different failures share fingerprint %s", a.Fingerprint)
+	}
+}

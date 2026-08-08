@@ -1,121 +1,68 @@
-# План развития
+# План развития Takt
 
-Документ показывает приоритеты после `v0.1.45-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Актуальный план после `v0.1.46-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/60-*.md`.
 
-## Выполнено в v0.1.27-alpha. Политики и возможности узлов
+## Текущая позиция
 
-Реализованы `allowed_tools`, `denied_tools`, explicit empty allowlists, skills, MCP, assistant-enforced filesystem/network policy, `requires`, capability preflight, fingerprints ресурсов, persistence и наследование governed child Run. Неподдерживаемая гарантия отклоняется до вызова adapter.
+Takt уже закрывает основной локальный control plane: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
 
-## Выполнено в v0.1.28-alpha. Динамический fan-out governed children
+Главный риск теперь — продолжать добавлять механизмы быстрее, чем появляется evidence их пользы. Поэтому ближайший порядок меняется с feature-driven на evidence-driven.
 
-Реализованы массив элементов из структурированного output upstream-узла, один child Run на элемент, `max_parallel`, устойчивые IDs и fingerprints, частичный resume, ordered aggregation, `all_success|all_done|one_success`, выборочная и каскадная отмена. Smart review и comprehensive review профиля `code` используют этот механизм.
+## P0. Evidence
 
-## Выполнено в v0.1.29-alpha. Script nodes и типизированные артефакты
+### 1. Live Route DSL benchmark
 
-Реализованы runtime `command|python|node|go`, file/inline source, args/env/working directory, fingerprints исходника и dependencies, structured output, `output_type`/MIME/SHA-256/producer metadata, CLI `takt artifacts` и передача ссылок parent/child/fan-out. Профиль `code` использует script и plan/PRD artifacts.
+Первый внешний gate перед стабилизацией: реальные обезличенные задачи + штатный validator + реальные модели/агенты. `v0.1.45` уже предоставляет matrix/repeat/compare/gates; synthetic corpus остаётся только regression fixture.
 
-## Выполнено в v0.1.30-alpha. Локальный MCP control plane
+### 2. Task-level Dynamic Takt benchmark — v0.1.46
 
-Реализованы stdio MCP server, dual-era protocol negotiation, workflow list/describe, detached Run start, get/resume/answer/cancel, children, artifacts с содержимым и revision event polling. Реализация использует существующий runtime/store и не вводит daemon, HTTP, Web UI или БД. Полный архив среза: `44-local-mcp-control-plane-v0.1.30.md`.
+`v0.1.46-alpha` добавляет воспроизводимую проверку полного пути:
 
-## Выполнено в v0.1.31-alpha. Агентные события и внешний исполнитель
+```text
+Task → Router → template/dynamic → checkpoint → replan → result
+```
 
-Реализованы provider-neutral базовые `assistant.*`/tool-call events, `Request.Emit`, durable `executor: external`, claim с capability attestation и lease/token, MCP tools pending/claim/event/complete/fail и возврат результата в обычные retry/hooks/output/artifact semantics. Одновременно устранён torn-read store при конкурентном polling и добавлен индекс событий. Полный архив среза: `45-agent-events-external-executor-v0.1.31.md`.
+Benchmark отдельно измеряет route accuracy, terminal success, plan revisions, replanner runs, unexpected needs-input, router fallback и usage. Это позволяет отличать «задача как-то завершилась» от «Takt выбрал и адаптировал правильный процесс».
 
-## Выполнено в v0.1.32-alpha. Управляемый agent lifecycle и глубокие workflow
+### 3. Go + Document production scenarios
 
-Завершён event protocol v2: session lifecycle, tool request/allow/deny/start/complete, отдельная отмена вызова, artifact declaration с `call_id`, usage/diagnostic/terminal events и capability declaration adapter. Внешний executor обеспечивает блокирующий policy/approval до запуска инструмента и не может завершить узел с незакрытыми tool calls.
+Тем же evaluation-подходом доказать исходную универсальность Takt на Go-разработке и подготовке технического документа.
 
-Шесть основных процессов профиля `code` получили строгие JSON-входы, специализированные предметные команды, обязательные checkpoint artifacts, domain error codes, Git decision trees, validation recovery и сквозной локальный Git/GitHub fixture. Полный архив среза: `46-controlled-agent-events-deep-workflows-v0.1.32.md`.
+## P1. v0.2 Stabilization
 
-## Выполнено в v0.1.33-alpha. Строгий authoring и локальный daemon
+После первого production evidence:
 
-Authoring preflight обнаруживает опечатки с `did you mean`, проверяет capabilities при `validate`, анализирует output/artifact references, выдаёт semantic diagnostics и поддерживает `--warnings-as-errors`. Renderer стал fail-closed с `${path}`, `${path?}` и `${path:-default}`. Добавлены расширенный schema subset, `always_run` и activity-based `idle_timeout`.
+- ревизия внешних contracts/schemas;
+- решение по iteration history и nested composition;
+- решение по границе `output_format`;
+- adapter/host compatibility matrix;
+- deprecation policy;
+- migration `v1alpha1 → v1beta1`;
+- очистка исторических полей и документации, которые больше не являются частью целевого API.
 
-`takt daemon` использует Unix socket и существующий файловый Store для background Runs, event subscriptions, MCP proxy и нескольких локальных клиентов без БД. Полный архив среза: `47-authoring-local-daemon-v0.1.33.md`.
+Цель v0.2 — не максимальное число функций, а небольшой набор доказанных стабильных контрактов.
 
-## Выполнено в v0.1.34-alpha. Dynamic Takt и coding-agent experience
+## P2. External seams
 
-Реализованы `existing|planned`, ограниченный `WorkflowPlan`, разрешённые блоки, компиляция в обычный Takt Workflow, preview/confirmation, бюджеты, checkpoint replanning, immutable revisions, steering, phase/run/artifact view, MCP/CLI `plan|execute|steer` и promotion успешного плана в workflow проекта. Основная сессия Pi/OpenCode остаётся интерфейсом пользователя, а фазы исполняются отдельными worker-сессиями. Полный архив среза: `48-dynamic-takt-v0.1.34.md`.
+После стабилизации публичных контрактов:
 
-## Выполнено в v0.1.35-alpha. Доверенные пакеты блоков
+- live Pi/OpenCode host conformance;
+- один reference external coding-agent wrapper через `sdk/agentadapter`;
+- один production-like SCM adapter;
+- один structured task source adapter.
 
-Профиль подключает явный каталог `BlockPackage` со встроенными, корпоративными и проектными блоками. Пакет описывает workflow, типизированные выходы, возможности, интеграции, шаблоны, обязательные проверки, правила веток, шаблон запроса на изменение, security policy и максимальные бюджеты. Ограничения нескольких пакетов объединяются fail-closed, каталог получает fingerprint и становится обязательной границей plan/execute/replan/promote.
+Эти реализации должны жить поверх публичных SDK/контрактов и выявлять недостающие seams без provider-specific логики в runtime.
 
-Одновременно исправлены foreground-исполнение `takt execute`, обход лимита редакций через steering, macOS artifact path, составные `when`, полный учёт planner/replanner в бюджетах, ограничение параллельных task-фаз, безопасное promote и межпроцессное продвижение планов. Полный архив среза: `49-trusted-block-packages-v0.1.35.md`.
+## P3. Learning и UX
 
-## Выполнено в v0.1.36-alpha. Coding Agent Host Control
+Следующая крупная продуктовая тема после v0.2:
 
-Добавлено Go-ядро host-control: durable managed session, begin/confirm/find/get, default-deny tool guard, completion guard и восстановление связи после перезапуска daemon. `strict` принимается только от host adapter, заявляющего полный набор command/input/tool/completion/recovery capabilities. Bundled Pi/OpenCode integrations остаются `guarded`: их реальные host API не дают подтверждённой полной strict-гарантии без live smoke на зафиксированной версии. Одновременно fingerprint доверенного пакета расширен до транзитивного содержимого команд, subworkflow, scripts, dependencies, skills и MCP. Полный архив среза: `50-coding-agent-host-control-v0.1.36.md`.
+- Run history → candidate skill/block → human review → package → eval;
+- `workflow graph/explain/scaffold` и расширенный `plan explain`;
+- bounded reject/revise для статических approvals.
 
-## Выполнено в v0.1.37-alpha. Autonomous Run Operations
+Learning loop не имеет права автоматически изменять trusted package: принятие и evaluation остаются обязательными gates.
 
-Добавлены реестр и история Run, attention queue, агрегированный summary, безопасная пауза на границе узлов и fan-out batches, resume, retry зависимого хвоста, fork и отдельное terminal-состояние abandon. Daemon восстанавливает локальные Run после потери executor PID, помечает attempt как `worker_lost` и продолжает parent chain. Локальный notification dispatcher поддерживает durable coding-agent inbox, desktop и доверенный process sink с дедупликацией и ack. Pi/OpenCode получили команды runs/attention/pause/resume/result. MCP полной совместимости содержит 48 tools в этом историческом срезе. Полный архив среза: `51-autonomous-run-operations-v0.1.37.md`.
+## Отложено
 
-
-## Выполнено в v0.1.38-alpha. Simple Reliable Task Router и нейтральный coding-agent
-
-Добавлены `TaskRoute`, гибридный router и маршруты `workflow|template|dynamic`. Стабильный `simple-reliable` template выполняет investigate/implement/validate/review и прогрессивно добавляет baseline, independent tests, enhanced review и inspect checkpoint. Отказ semantic router приводит к durable inspect-first fallback.
-
-Публичный Task API сокращён до `start|status|respond|stop|explain`. MCP разделён на role-based surfaces: agent видит пять task tools, host и worker — только собственные контракты, полная совместимая поверхность содержит 53 operations. Профиль использует логический `coding-agent`, а `default_assistant` выбирает Pi, OpenCode или внешний `takt-assistant/v1alpha2` adapter для Codex, Oh My Pi, Qwen CLI и других хостов. Полный срез: `52-simple-reliable-agent-neutral-router-v0.1.38.md`; архитектурный proposal: `proposals/001-simple-reliable-agent-neutral-takt.md`.
-
-## Выполнено в v0.1.39-alpha. Role Contract, Brief Compiler и управляемые проверки
-
-Trusted `BlockPackage` объявляет внутренние функциональные роли. Перед каждой worker-фазой Takt компилирует bounded `TaskBrief` с новым context recipe и scope `expected|allowed|protected|forbidden`. Required/preferred checks используют реакции `deny|repair|warn`; technical `repair` получает одну автоматическую repair-итерацию и fresh recheck, после чего только повторный отказ требует решения пользователя. Read-only policy применяется как реальная adapter guarantee, а mutating write scope дополнительно проверяется по структурированному результату.
-
-Одновременно закрыты pause/recovery/notification high из v0.1.37 и compact Task API high из v0.1.38. Полный срез: `53-role-brief-controls-v0.1.39.md`.
-
-## Выполнено в v0.1.40-alpha. Evidence, baseline и failure routing
-
-Dynamic Plan хранит внутренний `EvidenceManifest` с baseline provenance, fingerprints известных failures, check-to-evidence mapping и verdict, привязанным к candidate content SHA-256. Изменение candidate инвалидирует старый verdict как `stale`; неизменившееся baseline-падение классифицируется как `BASELINE_FAILURE` и не запускает repair.
-
-Материальная остановка использует `parked` с failure code, owner, `safe_next_action` и `unsafe_to_repeat` и проецируется в Task API/attention как `needs_input`. Для `executor: external` добавлен `side_effect.mode: reconcile`: expired claim запрещает blind retry до результата `not_applied|applied|unknown`, а `applied` требует receipt. Worker MCP расширен `takt.node.reconcile`, полная поверхность — 54 operations, agent surface остаётся пять tools. Полный срез: `54-evidence-baseline-failure-routing-v0.1.40.md`.
-
-## Выполнено в v0.1.41-alpha. Agent + Domain Adapter SDK
-
-Добавлены `sdk/agentadapter`, нейтральные домены `scm|tracker|ci`, process/MCP transports, capability discovery, новый `adapter` Node action и CLI `adapter list|describe|doctor`. Mutating adapters используют durable idempotency/receipt/reconciliation и запрещают blind retry после `unknown`. Fake process/MCP adapters и provider-neutral E2E проверяют один workflow без GitHub/Jira-понятий. Публичная agent MCP surface остаётся пять tools. Полный срез: `55-adapter-platform-v0.1.41.md`.
-
-Готовые production GitHub/GitLab/корпоративные adapters остаются отдельными поставками поверх SDK; ядро содержит транспорт и контракты, а не credentials/provider logic.
-
-## Выполнено в v0.1.42-alpha. Portable Package Distribution
-
-Существующий `BlockPackage` получил переносимую доставку без нового runtime: `package install|update|uninstall|list|sync|doctor|sign`, local/Git sources, scopes `global|corporate|project`, precedence `project > corporate > global > builtin`, version/dependency constraints и reproducible lock с Git commit + SHA-256. `PackagePolicy` ограничивает источники и может требовать Ed25519 signature. Locked packages автоматически подключаются к profile catalog.
-
-Пакет также объявляет Takt/adapter requirements. Required capabilities проверяются до Run; preferred availability передаётся semantic Router/Planner. Conformance kit `v1alpha2` получил публичные envelopes/validators, общие fixtures и реальное использование fake wrapper contract. Полный срез: `56-portable-package-distribution-v0.1.42.md`.
-
-## Выполнено в v0.1.43-alpha. Multi-repo Dynamic Workflows
-
-Добавлены `.takt/workspace.yaml`, bounded discovery локальных Git-репозиториев, repository-aware Router/Planner/Replanner, проверяемый dependency graph, отдельный governed child Run + managed worktree на изменяемый repository, cross-repo TaskBrief context, per-repository candidate SHA/EvidenceManifest и общий content fingerprint. `publish_change` компилируется в нейтральный `scm/change.create`, а `integration-verify` выполняет общий required check. Completed repository phases сохраняются при retry/replan; release E2E проверяет цепочку `api -> client -> service`. Полный срез: `57-multi-repo-dynamic-workflows-v0.1.43.md`.
-
-## Выполнено в v0.1.44-alpha. Runtime Reliability & Local Security
-
-- `one_success`/`all_success` short-circuit с `fanout_result_decided`;
-- machine-readable diagnostics и стабильные fingerprints;
-- durable `attempts.backoff` с сохранённым `not_before`;
-- `secret://ENV_NAME`, persistence redaction и fail-closed binary artifacts;
-- реальный OS wrapper для `bash/script`: `bwrap` Linux / `sandbox-exec` macOS, `required|optional`;
-- канонический `NodeState.path` для вложенной композиции;
-- completed governed child переиспользуется при retry родительского post-check;
-- закрыты macOS/symlink, merge-order, repository integrity/payload/fingerprint и allowlist замечания ревью v0.1.43.
-
-Полный срез: `58-runtime-reliability-local-security-v0.1.44.md`.
-
-## Выполнено в v0.1.45-alpha. Route DSL Evaluation & Strategy Benchmark
-
-- EvaluationMatrix и CaseManifest;
-- agent-neutral strategy workflows;
-- matrix/repeat, `takt eval compare` и category breakdown;
-- true time-to-valid, retry/failed-execution cost и diagnostic fingerprint stability;
-- regression gates с non-zero exit и сохранённым benchmark report;
-- 25-case corpus: 10 regression + 15 production-shaped synthetic cases;
-- воспроизводимый fake benchmark baseline-vs-feedback.
-
-Полный срез: `59-route-dsl-evaluation-strategy-benchmark-v0.1.45.md`.
-
-## Приоритет 1. Реальный benchmark и v0.2 stabilization
-
-Следующий этап начинается с фактического прогона неизменной matrix на штатном Route DSL validator и доступных coding-agent/model конфигурациях. После получения evidence нужно зафиксировать полезные стратегии, убрать неокупающуюся сложность и стабилизировать внешний API/схемы для v0.2. Synthetic corpus не подменяет production evidence.
-
-## Отложенные proposals
-
-Server, Web UI, БД, удалённые workers, внешние message adapters и многопользовательская авторизация рассматриваются только после появления задачи нелокального использования и отдельной threat model.
+Server, Web UI, БД, remote workers, Slack/Telegram и multi-user authorization не входят в локальный v0.2. Они рассматриваются только при появлении нелокального сценария и отдельной threat model.

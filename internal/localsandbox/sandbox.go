@@ -41,6 +41,14 @@ func CommandContext(ctx context.Context, workspace string, policy Policy, name s
 	}
 	decision.Status = "enforced"
 	decision.Backend = backend
+	cmd, err := commandForBackend(ctx, backend, path, workspace, policy, name, args...)
+	if err != nil {
+		return nil, decision, err
+	}
+	return cmd, decision, nil
+}
+
+func commandForBackend(ctx context.Context, backend, path, workspace string, policy Policy, name string, args ...string) (*exec.Cmd, error) {
 	switch backend {
 	case "bubblewrap":
 		wrapper := []string{"--die-with-parent", "--new-session"}
@@ -54,7 +62,7 @@ func CommandContext(ctx context.Context, workspace string, policy Policy, name s
 		}
 		wrapper = append(wrapper, "--chdir", workspace, "--", name)
 		wrapper = append(wrapper, args...)
-		return exec.CommandContext(ctx, path, wrapper...), decision, nil
+		return exec.CommandContext(ctx, path, wrapper...), nil
 	case "sandbox-exec":
 		profile := "(version 1) (allow default)"
 		if strings.TrimSpace(policy.Network) == "deny" {
@@ -65,9 +73,9 @@ func CommandContext(ctx context.Context, workspace string, policy Policy, name s
 		}
 		wrapper := []string{"-p", profile, name}
 		wrapper = append(wrapper, args...)
-		return exec.CommandContext(ctx, path, wrapper...), decision, nil
+		return exec.CommandContext(ctx, path, wrapper...), nil
 	default:
-		return nil, decision, fmt.Errorf("unsupported OS sandbox backend %q", backend)
+		return nil, fmt.Errorf("unsupported OS sandbox backend %q", backend)
 	}
 }
 

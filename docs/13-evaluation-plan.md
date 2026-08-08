@@ -1,6 +1,6 @@
 # План оценки агентных стратегий
 
-Статус: в `v0.1.45-alpha` контур поддерживает `takt eval run/report/benchmark/compare`, EvaluationMatrix, CaseManifest, повторы, парное сравнение и regression gates. Fake contract benchmark отделён от live Route DSL benchmark со штатным валидатором.
+Статус: в `v0.1.46-alpha` workflow-level контур поддерживает `takt eval run/report/benchmark/compare`, а task-level — `takt eval task-benchmark`. Fake contract benchmarks отделены от live Route DSL/Go/Document evidence со штатными validators и реальными моделями.
 
 ## 1. Цель
 
@@ -160,3 +160,20 @@ Takt подтверждает ценность, если новая страте
 `examples/route-dsl-benchmark` содержит 25 размеченных cases и три agent-neutral workflow-стратегии. 10 cases являются regression corpus, 15 — production-shaped synthetic cases. Live качество оценивается только штатным внешним валидатором; репозиторий не заявляет synthetic cases как обезличенные production данные.
 
 `takt eval benchmark` пишет immutable strategy reports и общий `benchmark.json`; `takt eval compare` показывает both-valid / baseline-only / candidate-only / both-invalid и разрез по category. Regression gates допускают абсолютные пороги success и ограничение регрессии cost/time. Полный task-level Dynamic Takt benchmark остаётся отдельным следующим измерительным расширением.
+
+
+## Task-level Dynamic Takt benchmark
+
+`TaskEvaluationMatrix` проверяет не отдельный workflow, а полный control path `Task → Router → workflow|template|dynamic → checkpoint → replan → result`. Case manifest задаёт ожидаемый route/template/workflow, terminal status и минимальное число plan revisions.
+
+Основные метрики:
+
+- route accuracy;
+- final success rate;
+- plan revisions и replanner runs;
+- replan expectation rate;
+- unexpected needs-input и router fallbacks;
+- aggregate usage/duration;
+- pairwise baseline/candidate outcomes.
+
+Deterministic fake-agent scenario специально отделён от model-quality evaluation: он доказывает, что measurement path видит неправильный route и фактический `replace_remaining`.

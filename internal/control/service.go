@@ -448,7 +448,7 @@ func (s *Service) Answer(ctx context.Context, runID, requestedNodeID, value stri
 	}
 	target.Status = store.RunRunning
 	target.Waiting = nil
-	if err := st.Commit(target, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true}}); err != nil {
+	if err := s.commitRedacted(st, target, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true}}); err != nil {
 		_ = release()
 		return nil, err
 	}

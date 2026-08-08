@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -366,4 +367,111 @@ nodes:
 	if final.Status != store.RunCompleted || final.Nodes["publish"].External.Receipt != "remote:42" || final.Nodes["publish"].Output != "published" {
 		t.Fatalf("reconciled final state = %#v (prior claim=%#v)", final, claim2)
 	}
+}
+
+func TestExternalPersistenceRedactsToolResultAndArtifacts(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	const envName = "TAKT_EXTERNAL_REDACTION_VALUE"
+	const secret = "ext-secret-42"
+	t.Setenv(envName, secret)
+	mustWriteControlTest(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+models:
+  demo:
+    provider: test
+    id: demo
+assistants:
+  worker:
+    type: mock
+    env:
+      TOKEN: secret://`+envName+`
+`)
+	mustWriteControlTest(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: external-redaction
+defaults:
+  assistant: worker
+  model: demo
+nodes:
+  - id: delegated
+    prompt: execute safely
+    executor: external
+    allowed_tools: [read]
+`)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2, Capabilities: []string{"tool_policy"}, ToolEvents: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, err := service.RequestExternalTool(context.Background(), ExternalToolRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Tool: "read", Input: json.RawMessage(`{"token":"` + secret + `"}`)})
+	if err != nil || call.Status != "allowed" {
+		t.Fatalf("request call=%#v err=%v", call, err)
+	}
+	if _, err := service.StartExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CompleteExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Output: json.RawMessage(`{"value":"` + secret + `"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	textPath := filepath.Join(claim.Workspace, "evidence.txt")
+	if err := os.WriteFile(textPath, []byte("before "+secret+" after"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := service.DeclareExternalArtifact(ExternalArtifactRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Type: "evidence", MIME: "text/plain", Path: textPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactData, err := os.ReadFile(artifact.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(artifactData), secret) || !strings.Contains(string(artifactData), "<redacted>") {
+		t.Fatalf("external text artifact was not redacted: %q", artifactData)
+	}
+	binaryPath := filepath.Join(claim.Workspace, "evidence.bin")
+	if err := os.WriteFile(binaryPath, append([]byte{0, 1}, []byte(secret)...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.DeclareExternalArtifact(ExternalArtifactRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Type: "binary-evidence", MIME: "application/octet-stream", Path: binaryPath}); err == nil {
+		t.Fatal("external binary artifact containing known secret was persisted")
+	}
+	final, err := service.CompleteExternal(context.Background(), ExternalSubmission{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, Output: secret, Structured: json.RawMessage(`{"secret":"` + secret + `"}`), Stdout: secret, Stderr: secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(mustJSONTest(t, final)), secret) {
+		t.Fatalf("public durable state contains secret: %s", mustJSONTest(t, final))
+	}
+	fs := store.FS{Workspace: workspace}
+	persisted, err := fs.Load(started.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := fs.ReadEvents(started.RunID, 0, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := append(mustJSONTest(t, persisted), mustJSONTest(t, events)...)
+	if strings.Contains(string(combined), secret) || !strings.Contains(string(combined), "redacted") {
+		t.Fatalf("durable external persistence redaction failed: %s", combined)
+	}
+}
+
+func mustJSONTest(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

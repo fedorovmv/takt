@@ -17,6 +17,7 @@ import (
 
 	"takt/internal/assistant"
 	"takt/internal/execution"
+	"takt/internal/redact"
 	"takt/internal/runtime"
 	"takt/internal/store"
 )
@@ -183,7 +184,7 @@ func (s *Service) ClaimExternal(request ExternalClaimRequest) (*ExternalTask, er
 		node.Status = store.NodeWaiting
 		state.Status = store.RunWaiting
 		state.Waiting = &store.WaitingState{NodeID: request.NodeID, Message: "external side effect must be reconciled before retry", Kind: "external_reconcile"}
-		if err := st.Commit(state, store.Event{Type: "external_node.reconciliation_required", NodeID: request.NodeID, Data: map[string]any{"idempotency_key": external.IdempotencyKey}}); err != nil {
+		if err := s.commitRedacted(st, state, store.Event{Type: "external_node.reconciliation_required", NodeID: request.NodeID, Data: map[string]any{"idempotency_key": external.IdempotencyKey}}); err != nil {
 			return nil, err
 		}
 		return nil, fmt.Errorf("external node %s/%s requires side-effect reconciliation before retry", state.ID, request.NodeID)
@@ -218,7 +219,7 @@ func (s *Service) ClaimExternal(request ExternalClaimRequest) (*ExternalTask, er
 	external.LeaseExpiresAt = now.Add(request.Lease)
 	external.LastActivityAt = now
 	node.Status = store.NodeWaiting
-	if err := st.Commit(state, store.Event{Type: "external_node.claimed", NodeID: request.NodeID, Data: map[string]any{
+	if err := s.commitRedacted(st, state, store.Event{Type: "external_node.claimed", NodeID: request.NodeID, Data: map[string]any{
 		"worker_id": request.WorkerID, "lease_expires_at": external.LeaseExpiresAt, "capability_declaration": declaration,
 	}}); err != nil {
 		return nil, err
@@ -316,7 +317,7 @@ func (s *Service) ReconcileExternal(ctx context.Context, request ExternalReconci
 		state.Status = store.RunWaiting
 		node.Status = store.NodeWaiting
 		state.Waiting = &store.WaitingState{NodeID: request.NodeID, Message: "external side effect state remains unknown; operator decision required", Kind: "external_reconcile"}
-		err = st.Commit(state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
+		err = s.commitRedacted(st, state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
 		_ = release()
 		if err != nil {
 			return nil, err
@@ -330,7 +331,7 @@ func (s *Service) ReconcileExternal(ctx context.Context, request ExternalReconci
 		state.Status = store.RunWaiting
 		node.Status = store.NodeWaiting
 		state.Waiting = &store.WaitingState{NodeID: request.NodeID, Message: "external executor must claim and complete this node", Kind: "external_node"}
-		err = st.Commit(state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
+		err = s.commitRedacted(st, state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
 		_ = release()
 		if err != nil {
 			return nil, err
@@ -350,7 +351,7 @@ func (s *Service) ReconcileExternal(ctx context.Context, request ExternalReconci
 		external.ClaimToken = token
 		external.ClaimedBy = "reconciler"
 		external.LeaseExpiresAt = now.Add(time.Minute)
-		err = st.Commit(state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
+		err = s.commitRedacted(st, state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
 		_ = release()
 		if err != nil {
 			return nil, err
@@ -386,7 +387,7 @@ func (s *Service) AppendExternalEvent(runID, nodeID, claimToken string, event as
 	if err := verifyExternalClaim(external, claimToken); err != nil {
 		return 0, err
 	}
-	return appendExternalAssistantEvent(st, state, nodeID, external, event)
+	return s.appendExternalAssistantEvent(st, state, nodeID, external, event)
 }
 
 func (s *Service) CompleteExternal(ctx context.Context, submission ExternalSubmission) (*store.RunState, error) {
@@ -502,7 +503,7 @@ func (s *Service) timeoutExternalIdle(ctx context.Context, runID, nodeID string,
 		call.Reason = reason
 		call.CancelRequested = true
 		call.CompletedAt = now
-		if _, eventErr := appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
+		if _, eventErr := s.appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
 			Time: now, Type: assistant.EventToolCompleted, Tool: call.Tool, CallID: call.CallID,
 			Reason: reason, SessionID: external.SessionID, Data: map[string]any{"status": "cancelled", "idle_timeout": true},
 		}); eventErr != nil {
@@ -510,14 +511,14 @@ func (s *Service) timeoutExternalIdle(ctx context.Context, runID, nodeID string,
 			return nil, eventErr
 		}
 	}
-	if _, err := appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
+	if _, err := s.appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
 		Time: now, Type: assistant.EventDiagnostic, Message: reason, SessionID: external.SessionID,
 		Data: map[string]any{"code": "idle_timeout", "idle_timeout": external.IdleTimeout},
 	}); err != nil {
 		_ = release()
 		return nil, err
 	}
-	if _, err := appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
+	if _, err := s.appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
 		Time: now, Type: assistant.EventFailed, Message: reason, SessionID: external.SessionID,
 	}); err != nil {
 		_ = release()
@@ -530,7 +531,7 @@ func (s *Service) timeoutExternalIdle(ctx context.Context, runID, nodeID string,
 	node.Status = store.NodePending
 	state.Status = store.RunRunning
 	state.Waiting = nil
-	if err := st.Commit(state, store.Event{Time: now, Type: "external_node.idle_timeout", NodeID: nodeID, Data: map[string]any{
+	if err := s.commitRedacted(st, state, store.Event{Time: now, Type: "external_node.idle_timeout", NodeID: nodeID, Data: map[string]any{
 		"idle_timeout": external.IdleTimeout, "last_activity_at": external.LastActivityAt,
 	}}); err != nil {
 		_ = release()
@@ -612,7 +613,7 @@ func (s *Service) submitExternal(ctx context.Context, submission ExternalSubmiss
 	}
 	finalEvents = append(finalEvents, terminalEvent)
 	for _, event := range finalEvents {
-		if _, err := appendExternalAssistantEvent(st, state, submission.NodeID, external, event); err != nil {
+		if _, err := s.appendExternalAssistantEvent(st, state, submission.NodeID, external, event); err != nil {
 			_ = release()
 			return nil, err
 		}
@@ -622,7 +623,7 @@ func (s *Service) submitExternal(ctx context.Context, submission ExternalSubmiss
 	node.Status = store.NodePending
 	state.Status = store.RunRunning
 	state.Waiting = nil
-	if err := st.Commit(state, store.Event{Type: "external_node.result.submitted", NodeID: submission.NodeID, Data: map[string]any{
+	if err := s.commitRedacted(st, state, store.Event{Type: "external_node.result.submitted", NodeID: submission.NodeID, Data: map[string]any{
 		"status": status, "exit_code": submission.ExitCode, "worker_id": external.ClaimedBy,
 	}}); err != nil {
 		_ = release()
@@ -811,7 +812,7 @@ func (s *Service) createOrReadToolRequest(st store.FS, request ExternalToolReque
 		Status: "requested", RequestedAt: now,
 	}
 	external.ToolCalls[request.CallID] = call
-	if _, err := appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+	if _, err := s.appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
 		Type: assistant.EventToolRequested, Tool: request.Tool, CallID: request.CallID, Input: request.Input,
 		Message: request.Message, SessionID: external.SessionID,
 	}); err != nil {
@@ -819,7 +820,7 @@ func (s *Service) createOrReadToolRequest(st store.FS, request ExternalToolReque
 	}
 	if allowed, reason := externalToolPolicy(external.Policy, request.Tool); !allowed {
 		call.Status, call.Decision, call.Reason, call.DecidedAt = "denied", "deny", reason, time.Now().UTC()
-		if _, err := appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+		if _, err := s.appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
 			Type: assistant.EventToolDenied, Tool: request.Tool, CallID: request.CallID,
 			Decision: "deny", Reason: reason, SessionID: external.SessionID,
 		}); err != nil {
@@ -830,7 +831,7 @@ func (s *Service) createOrReadToolRequest(st store.FS, request ExternalToolReque
 	call.ApprovalNeeded = toolApprovalRequired(external.ToolApproval, request.Tool)
 	if call.ApprovalNeeded {
 		call.Status = "waiting_approval"
-		if err := st.Commit(state, store.Event{Type: "tool.approval.requested", NodeID: request.NodeID, Data: map[string]any{
+		if err := s.commitRedacted(st, state, store.Event{Type: "tool.approval.requested", NodeID: request.NodeID, Data: map[string]any{
 			"call_id": request.CallID, "tool": request.Tool, "message": toolApprovalMessage(external.ToolApproval, request.Tool),
 		}}); err != nil {
 			return nil, err
@@ -838,7 +839,7 @@ func (s *Service) createOrReadToolRequest(st store.FS, request ExternalToolReque
 		return cloneToolCall(call), nil
 	}
 	call.Status, call.Decision, call.DecidedAt = "allowed", "allow", time.Now().UTC()
-	if _, err := appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+	if _, err := s.appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
 		Type: assistant.EventToolAllowed, Tool: request.Tool, CallID: request.CallID,
 		Decision: "allow", Reason: "allowed by node policy", SessionID: external.SessionID,
 	}); err != nil {
@@ -871,13 +872,13 @@ func (s *Service) DecideExternalTool(request ExternalToolDecisionRequest) (*stor
 	call.Decision, call.Reason, call.DecidedAt = request.Decision, request.Reason, time.Now().UTC()
 	if request.Decision == "allow" {
 		call.Status = "allowed"
-		_, err = appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+		_, err = s.appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
 			Type: assistant.EventToolAllowed, Tool: call.Tool, CallID: call.CallID,
 			Decision: "allow", Reason: request.Reason, SessionID: external.SessionID,
 		})
 	} else {
 		call.Status = "denied"
-		_, err = appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+		_, err = s.appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
 			Type: assistant.EventToolDenied, Tool: call.Tool, CallID: call.CallID,
 			Decision: "deny", Reason: request.Reason, SessionID: external.SessionID,
 		})
@@ -924,7 +925,7 @@ func (s *Service) updateExternalTool(request ExternalToolUpdate, action string) 
 			return nil, fmt.Errorf("tool call %q cannot start in status %s", request.CallID, call.Status)
 		}
 		call.Status, call.StartedAt = "running", now
-		_, err = appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+		_, err = s.appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
 			Type: assistant.EventToolStarted, Tool: call.Tool, CallID: call.CallID, Input: call.Input, SessionID: external.SessionID,
 		})
 	case "complete":
@@ -940,7 +941,7 @@ func (s *Service) updateExternalTool(request ExternalToolUpdate, action string) 
 		} else {
 			call.Status = "completed"
 		}
-		_, err = appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+		_, err = s.appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
 			Type: assistant.EventToolCompleted, Tool: call.Tool, CallID: call.CallID, Output: call.Output,
 			Reason: call.Reason, SessionID: external.SessionID, Data: map[string]any{"status": call.Status},
 		})
@@ -973,13 +974,13 @@ func (s *Service) CancelExternalTool(runID, nodeID, callID, reason string) (*sto
 	case "requested", "waiting_approval", "allowed":
 		call.Status, call.Decision, call.Reason, call.CancelRequested = "cancelled", "cancel", reason, true
 		call.DecidedAt = time.Now().UTC()
-		_, err = appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
+		_, err = s.appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
 			Type: assistant.EventToolDenied, Tool: call.Tool, CallID: call.CallID,
 			Decision: "cancel", Reason: reason, SessionID: external.SessionID,
 		})
 	case "running", "cancel_requested":
 		call.Status, call.CancelRequested, call.Reason = "cancel_requested", true, reason
-		_, err = appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
+		_, err = s.appendExternalAssistantEvent(st, state, nodeID, external, assistant.Event{
 			Type: assistant.EventDiagnostic, Message: reason, CallID: call.CallID,
 			SessionID: external.SessionID, Data: map[string]any{"tool": call.Tool, "tool_cancel_requested": true},
 		})
@@ -1045,18 +1046,25 @@ func (s *Service) DeclareExternalArtifact(request ExternalArtifactRequest) (*sto
 		return nil, err
 	}
 	destination := filepath.Join(destinationDir, safeControlPart(request.CallID)+"-"+filepath.Base(source))
-	if err := copyControlFile(source, destination); err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(destination)
+	data, err := os.ReadFile(source)
 	if err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256(data)
 	mime := request.MIME
 	if mime == "" {
 		mime = "application/octet-stream"
 	}
+	redactor := s.persistenceRedactor()
+	if redacted, found := redactor.Bytes(data); found {
+		if !redact.TextualMIME(mime) {
+			return nil, fmt.Errorf("external artifact %s contains a known secret and cannot be persisted as non-text content", request.Type)
+		}
+		data = redacted
+	}
+	if err := os.WriteFile(destination, data, 0o644); err != nil {
+		return nil, err
+	}
+	sum := sha256.Sum256(data)
 	artifact := store.ArtifactRef{
 		ID:   fmt.Sprintf("%s:%s:%d:%s", request.NodeID, request.Type, external.Attempt, request.CallID),
 		Type: request.Type, MIME: mime, Path: destination, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(data)),
@@ -1064,7 +1072,7 @@ func (s *Service) DeclareExternalArtifact(request ExternalArtifactRequest) (*sto
 	}
 	node.Artifacts = appendControlArtifact(node.Artifacts, artifact)
 	state.Artifacts = appendControlArtifact(state.Artifacts, artifact)
-	_, err = appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
+	_, err = s.appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
 		Type: assistant.EventArtifactDeclared, CallID: request.CallID, SessionID: external.SessionID,
 		Artifact: &assistant.ArtifactDeclaration{ID: artifact.ID, Type: artifact.Type, MIME: artifact.MIME, Path: artifact.Path, SHA256: artifact.SHA256, Size: artifact.Size, CallID: request.CallID},
 	})
@@ -1074,7 +1082,7 @@ func (s *Service) DeclareExternalArtifact(request ExternalArtifactRequest) (*sto
 	return &artifact, nil
 }
 
-func appendExternalAssistantEvent(st store.FS, state *store.RunState, nodeID string, external *store.ExternalExecutionState, event assistant.Event) (uint64, error) {
+func (s *Service) appendExternalAssistantEvent(st store.FS, state *store.RunState, nodeID string, external *store.ExternalExecutionState, event assistant.Event) (uint64, error) {
 	if event.Time.IsZero() {
 		event.Time = time.Now().UTC()
 	}
@@ -1086,7 +1094,7 @@ func appendExternalAssistantEvent(st store.FS, state *store.RunState, nodeID str
 	data := assistant.EventData(event)
 	data["sequence"] = external.LastEventSequence
 	data["source"] = "external"
-	if err := st.Commit(state, store.Event{Time: event.Time, Type: "assistant." + event.Type, NodeID: nodeID, Data: data}); err != nil {
+	if err := s.commitRedacted(st, state, store.Event{Time: event.Time, Type: "assistant." + event.Type, NodeID: nodeID, Data: data}); err != nil {
 		return 0, err
 	}
 	return external.LastEventSequence, nil

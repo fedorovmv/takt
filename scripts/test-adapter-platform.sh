@@ -21,7 +21,12 @@ grep -q 'change.create' "$tmp/scm.json"
 
 # Doctor must be an actionable health check: a configured reconcile mapping
 # that the adapter does not declare produces a report and a non-zero exit.
-python - "$tmp/work/config.yaml" "$tmp/work/bad-config.yaml" <<'PY'
+python_bin="$(command -v python3 || command -v python || true)"
+if [[ -z "$python_bin" ]]; then
+  echo "python3 or python is required for adapter platform fixture mutation" >&2
+  exit 1
+fi
+"$python_bin" - "$tmp/work/config.yaml" "$tmp/work/bad-config.yaml" <<'PY'
 from pathlib import Path
 import sys
 s=Path(sys.argv[1]).read_text()

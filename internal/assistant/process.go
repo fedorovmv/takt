@@ -373,6 +373,18 @@ func combineOutput(stdout, stderr string) string {
 	return out
 }
 
+// RegisterRenderedEnvSecrets registers explicit SecretRefs after request
+// templating. This closes the gap where an env value becomes secret://NAME only
+// after {{prompt}}, {{session.id}} or another request placeholder is rendered.
+func RegisterRenderedEnvSecrets(r *redact.Redactor, s spec.AssistantSpec, req Request) {
+	if r == nil {
+		return
+	}
+	for _, value := range s.Env {
+		r.RegisterReferences(renderArg(value, req))
+	}
+}
+
 func renderArg(s string, req Request) string {
 	mode, sessionID := effectiveSession(req.SessionMode, req.SessionID)
 	repl := map[string]string{

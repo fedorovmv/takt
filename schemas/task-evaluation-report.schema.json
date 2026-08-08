@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/task-evaluation-report.schema.json",
+  "title": "Takt Task Evaluation Matrix Report v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_version",
+    "takt_version",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "matrix_path",
+    "matrix_fingerprint",
+    "experiment_fingerprint",
+    "benchmark_id",
+    "baseline_strategy",
+    "repeat",
+    "strategies",
+    "comparisons",
+    "passed"
+  ],
+  "properties": {
+    "report_version": {
+      "const": "takt-task-evaluation-matrix/v1alpha1"
+    },
+    "takt_version": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "matrix_path": {
+      "type": "string"
+    },
+    "matrix_fingerprint": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "experiment_fingerprint": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "benchmark_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "baseline_strategy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repeat": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "strategies": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "fingerprint",
+          "output_dir",
+          "summary",
+          "runs"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "output_dir": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "object"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "case_id",
+                "repeat",
+                "status",
+                "route_correct",
+                "final_success",
+                "plan_revisions",
+                "replanner_runs"
+              ],
+              "properties": {
+                "case_id": {
+                  "type": "string"
+                },
+                "repeat": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "status": {
+                  "type": "string"
+                },
+                "route": {
+                  "type": "string"
+                },
+                "route_correct": {
+                  "type": "boolean"
+                },
+                "final_success": {
+                  "type": "boolean"
+                },
+                "plan_revisions": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "replanner_runs": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "comparisons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "baseline_strategy",
+          "candidate_strategy",
+          "outcomes"
+        ],
+        "properties": {
+          "baseline_strategy": {
+            "type": "string"
+          },
+          "candidate_strategy": {
+            "type": "string"
+          },
+          "outcomes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "case_id",
+                "repeat",
+                "baseline_route_correct",
+                "candidate_route_correct"
+              ],
+              "properties": {
+                "case_id": {
+                  "type": "string"
+                },
+                "repeat": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "baseline_route_correct": {
+                  "type": "boolean"
+                },
+                "candidate_route_correct": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "strategy",
+          "passed",
+          "message"
+        ],
+        "properties": {
+          "strategy": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "passed": {
+      "type": "boolean"
+    }
+  }
+}

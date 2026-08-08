@@ -13,6 +13,13 @@
 - `assistant-protocol.schema.json` — реализованный JSON-протокол `takt-assistant/v1alpha1|v1alpha2` со строгими status/exit и неотрицательным usage;
 - `validation-result.schema.json` — предметно-независимый результат качества `takt-validation/v1alpha1` для benchmark и внешних валидаторов;
 - `evaluation-report.schema.json` — отчёт `takt-evaluation/v1alpha1` с идентичностью стратегии, benchmark, workspace, моделей и метриками качества.
+- `evaluation-case-manifest.schema.json` — labels `category|difficulty|source` и другие стабильные метаданные cases;
+- `evaluation-matrix.schema.json` — сравнительная matrix стратегий, baseline, repeat и regression gates;
+- `evaluation-compare.schema.json` — попарное baseline/candidate сравнение по case ID + repeat;
+- `evaluation-matrix-report.schema.json` — итог `takt-evaluation-matrix/v1alpha1` со стратегиями, comparisons и gate results.
+- `task-case-manifest.schema.json` — task-level cases с ожидаемым route/status и минимальной ревизией плана;
+- `task-evaluation-matrix.schema.json` — matrix для полного `Task Router → Dynamic Plan → replan` контура;
+- `task-evaluation-report.schema.json` — task-level report с route accuracy, plan revisions, replanner runs, pairwise outcomes и gates.
 
 Go-loader и authoring preflight остаются главным валидатором: кроме структуры они проверяют DAG, ссылки на модели/исполнителей, capabilities, duration, template/output/artifact references и ограничения `loop_group`. JSON Schema предназначены для редакторов, внешних инструментов и подготовки стабильной схемы.
 

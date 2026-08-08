@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.27.0" \
-  "VERSION|0.1.45-alpha" \
-  "internal/version/version.go|0.1.45-alpha" \
+  "skills/takt/VERSION|0.28.0" \
+  "VERSION|0.1.46-alpha" \
+  "internal/version/version.go|0.1.46-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -89,7 +89,6 @@ for check in \
   "docs/44-local-mcp-control-plane-v0.1.30.md|takt.run.events" \
   "docs/45-agent-events-external-executor-v0.1.31.md|takt.node.claim" \
   "docs/45-agent-events-external-executor-v0.1.31.md|events.idx" \
-  "docs/06-roadmap.md|Выполнено в v0.1.31-alpha" \
   "scripts/test-external-executor.sh|external node executor contract: PASS" \
   "schemas/workflow.schema.json|executor" \
   "schemas/run-state.schema.json|externalExecutionState" \
@@ -122,15 +121,24 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-071" \
   "ARCHITECTURE_DECISIONS.md|ADR-072" \
   "ARCHITECTURE_DECISIONS.md|ADR-073" \
+  "docs/06-roadmap.md|P0. Evidence" \
+  "docs/06-roadmap.md|P1. v0.2 Stabilization" \
+  "docs/14-backlog-v0.2.md|EVIDENCE-001" \
+  "docs/05-implementation-status.md|eval task-benchmark" \
+  "docs/60-task-level-dynamic-evaluation-v0.1.46.md|Task-level Dynamic Evaluation" \
+  "ARCHITECTURE_DECISIONS.md|ADR-074" \
+  "ARCHITECTURE_DECISIONS.md|ADR-075" \
+  "schemas/task-case-manifest.schema.json|TaskCaseManifest" \
+  "schemas/task-evaluation-matrix.schema.json|TaskEvaluationMatrix" \
+  "schemas/task-evaluation-report.schema.json|takt-task-evaluation-matrix/v1alpha1" \
+  "scripts/test-task-evaluation.sh|task-level dynamic evaluation: PASS" \
   "docs/59-route-dsl-evaluation-strategy-benchmark-v0.1.45.md|Route DSL Evaluation & Strategy Benchmark" \
-  "docs/06-roadmap.md|Выполнено в v0.1.45-alpha" \
   "schemas/evaluation-matrix.schema.json|EvaluationMatrix" \
   "schemas/evaluation-case-manifest.schema.json|CaseManifest" \
   "schemas/evaluation-compare.schema.json|takt-evaluation-compare/v1alpha1" \
   "schemas/evaluation-matrix-report.schema.json|takt-evaluation-matrix/v1alpha1" \
   "scripts/test-route-dsl-benchmark.sh|Route DSL strategy benchmark: PASS" \
   "docs/58-runtime-reliability-local-security-v0.1.44.md|Runtime Reliability & Local Security" \
-  "docs/06-roadmap.md|Выполнено в v0.1.44-alpha" \
   "schemas/workflow.schema.json|backoff" \
   "schemas/workflow.schema.json|enforcement" \
   "schemas/run-state.schema.json|diagnosticState" \
@@ -139,11 +147,9 @@ for check in \
   "scripts/test-runtime-reliability-security.sh|Runtime Reliability & Local Security: PASS" \
   "SECURITY.md|secret://ENV_NAME" \
   "docs/57-multi-repo-dynamic-workflows-v0.1.43.md|Multi-repo Dynamic Workflows" \
-  "docs/06-roadmap.md|Выполнено в v0.1.43-alpha" \
   "schemas/workspace.schema.json|Takt Workspace v1alpha1" \
   "scripts/test-multi-repo.sh|multi-repo dynamic workflow contract: PASS" \
   "docs/56-portable-package-distribution-v0.1.42.md|Portable Package Distribution" \
-  "docs/06-roadmap.md|Выполнено в v0.1.42-alpha" \
   "docs/03-specification.md|takt package install" \
   "schemas/package-lock.schema.json|PackageLock" \
   "schemas/package-policy.schema.json|PackagePolicy" \
@@ -152,13 +158,11 @@ for check in \
   "examples/portable-package/package.yaml|portable-review" \
   "sdk/agentadapter/testdata/v1alpha2/success.ndjson|takt-assistant/v1alpha2" \
   "docs/55-adapter-platform-v0.1.41.md|Adapter Platform" \
-  "docs/06-roadmap.md|Выполнено в v0.1.41-alpha" \
   "docs/03-specification.md|Контракт side_effect" \
   "schemas/domain-adapter-protocol.schema.json|takt-domain-adapter/v1alpha1" \
   "scripts/test-adapter-platform.sh|adapter platform contract: PASS" \
   "sdk/agentadapter/conformance.go|ProtocolV1Alpha2" \
   "docs/54-evidence-baseline-failure-routing-v0.1.40.md|EvidenceManifest" \
-  "docs/06-roadmap.md|Выполнено в v0.1.40-alpha" \
   "schemas/evidence-manifest.schema.json|Takt EvidenceManifest" \
   "scripts/test-evidence-routing.sh|evidence baseline failure routing contract: PASS" \
   "schemas/workflow.schema.json|side_effect" \
@@ -166,7 +170,6 @@ for check in \
   "skills/takt/SKILL.md|external reconciliation" \
   "docs/52-simple-reliable-agent-neutral-router-v0.1.38.md|Simple Reliable Router" \
   "docs/proposals/001-simple-reliable-agent-neutral-takt.md|Takt не зависит от Kiro CLI" \
-  "docs/06-roadmap.md|Выполнено в v0.1.38-alpha" \
   "scripts/test-simple-reliable-router.sh|simple reliable task router contract: PASS" \
   "schemas/task-route.schema.json|Takt task route" \
   "schemas/config.schema.json|default_assistant" \
@@ -178,7 +181,6 @@ for check in \
   "examples/agent-session-adapters/README.md|Kiro CLI" \
   "docs/51-autonomous-run-operations-v0.1.37.md|takt run pause" \
   "docs/51-autonomous-run-operations-v0.1.37.md|takt.notify.list" \
-  "docs/06-roadmap.md|Выполнено в v0.1.37-alpha" \
   "scripts/test-autonomous-runs.sh|autonomous run operations contract: PASS" \
   "schemas/run-state.schema.json|abandoned" \
   "skills/takt/references/mcp.md|takt.run.attention" \
@@ -189,7 +191,6 @@ for check in \
   "docs/50-coding-agent-host-control-v0.1.36.md|bundled Pi extension" \
   "docs/49-trusted-block-packages-v0.1.35.md|BlockPackage" \
   "docs/49-trusted-block-packages-v0.1.35.md|takt block validate" \
-  "docs/06-roadmap.md|Выполнено в v0.1.35-alpha" \
   "schemas/block-package.schema.json|Takt trusted block package" \
   "schemas/profile.schema.json|block_packages" \
   "internal/profile/builtin/code/profile.yaml|block_packages" \
@@ -200,7 +201,6 @@ for check in \
   "skills/takt/references/mcp.md|takt.block.list" \
   "docs/48-dynamic-takt-v0.1.34.md|WorkflowPlan" \
   "docs/48-dynamic-takt-v0.1.34.md|takt.run.steer" \
-  "docs/06-roadmap.md|Выполнено в v0.1.34-alpha" \
   "skills/takt/SKILL.md|Dynamic Takt из кодинг-агента" \
   "skills/takt/references/mcp.md|takt.plan.promote" \
   "schemas/workflow.schema.json|validation" \
@@ -216,8 +216,6 @@ for check in \
   "SECURITY.md|Local MCP and daemon" \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|assistant.tool.requested" \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|scripts/test-deep-code-workflows.sh" \
-  "docs/06-roadmap.md|Выполнено в v0.1.33-alpha" \
-  "docs/06-roadmap.md|Выполнено в v0.1.39-alpha" \
   "docs/53-role-brief-controls-v0.1.39.md|Ограниченный automatic repair" \
   "schemas/task-brief.schema.json|Takt compiled task brief" \
   "schemas/block-package.schema.json|reaction" \
@@ -311,8 +309,6 @@ for check in \
   "docs/12-document-map.md|32-takt-authoring-skill-v0.1.18.md" \
   "docs/12-document-map.md|33-opencode-adapter-v0.1.19.md" \
   "docs/12-document-map.md|34-opencode-provider-diagnostics-v0.1.20.md" \
-  "docs/14-backlog-v0.2.md|TAKT-008. Fake assistant protocol suite — выполнено" \
-  "docs/14-backlog-v0.2.md|TAKT-009. Specialized Pi adapter — выполнено" \
   "docs/15-coding-agent-start.md|takt-assistant/v1alpha2" \
   "docs/20-fake-assistant-contract-v0.1.6.md|OS exit code" \
   "docs/21-protocol-hardening-v0.1.7.md|обязаны совпадать всегда" \

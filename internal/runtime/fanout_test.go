@@ -692,6 +692,9 @@ nodes:
 			completed++
 		case store.RunCancelled:
 			cancelled++
+			if child.CancelReason != "fanout_result_decided" {
+				t.Fatalf("cancel reason=%q want fanout_result_decided", child.CancelReason)
+			}
 		}
 	}
 	if completed < 1 || cancelled < 1 {
@@ -750,6 +753,9 @@ nodes:
 	for _, child := range state.Nodes["execute"].ChildRuns {
 		if child.Status == store.RunCancelled {
 			cancelled++
+			if child.CancelReason != "fanout_result_decided" {
+				t.Fatalf("cancel reason=%q want fanout_result_decided", child.CancelReason)
+			}
 		}
 	}
 	if cancelled < 1 {
