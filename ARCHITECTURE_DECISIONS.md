@@ -549,3 +549,23 @@ Nested `loop_group` остаётся запрещённым в `v0.2` и пер�
 Field matrix автоматически перечисляет audited public JSON fields и имеет contract-test на точный набор полей stable-candidate authoring/config contracts.
 
 **Почему.** До `v0.1.48` сведения о Pi/OpenCode version fixtures, host `guarded` status и process protocol deprecation находились в разных документах и легко воспринимались как одна гарантия. Машиночитаемая матрица делает границы совместимости проверяемыми и пригодными для CI/preflight.
+
+## ADR-080. Reference adapters consume public SDKs and may reveal missing neutral context
+
+**Статус:** принято.
+
+Первый внешний coding-agent wrapper и первый production-like SCM adapter поставляются в `reference/` и `cmd/`, но не импортируют `internal/`. Их задача — проверять достаточность `sdk/agentadapter` и `sdk/domainadapter`, а не создавать provider-specific ветки runtime.
+
+GitHub reference adapter выявил нейтральный недостающий контекст: domain operation должна знать execution workspace. Поэтому `workspace` добавлен в публичные Invoke/Reconcile request, process transport запускается в этом каталоге, а multi-repo publication передаёт точный repository child worktree. GitHub URL, PR number и `gh` остаются только внутри reference adapter.
+
+**Причина.** Public seam считается доказанным только когда полезная внешняя реализация может работать без `internal/`; обнаруженный универсальный контекст исправляется в SDK, provider-specific детали — нет.
+
+## ADR-081. Process v1alpha2 transport does not imply tool-control capability
+
+**Статус:** принято.
+
+`takt-assistant/v1alpha2` определяет транспорт, способный переносить declaration/events/tool requests/result. Он не означает, что каждый wrapper способен блокировать tool call, проектировать skills/MCP или обеспечивать sandbox. Static capability preflight использует только явно configured capabilities; stream declaration проверяется отдельно и является авторитетным утверждением конкретного запуска.
+
+Runtime отклоняет configured capability, которой нет в stream declaration, event вне declared event_types и tool request без `tool_control=true`.
+
+**Причина.** Иначе узкий observational wrapper, например Qwen Code headless reference adapter, получал бы ложную security guarantee только из-за версии transport protocol.

@@ -184,3 +184,50 @@ time.sleep(30)
 		t.Fatalf("worker process %d remains alive after protocol failure", pid)
 	}
 }
+
+func TestProcessV1Alpha2DoesNotInferToolControlFromProtocolVersion(t *testing.T) {
+	p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: []string{"adapter"}, Capabilities: []string{CapabilityAgentEventsV2, CapabilitySessionEvents, CapabilityUsageEvents}}}
+	decl := p.CapabilityDeclaration()
+	if decl.ToolControl || decl.ToolEvents || decl.ArtifactEvents {
+		t.Fatalf("v1alpha2 overclaimed capabilities: %+v", decl)
+	}
+	if !decl.SessionEvents || !decl.UsageEvents {
+		t.Fatalf("configured event capabilities missing: %+v", decl)
+	}
+}
+
+func TestProcessV1Alpha2RejectsConfiguredCapabilityMissingFromStreamDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	script := dir + "/worker.py"
+	code := `import json, sys
+json.loads(sys.stdin.readline())
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","capabilities":["agent_events_v2"],"event_types":["completed"]}}), flush=True)
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha2","type":"result","status":"completed","output":"done","exit_code":0}}), flush=True)
+`
+	if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: []string{"python3", script}, Capabilities: []string{CapabilityUsageEvents}}}
+	_, err := p.Run(context.Background(), Request{Workspace: dir})
+	if execution.KindOf(err) != execution.KindProtocol || !strings.Contains(err.Error(), "usage_events") {
+		t.Fatalf("expected capability protocol failure, got %v", err)
+	}
+}
+
+func TestProcessV1Alpha2RejectsToolRequestWithoutDeclaredToolControl(t *testing.T) {
+	dir := t.TempDir()
+	script := dir + "/worker.py"
+	code := `import json, sys
+json.loads(sys.stdin.readline())
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","capabilities":["agent_events_v2"],"event_types":["message"]}}), flush=True)
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"tool.request","tool_request":{"call_id":"call-1","tool":"read"}}), flush=True)
+`
+	if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: []string{"python3", script}, Capabilities: []string{CapabilityAgentEventsV2}}}
+	_, err := p.Run(context.Background(), Request{Workspace: dir})
+	if execution.KindOf(err) != execution.KindProtocol || !strings.Contains(err.Error(), "without declared tool_control") {
+		t.Fatalf("expected tool-control protocol failure, got %v", err)
+	}
+}

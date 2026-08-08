@@ -15,9 +15,11 @@ Takt не зависит от Kiro CLI или другого конкретно�
 5. ожидать `tool.decision`, когда заявлен `tool_control`;
 6. вернуть ровно одну terminal-запись `result`.
 
-Файл `config.yaml` показывает несколько альтернативных адаптеров. Имена
-`codex-takt-adapter`, `ohmypi-takt-adapter` и `qwen-takt-adapter` являются
-примерами внешних исполняемых файлов, а не частью поставки Takt.
+Файл `config.yaml` показывает несколько альтернативных адаптеров.
+`qwen-takt-adapter` поставляется как reference implementation с v0.1.49.
+`codex-takt-adapter` и `ohmypi-takt-adapter` остаются примерами внешних
+исполняемых файлов. Reference Qwen wrapper намеренно имеет узкий capability
+surface и не заявляет tool-policy/skills/MCP/sandbox enforcement.
 
 Для одного проекта выбирается один основной исполнитель:
 

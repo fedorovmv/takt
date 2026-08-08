@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-gofmt -w cmd internal sdk
+gofmt -w cmd internal sdk reference
 go vet ./...
 go test ./...
 go test -race ./...
@@ -42,6 +42,7 @@ go build -o bin/takt-fake-domain-adapter ./cmd/takt-fake-domain-adapter
 ./scripts/test-runtime-reliability-security.sh
 ./scripts/test-iteration-history.sh
 ./scripts/test-compatibility.sh
+./scripts/test-reference-adapters.sh
 ./scripts/test-route-dsl-benchmark.sh
 ./scripts/test-task-evaluation.sh
 go test ./sdk/agentadapter -count=1

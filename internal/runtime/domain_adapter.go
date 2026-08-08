@@ -76,7 +76,7 @@ func (r *Runner) runDomainAdapter(ctx context.Context, state *store.RunState, no
 		}
 	}
 
-	request := domainadapter.InvokeRequest{RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts, Domain: declaration.Domain, Operation: node.Adapter.Operation, Input: raw, IdempotencyKey: operation.IdempotencyKey, SideEffectMode: operation.SideEffectMode}
+	request := domainadapter.InvokeRequest{RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts, Workspace: state.Workspace, Domain: declaration.Domain, Operation: node.Adapter.Operation, Input: raw, IdempotencyKey: operation.IdempotencyKey, SideEffectMode: operation.SideEffectMode}
 
 	// A previous attempt with unknown side-effect state must be reconciled
 	// before another invocation. This makes even an explicitly configured retry
@@ -125,7 +125,7 @@ func (r *Runner) invokeDomainOperation(ctx context.Context, adapter domainadapte
 }
 
 func (r *Runner) reconcileDomainOperation(ctx context.Context, adapter domainadapter.Adapter, request domainadapter.InvokeRequest, operation *store.DomainOperationState) (execResult, bool, error) {
-	value, err := adapter.Reconcile(ctx, domainadapter.ReconcileRequest{RunID: request.RunID, NodeID: request.NodeID, Domain: request.Domain, Operation: request.Operation, Input: request.Input, IdempotencyKey: request.IdempotencyKey, Receipt: operation.Receipt})
+	value, err := adapter.Reconcile(ctx, domainadapter.ReconcileRequest{RunID: request.RunID, NodeID: request.NodeID, Workspace: request.Workspace, Domain: request.Domain, Operation: request.Operation, Input: request.Input, IdempotencyKey: request.IdempotencyKey, Receipt: operation.Receipt})
 	if err != nil {
 		operation.ReconcileStatus = "unknown"
 		return execResult{DomainOperation: operation}, true, &execution.Error{Kind: execution.KindExternalUnknown, Op: "reconcile domain adapter side effect", Err: err}

@@ -93,3 +93,7 @@ This release also closes the outstanding Portable Package Distribution review it
 ## Release contract
 
 The release E2E creates three real local Git repositories (`api -> client -> service`), lets the semantic fixture produce the repository-aware plan, executes three isolated change Runs, publishes three fake neutral SCM changes, performs integration verification, checks per-repository and plan-level evidence, and proves that the original checkouts are untouched.
+
+## Уточнение publication workspace — v0.1.49
+
+Repository-aware `publish_change` передаёт SCM adapter поле `repository_workspace=${nodes.<phase>.child_execution_workspace}`. Поэтому provider adapter разрешает remote и выполняет mutation относительно candidate worktree конкретного repository, а не общего control workspace или базового checkout.

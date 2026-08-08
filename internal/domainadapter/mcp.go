@@ -37,7 +37,7 @@ type mcpSession struct {
 }
 
 func (m *MCP) Describe(ctx context.Context) (Declaration, error) {
-	session, err := m.start(ctx)
+	session, err := m.start(ctx, "")
 	if err != nil {
 		return Declaration{}, err
 	}
@@ -90,7 +90,10 @@ func (m *MCP) Describe(ctx context.Context) (Declaration, error) {
 }
 
 func (m *MCP) Invoke(ctx context.Context, request InvokeRequest) (Result, error) {
-	session, err := m.start(ctx)
+	if err := ValidateInvokeRequest(request); err != nil {
+		return Result{}, err
+	}
+	session, err := m.start(ctx, request.Workspace)
 	if err != nil {
 		return Result{}, err
 	}
@@ -115,11 +118,14 @@ func (m *MCP) Invoke(ctx context.Context, request InvokeRequest) (Result, error)
 }
 
 func (m *MCP) Reconcile(ctx context.Context, request ReconcileRequest) (ReconcileResult, error) {
+	if err := ValidateReconcileRequest(request); err != nil {
+		return ReconcileResult{}, err
+	}
 	tool := m.Spec.ReconcileOperations[request.Operation]
 	if tool == "" {
 		return ReconcileResult{}, fmt.Errorf("MCP domain adapter does not provide reconcile for %s", request.Operation)
 	}
-	session, err := m.start(ctx)
+	session, err := m.start(ctx, request.Workspace)
 	if err != nil {
 		return ReconcileResult{}, err
 	}
@@ -156,7 +162,7 @@ func (m *MCP) toolFor(operation string) string {
 	return m.Spec.Domain + "." + operation
 }
 
-func (m *MCP) start(ctx context.Context) (*mcpSession, error) {
+func (m *MCP) start(ctx context.Context, workspace string) (*mcpSession, error) {
 	if len(m.Spec.Argv) == 0 {
 		return nil, fmt.Errorf("MCP domain adapter requires argv")
 	}
@@ -171,6 +177,9 @@ func (m *MCP) start(ctx context.Context) (*mcpSession, error) {
 		ctx, cancel = context.WithCancel(ctx)
 	}
 	cmd := exec.CommandContext(ctx, m.Spec.Argv[0], m.Spec.Argv[1:]...)
+	if workspace != "" {
+		cmd.Dir = workspace
+	}
 	cmd.Env = os.Environ()
 	for k, v := range m.Spec.Env {
 		cmd.Env = append(cmd.Env, k+"="+v)

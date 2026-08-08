@@ -1,0 +1,23 @@
+apiVersion: takt/v1alpha1
+kind: Config
+
+default_assistant: qwen-reference
+
+models:
+  coding:
+    provider: qwen
+    id: qwen3-coder-plus
+
+assistants:
+  qwen-reference:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: [qwen-takt-adapter]
+    capabilities: [agent_events_v2, session_events, usage_events]
+
+adapters:
+  scm:
+    domain: scm
+    transport: process
+    argv: [takt-github-scm-adapter]
+    timeout: 30s

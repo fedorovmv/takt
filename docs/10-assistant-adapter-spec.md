@@ -358,3 +358,22 @@ takt compatibility check --config .takt/config.yaml --live
 ```
 
 Session adapter compatibility не равна host-control compatibility. Built-in Pi/OpenCode contract fixtures проверяют transport/parser semantics, но bundled host extensions остаются `guarded` до live conformance на pinned host version. `takt-assistant/v1alpha1` сохраняется для чтения старых wrappers и помечен deprecated для новых интеграций; целевой process protocol — `v1alpha2`.
+
+## 14. Reference Qwen Code wrapper — v0.1.49
+
+Поставляемый `cmd/qwen-takt-adapter` является первой внешней reference implementation public `sdk/agentadapter`. Он запускает Qwen Code headless CLI в `stream-json`, поддерживает fresh/exact resume, model selection, timeout и usage, но намеренно не заявляет `tool_control`, selected skills, MCP projection или sandbox capabilities.
+
+Для `type: process` с `protocol: takt-assistant/v1alpha2` версия протокола больше не повышает capabilities автоматически. `capabilities` в Config являются preflight-ожиданием, а первая stream-запись `capabilities` обязана подтвердить их. Tool request допустим только при `tool_control: true` в фактической declaration.
+
+Пример:
+
+```yaml
+assistants:
+  qwen-reference:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: [qwen-takt-adapter]
+    capabilities: [agent_events_v2, session_events, usage_events]
+```
+
+Подробности и ограничения: `docs/63-reference-external-adapters-v0.1.49.md`.

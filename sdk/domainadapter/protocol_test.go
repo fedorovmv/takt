@@ -84,3 +84,26 @@ func TestValidateResultContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestValidateInvokeAndReconcileRequests(t *testing.T) {
+	valid := InvokeRequest{RunID: "r", NodeID: "n", Attempt: 1, Workspace: "/tmp/work", Domain: DomainSCM, Operation: SCMRepositoryGet}
+	if err := ValidateInvokeRequest(valid); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []InvokeRequest{
+		{NodeID: "n", Attempt: 1, Domain: DomainSCM, Operation: SCMRepositoryGet},
+		{RunID: "r", NodeID: "n", Attempt: 0, Domain: DomainSCM, Operation: SCMRepositoryGet},
+		{RunID: "r", NodeID: "n", Attempt: 1, Domain: "bad", Operation: SCMRepositoryGet},
+		{RunID: "r", NodeID: "n", Attempt: 1, Domain: DomainSCM, Operation: SCMChangeCreate, SideEffectMode: "reconcile"},
+	} {
+		if err := ValidateInvokeRequest(value); err == nil {
+			t.Fatalf("expected invalid invoke: %#v", value)
+		}
+	}
+	if err := ValidateReconcileRequest(ReconcileRequest{RunID: "r", NodeID: "n", Workspace: "/tmp/work", Domain: DomainSCM, Operation: SCMChangeCreate, IdempotencyKey: "k"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateReconcileRequest(ReconcileRequest{RunID: "r", NodeID: "n", Domain: DomainSCM, Operation: SCMChangeCreate}); err == nil {
+		t.Fatal("missing reconcile idempotency key accepted")
+	}
+}

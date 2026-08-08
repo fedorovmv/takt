@@ -15,6 +15,7 @@ import (
 	"takt/internal/execution"
 	"takt/internal/redact"
 	"takt/internal/spec"
+	agentadaptersdk "takt/sdk/agentadapter"
 )
 
 type Process struct{ spec spec.AssistantSpec }
@@ -213,6 +214,7 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 	scanner.Buffer(make([]byte, 64*1024), max)
 	var final *ProtocolResult
 	declarationSeen := false
+	var streamDeclaration CapabilityDeclaration
 	for scanner.Scan() {
 		var message ProtocolStreamMessage
 		decoder := json.NewDecoder(strings.NewReader(scanner.Text()))
@@ -227,19 +229,37 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 		}
 		switch message.Type {
 		case "capabilities":
-			if message.Declaration == nil {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("capabilities record requires declaration")}
+			if declarationSeen || message.Declaration == nil {
+				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("invalid capabilities record")}
 			}
+			if err := validateStreamDeclaration(*message.Declaration); err != nil {
+				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 declaration", Err: err}
+			}
+			for _, required := range p.spec.Capabilities {
+				if !containsString(message.Declaration.Capabilities, required) {
+					return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 declaration", Err: fmt.Errorf("configured capability %q was not declared by wrapper", required)}
+				}
+			}
+			streamDeclaration = *message.Declaration
 			declarationSeen = true
 		case "event":
+			if !declarationSeen {
+				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("capability declaration must precede event")}
+			}
 			if message.Event == nil {
 				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("event record requires event")}
 			}
 			if err := ValidateEvent(*message.Event); err != nil {
 				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: err}
 			}
+			if len(streamDeclaration.EventTypes) > 0 && !containsString(streamDeclaration.EventTypes, message.Event.Type) {
+				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("event %q was not declared by wrapper", message.Event.Type)}
+			}
 			Emit(req, *message.Event)
 		case "tool.request":
+			if !declarationSeen || !streamDeclaration.ToolControl {
+				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("tool request without declared tool_control")}
+			}
 			if message.ToolRequest == nil {
 				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("tool.request record requires tool_request")}
 			}
@@ -260,6 +280,9 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 tool decision", Err: err}
 			}
 		case "result":
+			if !declarationSeen {
+				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("capability declaration must precede result")}
+			}
 			if message.Result == nil || final != nil {
 				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("stream requires exactly one final result")}
 			}
@@ -351,6 +374,23 @@ func policyToolDecision(policy Policy, request ToolRequest) ToolDecision {
 		}
 	}
 	return ToolDecision{Decision: "allow", Reason: "allowed by node policy"}
+}
+
+func validateStreamDeclaration(value CapabilityDeclaration) error {
+	return agentadaptersdk.ValidateDeclaration(agentadaptersdk.Declaration{
+		Protocol: value.Protocol, Capabilities: value.Capabilities, EventTypes: value.EventTypes,
+		SessionEvents: value.SessionEvents, ToolEvents: value.ToolEvents, ToolControl: value.ToolControl,
+		ArtifactEvents: value.ArtifactEvents, UsageEvents: value.UsageEvents,
+	})
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func compactJSON(src json.RawMessage) (string, error) {
@@ -480,13 +520,26 @@ func (p Process) Capabilities() []string { return mergeCapabilities(nil, p.spec.
 
 func (p Process) CapabilityDeclaration() CapabilityDeclaration {
 	value := CapabilityDeclaration{Capabilities: p.Capabilities()}
-	if p.spec.Protocol == ProtocolV1Alpha2 {
-		value.EventTypes = EventTypes()
-		value.SessionEvents = true
-		value.ToolEvents = true
-		value.ArtifactEvents = true
-		value.UsageEvents = true
-		value.ToolControl = true
+	if p.spec.Protocol != ProtocolV1Alpha2 {
+		return value
 	}
+	// v1alpha2 is a transport capable of carrying these records; it does not
+	// guarantee that every external wrapper implements every lifecycle feature.
+	// Static preflight therefore stays conservative and follows the explicitly
+	// configured capability set. The wrapper's stream declaration remains the
+	// authoritative run-time statement.
+	value.Protocol = EventProtocolV2
+	set := map[string]bool{}
+	for _, capability := range value.Capabilities {
+		set[capability] = true
+	}
+	value.SessionEvents = set[CapabilitySessionEvents]
+	value.ToolEvents = set[CapabilityToolEvents]
+	value.ToolControl = set[CapabilityToolControl]
+	value.ArtifactEvents = set[CapabilityArtifactEvents]
+	value.UsageEvents = set[CapabilityUsageEvents]
+	// The concrete event_types set is known only after the wrapper starts and
+	// sends its stream declaration, so static preflight deliberately leaves it
+	// empty instead of overclaiming every v2 event.
 	return value
 }

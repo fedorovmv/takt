@@ -55,6 +55,10 @@ func (f Factory) Resolve(name string) (Adapter, error) {
 func NormalizeDeclaration(value Declaration) Declaration { return sdk.NormalizeDeclaration(value) }
 func ValidateDeclaration(value Declaration) error        { return sdk.ValidateDeclaration(value) }
 func ValidateOperation(operation string) error           { return sdk.ValidateOperation(operation) }
+func ValidateInvokeRequest(value InvokeRequest) error    { return sdk.ValidateInvokeRequest(value) }
+func ValidateReconcileRequest(value ReconcileRequest) error {
+	return sdk.ValidateReconcileRequest(value)
+}
 func HasCapability(value Declaration, operation string) bool {
 	for _, item := range value.Capabilities {
 		if item == operation {

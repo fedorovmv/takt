@@ -1,6 +1,6 @@
 # План реализации Takt v0.2
 
-Актуальный план после `v0.1.48-alpha`. Исторические этапы и реализованные возможности перечислены в `05-implementation-status.md`; здесь остаются только действия, которые влияют на решение о стабилизации `v0.2`.
+Актуальный план после `v0.1.49-alpha`. Исторические этапы и реализованные возможности перечислены в `05-implementation-status.md`; здесь остаются только действия, которые влияют на решение о стабилизации `v0.2`.
 
 ## 1. Принцип
 
@@ -105,16 +105,21 @@ Task Router
 - compatibility policy для пакетов и adapters;
 - changelog несовместимых изменений.
 
-## 7. Веха X1 — доказать внешние seams
+## 7. Веха X1 — доказать внешние seams — начато в v0.1.49
 
-После стабилизации интерфейсов:
+`v0.1.49` закрывает два пункта без расширения core:
+
+- `qwen-takt-adapter` использует только public `sdk/agentadapter`;
+- `takt-github-scm-adapter` использует только public `sdk/domainadapter`;
+- domain request получил универсальный execution `workspace`;
+- runtime проверяет фактическую v1alpha2 declaration и не выводит `tool_control` из версии протокола.
+
+Остаются:
 
 - live host conformance для одной фиксированной версии Pi/OpenCode;
-- один внешний coding-agent wrapper, использующий публичный `sdk/agentadapter`;
-- один production-like SCM adapter, предпочтительно GitHub как reference implementation;
 - один task source adapter, например Issue/Tracker item → Task.
 
-Это должно доказать SDK, а не расширять core.
+Live Qwen/GitHub smoke выполняется только при наличии реальных credentials и не подменяется release fixture.
 
 ## 8. Веха L1 — human-reviewed learning loop
 

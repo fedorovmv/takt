@@ -63,6 +63,7 @@
         "run_id": { "type": "string", "minLength": 1 },
         "node_id": { "type": "string", "minLength": 1 },
         "attempt": { "type": "integer", "minimum": 1 },
+        "workspace": { "type": "string", "minLength": 1 },
         "domain": { "enum": ["scm", "tracker", "ci"] },
         "operation": { "$ref": "#/$defs/operation" },
         "input": {},
@@ -109,6 +110,7 @@
       "properties": {
         "run_id": { "type": "string", "minLength": 1 },
         "node_id": { "type": "string", "minLength": 1 },
+        "workspace": { "type": "string", "minLength": 1 },
         "domain": { "enum": ["scm", "tracker", "ci"] },
         "operation": { "$ref": "#/$defs/operation" },
         "input": {},

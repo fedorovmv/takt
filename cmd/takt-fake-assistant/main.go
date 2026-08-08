@@ -274,7 +274,7 @@ func sessionID(request assistant.ProtocolRequest) string {
 func writeResult(result assistant.ProtocolResult) {
 	encoder := json.NewEncoder(os.Stdout)
 	if result.ProtocolVersion == assistant.ProtocolV1Alpha2 {
-		declaration := agentadaptersdk.Declaration{Protocol: agentadaptersdk.EventProtocolV2, Capabilities: []string{"skills", "tool_control"}, EventTypes: assistant.EventTypes(), SessionEvents: true, ToolEvents: true, ToolControl: true, ArtifactEvents: true, UsageEvents: true}
+		declaration := agentadaptersdk.Declaration{Protocol: agentadaptersdk.EventProtocolV2, Capabilities: []string{"agent_events_v2", "artifact_events", "custom", "mcp", "sandbox_filesystem", "sandbox_network", "session_events", "session_resume", "skills", "tool_control", "tool_events", "tool_policy", "usage_events"}, EventTypes: assistant.EventTypes(), SessionEvents: true, ToolEvents: true, ToolControl: true, ArtifactEvents: true, UsageEvents: true}
 		if err := agentadaptersdk.ValidateDeclaration(declaration); err != nil {
 			panic(err)
 		}

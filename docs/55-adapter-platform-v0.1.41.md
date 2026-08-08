@@ -56,3 +56,15 @@ Adapter Platform не содержит готовых production credentials/pro
 ## Уточнения после ревью
 
 В `v0.1.42` kit получил общие fixture-файлы и используется contract test реального `cmd/takt-fake-assistant`, а не только собственными unit tests. Transcript validator не видит OS process exit status и поэтому не подменяет host-проверку соответствия process exit code полю `result.exit_code`.
+
+## Reference SCM implementation — v0.1.49
+
+`v0.1.49-alpha` добавляет `cmd/takt-github-scm-adapter` как первую production-like реализацию `sdk/domainadapter`. Workflow по-прежнему использует только `scm/*` операции; GitHub/`gh` полностью находится за adapter boundary.
+
+Публичные `InvokeRequest` и `ReconcileRequest` получили `workspace`. Это execution workspace конкретного Run/node, а не provider-specific поле. Process transport устанавливает тот же каталог как cwd. Multi-repo publication дополнительно передаёт `repository_workspace` с точным child worktree.
+
+Reference adapter поддерживает reconcile для `change.create`, `change.comment`, `change.review`; наружу публикуется SHA-256 marker idempotency key, а не raw Run/Node identity. Контракт проверяется `scripts/test-reference-adapters.sh`.
+
+### Public request validation и execution workspace — v0.1.49
+
+`InvokeRequest` и `ReconcileRequest` теперь содержат provider-neutral `workspace`. `sdk/domainadapter` публикует `ValidateInvokeRequest`/`ValidateReconcileRequest`; process и MCP transports проверяют один и тот же контракт до вызова provider. Это позволяет внешнему SCM/Tracker/CI adapter работать с фактическим execution worktree без импорта runtime internals.

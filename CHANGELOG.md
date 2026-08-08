@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.49-alpha
+
+- Добавлен `cmd/qwen-takt-adapter` как первая public-SDK-only reference implementation `takt-assistant/v1alpha2`: Qwen Code headless `stream-json`, model selection, fresh/exact resume, timeout, session/message/usage/terminal normalization и fail-closed unsupported Takt policy.
+- Process `v1alpha2` больше не выводит `tool_control` и остальные event/control guarantees из версии протокола; configured capabilities должны подтверждаться фактической stream declaration, undeclared event/tool request отклоняются.
+- Добавлен `cmd/takt-github-scm-adapter` как reference implementation neutral SCM contract через authenticated `gh`: repository/change/check reads, change create/comment/review и reconcile.
+- Public `sdk/domainadapter.InvokeRequest`/`ReconcileRequest` получили execution `workspace` и request validators; process и MCP transports применяют один validation/cwd contract, а multi-repo publication передаёт `repository_workspace` candidate worktree.
+- GitHub mutating operations используют SHA-256-derived idempotency marker и reconcile после ambiguous transport failure без повторной mutation.
+- Добавлены `reference/qwencode`, `reference/githubscm`, `examples/reference-adapters`, `scripts/test-reference-adapters.sh`, ADR-080/081 и `docs/63-reference-external-adapters-v0.1.49.md`.
+- P2 backlog/roadmap/status обновлены: external wrapper и production-like SCM reference закрыты; остаются live host conformance и structured task source adapter.
+- Takt skill обновлён до 0.31.0; профиль `code` остаётся 0.16.0.
+
 ## v0.1.48-alpha
 
 - Зафиксирован общий structured JSON contract `takt-schema-subset/v1` для `input.schema` и `output_format`; полный JSON Schema не заявляется, а unsupported keywords fail-closed проверяются общим validator.

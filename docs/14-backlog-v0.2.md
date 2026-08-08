@@ -1,6 +1,6 @@
 # Актуальный backlog Takt v0.2
 
-Статус пересобран после `v0.1.48-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
+Статус пересобран после `v0.1.49-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
 
 ## P0. Доказать полезность текущего Takt
 
@@ -94,13 +94,13 @@ Draft compatibility/migration policy подготовлен. Финальная 
 
 Проверить `/takt`, input interception, tool blocking, completion blocking и recovery на зафиксированных версиях host. До этого bundled integrations остаются `guarded`.
 
-### SEAM-002. Один внешний coding-agent wrapper
+### SEAM-002. Один внешний coding-agent wrapper — реализовано в v0.1.49
 
-Реализовать reference wrapper вне внутренних пакетов Takt через `sdk/agentadapter` для одного из Codex / Oh My Pi / Qwen CLI. Цель — доказать достаточность публичного SDK, а не собрать каталог адаптеров.
+`qwen-takt-adapter` реализует `takt-assistant/v1alpha2` только через public `sdk/agentadapter`, поддерживает headless Qwen Code fresh/exact resume/model/usage и проходит общий conformance kit. Capability surface намеренно узкий и не выдаёт transport version за `tool_control`.
 
-### SEAM-003. Один production-like Domain Adapter
+### SEAM-003. Один production-like Domain Adapter — реализовано в v0.1.49
 
-Реализовать reference SCM adapter, предпочтительно GitHub, как отдельную поставку поверх `SCM/Tracker/CI` contracts. Корпоративные Git/Tracker/CI должны подключаться тем же SDK без изменений workflow.
+`takt-github-scm-adapter` реализует neutral SCM contract через public `sdk/domainadapter` и `gh`: repository/change/check reads, change create/comment/review и reconcile неизвестного side effect. Public domain request получил execution `workspace`, multi-repo publication — точный `repository_workspace`. Корпоративные Git/Tracker/CI должны использовать тот же SDK.
 
 ### SEAM-004. Structured task source adapter
 

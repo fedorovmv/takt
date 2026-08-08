@@ -54,6 +54,7 @@ type InvokeRequest struct {
 	RunID          string          `json:"run_id"`
 	NodeID         string          `json:"node_id"`
 	Attempt        int             `json:"attempt"`
+	Workspace      string          `json:"workspace,omitempty"`
 	Domain         string          `json:"domain"`
 	Operation      string          `json:"operation"`
 	Input          json.RawMessage `json:"input,omitempty"`
@@ -72,6 +73,7 @@ type Result struct {
 type ReconcileRequest struct {
 	RunID          string          `json:"run_id"`
 	NodeID         string          `json:"node_id"`
+	Workspace      string          `json:"workspace,omitempty"`
 	Domain         string          `json:"domain"`
 	Operation      string          `json:"operation"`
 	Input          json.RawMessage `json:"input,omitempty"`
@@ -143,6 +145,52 @@ func ValidateOperation(operation string) error {
 				return fmt.Errorf("operation must use lowercase letters, digits, '_' or '-' segments")
 			}
 		}
+	}
+	return nil
+}
+
+func ValidateInvokeRequest(value InvokeRequest) error {
+	if strings.TrimSpace(value.RunID) == "" || strings.TrimSpace(value.NodeID) == "" {
+		return fmt.Errorf("domain invoke request requires run_id and node_id")
+	}
+	if value.Attempt < 1 {
+		return fmt.Errorf("domain invoke request attempt must be at least 1")
+	}
+	if value.Workspace != "" && strings.TrimSpace(value.Workspace) == "" {
+		return fmt.Errorf("domain invoke request workspace cannot be blank")
+	}
+	if value.Domain != DomainSCM && value.Domain != DomainTracker && value.Domain != DomainCI {
+		return fmt.Errorf("unsupported domain %q", value.Domain)
+	}
+	if err := ValidateOperation(value.Operation); err != nil {
+		return err
+	}
+	switch value.SideEffectMode {
+	case "", "idempotent", "reconcile":
+	default:
+		return fmt.Errorf("side_effect_mode must be empty, idempotent, or reconcile")
+	}
+	if value.SideEffectMode != "" && strings.TrimSpace(value.IdempotencyKey) == "" {
+		return fmt.Errorf("side-effect domain invoke request requires idempotency_key")
+	}
+	return nil
+}
+
+func ValidateReconcileRequest(value ReconcileRequest) error {
+	if strings.TrimSpace(value.RunID) == "" || strings.TrimSpace(value.NodeID) == "" {
+		return fmt.Errorf("domain reconcile request requires run_id and node_id")
+	}
+	if value.Workspace != "" && strings.TrimSpace(value.Workspace) == "" {
+		return fmt.Errorf("domain reconcile request workspace cannot be blank")
+	}
+	if value.Domain != DomainSCM && value.Domain != DomainTracker && value.Domain != DomainCI {
+		return fmt.Errorf("unsupported domain %q", value.Domain)
+	}
+	if err := ValidateOperation(value.Operation); err != nil {
+		return err
+	}
+	if strings.TrimSpace(value.IdempotencyKey) == "" {
+		return fmt.Errorf("domain reconcile request requires idempotency_key")
 	}
 	return nil
 }

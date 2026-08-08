@@ -135,10 +135,11 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 			continue
 		}
 		payload, _ := json.Marshal(map[string]any{
-			"repository":  phase.Repository,
-			"title":       phase.Objective,
-			"head":        "${nodes." + phase.ID + ".child_branch}",
-			"base_commit": "${nodes." + phase.ID + ".child_base_commit}",
+			"repository":           phase.Repository,
+			"repository_workspace": "${nodes." + phase.ID + ".child_execution_workspace}",
+			"title":                phase.Objective,
+			"head":                 "${nodes." + phase.ID + ".child_branch}",
+			"base_commit":          "${nodes." + phase.ID + ".child_base_commit}",
 		})
 		wf.Nodes = append(wf.Nodes, spec.Node{
 			ID: phase.ID + "-publish", DependsOn: []string{phase.ID},

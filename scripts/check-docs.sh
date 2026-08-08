@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.30.0" \
-  "VERSION|0.1.48-alpha" \
-  "internal/version/version.go|0.1.48-alpha" \
+  "skills/takt/VERSION|0.31.0" \
+  "VERSION|0.1.49-alpha" \
+  "internal/version/version.go|0.1.49-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -132,6 +132,15 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-077" \
   "ARCHITECTURE_DECISIONS.md|ADR-078" \
   "ARCHITECTURE_DECISIONS.md|ADR-079" \
+  "ARCHITECTURE_DECISIONS.md|ADR-080" \
+  "ARCHITECTURE_DECISIONS.md|ADR-081" \
+  "docs/63-reference-external-adapters-v0.1.49.md|Reference External Adapters" \
+  "scripts/test-reference-adapters.sh|reference external adapters contract: PASS" \
+  "examples/reference-adapters/config.yaml|qwen-takt-adapter" \
+  "examples/reference-adapters/config.yaml|takt-github-scm-adapter" \
+  "reference/qwencode/adapter.go|takt/sdk/agentadapter" \
+  "reference/githubscm/adapter.go|takt/sdk/domainadapter" \
+  "schemas/domain-adapter-protocol.schema.json|workspace" \
   "docs/62-contract-convergence-compatibility-v0.1.48.md|Contract Convergence & Compatibility Matrix" \
   "docs/03-specification.md|takt-schema-subset/v1" \
   "docs/10-assistant-adapter-spec.md|takt compatibility matrix" \

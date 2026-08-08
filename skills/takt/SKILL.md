@@ -63,7 +63,7 @@ takt run code --workspace . --input docs/plan.md --json
     mode: reconcile
 ```
 
-Конкретный process или MCP server задаётся в `config.yaml`. Перед authoring проверь `takt adapter doctor <name> --workspace .`: обязательная operation должна присутствовать в capability declaration, а операция с `side_effect.mode: reconcile` — также в reconcile capabilities. После `unknown` не создавай ручной повтор той же операции: runtime обязан сначала сверить внешний факт с тем же idempotency key. Для примера используй `examples/adapter-platform/`.
+Конкретный process или MCP server задаётся в `config.yaml`. Перед authoring проверь `takt adapter doctor <name> --workspace .`: обязательная operation должна присутствовать в capability declaration, а операция с `side_effect.mode: reconcile` — также в reconcile capabilities. После `unknown` не создавай ручной повтор той же операции: runtime обязан сначала сверить внешний факт с тем же idempotency key. Для примера используй `examples/adapter-platform/`. Для reference implementations v0.1.49 смотри `examples/reference-adapters/`: `qwen-takt-adapter` имеет только `agent_events_v2/session_events/usage_events` и не должен использоваться для node policy, требующей tool/skill/MCP/sandbox enforcement; `takt-github-scm-adapter` реализует neutral SCM через `gh` и получает execution workspace от Takt. В multi-repo publication передавай точный `repository_workspace`, а не базовый checkout.
 
 ## Переносимые пакеты BlockPackage
 

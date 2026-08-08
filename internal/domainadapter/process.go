@@ -56,6 +56,9 @@ func (p *Process) Describe(ctx context.Context) (Declaration, error) {
 }
 
 func (p *Process) Invoke(ctx context.Context, request InvokeRequest) (Result, error) {
+	if err := sdk.ValidateInvokeRequest(request); err != nil {
+		return Result{}, err
+	}
 	raw, err := p.call(ctx, processEnvelope{APIVersion: ProtocolV1Alpha1, Kind: "InvokeRequest", Request: &request})
 	if err != nil {
 		return Result{}, err
@@ -74,6 +77,9 @@ func (p *Process) Invoke(ctx context.Context, request InvokeRequest) (Result, er
 }
 
 func (p *Process) Reconcile(ctx context.Context, request ReconcileRequest) (ReconcileResult, error) {
+	if err := sdk.ValidateReconcileRequest(request); err != nil {
+		return ReconcileResult{}, err
+	}
 	raw, err := p.call(ctx, processEnvelope{APIVersion: ProtocolV1Alpha1, Kind: "ReconcileRequest", Reconcile: &request})
 	if err != nil {
 		return ReconcileResult{}, err
@@ -109,6 +115,11 @@ func (p *Process) call(ctx context.Context, value processEnvelope) ([]byte, erro
 		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, p.Spec.Argv[0], p.Spec.Argv[1:]...)
+	if value.Request != nil && value.Request.Workspace != "" {
+		cmd.Dir = value.Request.Workspace
+	} else if value.Reconcile != nil && value.Reconcile.Workspace != "" {
+		cmd.Dir = value.Reconcile.Workspace
+	}
 	cmd.Env = os.Environ()
 	secretResolver := redact.NewFromEnvironment()
 	for key, val := range p.Spec.Env {

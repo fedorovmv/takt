@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.48-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.49-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -819,3 +819,9 @@ worktree:
 ```
 
 State and artifacts remain in the control workspace. Node execution moves into the worktree. `cleanup` is `on_success` or `manual`. Automatic cleanup applies only to a clean successful worktree; an unchanged branch is deleted, while a branch with commits and all states that may contain evidence or changes are retained. `--no-worktree`, `--keep-worktree`, `--worktree-base`, and `--allow-dirty-worktree` override policy and are persisted for resume.
+
+## Уточнение public adapter contracts v0.1.49
+
+Process `takt-assistant/v1alpha2` является transport protocol, а не неявным набором security capabilities. Реальные capabilities задаются Config и подтверждаются первой stream declaration. Runtime отклоняет configured capability, отсутствующую в declaration, event вне declared `event_types` и `tool.request` без `tool_control`.
+
+Public `sdk/domainadapter.InvokeRequest`/`ReconcileRequest` включают необязательный `workspace` — execution workspace node. Process transport использует его как cwd. Provider-specific repository identity остаётся в adapter input/config; multi-repo `change.create` передаёт `repository_workspace` с точным child execution worktree.

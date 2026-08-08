@@ -22,14 +22,15 @@ func TestProcessTransportDescribeInvokeAndReconcile(t *testing.T) {
 	if !HasCapability(dec, "change.create") || !SupportsReconcile(dec, "change.create") {
 		t.Fatalf("declaration=%#v", dec)
 	}
-	result, err := adapter.Invoke(context.Background(), InvokeRequest{Domain: "scm", Operation: "change.create", Input: json.RawMessage(`{"title":"x"}`), IdempotencyKey: "k1", SideEffectMode: "reconcile"})
+	workspace := t.TempDir()
+	result, err := adapter.Invoke(context.Background(), InvokeRequest{RunID: "run-1", NodeID: "publish", Attempt: 1, Workspace: workspace, Domain: "scm", Operation: "change.create", Input: json.RawMessage(`{"title":"x"}`), IdempotencyKey: "k1", SideEffectMode: "reconcile"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != "completed" || result.Receipt != "r:k1" {
+	if result.Status != "completed" || result.Receipt != "r:k1" || !strings.Contains(string(result.Output), workspace) {
 		t.Fatalf("result=%#v", result)
 	}
-	rec, err := adapter.Reconcile(context.Background(), ReconcileRequest{Domain: "scm", Operation: "change.create", IdempotencyKey: "k1", Receipt: result.Receipt})
+	rec, err := adapter.Reconcile(context.Background(), ReconcileRequest{RunID: "run-1", NodeID: "publish", Workspace: workspace, Domain: "scm", Operation: "change.create", IdempotencyKey: "k1", Receipt: result.Receipt})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,6 +41,7 @@ func TestProcessTransportDescribeInvokeAndReconcile(t *testing.T) {
 
 func TestMCPTransportDiscoversMappedCapabilitiesAndCallsTool(t *testing.T) {
 	argv := []string{os.Args[0], "-test.run=TestDomainAdapterHelper"}
+	workspace := t.TempDir()
 	adapter := &MCP{Spec: spec.DomainAdapterSpec{Domain: "tracker", Transport: "mcp", Argv: argv, Env: map[string]string{"TAKT_DOMAIN_HELPER": "mcp"}, Operations: map[string]string{"item.get": "corp_item_get"}, ReconcileOperations: map[string]string{"item.get": "corp_item_get_reconcile"}}}
 	dec, err := adapter.Describe(context.Background())
 	if err != nil {
@@ -48,14 +50,14 @@ func TestMCPTransportDiscoversMappedCapabilitiesAndCallsTool(t *testing.T) {
 	if !HasCapability(dec, "item.get") || !SupportsReconcile(dec, "item.get") {
 		t.Fatalf("declaration=%#v", dec)
 	}
-	result, err := adapter.Invoke(context.Background(), InvokeRequest{Domain: "tracker", Operation: "item.get", Input: json.RawMessage(`{"id":"ABC-1"}`)})
+	result, err := adapter.Invoke(context.Background(), InvokeRequest{RunID: "run-2", NodeID: "get-item", Attempt: 1, Workspace: workspace, Domain: "tracker", Operation: "item.get", Input: json.RawMessage(`{"id":"ABC-1"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != "completed" || !strings.Contains(string(result.Output), "ABC-1") {
+	if result.Status != "completed" || !strings.Contains(string(result.Output), "ABC-1") || !strings.Contains(string(result.Output), workspace) {
 		t.Fatalf("result=%#v", result)
 	}
-	rec, err := adapter.Reconcile(context.Background(), ReconcileRequest{Domain: "tracker", Operation: "item.get", Input: json.RawMessage(`{}`), IdempotencyKey: "k"})
+	rec, err := adapter.Reconcile(context.Background(), ReconcileRequest{RunID: "run-2", NodeID: "get-item", Workspace: workspace, Domain: "tracker", Operation: "item.get", Input: json.RawMessage(`{}`), IdempotencyKey: "k"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +104,9 @@ func helperProcess() {
 	case "DescribeRequest":
 		_ = enc.Encode(processResponse{APIVersion: ProtocolV1Alpha1, Kind: "DescribeResponse", Declaration: &Declaration{APIVersion: ProtocolV1Alpha1, Kind: "AdapterCapabilities", Domain: "scm", Capabilities: []string{"change.create"}, Reconcile: []string{"change.create"}}})
 	case "InvokeRequest":
-		_ = enc.Encode(processResponse{APIVersion: ProtocolV1Alpha1, Kind: "InvokeResponse", Result: &Result{Status: "completed", Output: json.RawMessage(`{"change":"1"}`), Receipt: "r:" + req.Request.IdempotencyKey}})
+		cwd, _ := os.Getwd()
+		out, _ := json.Marshal(map[string]string{"change": "1", "cwd": cwd})
+		_ = enc.Encode(processResponse{APIVersion: ProtocolV1Alpha1, Kind: "InvokeResponse", Result: &Result{Status: "completed", Output: out, Receipt: "r:" + req.Request.IdempotencyKey}})
 	case "ReconcileRequest":
 		_ = enc.Encode(processResponse{APIVersion: ProtocolV1Alpha1, Kind: "ReconcileResponse", Reconcile: &ReconcileResult{Outcome: "applied", Output: json.RawMessage(`{"change":"1"}`), Receipt: "r:" + req.Reconcile.IdempotencyKey}})
 	default:
@@ -137,7 +141,8 @@ func helperMCP() {
 			if name == "corp_item_get_reconcile" {
 				result = map[string]any{"structuredContent": map[string]any{"outcome": "applied", "receipt": "r:k"}, "content": []any{}}
 			} else {
-				result = map[string]any{"structuredContent": map[string]any{"status": "completed", "output": map[string]any{"id": fmt.Sprint(args["id"])}}, "content": []any{}}
+				cwd, _ := os.Getwd()
+				result = map[string]any{"structuredContent": map[string]any{"status": "completed", "output": map[string]any{"id": fmt.Sprint(args["id"]), "cwd": cwd}}, "content": []any{}}
 			}
 		default:
 			_ = enc.Encode(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": -32601, "message": "not found"}})

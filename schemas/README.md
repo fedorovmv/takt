@@ -38,3 +38,7 @@ Go-loader и authoring preflight остаются главным валидат�
 `workflow.schema.json` различает structural `subworkflow` и governed `workflow`. Последний задаёт `path`, `input`, `output_node` и `isolation`. `run-state.schema.json` описывает `parent_run_id`, `parent_node_id`, `child_run_ids`, waiting kind/link, Run output/usage/cancel state и историю child attempts на узле.
 
 Начиная с `v0.1.44`, `attempts.backoff` имеет durable deadline в RunState, а `sandbox.enforcement` описывает только локальное OS enforcement для deterministic `bash/script` узлов. Assistant-level `sandbox.filesystem/network` остаётся capability-контрактом adapter. `run-state.schema.json` фиксирует diagnostic fingerprint, retry deadline и фактическое sandbox decision для воспроизводимого resume.
+
+## v0.1.49 external adapter seam
+
+`domain-adapter-protocol.schema.json` includes optional `workspace` in Invoke/Reconcile requests. It is the execution workspace/cwd supplied by Takt; provider-specific repository identity stays in the operation input/config. Reference implementations are documented in `docs/63-reference-external-adapters-v0.1.49.md`.

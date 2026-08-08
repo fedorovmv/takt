@@ -34,4 +34,4 @@ assistants:
     type: process
     protocol: takt-assistant/v1alpha2
     argv: [qwen-takt-adapter]
-    capabilities: [tool_policy, skills, mcp, sandbox_filesystem]
+    capabilities: [agent_events_v2, session_events, usage_events]

@@ -1,6 +1,6 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.48-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.49-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
 ## Ядро runtime — реализовано
 
@@ -45,7 +45,7 @@ Bundled Pi/OpenCode host integrations остаются `guarded`, пока comma
 - portable BlockPackage install/update/sync/sign, lock/dependencies/scopes/source/signature policy;
 - Agent Adapter SDK.
 
-Production provider adapters намеренно не встроены в ядро. Fake adapters доказывают контракт; GitHub/корпоративные реализации остаются внешними поставками.
+Provider-specific adapters не встроены в runtime. `v0.1.49` добавляет две reference implementations поверх public SDK: Qwen Code process wrapper и GitHub SCM/`gh` adapter. Fake fixtures остаются deterministic release gate; live credentials/providers требуют отдельного smoke. Корпоративные implementations должны использовать те же public contracts.
 
 ## Локальная эксплуатация — реализована
 
@@ -116,13 +116,22 @@ Deterministic fixture доказывает measurement correctness. Production q
 - Pi/OpenCode session adapter compatibility отделена от host-control enforcement; bundled host integrations остаются guarded до live conformance;
 - process `takt-assistant/v1alpha1` помечен deprecated для новых wrappers, `v1alpha2` остаётся целевым public protocol.
 
+## P2 External seams — v0.1.49
+
+- `cmd/qwen-takt-adapter` использует только `sdk/agentadapter`, преобразует официальный Qwen Code headless stream-json в v1alpha2 и поддерживает exact resume;
+- process v1alpha2 больше не означает автоматический `tool_control`: configured capabilities должны подтверждаться stream declaration;
+- `cmd/takt-github-scm-adapter` использует только `sdk/domainadapter`, реализует neutral SCM operations и reconcile через hashed marker;
+- domain Invoke/Reconcile request содержит execution `workspace`, process transport использует его как cwd;
+- multi-repo `publish_change` передаёт точный `repository_workspace` candidate worktree;
+- `scripts/test-reference-adapters.sh` доказывает оба seams без сетевых credentials.
+
 ## Фактические незакрытые gaps
 
 1. Live Route DSL production evidence.
 2. Go + Document production evaluation.
 3. Финальная v0.2/v1beta1 migration после production evidence; schema subset, field audit и compatibility matrix закрыты в v0.1.48.
 4. Live strict host conformance Pi/OpenCode.
-5. Один реальный external coding-agent wrapper и один production-like Domain Adapter.
+5. Live Qwen/GitHub smoke reference adapters с внешними credentials при внедрении; public SDK/reference implementation закрыты в v0.1.49.
 6. Structured task source adapter.
 7. Human-reviewed skill/block learning loop.
 8. Workflow graph/explain/scaffold и статический reject/revise contract.

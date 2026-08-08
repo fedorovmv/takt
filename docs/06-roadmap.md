@@ -1,6 +1,6 @@
 # План развития Takt
 
-Актуальный план после `v0.1.48-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/62-*.md`.
+Актуальный план после `v0.1.49-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/62-*.md`.
 
 ## Текущая позиция
 
@@ -56,14 +56,19 @@ Stabilization начат в `v0.1.47` и продолжен в `v0.1.48`, но `
 
 ## P2. External seams
 
-После стабилизации публичных контрактов:
+P2 начат в `v0.1.49-alpha`. Уже реализованы:
+
+- reference Qwen Code wrapper через `sdk/agentadapter`;
+- reference GitHub SCM adapter через `sdk/domainadapter`;
+- execution `workspace` как нейтральный domain-request context;
+- conservative process-v1alpha2 capability negotiation без неявного `tool_control`.
+
+Остаются:
 
 - live Pi/OpenCode host conformance;
-- один reference external coding-agent wrapper через `sdk/agentadapter`;
-- один production-like SCM adapter;
 - один structured task source adapter.
 
-Эти реализации должны жить поверх публичных SDK/контрактов и выявлять недостающие seams без provider-specific логики в runtime.
+Reference implementations живут поверх публичных SDK/контрактов; provider-specific логика не переносится в runtime.
 
 ## P3. Learning и UX
 
