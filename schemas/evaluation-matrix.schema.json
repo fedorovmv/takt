@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/evaluation-matrix.schema.json",
+  "title": "Takt EvaluationMatrix v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "benchmark",
+    "strategies"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "takt/evaluation/v1alpha1"
+    },
+    "kind": {
+      "const": "EvaluationMatrix"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "benchmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "baseline_strategy",
+        "cases",
+        "workspace_template",
+        "quality_node",
+        "generation_node"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseline_strategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cases": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_manifest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspace_template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "approval_answer": {
+          "type": "string"
+        },
+        "quality_node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generation_node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validator": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "strategies": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "workflow",
+          "config"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "workflow": {
+            "type": "string",
+            "minLength": 1
+          },
+          "config": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "strategy"
+        ],
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "minLength": 1
+          },
+          "success_at_1_min": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "final_success_rate_min": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "cost_per_valid_max_regression_percent": {
+            "type": "number",
+            "minimum": 0
+          },
+          "time_to_valid_max_regression_percent": {
+            "type": "number",
+            "minimum": 0
+          },
+          "unstable_cases_max": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  }
+}

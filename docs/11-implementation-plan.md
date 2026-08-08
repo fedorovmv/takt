@@ -69,7 +69,7 @@
 - retry `resume` продолжает предыдущую либо возвращает явную ошибку;
 - timeout работает.
 
-## 5. Этап D. Route DSL end-to-end и evaluation — benchmark-контур реализован в v0.1.11–v0.1.16-alpha
+## 5. Этап D. Route DSL end-to-end и evaluation — сравнительный benchmark реализован к v0.1.45-alpha
 
 ```text
 prepare input
@@ -88,19 +88,19 @@ prepare input
 - тест требует двух попыток и проверяет продолжение Session ID;
 - `route.yaml` и validation report сохраняются как artifacts;
 - approval/resume проходит через CLI;
-- `takt eval run/report` прогоняет каталог заданий в изолированных workspace;
+- `takt eval run/report/benchmark/compare` прогоняет corpus, сравнивает стратегии и применяет regression gates;
 - отчёт фиксирует strategy/benchmark/workspace/validator fingerprints и per-attempt assistant version, requested model и фактический resolved model;
 - quality node возвращает `takt-validation/v1alpha1`, а summary рассчитывает success@1, final success, score и cost/time per valid;
 - `NodeState` и evaluation report сохраняют attempts, execution records, duration, usage, resume, feedback, diagnostic output, approvals и errors;
 - usage группируется по execution identity; mixed retry не приписывается последней модели;
 - нулевые измеренные quality-метрики сериализуются явно, а недоступные значения — как `null`;
 - preflight отклоняет коллизии нормализованных `case_id` и пересечение workspace template/output;
-- инфраструктурный fake-Pi набор и реальный Route DSL benchmark разделены; реальный набор содержит десять заданий и требует штатный валидатор.
+- infrastructure fake benchmark и live Route DSL benchmark разделены; corpus содержит 10 regression и 15 production-shaped synthetic cases, live quality требует штатный валидатор.
 
 ### Остаётся
 
 - подключить штатный `route-tool` к `examples/route-dsl-benchmark`;
-- заменить или дополнить десять стартовых заданий реальными обезличенными примерами;
+- дополнить versioned synthetic corpus отдельным реальным обезличенным corpus, когда он будет доступен;
 - получить baseline и сравнить модели/стратегии на одинаковых fingerprints;
 - учитывать manual corrections результата и при необходимости расширить предметные checks.
 
@@ -178,7 +178,7 @@ agent draft
 
 Активный порядок:
 
-1. Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями: получить воспроизводимый baseline `success@1`, final success, attempts, cost/time и устойчивость failure fingerprints;
+1. Выполнить зафиксированную v0.1.45 Route DSL matrix со штатным валидатором и доступными моделями; сохранить baseline/candidate evidence и использовать его для решений v0.2;
 2. более полный JSON Schema, полная iteration history и проектирование `v1beta1`;
 3. только после результатов benchmark — точечные изменения runtime semantics, подтверждённые реальными Run.
 

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/evaluation-case-manifest.schema.json",
+  "title": "Takt Evaluation CaseManifest v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "cases"],
+  "properties": {
+    "apiVersion": {"const": "takt/evaluation/v1alpha1"},
+    "kind": {"const": "CaseManifest"},
+    "cases": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

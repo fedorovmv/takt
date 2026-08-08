@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.44-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.45-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -774,6 +774,8 @@ takt worktree remove <run-id> --workspace <dir> [--force]
 takt worktree prune --workspace <dir>
 takt eval run <workflow> --config <config> --cases <dir> --workspace-template <dir> --output <dir> [--strategy-id <id>] [--benchmark-id <id>] [--quality-node <id>] [--generation-node <id>] [--validator-path <path>]
 takt eval report <evaluation-output-dir>
+takt eval benchmark <matrix.yaml> [--output <dir>] [--repeat N] [--replace]
+takt eval compare <baseline-output-dir> <candidate-output-dir>
 ```
 
 Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status`, `children`, `artifacts`, `cancel`, `command run` и `eval` используют JSON по умолчанию.
@@ -784,7 +786,10 @@ takt eval report <evaluation-output-dir>
 
 Каждая фактическая попытка действия сохраняется в `nodes.<id>.executions`. Summary группирует tokens/cost по `usage_by_execution_identity`; при смене assistant, его версии, requested или resolved model узел получает `mixed_execution_identity: true`.
 
-При заданном `--quality-node` Takt декодирует доступный строгий `takt-validation/v1alpha1` только из stdout узла и независимо от exit code и terminal status. Stderr сохраняется отдельно и входит в объединённый диагностический output, но не участвует в декодировании envelope. `score`, `checks` и diagnostics сохраняются и участвуют в предметных агрегатах даже для `valid: false` с ненулевым exit code. Успех определяется только сочетанием `quality_node_status: completed` и `quality.valid: true`; результат из failed/errored/timed_out/cancelled/skipped/blocked узла не повышает success rate. Malformed envelope при любом статусе является ошибкой измерительного контура. Runner агрегирует `success_at_1`, итоговую долю корректных результатов, среднюю оценку, попытки до успеха, стоимость и `amortized_end_to_end_ms_per_valid`, а также diagnostics по severity/code.
+При заданном `--quality-node` Takt декодирует доступный строгий `takt-validation/v1alpha1` только из stdout узла и независимо от exit code и terminal status. Stderr сохраняется отдельно и входит в объединённый диагностический output, но не участвует в декодировании envelope. `score`, `checks` и diagnostics сохраняются и участвуют в предметных агрегатах даже для `valid: false` с ненулевым exit code. Успех определяется только сочетанием `quality_node_status: completed` и `quality.valid: true`; результат из failed/errored/timed_out/cancelled/skipped/blocked узла не повышает success rate. Malformed envelope при любом статусе является ошибкой измерительного контура. Runner агрегирует `success_at_1`, итоговую долю корректных результатов, среднюю оценку, попытки до успеха, стоимость, `amortized_end_to_end_ms_per_valid`, настоящий `average_time_to_valid_ms`, failed-execution cost, retry и diagnostics по severity/code/fingerprint. При repeat > 1 также вычисляется стабильность каждого case.
+
+
+`EvaluationMatrix` (`takt/evaluation/v1alpha1`) задаёт общий benchmark, обязательную baseline strategy, несколько workflow/config стратегий, repeat и regression gates. `takt eval benchmark` сохраняет `benchmark.json` (`takt-evaluation-matrix/v1alpha1`), а `takt eval compare` требует одинаковый benchmark fingerprint и строит парные исходы по `case_id + repeat`. `CaseManifest` фиксирует labels корпуса и входит в benchmark fingerprint. Gate failure возвращает non-zero после сохранения полного отчёта.
 
 Измеренные нулевые доли сериализуются как `0`. Метрики, которые нельзя вычислить, например average score без score или cost per valid без корректных результатов, сериализуются как `null`. Общий benchmark fingerprint включает ID, версию и fingerprint валидатора. Workflow и предметный валидатор остаются источником критерия качества; Takt не интерпретирует семантику Route DSL.
 
@@ -794,7 +799,7 @@ takt eval report <evaluation-output-dir>
 - вложенный `loop_group` внутри `loop_group` запрещён;
 - `native_hooks` передаются адаптеру, но не исполняются runtime;
 - несколько `workflow`-узлов пока не выполняются одной параллельной волной;
-- нет OS sandbox для недоверенного кода; filesystem/network policy остаётся assistant-enforced, а server, Web UI и БД — proposal вне локального режима;
+- локальный OS sandbox применяется к запускаемым Takt `bash/script`; `command/prompt` filesystem/network policy остаётся assistant-enforced, а полноценная untrusted/multi-user boundary, server, Web UI и БД — proposal вне локального режима;
 - stale lock требует ручного удаления после аварийного завершения процесса;
 - специализированные Pi и OpenCode adapters реализованы;
 - `takt-assistant/v1alpha1` реализован для универсального `process`; специализированный `pi` использует официальный Pi RPC JSONL, а `opencode` — официальный `run --format json` event stream; потоковые события пока не публикуются в EventSink.

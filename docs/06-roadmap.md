@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.44-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.45-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -100,9 +100,21 @@ Dynamic Plan хранит внутренний `EvidenceManifest` с baseline pr
 
 Полный срез: `58-runtime-reliability-local-security-v0.1.44.md`.
 
-## Приоритет 1. Route DSL benchmark и реальные evals
+## Выполнено в v0.1.45-alpha. Route DSL Evaluation & Strategy Benchmark
 
-Следующий крупный шаг — предметная проверка уже собранного runtime со штатным валидатором и обезличенными реальными заданиями: success@1, final success, число попыток, стоимость, time-to-valid и стабильность diagnostics/evidence на неизменных fingerprints. Infrastructure-contract suites остаются отдельными от quality benchmark.
+- EvaluationMatrix и CaseManifest;
+- agent-neutral strategy workflows;
+- matrix/repeat, `takt eval compare` и category breakdown;
+- true time-to-valid, retry/failed-execution cost и diagnostic fingerprint stability;
+- regression gates с non-zero exit и сохранённым benchmark report;
+- 25-case corpus: 10 regression + 15 production-shaped synthetic cases;
+- воспроизводимый fake benchmark baseline-vs-feedback.
+
+Полный срез: `59-route-dsl-evaluation-strategy-benchmark-v0.1.45.md`.
+
+## Приоритет 1. Реальный benchmark и v0.2 stabilization
+
+Следующий этап начинается с фактического прогона неизменной matrix на штатном Route DSL validator и доступных coding-agent/model конфигурациях. После получения evidence нужно зафиксировать полезные стратегии, убрать неокупающуюся сложность и стабилизировать внешний API/схемы для v0.2. Synthetic corpus не подменяет production evidence.
 
 ## Отложенные proposals
 

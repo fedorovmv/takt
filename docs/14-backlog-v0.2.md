@@ -122,7 +122,7 @@
 
 Остаётся:
 
-- выполнить baseline со штатным `route-tool` и реальным Pi на десяти обезличенных заданиях;
+- выполнить v0.1.45 matrix со штатным `route-tool`, configured coding-agent/model и отдельным реальным обезличенным corpus;
 - расширить предметные checks валидатора семантикой требований;
 - учитывать manual corrections результата;
 - добавить сравнение нескольких report.json в CLI или внешний dashboard.
@@ -159,7 +159,7 @@ Draft → approval comment → revise → artifact без изменения run
 
 ### TAKT-020. Eval metrics — основной JSON-контур реализован
 
-`takt eval run/report` собирает идентичность стратегии/benchmark/workspace/валидатора, per-attempt assistant/version/requested/resolved model, status, attempts, duration, usage, approvals, diagnostics и предметное качество. Реализованы success@1, final success, average score, attempts/cost per valid, амортизированная end-to-end длительность и usage по execution identity. Остаются настоящий time-to-valid, CLI-сравнение нескольких отчётов, экспорт таблиц и manual corrections.
+`takt eval run/report/benchmark/compare` собирает идентичность стратегии/benchmark/workspace/валидатора, per-attempt assistant/version/requested/resolved model, status, attempts, duration, usage, approvals, diagnostics и предметное качество. В v0.1.45 добавлены настоящий time-to-valid, matrix/repeat, парное CLI-сравнение, category breakdown, failed-execution cost, diagnostic fingerprints/stability и regression gates. Остаются экспорт табличных форматов, ручная разметка production corpus и task-level benchmark полного Dynamic Takt.
 
 ## Вне локального v0.2
 

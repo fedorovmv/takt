@@ -484,3 +484,20 @@ Takt не хранит секреты самостоятельно. `secret://EN
 Assistant sandbox без `enforcement` остаётся capability-контрактом конкретного coding-agent. Реальный OS wrapper применяется только к локальным `bash/script` nodes, которые Takt запускает сам: `bubblewrap` на Linux или `sandbox-exec` на macOS при наличии. `enforcement: required` fail-closed до payload execution, `optional` сохраняет degraded decision.
 
 **Причина.** Нельзя называть инструкцию coding-agent системной песочницей и нельзя делать секретное значение частью durable orchestration state. При этом текущий продукт остаётся trusted local single-user runtime; server/RBAC/Vault/container orchestration требуют отдельной threat model.
+
+
+## ADR-072. Strategy benchmark is a measurement layer over the existing runtime
+
+**Статус:** принято.
+
+`EvaluationMatrix` запускает обычные Takt workflows через существующий evaluation runner. Baseline и candidates различаются workflow/config fingerprints; отдельного benchmark scheduler или специального execution runtime нет. Pairing выполняется по `case_id + repeat`, а сравнение допускается только при одинаковом benchmark fingerprint.
+
+**Причина.** Средство измерения не должно менять исследуемую orchestration semantics. Matrix делает сравнение воспроизводимым, но оставляет Run, retries, evidence и coding-agent adapters теми же, что и в обычном использовании.
+
+## ADR-073. Time-to-valid and experiment identity come from durable evidence
+
+**Статус:** принято.
+
+True time-to-valid вычисляется от `Run.CreatedAt` до durable `node.completed` выбранного quality-node при `valid=true`. Retry/failure fingerprints читаются из durable events/state. `experiment_fingerprint` зависит от benchmark ID, repeat и strategy/benchmark fingerprints, но не от временного пути matrix-файла. CaseManifest входит в benchmark identity.
+
+**Причина.** Амортизированное время всего эксперимента не отвечает на вопрос, когда появился первый корректный результат, а путь временного файла не должен создавать новую экспериментальную идентичность. Измерения должны переживать перенос каталога и опираться на сохранённые факты runtime.

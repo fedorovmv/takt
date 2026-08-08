@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.45-alpha
+
+- Evaluation runner получил `EvaluationMatrix` и `CaseManifest`: `takt eval benchmark` запускает несколько agent-neutral workflow-стратегий на одном corpus/repeat, а `takt eval compare` строит парные переходы baseline/candidate и category breakdown.
+- Добавлены true `time_to_valid_ms` по durable quality-node event, retry/failed-execution metrics, diagnostic fingerprints и stable/unstable case aggregation.
+- Добавлены regression gates для success@1/final success, cost/time regression и unstable cases; gate failure возвращает non-zero после сохранения полного `benchmark.json`.
+- Route DSL corpus расширен до 25 cases: 10 regression + 15 production-shaped synthetic cases. Добавлены baseline-direct, feedback-repair и inspect-feedback стратегии; конкретный coding-agent выбирается конфигурацией, а не workflow.
+- Добавлен воспроизводимый `scripts/test-route-dsl-benchmark.sh`, который доказывает baseline→candidate improvement на fake Route DSL model/validator и отрицательный gate path без Python dependency.
+- Добавлены ADR-072/073, `docs/59-route-dsl-evaluation-strategy-benchmark-v0.1.45.md` и новые evaluation schemas. Takt skill обновлён до 0.27.0; профиль `code`/`code-core` не меняются.
+
 ## v0.1.44-alpha
 
 - Добавлены durable retry/backoff (`attempts.backoff`) и machine-readable diagnostics с нормализованным SHA-256 fingerprint; retry decision хранит точный `not_before` и переживает restart/resume.

@@ -1466,13 +1466,14 @@ func commandCmd(args []string) error {
 
 func evalCmd(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: takt eval <run|report> [flags]")
+		return fmt.Errorf("usage: takt eval <run|report|benchmark|compare> [flags]")
 	}
 	switch args[0] {
 	case "run":
 		fs := newFlagSet("eval run")
 		configPath := fs.String("config", ".takt/config.yaml", "config path")
 		casesDir := fs.String("cases", "", "directory containing Markdown cases")
+		caseManifest := fs.String("case-manifest", "", "optional YAML metadata for benchmark cases")
 		templateDir := fs.String("workspace-template", "", "workspace template directory")
 		outputDir := fs.String("output", ".takt/evals/latest", "evaluation output directory")
 		repeat := fs.Int("repeat", 1, "number of repetitions per case")
@@ -1487,7 +1488,7 @@ func evalCmd(args []string) error {
 		validatorPath := fs.String("validator-path", "", "validator file or directory to fingerprint")
 		jsonOut := fs.Bool("json", true, "JSON output")
 		values := map[string]bool{
-			"--config": true, "--cases": true, "--workspace-template": true, "--output": true,
+			"--config": true, "--cases": true, "--case-manifest": true, "--workspace-template": true, "--output": true,
 			"--repeat": true, "--answer": true, "--replace": false, "--json": false,
 			"--strategy-id": true, "--benchmark-id": true, "--quality-node": true,
 			"--generation-node": true, "--validator-id": true, "--validator-version": true,
@@ -1506,7 +1507,54 @@ func evalCmd(args []string) error {
 			StrategyID: *strategyID, BenchmarkID: *benchmarkID,
 			QualityNode: *qualityNode, GenerationNode: *generationNode,
 			ValidatorID: *validatorID, ValidatorVersion: *validatorVersion, ValidatorPath: *validatorPath,
+			CaseManifestPath: *caseManifest,
 		})
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, report)
+	case "benchmark":
+		fs := newFlagSet("eval benchmark")
+		outputDir := fs.String("output", "", "benchmark output directory")
+		repeat := fs.Int("repeat", 0, "override repetitions per case from matrix")
+		replace := fs.Bool("replace", false, "replace existing benchmark output")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		values := map[string]bool{"--output": true, "--repeat": true, "--replace": false, "--json": false}
+		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt eval benchmark <matrix.yaml> [--output dir] [--repeat N] [--replace]")
+		}
+		report, err := evaluation.RunMatrix(context.Background(), evaluation.MatrixRunOptions{MatrixPath: fs.Arg(0), OutputDir: *outputDir, Repeat: *repeat, Replace: *replace})
+		if err != nil {
+			var gateErr *evaluation.GateFailureError
+			if errors.As(err, &gateErr) && gateErr.Report != nil {
+				if printErr := printResult(*jsonOut, gateErr.Report); printErr != nil {
+					return printErr
+				}
+			}
+			return err
+		}
+		return printResult(*jsonOut, report)
+	case "compare":
+		fs := newFlagSet("eval compare")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 2 {
+			return fmt.Errorf("usage: takt eval compare <baseline-output-dir> <candidate-output-dir>")
+		}
+		baseline, err := evaluation.LoadReport(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		candidate, err := evaluation.LoadReport(fs.Arg(1))
+		if err != nil {
+			return err
+		}
+		report, err := evaluation.Compare(baseline, candidate)
 		if err != nil {
 			return err
 		}
@@ -1521,12 +1569,16 @@ func evalCmd(args []string) error {
 			return fmt.Errorf("usage: takt eval report <evaluation-output-dir>")
 		}
 		report, err := evaluation.LoadReport(fs.Arg(0))
-		if err != nil {
-			return err
+		if err == nil {
+			return printResult(*jsonOut, report)
 		}
-		return printResult(*jsonOut, report)
+		matrixReport, matrixErr := evaluation.LoadMatrixReport(fs.Arg(0))
+		if matrixErr == nil {
+			return printResult(*jsonOut, matrixReport)
+		}
+		return fmt.Errorf("load evaluation report: suite=%v; matrix=%v", err, matrixErr)
 	default:
-		return fmt.Errorf("usage: takt eval <run|report> [flags]")
+		return fmt.Errorf("usage: takt eval <run|report|benchmark|compare> [flags]")
 	}
 }
 

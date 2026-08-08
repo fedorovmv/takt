@@ -1,0 +1,41 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: route-dsl-feedback-repair
+  description: Coding-agent с детерминированной проверкой и feedback retry
+
+defaults:
+  assistant: coding-agent
+  model: route-model
+  session: resume
+
+nodes:
+  - id: implement
+    prompt: |
+      Создай или исправь файл route.yaml по техническому заданию.
+
+      Техническое задание:
+      ${input}
+
+      Диагностика предыдущей попытки:
+      ${feedback}
+
+      Требования:
+      - работай только в текущей рабочей области;
+      - итоговый route.yaml должен пройти ./route-tool validate route.yaml;
+      - не придумывай отсутствующие возможности DSL.
+    attempts:
+      max: 3
+    hooks:
+      after_node:
+        - id: validate-generated-route
+          bash: |
+            ./route-tool validate route.yaml
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: full-validation
+    depends_on: [implement]
+    bash: |
+      ./route-tool validate route.yaml

@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.26.0" \
-  "VERSION|0.1.44-alpha" \
-  "internal/version/version.go|0.1.44-alpha" \
+  "skills/takt/VERSION|0.27.0" \
+  "VERSION|0.1.45-alpha" \
+  "internal/version/version.go|0.1.45-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -120,6 +120,15 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-069" \
   "ARCHITECTURE_DECISIONS.md|ADR-070" \
   "ARCHITECTURE_DECISIONS.md|ADR-071" \
+  "ARCHITECTURE_DECISIONS.md|ADR-072" \
+  "ARCHITECTURE_DECISIONS.md|ADR-073" \
+  "docs/59-route-dsl-evaluation-strategy-benchmark-v0.1.45.md|Route DSL Evaluation & Strategy Benchmark" \
+  "docs/06-roadmap.md|Выполнено в v0.1.45-alpha" \
+  "schemas/evaluation-matrix.schema.json|EvaluationMatrix" \
+  "schemas/evaluation-case-manifest.schema.json|CaseManifest" \
+  "schemas/evaluation-compare.schema.json|takt-evaluation-compare/v1alpha1" \
+  "schemas/evaluation-matrix-report.schema.json|takt-evaluation-matrix/v1alpha1" \
+  "scripts/test-route-dsl-benchmark.sh|Route DSL strategy benchmark: PASS" \
   "docs/58-runtime-reliability-local-security-v0.1.44.md|Runtime Reliability & Local Security" \
   "docs/06-roadmap.md|Выполнено в v0.1.44-alpha" \
   "schemas/workflow.schema.json|backoff" \
@@ -332,7 +341,7 @@ for check in \
   "DEVELOPMENT.md|make route-benchmark" \
   "SECURITY.md|models.*.params" \
   "examples/route-dsl-eval/README.md|takt eval run" \
-  "examples/route-dsl-benchmark/README.md|реального Pi" \
+  "examples/route-dsl-benchmark/README.md|25 заданиях" \
   "examples/route-dsl-e2e/workflow.yaml|validate-generated-route" \
   "scripts/test-route-dsl-e2e.sh|Route DSL end-to-end: PASS" \
   "scripts/test-route-dsl-eval.sh|takt eval run" \
@@ -348,6 +357,8 @@ for check in \
   "schemas/evaluation-report.schema.json|by_assistant_version" \
   "schemas/evaluation-report.schema.json|usage_by_execution_identity" \
   "schemas/evaluation-report.schema.json|amortized_end_to_end_ms_per_valid" \
+  "schemas/evaluation-report.schema.json|average_time_to_valid_ms" \
+  "schemas/evaluation-report.schema.json|diagnostics_by_fingerprint" \
   "schemas/evaluation-report.schema.json|mixed_execution_identity" \
   "schemas/evaluation-report.schema.json|stdout" \
   "schemas/evaluation-report.schema.json|stderr"

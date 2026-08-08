@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/evaluation-compare.schema.json",
+  "title": "Takt Evaluation Compare Report v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["report_version", "benchmark", "baseline", "candidate", "metrics", "paired_outcomes", "cases"],
+  "properties": {
+    "report_version": {"const": "takt-evaluation-compare/v1alpha1"},
+    "benchmark": {"type": "object"},
+    "baseline": {"type": "object"},
+    "candidate": {"type": "object"},
+    "metrics": {"type": "object"},
+    "paired_outcomes": {"$ref": "#/$defs/outcomes"},
+    "cases": {"type": "array", "items": {"type": "object"}},
+    "by_category": {"type": "array", "items": {"type": "object"}}
+  },
+  "$defs": {
+    "outcomes": {
+      "type": "object", "additionalProperties": false,
+      "required": ["both_valid", "baseline_only_valid", "candidate_only_valid", "both_invalid"],
+      "properties": {
+        "both_valid": {"type": "integer", "minimum": 0},
+        "baseline_only_valid": {"type": "integer", "minimum": 0},
+        "candidate_only_valid": {"type": "integer", "minimum": 0},
+        "both_invalid": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # План оценки агентных стратегий
 
-Статус: benchmark-контур реализован в `v0.1.17-alpha` командами `takt eval run/report`. Инфраструктурный набор с fake Pi отделён от реального Route DSL benchmark.
+Статус: в `v0.1.45-alpha` контур поддерживает `takt eval run/report/benchmark/compare`, EvaluationMatrix, CaseManifest, повторы, парное сравнение и regression gates. Fake contract benchmark отделён от live Route DSL benchmark со штатным валидатором.
 
 ## 1. Цель
 
@@ -94,7 +94,7 @@ Takt должен позволять сравнивать стратегии в�
 - input/output tokens и стоимость;
 - diagnostics, feedback и ошибки;
 - число approval answers;
-- количество ручных исправлений результата — следующий отдельный показатель.
+- количество approval answers как наблюдаемый proxy вмешательств пользователя;
 
 Агрегаты:
 
@@ -104,17 +104,22 @@ Takt должен позволять сравнивать стратегии в�
 - `average_score`;
 - `cost_per_valid`;
 - `amortized_end_to_end_ms_per_valid`;
-- diagnostics по severity/code;
+- настоящий `average_time_to_valid_ms`;
+- `retry_scheduled`, failed executions и их стоимость;
+- diagnostics по severity/code/fingerprint;
+- stable-valid / stable-invalid / unstable cases при repeat;
 - распределение assistant/requested/resolved model;
 - `usage_by_execution_identity` и число mixed-узлов.
 
-Стоимость и амортизированная end-to-end длительность на корректный результат включают затраты неуспешных запусков. Настоящий time-to-valid пока не рассчитывается.
+Стоимость и амортизированная end-to-end длительность включают неуспешные запуски. `time_to_valid_ms` измеряет момент durable завершения корректного quality-node внутри конкретного Run и является отдельной метрикой.
 
 Измеренный ноль сериализуется как `0`; недоступный показатель — как `null`.
 
 ## 7. Правила сравнения
 
-- одна стратегия запускается на всех заданиях;
+- EvaluationMatrix запускает все стратегии на одном corpus/repeat;
+- baseline_strategy задаётся явно;
+- сравнение выполняется попарно по case_id + repeat;
 - изменения prompts, config или commands создают новый fingerprint;
 - набор заданий, workspace template и валидатор должны иметь одинаковые fingerprints;
 - успех определяется внешним критерием, а не сообщением агента;
@@ -144,8 +149,14 @@ takt eval run <workflow> \
   --json
 ```
 
-`examples/route-dsl-eval` проверяет инфраструктуру с fake Pi. `examples/route-dsl-benchmark` запускает реальный Pi и штатный валидатор на десяти заданиях.
+`examples/route-dsl-eval` проверяет инфраструктуру с fake adapter. `examples/route-dsl-benchmark` содержит agent-neutral matrix на 25 regression/production-shaped synthetic cases; live запуск использует configured coding-agent и штатный валидатор.
 
 ## 9. Критерий полезности Takt
 
 Takt подтверждает ценность, если новая стратегия добавляется изменением workflow/config/commands, общий benchmark запускается без изменения runtime, а отчёт позволяет доказательно связать результат с точной моделью, стратегией, набором заданий и валидатором.
+
+## 10. Сравнительный benchmark v0.1.45
+
+`examples/route-dsl-benchmark` содержит 25 размеченных cases и три agent-neutral workflow-стратегии. 10 cases являются regression corpus, 15 — production-shaped synthetic cases. Live качество оценивается только штатным внешним валидатором; репозиторий не заявляет synthetic cases как обезличенные production данные.
+
+`takt eval benchmark` пишет immutable strategy reports и общий `benchmark.json`; `takt eval compare` показывает both-valid / baseline-only / candidate-only / both-invalid и разрез по category. Regression gates допускают абсолютные пороги success и ограничение регрессии cost/time. Полный task-level Dynamic Takt benchmark остаётся отдельным следующим измерительным расширением.

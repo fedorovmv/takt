@@ -3,6 +3,7 @@ package evaluation
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -815,5 +816,244 @@ nodes:
 	}
 	if report.Summary.Valid != 0 || report.Summary.Invalid != 1 || floatValue(report.Summary.AverageScore) != 37 {
 		t.Fatalf("invalid quality outcome was aggregated incorrectly: %+v", report.Summary)
+	}
+}
+
+func TestRunCapturesTimeToValidRetriesAndDiagnosticFingerprints(t *testing.T) {
+	root := t.TempDir()
+	workflowPath := filepath.Join(root, "workflow.yaml")
+	configPath := filepath.Join(root, "config.yaml")
+	casesDir := filepath.Join(root, "cases")
+	templateDir := filepath.Join(root, "template")
+	outputDir := filepath.Join(root, "output")
+	for _, dir := range []string{casesDir, templateDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: metrics
+nodes:
+  - id: implement
+    bash: |
+      if [ ! -f attempt ]; then touch attempt; echo first >&2; exit 7; fi
+      echo ok
+    attempts:
+      max: 2
+      retry_on: [exit]
+      backoff:
+        initial: 1ms
+        multiplier: 1
+        max: 1ms
+  - id: quality
+    depends_on: [implement]
+    bash: |
+      printf '%s\n' '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":true,"score":100,"checks":{},"diagnostics":[]}'
+`, 0o644)
+	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
+	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
+	report, err := Run(context.Background(), RunOptions{WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir, WorkspaceTemplate: templateDir, OutputDir: outputDir, QualityNode: "quality", GenerationNode: "implement"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Runs) != 1 || report.Runs[0].TimeToValidMS == nil {
+		t.Fatalf("time-to-valid missing: %+v", report.Runs)
+	}
+	if report.Runs[0].RetryScheduled != 1 || report.Summary.RetryScheduled != 1 {
+		t.Fatalf("retry metrics = run:%d summary:%d", report.Runs[0].RetryScheduled, report.Summary.RetryScheduled)
+	}
+	if len(report.Runs[0].RetryFingerprints) != 1 {
+		t.Fatalf("retry fingerprints = %#v", report.Runs[0].RetryFingerprints)
+	}
+	if report.Summary.FailedExecutions != 1 {
+		t.Fatalf("failed executions = %d", report.Summary.FailedExecutions)
+	}
+	if len(report.Summary.DiagnosticsByFingerprint) == 0 {
+		t.Fatalf("diagnostic fingerprints missing: %+v", report.Summary)
+	}
+	if report.Summary.AverageTimeToValidMS == nil {
+		t.Fatal("average time-to-valid missing")
+	}
+}
+
+func TestComparePairsRunsAndReportsTransitions(t *testing.T) {
+	fp := strings.Repeat("a", 64)
+	one := int64(100)
+	two := int64(80)
+	baseline := &SuiteReport{Strategy: StrategyIdentity{ID: "base"}, Benchmark: BenchmarkIdentity{Fingerprint: fp}, Summary: newSummary(), Runs: []RunRecord{
+		{CaseID: "a", Repeat: 1, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: false}, Labels: map[string]string{"category": "http"}},
+		{CaseID: "b", Repeat: 1, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: true}, TimeToValidMS: &one, Labels: map[string]string{"category": "branch"}},
+	}}
+	candidate := &SuiteReport{Strategy: StrategyIdentity{ID: "candidate"}, Benchmark: BenchmarkIdentity{Fingerprint: fp}, Summary: newSummary(), Runs: []RunRecord{
+		{CaseID: "a", Repeat: 1, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: true}, TimeToValidMS: &two, Labels: map[string]string{"category": "http"}},
+		{CaseID: "b", Repeat: 1, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: true}, TimeToValidMS: &two, Labels: map[string]string{"category": "branch"}},
+	}}
+	for _, r := range baseline.Runs {
+		addSummary(&baseline.Summary, r)
+	}
+	finishReport(baseline)
+	for _, r := range candidate.Runs {
+		addSummary(&candidate.Summary, r)
+	}
+	finishReport(candidate)
+	comparison, err := Compare(baseline, candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comparison.Outcomes.CandidateOnlyValid != 1 || comparison.Outcomes.BothValid != 1 {
+		t.Fatalf("outcomes = %+v", comparison.Outcomes)
+	}
+	if len(comparison.ByCategory) != 2 {
+		t.Fatalf("category breakdown = %+v", comparison.ByCategory)
+	}
+	if comparison.Metrics.FinalSuccessRate.DeltaPP == nil || *comparison.Metrics.FinalSuccessRate.DeltaPP != 50 {
+		t.Fatalf("delta pp = %+v", comparison.Metrics.FinalSuccessRate)
+	}
+}
+
+func TestRunMatrixExecutesStrategiesAndGates(t *testing.T) {
+	root := t.TempDir()
+	cases := filepath.Join(root, "cases")
+	template := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(cases, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(template, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(cases, "one.md"), "case", 0o644)
+	mustWrite(t, filepath.Join(cases, "cases.yaml"), `apiVersion: takt/evaluation/v1alpha1
+kind: CaseManifest
+cases:
+  one:
+    category: smoke
+`, 0o644)
+	mustWrite(t, filepath.Join(root, "config.yaml"), "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
+	workflow := func(valid bool) string {
+		return fmt.Sprintf(`apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: strategy
+nodes:
+  - id: implement
+    bash: "true"
+  - id: quality
+    depends_on: [implement]
+    bash: |
+      printf '%%s\n' '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":%t,"checks":{},"diagnostics":[]}'
+`, valid)
+	}
+	mustWrite(t, filepath.Join(root, "base.yaml"), workflow(false), 0o644)
+	mustWrite(t, filepath.Join(root, "candidate.yaml"), workflow(true), 0o644)
+	mustWrite(t, filepath.Join(root, "matrix.yaml"), `apiVersion: takt/evaluation/v1alpha1
+kind: EvaluationMatrix
+metadata:
+  name: smoke
+benchmark:
+  id: smoke-benchmark
+  baseline_strategy: baseline
+  cases: cases
+  case_manifest: cases/cases.yaml
+  workspace_template: workspace
+  repeat: 2
+  quality_node: quality
+  generation_node: implement
+strategies:
+  - id: baseline
+    workflow: base.yaml
+    config: config.yaml
+  - id: candidate
+    workflow: candidate.yaml
+    config: config.yaml
+gates:
+  - strategy: candidate
+    final_success_rate_min: 1
+    unstable_cases_max: 0
+`, 0o644)
+	report, err := RunMatrix(context.Background(), MatrixRunOptions{MatrixPath: filepath.Join(root, "matrix.yaml"), OutputDir: filepath.Join(root, "results")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Passed || len(report.Strategies) != 2 || len(report.Comparisons) != 1 {
+		t.Fatalf("matrix report = %+v", report)
+	}
+	if report.Comparisons[0].Outcomes.CandidateOnlyValid != 2 {
+		t.Fatalf("comparison = %+v", report.Comparisons[0])
+	}
+	if report.ExperimentFingerprint == "" {
+		t.Fatal("experiment fingerprint missing")
+	}
+	if _, err := os.Stat(filepath.Join(root, "results", "benchmark.json")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExperimentFingerprintIgnoresMatrixFileLocation(t *testing.T) {
+	base := MatrixReport{BenchmarkID: "bench", BaselineStrategy: "base", Repeat: 3, MatrixFingerprint: strings.Repeat("a", 64), Strategies: []MatrixStrategyResult{
+		{ID: "base", Strategy: StrategyIdentity{Fingerprint: strings.Repeat("b", 64)}, Benchmark: BenchmarkIdentity{Fingerprint: strings.Repeat("c", 64)}},
+		{ID: "candidate", Strategy: StrategyIdentity{Fingerprint: strings.Repeat("d", 64)}, Benchmark: BenchmarkIdentity{Fingerprint: strings.Repeat("c", 64)}},
+	}}
+	other := base
+	other.MatrixFingerprint = strings.Repeat("e", 64)
+	left, err := experimentFingerprint(&base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := experimentFingerprint(&other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if left != right {
+		t.Fatalf("experiment identity depends on matrix file bytes: %s != %s", left, right)
+	}
+	other.Repeat = 4
+	changed, err := experimentFingerprint(&other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed == left {
+		t.Fatal("experiment identity ignored repeat")
+	}
+}
+
+func TestLoadMatrixRequiresExplicitBaselineAndNonNegativeRegression(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	base := `apiVersion: takt/evaluation/v1alpha1
+kind: EvaluationMatrix
+metadata:
+  name: strict
+benchmark:
+  id: strict-v1
+  cases: cases
+  workspace_template: workspace
+  quality_node: validate
+  generation_node: implement
+strategies:
+  - id: baseline
+    workflow: baseline.yaml
+    config: config.yaml
+  - id: candidate
+    workflow: candidate.yaml
+    config: config.yaml
+`
+	if _, _, _, err := LoadMatrix(write("missing-baseline.yaml", base)); err == nil || !strings.Contains(err.Error(), "baseline_strategy") {
+		t.Fatalf("expected missing baseline error, got %v", err)
+	}
+	withBaseline := strings.Replace(base, "  id: strict-v1\n", "  id: strict-v1\n  baseline_strategy: baseline\n", 1) + `gates:
+  - strategy: candidate
+    cost_per_valid_max_regression_percent: -1
+`
+	if _, _, _, err := LoadMatrix(write("negative-regression.yaml", withBaseline)); err == nil || !strings.Contains(err.Error(), "must be >= 0") {
+		t.Fatalf("expected negative regression error, got %v", err)
 	}
 }

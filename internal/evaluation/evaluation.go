@@ -44,6 +44,7 @@ type RunOptions struct {
 	ValidatorID       string
 	ValidatorVersion  string
 	ValidatorPath     string
+	CaseManifestPath  string
 }
 
 type SuiteReport struct {
@@ -72,15 +73,16 @@ type StrategyIdentity struct {
 }
 
 type BenchmarkIdentity struct {
-	ID                   string            `json:"id"`
-	Fingerprint          string            `json:"fingerprint"`
-	DatasetFingerprint   string            `json:"dataset_fingerprint"`
-	WorkspaceFingerprint string            `json:"workspace_fingerprint"`
-	CaseCount            int               `json:"case_count"`
-	QualityNode          string            `json:"quality_node,omitempty"`
-	GenerationNode       string            `json:"generation_node,omitempty"`
-	ValidationProtocol   string            `json:"validation_protocol,omitempty"`
-	Validator            ValidatorIdentity `json:"validator,omitempty"`
+	ID                      string            `json:"id"`
+	Fingerprint             string            `json:"fingerprint"`
+	DatasetFingerprint      string            `json:"dataset_fingerprint"`
+	WorkspaceFingerprint    string            `json:"workspace_fingerprint"`
+	CaseCount               int               `json:"case_count"`
+	QualityNode             string            `json:"quality_node,omitempty"`
+	GenerationNode          string            `json:"generation_node,omitempty"`
+	ValidationProtocol      string            `json:"validation_protocol,omitempty"`
+	Validator               ValidatorIdentity `json:"validator,omitempty"`
+	CaseManifestFingerprint string            `json:"case_manifest_fingerprint,omitempty"`
 }
 
 type ValidatorIdentity struct {
@@ -126,6 +128,14 @@ type Summary struct {
 	AmortizedEndToEndMSPerValid *float64                  `json:"amortized_end_to_end_ms_per_valid"`
 	DiagnosticsBySeverity       map[string]int            `json:"diagnostics_by_severity"`
 	DiagnosticsByCode           map[string]int            `json:"diagnostics_by_code"`
+	DiagnosticsByFingerprint    map[string]int            `json:"diagnostics_by_fingerprint"`
+	AverageTimeToValidMS        *float64                  `json:"average_time_to_valid_ms"`
+	RetryScheduled              int                       `json:"retry_scheduled"`
+	FailedExecutions            int                       `json:"failed_executions"`
+	FailedExecutionCost         float64                   `json:"failed_execution_cost"`
+	StableValidCases            int                       `json:"stable_valid_cases"`
+	StableInvalidCases          int                       `json:"stable_invalid_cases"`
+	UnstableCases               int                       `json:"unstable_cases"`
 }
 
 type UsageBreakdown struct {
@@ -138,6 +148,7 @@ type UsageBreakdown struct {
 type RunRecord struct {
 	CaseID              string                `json:"case_id"`
 	Repeat              int                   `json:"repeat"`
+	Labels              map[string]string     `json:"labels,omitempty"`
 	RunID               string                `json:"run_id,omitempty"`
 	Status              string                `json:"status"`
 	Workspace           string                `json:"workspace"`
@@ -158,45 +169,50 @@ type RunRecord struct {
 	QualityNodeStatus   string                `json:"quality_node_status,omitempty"`
 	QualityError        string                `json:"quality_error,omitempty"`
 	QualityExpected     bool                  `json:"quality_expected"`
+	TimeToValidMS       *int64                `json:"time_to_valid_ms"`
+	RetryScheduled      int                   `json:"retry_scheduled"`
+	RetryFingerprints   []string              `json:"retry_fingerprints,omitempty"`
 	Nodes               map[string]NodeRecord `json:"nodes"`
 }
 
 type NodeRecord struct {
-	Status           string            `json:"status"`
-	Attempts         int               `json:"attempts"`
-	Assistant        string            `json:"assistant,omitempty"`
-	AssistantVersion string            `json:"assistant_version,omitempty"`
-	RequestedModel   *store.ModelRef   `json:"requested_model,omitempty"`
-	ResolvedModel    *store.ModelRef   `json:"resolved_model,omitempty"`
-	SessionID        string            `json:"session_id,omitempty"`
-	Resumed          bool              `json:"resumed"`
-	ExitCode         int               `json:"exit_code"`
-	ErrorCode        string            `json:"error_code,omitempty"`
-	Error            string            `json:"error,omitempty"`
-	Feedback         string            `json:"feedback,omitempty"`
-	DiagnosticOutput string            `json:"diagnostic_output,omitempty"`
-	Stdout           string            `json:"stdout,omitempty"`
-	Stderr           string            `json:"stderr,omitempty"`
-	OutputTruncated  bool              `json:"output_truncated"`
-	Usage            *store.Usage      `json:"usage,omitempty"`
-	MixedIdentity    bool              `json:"mixed_execution_identity"`
-	Executions       []ExecutionRecord `json:"executions"`
+	Status           string                 `json:"status"`
+	Attempts         int                    `json:"attempts"`
+	Assistant        string                 `json:"assistant,omitempty"`
+	AssistantVersion string                 `json:"assistant_version,omitempty"`
+	RequestedModel   *store.ModelRef        `json:"requested_model,omitempty"`
+	ResolvedModel    *store.ModelRef        `json:"resolved_model,omitempty"`
+	SessionID        string                 `json:"session_id,omitempty"`
+	Resumed          bool                   `json:"resumed"`
+	ExitCode         int                    `json:"exit_code"`
+	ErrorCode        string                 `json:"error_code,omitempty"`
+	Error            string                 `json:"error,omitempty"`
+	Feedback         string                 `json:"feedback,omitempty"`
+	DiagnosticOutput string                 `json:"diagnostic_output,omitempty"`
+	Stdout           string                 `json:"stdout,omitempty"`
+	Stderr           string                 `json:"stderr,omitempty"`
+	OutputTruncated  bool                   `json:"output_truncated"`
+	Usage            *store.Usage           `json:"usage,omitempty"`
+	Diagnostic       *store.DiagnosticState `json:"diagnostic,omitempty"`
+	MixedIdentity    bool                   `json:"mixed_execution_identity"`
+	Executions       []ExecutionRecord      `json:"executions"`
 }
 
 type ExecutionRecord struct {
-	Attempt          int             `json:"attempt"`
-	Status           string          `json:"status"`
-	Assistant        string          `json:"assistant,omitempty"`
-	AssistantVersion string          `json:"assistant_version,omitempty"`
-	RequestedModel   *store.ModelRef `json:"requested_model,omitempty"`
-	ResolvedModel    *store.ModelRef `json:"resolved_model,omitempty"`
-	SessionID        string          `json:"session_id,omitempty"`
-	Resumed          bool            `json:"resumed"`
-	ExitCode         int             `json:"exit_code"`
-	ErrorCode        string          `json:"error_code,omitempty"`
-	Error            string          `json:"error,omitempty"`
-	OutputTruncated  bool            `json:"output_truncated"`
-	Usage            *store.Usage    `json:"usage,omitempty"`
+	Attempt          int                    `json:"attempt"`
+	Status           string                 `json:"status"`
+	Assistant        string                 `json:"assistant,omitempty"`
+	AssistantVersion string                 `json:"assistant_version,omitempty"`
+	RequestedModel   *store.ModelRef        `json:"requested_model,omitempty"`
+	ResolvedModel    *store.ModelRef        `json:"resolved_model,omitempty"`
+	SessionID        string                 `json:"session_id,omitempty"`
+	Resumed          bool                   `json:"resumed"`
+	ExitCode         int                    `json:"exit_code"`
+	ErrorCode        string                 `json:"error_code,omitempty"`
+	Error            string                 `json:"error,omitempty"`
+	OutputTruncated  bool                   `json:"output_truncated"`
+	Usage            *store.Usage           `json:"usage,omitempty"`
+	Diagnostic       *store.DiagnosticState `json:"diagnostic,omitempty"`
 }
 
 var safeCaseID = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -217,6 +233,10 @@ func Run(ctx context.Context, opts RunOptions) (*SuiteReport, error) {
 		return nil, fmt.Errorf("evaluation cases directory %s contains no .md files", paths.CasesDir)
 	}
 	caseIDs, err := resolveCaseIDs(cases)
+	if err != nil {
+		return nil, err
+	}
+	caseLabels, manifestFingerprint, err := loadCaseManifest(opts.CaseManifestPath, paths.CasesDir, caseIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +265,7 @@ func Run(ctx context.Context, opts RunOptions) (*SuiteReport, error) {
 			return nil, fmt.Errorf("generation node %q is not present in workflow", opts.GenerationNode)
 		}
 	}
-	ids, err := buildIdentities(paths, opts, wf, cfg, cases, caseIDs)
+	ids, err := buildIdentities(paths, opts, wf, cfg, cases, caseIDs, manifestFingerprint)
 	if err != nil {
 		return nil, err
 	}
@@ -271,6 +291,7 @@ func Run(ctx context.Context, opts RunOptions) (*SuiteReport, error) {
 		for repeat := 1; repeat <= opts.Repeat; repeat++ {
 			workspace := filepath.Join(paths.OutputDir, "workspaces", fmt.Sprintf("%s-%03d", caseID, repeat))
 			record, runErr := runOne(ctx, paths, opts, casePath, caseID, repeat, workspace)
+			record.Labels = cloneLabels(caseLabels[caseID])
 			report.Runs = append(report.Runs, record)
 			addSummary(&report.Summary, record)
 			if runErr != nil && isInfrastructureError(runErr) {
@@ -292,7 +313,7 @@ type identities struct {
 	Benchmark BenchmarkIdentity
 }
 
-func buildIdentities(paths resolvedOptions, opts RunOptions, wf *spec.Workflow, cfg *spec.Config, cases []string, caseIDs map[string]string) (identities, error) {
+func buildIdentities(paths resolvedOptions, opts RunOptions, wf *spec.Workflow, cfg *spec.Config, cases []string, caseIDs map[string]string, caseManifestFingerprint string) (identities, error) {
 	resolver := runtime.New(wf, cfg, paths.WorkflowPath, paths.ConfigPath, paths.WorkspaceTemplate).Commands
 	fingerprints, err := definition.Compute(wf, cfg, paths.WorkflowPath, paths.ConfigPath, resolver)
 	if err != nil {
@@ -323,15 +344,16 @@ func buildIdentities(paths resolvedOptions, opts RunOptions, wf *spec.Workflow, 
 		protocol = validation.ProtocolV1Alpha1
 	}
 	benchmarkFingerprint, err := hashJSON(struct {
-		Dataset              string `json:"dataset"`
-		Workspace            string `json:"workspace"`
-		QualityNode          string `json:"quality_node"`
-		GenerationNode       string `json:"generation_node"`
-		ValidationProtocol   string `json:"validation_protocol"`
-		ValidatorID          string `json:"validator_id"`
-		ValidatorVersion     string `json:"validator_version"`
-		ValidatorFingerprint string `json:"validator_fingerprint"`
-	}{datasetFingerprint, workspaceFingerprint, opts.QualityNode, opts.GenerationNode, protocol, validator.ID, validator.Version, validator.Fingerprint})
+		Dataset                 string `json:"dataset"`
+		Workspace               string `json:"workspace"`
+		QualityNode             string `json:"quality_node"`
+		GenerationNode          string `json:"generation_node"`
+		ValidationProtocol      string `json:"validation_protocol"`
+		ValidatorID             string `json:"validator_id"`
+		ValidatorVersion        string `json:"validator_version"`
+		ValidatorFingerprint    string `json:"validator_fingerprint"`
+		CaseManifestFingerprint string `json:"case_manifest_fingerprint"`
+	}{datasetFingerprint, workspaceFingerprint, opts.QualityNode, opts.GenerationNode, protocol, validator.ID, validator.Version, validator.Fingerprint, caseManifestFingerprint})
 	if err != nil {
 		return identities{}, err
 	}
@@ -346,7 +368,7 @@ func buildIdentities(paths resolvedOptions, opts RunOptions, wf *spec.Workflow, 
 			ID: opts.BenchmarkID, Fingerprint: benchmarkFingerprint,
 			DatasetFingerprint: datasetFingerprint, WorkspaceFingerprint: workspaceFingerprint, CaseCount: len(cases),
 			QualityNode: opts.QualityNode, GenerationNode: opts.GenerationNode,
-			ValidationProtocol: protocol, Validator: validator,
+			ValidationProtocol: protocol, Validator: validator, CaseManifestFingerprint: caseManifestFingerprint,
 		},
 	}, nil
 }
@@ -545,6 +567,7 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 				return record, err
 			}
 		}
+		applyRuntimeMetrics(&record, state, runner.Store, opts.QualityNode)
 	}
 	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
 		if record.Error == "" {
@@ -639,7 +662,7 @@ func recordFromState(caseID string, repeat int, workspacePath string, state *sto
 			SessionID: node.SessionID, Resumed: node.Resumed,
 			ExitCode: node.ExitCode, ErrorCode: node.ErrorCode, Error: node.Error, Feedback: node.Feedback,
 			DiagnosticOutput: node.Output, Stdout: node.Stdout, Stderr: node.Stderr,
-			OutputTruncated: node.OutputTruncated, Usage: node.Usage,
+			OutputTruncated: node.OutputTruncated, Usage: node.Usage, Diagnostic: node.Diagnostic,
 			MixedIdentity: mixedIdentity, Executions: executions,
 		}
 	}
@@ -653,7 +676,7 @@ func executionRecordFromState(state store.ExecutionState) ExecutionRecord {
 		RequestedModel: state.RequestedModel, ResolvedModel: state.ResolvedModel,
 		SessionID: state.SessionID, Resumed: state.Resumed,
 		ExitCode: state.ExitCode, ErrorCode: state.ErrorCode, Error: state.Error,
-		OutputTruncated: state.OutputTruncated, Usage: state.Usage,
+		OutputTruncated: state.OutputTruncated, Usage: state.Usage, Diagnostic: state.Diagnostic,
 	}
 }
 
@@ -662,7 +685,7 @@ func newSummary() Summary {
 		ByStatus: map[string]int{}, ByAssistant: map[string]int{}, ByAssistantVersion: map[string]int{},
 		ByRequestedModel: map[string]int{}, ByResolvedModel: map[string]int{},
 		UsageByExecutionIdentity: map[string]UsageBreakdown{},
-		DiagnosticsBySeverity:    map[string]int{}, DiagnosticsByCode: map[string]int{},
+		DiagnosticsBySeverity:    map[string]int{}, DiagnosticsByCode: map[string]int{}, DiagnosticsByFingerprint: map[string]int{},
 	}
 }
 
@@ -678,8 +701,17 @@ func addSummary(summary *Summary, record RunRecord) {
 	summary.Truncated += record.Truncated
 	summary.Resumed += record.Resumed
 	summary.MixedExecutionIdentityNodes += record.MixedIdentityNodes
+	summary.RetryScheduled += record.RetryScheduled
+	for _, fingerprint := range record.RetryFingerprints {
+		if fingerprint != "" {
+			summary.DiagnosticsByFingerprint[fingerprint]++
+		}
+	}
 	for _, node := range record.Nodes {
 		if len(node.Executions) == 0 {
+			if node.Diagnostic != nil && node.Diagnostic.Fingerprint != "" {
+				summary.DiagnosticsByFingerprint[node.Diagnostic.Fingerprint]++
+			}
 			addExecutionIdentitySummary(summary, ExecutionRecord{
 				Assistant: node.Assistant, AssistantVersion: node.AssistantVersion,
 				RequestedModel: node.RequestedModel, ResolvedModel: node.ResolvedModel, Usage: node.Usage,
@@ -688,6 +720,15 @@ func addSummary(summary *Summary, record RunRecord) {
 		}
 		for _, executionRecord := range node.Executions {
 			addExecutionIdentitySummary(summary, executionRecord)
+			if executionRecord.Diagnostic != nil && executionRecord.Diagnostic.Fingerprint != "" {
+				summary.DiagnosticsByFingerprint[executionRecord.Diagnostic.Fingerprint]++
+			}
+			if executionRecord.Status != string(store.NodeCompleted) && executionRecord.Status != "completed" {
+				summary.FailedExecutions++
+				if executionRecord.Usage != nil {
+					summary.FailedExecutionCost += executionRecord.Usage.Cost
+				}
+			}
 		}
 	}
 	if !record.QualityExpected {
@@ -744,6 +785,36 @@ func finishReport(report *SuiteReport) {
 	if scored > 0 {
 		report.Summary.ScoredRuns = scored
 		report.Summary.AverageScore = floatPointer(scoreTotal / float64(scored))
+	}
+	var timeCount int
+	var timeTotal int64
+	caseOutcomes := map[string]map[bool]bool{}
+	for _, record := range report.Runs {
+		if qualitySucceeded(record) && record.TimeToValidMS != nil {
+			timeCount++
+			timeTotal += *record.TimeToValidMS
+		}
+		if record.QualityExpected {
+			set := caseOutcomes[record.CaseID]
+			if set == nil {
+				set = map[bool]bool{}
+				caseOutcomes[record.CaseID] = set
+			}
+			set[qualitySucceeded(record)] = true
+		}
+	}
+	if timeCount > 0 {
+		report.Summary.AverageTimeToValidMS = floatPointer(float64(timeTotal) / float64(timeCount))
+	}
+	for _, values := range caseOutcomes {
+		switch {
+		case len(values) > 1:
+			report.Summary.UnstableCases++
+		case values[true]:
+			report.Summary.StableValidCases++
+		default:
+			report.Summary.StableInvalidCases++
+		}
 	}
 }
 

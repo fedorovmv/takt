@@ -1,0 +1,61 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: route-dsl-inspect-feedback
+  description: Предварительный анализ требований плюс bounded feedback repair
+
+defaults:
+  assistant: coding-agent
+  model: route-model
+  session: fresh
+
+nodes:
+  - id: inspect
+    prompt: |
+      Проанализируй техническое задание для Route DSL до изменения файлов.
+
+      Техническое задание:
+      ${input}
+
+      Кратко верни:
+      - требуемые входы и выходы;
+      - необходимые компоненты DSL;
+      - ветвления и обработку ошибок;
+      - ограничения и потенциально неподдерживаемые требования.
+
+      На этом шаге route.yaml не изменяй.
+
+  - id: implement
+    depends_on: [inspect]
+    prompt: |
+      Создай или исправь route.yaml.
+
+      Техническое задание:
+      ${input}
+
+      Предварительный анализ:
+      ${nodes.inspect.output}
+
+      Диагностика предыдущей попытки:
+      ${feedback}
+
+      Требования:
+      - работай только в текущей рабочей области;
+      - итоговый route.yaml должен пройти ./route-tool validate route.yaml;
+      - не придумывай отсутствующие возможности DSL.
+    session: resume
+    attempts:
+      max: 3
+    hooks:
+      after_node:
+        - id: validate-generated-route
+          bash: |
+            ./route-tool validate route.yaml
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: full-validation
+    depends_on: [implement]
+    bash: |
+      ./route-tool validate route.yaml

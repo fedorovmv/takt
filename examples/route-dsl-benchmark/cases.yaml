@@ -1,0 +1,103 @@
+apiVersion: takt/evaluation/v1alpha1
+kind: CaseManifest
+cases:
+  01-http-jq-target:
+    category: transform
+    difficulty: medium
+    source: regression
+  02-http-branch:
+    category: branching
+    difficulty: medium
+    source: regression
+  03-error-mapping:
+    category: errors
+    difficulty: medium
+    source: regression
+  04-jq-nested:
+    category: transform
+    difficulty: medium
+    source: regression
+  05-bloblang-transform:
+    category: transform
+    difficulty: medium
+    source: regression
+  06-retry-policy:
+    category: resilience
+    difficulty: medium
+    source: regression
+  07-optional-requirement:
+    category: ambiguity
+    difficulty: medium
+    source: regression
+  08-combined-elements:
+    category: composition
+    difficulty: hard
+    source: regression
+  09-unsupported-capability:
+    category: unsupported
+    difficulty: medium
+    source: regression
+  10-idempotency:
+    category: resilience
+    difficulty: hard
+    source: regression
+  11-pagination-aggregation:
+    category: composition
+    difficulty: hard
+    source: production-shaped
+  12-conditional-enrichment:
+    category: branching
+    difficulty: medium
+    source: production-shaped
+  13-parallel-enrichment:
+    category: composition
+    difficulty: hard
+    source: production-shaped
+  14-timeout-fallback:
+    category: resilience
+    difficulty: hard
+    source: production-shaped
+  15-header-propagation:
+    category: http
+    difficulty: medium
+    source: production-shaped
+  16-json-array-map:
+    category: transform
+    difficulty: medium
+    source: production-shaped
+  17-empty-list-short-circuit:
+    category: branching
+    difficulty: medium
+    source: production-shaped
+  18-business-error-body:
+    category: errors
+    difficulty: hard
+    source: production-shaped
+  19-date-normalization:
+    category: transform
+    difficulty: medium
+    source: production-shaped
+  20-null-handling:
+    category: transform
+    difficulty: medium
+    source: production-shaped
+  21-two-step-compensation:
+    category: unsupported
+    difficulty: hard
+    source: production-shaped
+  22-rate-limit-response:
+    category: resilience
+    difficulty: hard
+    source: production-shaped
+  23-schema-version-branch:
+    category: branching
+    difficulty: hard
+    source: production-shaped
+  24-multi-source-join:
+    category: composition
+    difficulty: hard
+    source: production-shaped
+  25-invalid-requirement-conflict:
+    category: ambiguity
+    difficulty: hard
+    source: production-shaped

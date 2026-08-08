@@ -1,0 +1,41 @@
+apiVersion: takt/evaluation/v1alpha1
+kind: EvaluationMatrix
+metadata:
+  name: route-dsl-strategies
+
+benchmark:
+  id: route-dsl-production-shaped-25-v1
+  baseline_strategy: baseline-direct
+  cases: cases
+  case_manifest: cases.yaml
+  workspace_template: workspace
+  repeat: 3
+  quality_node: full-validation
+  generation_node: implement
+  validator:
+    id: route-tool
+    version: replace-me
+    path: workspace/route-tool
+
+strategies:
+  - id: baseline-direct
+    workflow: strategies/baseline-direct.yaml
+    config: config.example.yaml
+
+  - id: feedback-repair
+    workflow: strategies/feedback-repair.yaml
+    config: config.example.yaml
+
+  - id: inspect-feedback
+    workflow: strategies/inspect-feedback.yaml
+    config: config.example.yaml
+
+# Gates are intentionally opt-in: first collect a baseline on the target model,
+# then pin thresholds appropriate for that environment.
+# gates:
+#   - strategy: feedback-repair
+#     final_success_rate_min: 0.85
+#     success_at_1_min: 0.60
+#     cost_per_valid_max_regression_percent: 30
+#     time_to_valid_max_regression_percent: 40
+#     unstable_cases_max: 5

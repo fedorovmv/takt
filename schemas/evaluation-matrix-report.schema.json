@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/evaluation-matrix-report.schema.json",
+  "title": "Takt Evaluation Matrix Report v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_version",
+    "takt_version",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "matrix_path",
+    "matrix_fingerprint",
+    "experiment_fingerprint",
+    "benchmark_id",
+    "baseline_strategy",
+    "repeat",
+    "strategies",
+    "comparisons",
+    "passed"
+  ],
+  "properties": {
+    "report_version": {
+      "const": "takt-evaluation-matrix/v1alpha1"
+    },
+    "takt_version": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "matrix_path": {
+      "type": "string"
+    },
+    "matrix_fingerprint": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "experiment_fingerprint": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "benchmark_id": {
+      "type": "string"
+    },
+    "baseline_strategy": {
+      "type": "string"
+    },
+    "strategies": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object"
+      }
+    },
+    "comparisons": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "repeat": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}
