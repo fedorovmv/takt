@@ -315,7 +315,7 @@ type identities struct {
 }
 
 func buildIdentities(paths resolvedOptions, opts RunOptions, wf *spec.Workflow, cfg *spec.Config, cases []string, caseIDs map[string]string, caseManifestFingerprint string) (identities, error) {
-	resolver := runtime.New(wf, cfg, paths.WorkflowPath, paths.ConfigPath, paths.WorkspaceTemplate).Commands
+	resolver := runtime.NewCommandResolver(paths.WorkflowPath, paths.WorkspaceTemplate, paths.WorkspaceTemplate)
 	fingerprints, err := definition.Compute(wf, cfg, paths.WorkflowPath, paths.ConfigPath, resolver)
 	if err != nil {
 		return identities{}, err
@@ -540,6 +540,7 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 		return record, err
 	}
 	runner := runtime.New(wf, cfg, paths.WorkflowPath, paths.ConfigPath, workspacePath)
+	repo := store.FS{Workspace: workspacePath}
 	state, runErr := runner.Start(ctx, string(input))
 	for errors.Is(runErr, runtime.ErrWaiting) && opts.ApprovalAnswer != "" {
 		if state.Waiting == nil {
@@ -552,7 +553,7 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 		}
 		state.Status = store.RunRunning
 		state.Waiting = nil
-		if err := commitEvaluationState(runner.Store, state, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true, "source": "evaluation"}}, cfg); err != nil {
+		if err := commitEvaluationState(repo, state, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true, "source": "evaluation"}}, cfg); err != nil {
 			return record, err
 		}
 		state, runErr = runner.Resume(ctx, state)
@@ -568,7 +569,7 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 				return record, err
 			}
 		}
-		applyRuntimeMetrics(&record, state, runner.Store, opts.QualityNode)
+		applyRuntimeMetrics(&record, state, repo, opts.QualityNode)
 	}
 	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
 		if record.Error == "" {

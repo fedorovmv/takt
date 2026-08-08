@@ -62,372 +62,475 @@ func validateWorktree(value spec.WorktreeSpec) error {
 }
 
 func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
+	byID, err := indexNodes(nodes, scope)
+	if err != nil {
+		return err
+	}
+	for _, node := range nodes {
+		if err := validateNode(node, scope, insideLoop); err != nil {
+			return err
+		}
+	}
+	if err := validateLoopCollisions(nodes, byID); err != nil {
+		return err
+	}
+	if err := validateDependencies(nodes, byID); err != nil {
+		return err
+	}
+	if err := validateFanOutDependencies(nodes, byID); err != nil {
+		return err
+	}
+	return validateAcyclic(byID)
+}
+
+func indexNodes(nodes []spec.Node, scope string) (map[string]spec.Node, error) {
 	if len(nodes) == 0 {
-		return fmt.Errorf("%s must not be empty", scope)
+		return nil, fmt.Errorf("%s must not be empty", scope)
 	}
-	byID := map[string]spec.Node{}
-	for _, n := range nodes {
-		if strings.TrimSpace(n.ID) == "" {
-			return fmt.Errorf("%s contains node without id", scope)
+	byID := make(map[string]spec.Node, len(nodes))
+	for _, node := range nodes {
+		if strings.TrimSpace(node.ID) == "" {
+			return nil, fmt.Errorf("%s contains node without id", scope)
 		}
-		if _, exists := byID[n.ID]; exists {
-			return fmt.Errorf("duplicate node id %q in %s", n.ID, scope)
+		if _, exists := byID[node.ID]; exists {
+			return nil, fmt.Errorf("duplicate node id %q in %s", node.ID, scope)
 		}
-		byID[n.ID] = n
-		kinds := 0
-		if n.Command != "" {
+		byID[node.ID] = node
+	}
+	return byID, nil
+}
+
+func validateNode(node spec.Node, scope string, insideLoop bool) error {
+	checks := []func(spec.Node) error{
+		validateActionShape,
+		validateWorkflowAction,
+		validateInternalAction,
+		validateScriptAndAdapter,
+		validateExternalExecution,
+		validateAttempts,
+		validateTiming,
+		validateAssistantPolicy,
+		validateSandbox,
+		validateOutputs,
+		validateApproval,
+	}
+	for _, check := range checks {
+		if err := check(node); err != nil {
+			return err
+		}
+	}
+	return validateLoop(node, scope, insideLoop)
+}
+
+func validateActionShape(node spec.Node) error {
+	kinds := 0
+	for _, present := range []bool{
+		node.Command != "", node.Prompt != "", node.Bash != "", node.Script != nil,
+		node.Approval != nil, node.LoopGroup != nil, node.Subworkflow != nil,
+		node.Foreach != nil, node.WorkflowRun != nil, node.Internal != nil, node.Adapter != nil,
+	} {
+		if present {
 			kinds++
 		}
-		if n.Prompt != "" {
-			kinds++
+	}
+	if kinds != 1 {
+		return fmt.Errorf("node %q must define exactly one action", node.ID)
+	}
+	if node.Subworkflow != nil || node.Foreach != nil {
+		return fmt.Errorf("node %q contains an unexpanded workflow container", node.ID)
+	}
+	return nil
+}
+
+func validateWorkflowAction(node spec.Node) error {
+	value := node.WorkflowRun
+	if value == nil {
+		return nil
+	}
+	if strings.TrimSpace(value.Path) == "" {
+		return fmt.Errorf("node %q workflow.path is required", node.ID)
+	}
+	if value.Policy != nil {
+		if err := validatePolicySpec(*value.Policy, "node "+node.ID+".workflow.policy"); err != nil {
+			return err
 		}
-		if n.Bash != "" {
-			kinds++
+	}
+	switch value.Isolation {
+	case "", "inherit", "worktree", "none":
+	default:
+		return fmt.Errorf("node %q workflow.isolation must be inherit, worktree, or none", node.ID)
+	}
+	if strings.TrimSpace(value.Repository) != "" {
+		if filepath.IsAbs(value.Repository) {
+			return fmt.Errorf("node %q workflow.repository must be relative to the control workspace", node.ID)
 		}
-		if n.Script != nil {
-			kinds++
+		if value.Isolation == "inherit" {
+			return fmt.Errorf("node %q workflow.repository cannot use isolation inherit", node.ID)
 		}
-		if n.Approval != nil {
-			kinds++
+		if value.FanOut != nil {
+			return fmt.Errorf("node %q workflow.repository does not support fan_out in v0.1.43", node.ID)
 		}
-		if n.LoopGroup != nil {
-			kinds++
+	}
+	if value.FanOut == nil {
+		return nil
+	}
+	fanOut := value.FanOut
+	if _, err := fanOutSourceNode(fanOut.ItemsFrom); err != nil {
+		return fmt.Errorf("node %q workflow.fan_out.items_from: %w", node.ID, err)
+	}
+	if fanOut.As != "" && !fanOutNameRE.MatchString(fanOut.As) {
+		return fmt.Errorf("node %q workflow.fan_out.as must be an identifier", node.ID)
+	}
+	if fanOut.MaxParallel < 0 || fanOut.MaxParallel > 64 {
+		return fmt.Errorf("node %q workflow.fan_out.max_parallel must be 0 (default 1) or between 1 and 64", node.ID)
+	}
+	if fanOut.MaxItems < 0 || fanOut.MaxItems > 256 {
+		return fmt.Errorf("node %q workflow.fan_out.max_items must be 0 (unlimited) or between 1 and 256", node.ID)
+	}
+	switch fanOut.Join {
+	case "", "all_success", "all_done", "one_success":
+		return nil
+	default:
+		return fmt.Errorf("node %q workflow.fan_out.join must be all_success, all_done, or one_success", node.ID)
+	}
+}
+
+func validateInternalAction(node spec.Node) error {
+	value := node.Internal
+	if value == nil {
+		return nil
+	}
+	if value.Mode != "noop" && value.Mode != "result" && value.Mode != "collect" && value.Mode != "worktree" {
+		return fmt.Errorf("node %q has unsupported internal mode %q", node.ID, value.Mode)
+	}
+	if value.Mode == "result" && strings.TrimSpace(value.ResultFrom) == "" {
+		return fmt.Errorf("node %q internal result requires result source", node.ID)
+	}
+	if value.Mode == "collect" && len(value.ResultsFrom) == 0 {
+		return fmt.Errorf("node %q internal collect requires result sources", node.ID)
+	}
+	if value.Mode == "worktree" && (value.Worktree == nil || !value.Worktree.Enabled) {
+		return fmt.Errorf("node %q internal worktree action requires an enabled policy", node.ID)
+	}
+	return nil
+}
+
+var adapterOperationSegmentRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
+
+func validateScriptAndAdapter(node spec.Node) error {
+	if node.Script != nil {
+		if err := validateScript(*node.Script, "node "+node.ID+".script"); err != nil {
+			return err
 		}
-		if n.Subworkflow != nil {
-			kinds++
+	}
+	if node.Adapter == nil {
+		return nil
+	}
+	if strings.TrimSpace(node.Adapter.Name) == "" {
+		return fmt.Errorf("node %q adapter.name is required", node.ID)
+	}
+	if strings.TrimSpace(node.Adapter.Operation) == "" {
+		return fmt.Errorf("node %q adapter.operation is required", node.ID)
+	}
+	for _, part := range strings.Split(node.Adapter.Operation, ".") {
+		if part == "" || !adapterOperationSegmentRE.MatchString(part) {
+			return fmt.Errorf("node %q adapter.operation must use lowercase dot-separated segments", node.ID)
 		}
-		if n.Foreach != nil {
-			kinds++
+	}
+	return nil
+}
+
+func validateExternalExecution(node spec.Node) error {
+	if node.Executor != "" {
+		if node.Executor != "external" {
+			return fmt.Errorf("node %q executor must be external", node.ID)
 		}
-		if n.WorkflowRun != nil {
-			kinds++
+		if node.Command == "" && node.Prompt == "" {
+			return fmt.Errorf("node %q external executor is supported only for command or prompt nodes", node.ID)
 		}
-		if n.Internal != nil {
-			kinds++
+	}
+	if node.SideEffect != nil {
+		if node.Executor != "external" && node.Adapter == nil {
+			return fmt.Errorf("node %q side_effect requires executor: external or adapter node", node.ID)
 		}
-		if n.Adapter != nil {
-			kinds++
+		switch node.SideEffect.Mode {
+		case "idempotent", "reconcile":
+		default:
+			return fmt.Errorf("node %q side_effect.mode must be idempotent or reconcile", node.ID)
 		}
-		if kinds != 1 {
-			return fmt.Errorf("node %q must define exactly one action", n.ID)
+	}
+	if node.ToolApproval == nil {
+		return nil
+	}
+	if node.Command == "" && node.Prompt == "" {
+		return fmt.Errorf("node %q tool_approval is supported only for command or prompt nodes", node.ID)
+	}
+	if node.Executor != "external" {
+		return fmt.Errorf("node %q tool_approval currently requires executor: external", node.ID)
+	}
+	if node.ToolApproval.Mode != "required" {
+		return fmt.Errorf("node %q tool_approval.mode must be required", node.ID)
+	}
+	return validateStringSet(node.ToolApproval.Tools, "node "+node.ID+".tool_approval.tools")
+}
+
+func validateAttempts(node spec.Node) error {
+	if node.Attempts.Max < 0 {
+		return fmt.Errorf("node %q attempts.max cannot be negative", node.ID)
+	}
+	if len(node.Attempts.RetryOn) > 0 {
+		if node.Attempts.Max < 2 {
+			return fmt.Errorf("node %q attempts.retry_on requires attempts.max >= 2", node.ID)
 		}
-		if n.Subworkflow != nil || n.Foreach != nil {
-			return fmt.Errorf("node %q contains an unexpanded workflow container", n.ID)
+		if len(node.Hooks.OnFailure) > 0 {
+			return fmt.Errorf("node %q cannot combine attempts.retry_on with hooks.on_failure", node.ID)
 		}
-		if n.WorkflowRun != nil {
-			if strings.TrimSpace(n.WorkflowRun.Path) == "" {
-				return fmt.Errorf("node %q workflow.path is required", n.ID)
+		seen := map[string]bool{}
+		for _, kind := range node.Attempts.RetryOn {
+			if kind != "exit" && kind != "start" && kind != "protocol" && kind != "internal" && kind != "timed_out" {
+				return fmt.Errorf("node %q attempts.retry_on contains unsupported kind %q", node.ID, kind)
 			}
-			if n.WorkflowRun.Policy != nil {
-				if err := validatePolicySpec(*n.WorkflowRun.Policy, "node "+n.ID+".workflow.policy"); err != nil {
-					return err
-				}
+			if seen[kind] {
+				return fmt.Errorf("node %q attempts.retry_on contains duplicate kind %q", node.ID, kind)
 			}
-			switch n.WorkflowRun.Isolation {
-			case "", "inherit", "worktree", "none":
-			default:
-				return fmt.Errorf("node %q workflow.isolation must be inherit, worktree, or none", n.ID)
-			}
-			if strings.TrimSpace(n.WorkflowRun.Repository) != "" {
-				if filepath.IsAbs(n.WorkflowRun.Repository) {
-					return fmt.Errorf("node %q workflow.repository must be relative to the control workspace", n.ID)
-				}
-				if n.WorkflowRun.Isolation == "inherit" {
-					return fmt.Errorf("node %q workflow.repository cannot use isolation inherit", n.ID)
-				}
-				if n.WorkflowRun.FanOut != nil {
-					return fmt.Errorf("node %q workflow.repository does not support fan_out in v0.1.43", n.ID)
-				}
-			}
-			if fanOut := n.WorkflowRun.FanOut; fanOut != nil {
-				if _, err := fanOutSourceNode(fanOut.ItemsFrom); err != nil {
-					return fmt.Errorf("node %q workflow.fan_out.items_from: %w", n.ID, err)
-				}
-				if fanOut.As != "" && !fanOutNameRE.MatchString(fanOut.As) {
-					return fmt.Errorf("node %q workflow.fan_out.as must be an identifier", n.ID)
-				}
-				if fanOut.MaxParallel < 0 || fanOut.MaxParallel > 64 {
-					return fmt.Errorf("node %q workflow.fan_out.max_parallel must be 0 (default 1) or between 1 and 64", n.ID)
-				}
-				if fanOut.MaxItems < 0 || fanOut.MaxItems > 256 {
-					return fmt.Errorf("node %q workflow.fan_out.max_items must be 0 (unlimited) or between 1 and 256", n.ID)
-				}
-				switch fanOut.Join {
-				case "", "all_success", "all_done", "one_success":
-				default:
-					return fmt.Errorf("node %q workflow.fan_out.join must be all_success, all_done, or one_success", n.ID)
-				}
-			}
+			seen[kind] = true
 		}
-		if n.Internal != nil && n.Internal.Mode != "noop" && n.Internal.Mode != "result" && n.Internal.Mode != "collect" && n.Internal.Mode != "worktree" {
-			return fmt.Errorf("node %q has unsupported internal mode %q", n.ID, n.Internal.Mode)
+	}
+	if node.Attempts.Backoff != nil {
+		if node.Attempts.Max < 2 {
+			return fmt.Errorf("node %q attempts.backoff requires attempts.max >= 2", node.ID)
 		}
-		if n.Internal != nil && n.Internal.Mode == "result" && strings.TrimSpace(n.Internal.ResultFrom) == "" {
-			return fmt.Errorf("node %q internal result requires result source", n.ID)
+		initial, err := time.ParseDuration(node.Attempts.Backoff.Initial)
+		if err != nil || initial <= 0 {
+			return fmt.Errorf("node %q attempts.backoff.initial must be a positive duration", node.ID)
 		}
-		if n.Internal != nil && n.Internal.Mode == "collect" && len(n.Internal.ResultsFrom) == 0 {
-			return fmt.Errorf("node %q internal collect requires result sources", n.ID)
+		if node.Attempts.Backoff.Multiplier != 0 && node.Attempts.Backoff.Multiplier < 1 {
+			return fmt.Errorf("node %q attempts.backoff.multiplier must be >= 1", node.ID)
 		}
-		if n.Internal != nil && n.Internal.Mode == "worktree" && (n.Internal.Worktree == nil || !n.Internal.Worktree.Enabled) {
-			return fmt.Errorf("node %q internal worktree action requires an enabled policy", n.ID)
-		}
-		if n.Script != nil {
-			if err := validateScript(*n.Script, "node "+n.ID+".script"); err != nil {
-				return err
+		if node.Attempts.Backoff.Max != "" {
+			maximum, err := time.ParseDuration(node.Attempts.Backoff.Max)
+			if err != nil || maximum <= 0 {
+				return fmt.Errorf("node %q attempts.backoff.max must be a positive duration", node.ID)
 			}
-		}
-		if n.Adapter != nil {
-			if strings.TrimSpace(n.Adapter.Name) == "" {
-				return fmt.Errorf("node %q adapter.name is required", n.ID)
-			}
-			if strings.TrimSpace(n.Adapter.Operation) == "" {
-				return fmt.Errorf("node %q adapter.operation is required", n.ID)
-			}
-			parts := strings.Split(n.Adapter.Operation, ".")
-			for _, part := range parts {
-				if part == "" || !regexp.MustCompile(`^[a-z0-9_-]+$`).MatchString(part) {
-					return fmt.Errorf("node %q adapter.operation must use lowercase dot-separated segments", n.ID)
-				}
-			}
-		}
-		if n.Executor != "" {
-			if n.Executor != "external" {
-				return fmt.Errorf("node %q executor must be external", n.ID)
-			}
-			if n.Command == "" && n.Prompt == "" {
-				return fmt.Errorf("node %q external executor is supported only for command or prompt nodes", n.ID)
-			}
-		}
-		if n.SideEffect != nil {
-			if n.Executor != "external" && n.Adapter == nil {
-				return fmt.Errorf("node %q side_effect requires executor: external or adapter node", n.ID)
-			}
-			switch n.SideEffect.Mode {
-			case "idempotent", "reconcile":
-			default:
-				return fmt.Errorf("node %q side_effect.mode must be idempotent or reconcile", n.ID)
-			}
-		}
-		if n.ToolApproval != nil {
-			if n.Command == "" && n.Prompt == "" {
-				return fmt.Errorf("node %q tool_approval is supported only for command or prompt nodes", n.ID)
-			}
-			if n.Executor != "external" {
-				return fmt.Errorf("node %q tool_approval currently requires executor: external", n.ID)
-			}
-			if n.ToolApproval.Mode != "required" {
-				return fmt.Errorf("node %q tool_approval.mode must be required", n.ID)
-			}
-			if err := validateStringSet(n.ToolApproval.Tools, "node "+n.ID+".tool_approval.tools"); err != nil {
-				return err
-			}
-		}
-		if n.Attempts.Max < 0 {
-			return fmt.Errorf("node %q attempts.max cannot be negative", n.ID)
-		}
-		if len(n.Attempts.RetryOn) > 0 {
-			if n.Attempts.Max < 2 {
-				return fmt.Errorf("node %q attempts.retry_on requires attempts.max >= 2", n.ID)
-			}
-			if len(n.Hooks.OnFailure) > 0 {
-				return fmt.Errorf("node %q cannot combine attempts.retry_on with hooks.on_failure", n.ID)
-			}
-			seenRetryKinds := map[string]bool{}
-			for _, kind := range n.Attempts.RetryOn {
-				if kind != "exit" && kind != "start" && kind != "protocol" && kind != "internal" && kind != "timed_out" {
-					return fmt.Errorf("node %q attempts.retry_on contains unsupported kind %q", n.ID, kind)
-				}
-				if seenRetryKinds[kind] {
-					return fmt.Errorf("node %q attempts.retry_on contains duplicate kind %q", n.ID, kind)
-				}
-				seenRetryKinds[kind] = true
-			}
-		}
-		if n.Attempts.Backoff != nil {
-			if n.Attempts.Max < 2 {
-				return fmt.Errorf("node %q attempts.backoff requires attempts.max >= 2", n.ID)
-			}
-			initial, err := time.ParseDuration(n.Attempts.Backoff.Initial)
-			if err != nil || initial <= 0 {
-				return fmt.Errorf("node %q attempts.backoff.initial must be a positive duration", n.ID)
-			}
-			if n.Attempts.Backoff.Multiplier != 0 && n.Attempts.Backoff.Multiplier < 1 {
-				return fmt.Errorf("node %q attempts.backoff.multiplier must be >= 1", n.ID)
-			}
-			if n.Attempts.Backoff.Max != "" {
-				maximum, err := time.ParseDuration(n.Attempts.Backoff.Max)
-				if err != nil || maximum <= 0 {
-					return fmt.Errorf("node %q attempts.backoff.max must be a positive duration", n.ID)
-				}
-				if maximum < initial {
-					return fmt.Errorf("node %q attempts.backoff.max must be >= attempts.backoff.initial", n.ID)
-				}
-			}
-		}
-		if n.Attempts.RetrySession != "" && n.Attempts.RetrySession != "fresh" && n.Attempts.RetrySession != "reuse" {
-			return fmt.Errorf("node %q attempts.retry_session must be fresh or reuse", n.ID)
-		}
-		if n.Timeout != "" {
-			duration, err := time.ParseDuration(n.Timeout)
-			if err != nil || duration <= 0 {
-				return fmt.Errorf("node %q has invalid timeout %q", n.ID, n.Timeout)
-			}
-		}
-		if n.IdleTimeout != "" {
-			duration, err := time.ParseDuration(n.IdleTimeout)
-			if err != nil || duration <= 0 {
-				return fmt.Errorf("node %q has invalid idle_timeout %q", n.ID, n.IdleTimeout)
-			}
-			if n.Command == "" && n.Prompt == "" {
-				return fmt.Errorf("node %q idle_timeout is supported only for command or prompt nodes", n.ID)
-			}
-		}
-		if n.AlwaysRun {
-			if n.TriggerRule != "" && n.TriggerRule != "all_done" {
-				return fmt.Errorf("node %q always_run is incompatible with trigger_rule %q; omit trigger_rule or use all_done", n.ID, n.TriggerRule)
-			}
-			if n.When != "" {
-				return fmt.Errorf("node %q always_run is incompatible with when; use an explicit all_done node without always_run when conditional cleanup is required", n.ID)
-			}
-		}
-		if n.AllowedTools != nil || len(n.DeniedTools) > 0 || n.Skills != nil || n.MCP != "" || len(n.Requires) > 0 {
-			if n.Command == "" && n.Prompt == "" {
-				return fmt.Errorf("node %q assistant policies are supported only for command or prompt nodes", n.ID)
-			}
-			if err := validateStringSet(optionalStrings(n.AllowedTools), "node "+n.ID+".allowed_tools"); err != nil {
-				return err
-			}
-			if err := validateStringSet(n.DeniedTools, "node "+n.ID+".denied_tools"); err != nil {
-				return err
-			}
-			if err := validateStringSet(optionalStrings(n.Skills), "node "+n.ID+".skills"); err != nil {
-				return err
-			}
-			if err := validateStringSet(n.Requires, "node "+n.ID+".requires"); err != nil {
-				return err
-			}
-			denied := map[string]bool{}
-			for _, tool := range n.DeniedTools {
-				denied[tool] = true
-			}
-			for _, tool := range optionalStrings(n.AllowedTools) {
-				if denied[tool] {
-					return fmt.Errorf("node %q tool %q appears in both allowed_tools and denied_tools", n.ID, tool)
-				}
-			}
-		}
-		if n.Sandbox != nil {
-			if n.Sandbox.Filesystem != "" && n.Sandbox.Filesystem != "read_only" {
-				return fmt.Errorf("node %q sandbox.filesystem must be read_only", n.ID)
-			}
-			if n.Sandbox.Network != "" && n.Sandbox.Network != "deny" {
-				return fmt.Errorf("node %q sandbox.network must be deny", n.ID)
-			}
-			if n.Sandbox.Enforcement != "" && n.Sandbox.Enforcement != "required" && n.Sandbox.Enforcement != "optional" {
-				return fmt.Errorf("node %q sandbox.enforcement must be required or optional", n.ID)
-			}
-			if n.Sandbox.Enforcement != "" && n.Bash == "" && n.Script == nil {
-				return fmt.Errorf("node %q OS sandbox enforcement is supported only for bash or script nodes", n.ID)
-			}
-			if n.Sandbox.Enforcement == "" && n.Command == "" && n.Prompt == "" && n.Bash == "" && n.Script == nil {
-				return fmt.Errorf("node %q sandbox is supported only for command, prompt, bash, or script nodes", n.ID)
-			}
-			if n.Sandbox.Filesystem == "read_only" && (n.Command != "" || n.Prompt != "") {
-				mutating := map[string]bool{"bash": true, "edit": true, "write": true, "patch": true}
-				for _, tool := range optionalStrings(n.AllowedTools) {
-					if mutating[tool] {
-						return fmt.Errorf("node %q read_only sandbox cannot allow tool %q", n.ID, tool)
-					}
-				}
-			}
-		}
-		if n.OutputFormat != nil {
-			if n.Command == "" && n.Prompt == "" && n.Script == nil && n.Adapter == nil {
-				return fmt.Errorf("node %q output_format is supported only for command, prompt, script, or adapter nodes", n.ID)
-			}
-			if err := schemasubset.ValidateDefinition(*n.OutputFormat, "node "+n.ID+".output_format"); err != nil {
-				return err
-			}
-		}
-		if n.OutputType != "" || n.OutputMIME != "" || n.OutputPath != "" {
-			if n.Command == "" && n.Prompt == "" && n.Bash == "" && n.Script == nil {
-				return fmt.Errorf("node %q typed artifacts are supported only for command, prompt, bash, or script nodes", n.ID)
-			}
-			if !artifacttype.Valid(n.OutputType) {
-				return fmt.Errorf("node %q output_type must match %s", n.ID, artifacttype.Pattern)
-			}
-			if strings.ContainsAny(n.OutputMIME, "\r\n") {
-				return fmt.Errorf("node %q output_mime must be a single line", n.ID)
-			}
-			if n.OutputMIME != "" && !strings.Contains(n.OutputMIME, "/") {
-				return fmt.Errorf("node %q output_mime must be a media type", n.ID)
-			}
-		}
-		if n.Approval != nil && strings.TrimSpace(n.Approval.Message) == "" {
-			return fmt.Errorf("approval node %q requires message", n.ID)
-		}
-		if n.LoopGroup != nil {
-			if insideLoop {
-				return fmt.Errorf("nested loop_group is not supported in v1alpha1: %s.%s", scope, n.ID)
-			}
-			if n.LoopGroup.MaxIterations <= 0 {
-				return fmt.Errorf("loop_group node %q requires max_iterations > 0", n.ID)
-			}
-			if n.LoopGroup.MaxIterations > spec.MaxLoopGroupIterations {
-				return fmt.Errorf("loop_group node %q max_iterations must be <= %d", n.ID, spec.MaxLoopGroupIterations)
-			}
-			if err := validateNodes(n.LoopGroup.Nodes, scope+"."+n.ID+".loop_group.nodes", true); err != nil {
-				return err
-			}
-			found := false
-			for _, child := range n.LoopGroup.Nodes {
-				if child.ID == n.LoopGroup.Until.Node {
-					found = true
-				}
-			}
-			if !found {
-				return fmt.Errorf("loop_group %q until.node %q does not exist", n.ID, n.LoopGroup.Until.Node)
-			}
-			if n.LoopGroup.Until.ExitCode == nil && n.LoopGroup.Until.OutputContains == "" {
-				return fmt.Errorf("loop_group %q requires until.exit_code or until.output_contains", n.ID)
+			if maximum < initial {
+				return fmt.Errorf("node %q attempts.backoff.max must be >= attempts.backoff.initial", node.ID)
 			}
 		}
 	}
-	for _, n := range nodes {
-		if n.LoopGroup != nil {
-			for _, child := range n.LoopGroup.Nodes {
-				if _, collides := byID[child.ID]; collides {
-					return fmt.Errorf("loop_group %q child id %q collides with a node in outer scope", n.ID, child.ID)
-				}
+	if node.Attempts.RetrySession != "" && node.Attempts.RetrySession != "fresh" && node.Attempts.RetrySession != "reuse" {
+		return fmt.Errorf("node %q attempts.retry_session must be fresh or reuse", node.ID)
+	}
+	return nil
+}
+
+func validateTiming(node spec.Node) error {
+	if node.Timeout != "" {
+		duration, err := time.ParseDuration(node.Timeout)
+		if err != nil || duration <= 0 {
+			return fmt.Errorf("node %q has invalid timeout %q", node.ID, node.Timeout)
+		}
+	}
+	if node.IdleTimeout != "" {
+		duration, err := time.ParseDuration(node.IdleTimeout)
+		if err != nil || duration <= 0 {
+			return fmt.Errorf("node %q has invalid idle_timeout %q", node.ID, node.IdleTimeout)
+		}
+		if node.Command == "" && node.Prompt == "" {
+			return fmt.Errorf("node %q idle_timeout is supported only for command or prompt nodes", node.ID)
+		}
+	}
+	if node.AlwaysRun {
+		if node.TriggerRule != "" && node.TriggerRule != "all_done" {
+			return fmt.Errorf("node %q always_run is incompatible with trigger_rule %q; omit trigger_rule or use all_done", node.ID, node.TriggerRule)
+		}
+		if node.When != "" {
+			return fmt.Errorf("node %q always_run is incompatible with when; use an explicit all_done node without always_run when conditional cleanup is required", node.ID)
+		}
+	}
+	return nil
+}
+
+func validateAssistantPolicy(node spec.Node) error {
+	if node.AllowedTools == nil && len(node.DeniedTools) == 0 && node.Skills == nil && node.MCP == "" && len(node.Requires) == 0 {
+		return nil
+	}
+	if node.Command == "" && node.Prompt == "" {
+		return fmt.Errorf("node %q assistant policies are supported only for command or prompt nodes", node.ID)
+	}
+	sets := []struct {
+		values []string
+		name   string
+	}{
+		{optionalStrings(node.AllowedTools), "allowed_tools"},
+		{node.DeniedTools, "denied_tools"},
+		{optionalStrings(node.Skills), "skills"},
+		{node.Requires, "requires"},
+	}
+	for _, set := range sets {
+		if err := validateStringSet(set.values, "node "+node.ID+"."+set.name); err != nil {
+			return err
+		}
+	}
+	denied := map[string]bool{}
+	for _, tool := range node.DeniedTools {
+		denied[tool] = true
+	}
+	for _, tool := range optionalStrings(node.AllowedTools) {
+		if denied[tool] {
+			return fmt.Errorf("node %q tool %q appears in both allowed_tools and denied_tools", node.ID, tool)
+		}
+	}
+	return nil
+}
+
+func validateSandbox(node spec.Node) error {
+	value := node.Sandbox
+	if value == nil {
+		return nil
+	}
+	if value.Filesystem != "" && value.Filesystem != "read_only" {
+		return fmt.Errorf("node %q sandbox.filesystem must be read_only", node.ID)
+	}
+	if value.Network != "" && value.Network != "deny" {
+		return fmt.Errorf("node %q sandbox.network must be deny", node.ID)
+	}
+	if value.Enforcement != "" && value.Enforcement != "required" && value.Enforcement != "optional" {
+		return fmt.Errorf("node %q sandbox.enforcement must be required or optional", node.ID)
+	}
+	if value.Enforcement != "" && node.Bash == "" && node.Script == nil {
+		return fmt.Errorf("node %q OS sandbox enforcement is supported only for bash or script nodes", node.ID)
+	}
+	if value.Enforcement == "" && node.Command == "" && node.Prompt == "" && node.Bash == "" && node.Script == nil {
+		return fmt.Errorf("node %q sandbox is supported only for command, prompt, bash, or script nodes", node.ID)
+	}
+	if value.Filesystem == "read_only" && (node.Command != "" || node.Prompt != "") {
+		mutating := map[string]bool{"bash": true, "edit": true, "write": true, "patch": true}
+		for _, tool := range optionalStrings(node.AllowedTools) {
+			if mutating[tool] {
+				return fmt.Errorf("node %q read_only sandbox cannot allow tool %q", node.ID, tool)
 			}
 		}
 	}
-	for _, n := range nodes {
-		for _, dep := range n.DependsOn {
-			if _, ok := byID[dep]; !ok {
-				return fmt.Errorf("node %q depends on unknown node %q", n.ID, dep)
-			}
+	return nil
+}
+
+func validateOutputs(node spec.Node) error {
+	if node.OutputFormat != nil {
+		if node.Command == "" && node.Prompt == "" && node.Script == nil && node.Adapter == nil {
+			return fmt.Errorf("node %q output_format is supported only for command, prompt, script, or adapter nodes", node.ID)
 		}
-		if n.TriggerRule != "" && n.TriggerRule != "all_success" && n.TriggerRule != "all_done" && n.TriggerRule != "none_failed_min_one_success" && n.TriggerRule != "one_success" {
-			return fmt.Errorf("node %q has unsupported trigger_rule %q", n.ID, n.TriggerRule)
+		if err := schemasubset.ValidateDefinition(*node.OutputFormat, "node "+node.ID+".output_format"); err != nil {
+			return err
 		}
 	}
-	for _, n := range nodes {
-		if n.WorkflowRun == nil || n.WorkflowRun.FanOut == nil {
+	if node.OutputType == "" && node.OutputMIME == "" && node.OutputPath == "" {
+		return nil
+	}
+	if node.Command == "" && node.Prompt == "" && node.Bash == "" && node.Script == nil {
+		return fmt.Errorf("node %q typed artifacts are supported only for command, prompt, bash, or script nodes", node.ID)
+	}
+	if !artifacttype.Valid(node.OutputType) {
+		return fmt.Errorf("node %q output_type must match %s", node.ID, artifacttype.Pattern)
+	}
+	if strings.ContainsAny(node.OutputMIME, "\r\n") {
+		return fmt.Errorf("node %q output_mime must be a single line", node.ID)
+	}
+	if node.OutputMIME != "" && !strings.Contains(node.OutputMIME, "/") {
+		return fmt.Errorf("node %q output_mime must be a media type", node.ID)
+	}
+	return nil
+}
+
+func validateApproval(node spec.Node) error {
+	if node.Approval != nil && strings.TrimSpace(node.Approval.Message) == "" {
+		return fmt.Errorf("approval node %q requires message", node.ID)
+	}
+	return nil
+}
+
+func validateLoop(node spec.Node, scope string, insideLoop bool) error {
+	value := node.LoopGroup
+	if value == nil {
+		return nil
+	}
+	if insideLoop {
+		return fmt.Errorf("nested loop_group is not supported in v1alpha1: %s.%s", scope, node.ID)
+	}
+	if value.MaxIterations <= 0 {
+		return fmt.Errorf("loop_group node %q requires max_iterations > 0", node.ID)
+	}
+	if value.MaxIterations > spec.MaxLoopGroupIterations {
+		return fmt.Errorf("loop_group node %q max_iterations must be <= %d", node.ID, spec.MaxLoopGroupIterations)
+	}
+	if err := validateNodes(value.Nodes, scope+"."+node.ID+".loop_group.nodes", true); err != nil {
+		return err
+	}
+	found := false
+	for _, child := range value.Nodes {
+		if child.ID == value.Until.Node {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("loop_group %q until.node %q does not exist", node.ID, value.Until.Node)
+	}
+	if value.Until.ExitCode == nil && value.Until.OutputContains == "" {
+		return fmt.Errorf("loop_group %q requires until.exit_code or until.output_contains", node.ID)
+	}
+	return nil
+}
+
+func validateLoopCollisions(nodes []spec.Node, byID map[string]spec.Node) error {
+	for _, node := range nodes {
+		if node.LoopGroup == nil {
 			continue
 		}
-		sourceID, err := fanOutSourceNode(n.WorkflowRun.FanOut.ItemsFrom)
-		if err != nil {
-			return fmt.Errorf("node %q workflow.fan_out.items_from: %w", n.ID, err)
-		}
-		if _, ok := byID[sourceID]; !ok {
-			return fmt.Errorf("node %q workflow.fan_out references unknown source node %q", n.ID, sourceID)
-		}
-		if sourceID == n.ID || !nodeDependsOn(n.ID, sourceID, byID, map[string]bool{}) {
-			return fmt.Errorf("node %q workflow.fan_out source %q must be an upstream dependency", n.ID, sourceID)
+		for _, child := range node.LoopGroup.Nodes {
+			if _, collides := byID[child.ID]; collides {
+				return fmt.Errorf("loop_group %q child id %q collides with a node in outer scope", node.ID, child.ID)
+			}
 		}
 	}
+	return nil
+}
 
+func validateDependencies(nodes []spec.Node, byID map[string]spec.Node) error {
+	for _, node := range nodes {
+		for _, dep := range node.DependsOn {
+			if _, ok := byID[dep]; !ok {
+				return fmt.Errorf("node %q depends on unknown node %q", node.ID, dep)
+			}
+		}
+		switch node.TriggerRule {
+		case "", "all_success", "all_done", "none_failed_min_one_success", "one_success":
+		default:
+			return fmt.Errorf("node %q has unsupported trigger_rule %q", node.ID, node.TriggerRule)
+		}
+	}
+	return nil
+}
+
+func validateFanOutDependencies(nodes []spec.Node, byID map[string]spec.Node) error {
+	for _, node := range nodes {
+		if node.WorkflowRun == nil || node.WorkflowRun.FanOut == nil {
+			continue
+		}
+		sourceID, err := fanOutSourceNode(node.WorkflowRun.FanOut.ItemsFrom)
+		if err != nil {
+			return fmt.Errorf("node %q workflow.fan_out.items_from: %w", node.ID, err)
+		}
+		if _, ok := byID[sourceID]; !ok {
+			return fmt.Errorf("node %q workflow.fan_out references unknown source node %q", node.ID, sourceID)
+		}
+		if sourceID == node.ID || !nodeDependsOn(node.ID, sourceID, byID, map[string]bool{}) {
+			return fmt.Errorf("node %q workflow.fan_out source %q must be an upstream dependency", node.ID, sourceID)
+		}
+	}
+	return nil
+}
+
+func validateAcyclic(byID map[string]spec.Node) error {
 	visiting := map[string]bool{}
 	visited := map[string]bool{}
 	var visit func(string) error

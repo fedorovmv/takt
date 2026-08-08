@@ -64,7 +64,7 @@ nodes:
 	state.Nodes[state.Waiting.NodeID].Status = store.NodePending
 	state.Waiting = nil
 	state.Status = store.RunRunning
-	if err := r.Store.Save(state); err != nil {
+	if err := r.store.Save(state); err != nil {
 		t.Fatal(err)
 	}
 	state, err = r.Resume(context.Background(), state)

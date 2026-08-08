@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,11 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"takt/internal/assistant"
-	"takt/internal/control"
-	"takt/internal/dynamicplan"
-	"takt/internal/notification"
-	"takt/internal/store"
+	"takt/internal/appapi"
+	"takt/internal/application"
 	"takt/internal/version"
 )
 
@@ -28,11 +24,14 @@ const (
 )
 
 type Server struct {
-	control *control.Service
-	in      io.Reader
-	out     io.Writer
-	errOut  io.Writer
-	surface Surface
+	api         *appapi.Registry
+	plans       *application.PlanService
+	external    *application.ExternalService
+	maintenance *application.MaintenanceService
+	in          io.Reader
+	out         io.Writer
+	errOut      io.Writer
+	surface     Surface
 
 	writeMu sync.Mutex
 	callsMu sync.Mutex
@@ -73,11 +72,29 @@ type callParams struct {
 	Meta      map[string]any `json:"_meta,omitempty"`
 }
 
-func New(service *control.Service, in io.Reader, out, errOut io.Writer) *Server {
+type Dependencies struct {
+	API         *appapi.Registry
+	Plans       *application.PlanService
+	External    *application.ExternalService
+	Maintenance *application.MaintenanceService
+}
+
+func New(service *application.Services, in io.Reader, out, errOut io.Writer) *Server {
 	return NewWithSurface(service, in, out, errOut, SurfaceAll)
 }
 
-func NewWithSurface(service *control.Service, in io.Reader, out, errOut io.Writer, surface Surface) *Server {
+// NewWithSurface is the repository compatibility constructor. Production
+// composition should use NewWithDependencies so MCP receives only the use cases
+// it needs rather than the whole application service graph.
+func NewWithSurface(service *application.Services, in io.Reader, out, errOut io.Writer, surface Surface) *Server {
+	deps := Dependencies{}
+	if service != nil {
+		deps = Dependencies{API: appapi.New(service), Plans: service.PlanService, External: service.ExternalService, Maintenance: service.Maintenance}
+	}
+	return NewWithDependencies(deps, in, out, errOut, surface)
+}
+
+func NewWithDependencies(deps Dependencies, in io.Reader, out, errOut io.Writer, surface Surface) *Server {
 	if in == nil {
 		in = os.Stdin
 	}
@@ -90,7 +107,10 @@ func NewWithSurface(service *control.Service, in io.Reader, out, errOut io.Write
 	if surface == "" {
 		surface = SurfaceAgent
 	}
-	return &Server{control: service, in: in, out: out, errOut: errOut, surface: surface, calls: map[string]context.CancelFunc{}}
+	return &Server{
+		api: deps.API, plans: deps.Plans, external: deps.External, maintenance: deps.Maintenance,
+		in: in, out: out, errOut: errOut, surface: surface, calls: map[string]context.CancelFunc{},
+	}
 }
 
 // HandleJSON handles one JSON-RPC request without binding the MCP server to a
@@ -141,7 +161,7 @@ func (s *Server) HandleJSON(ctx context.Context, line []byte) ([]byte, bool) {
 // ServeStdio serves newline-delimited JSON-RPC over stdin/stdout. Runtime and
 // diagnostics never write to stdout, preserving the MCP transport contract.
 func (s *Server) ServeStdio(ctx context.Context) error {
-	if s.control == nil {
+	if s.api == nil || s.plans == nil || s.external == nil || s.maintenance == nil {
 		return fmt.Errorf("MCP control service is required")
 	}
 	monitorCtx, stopMonitor := context.WithCancel(ctx)
@@ -156,8 +176,8 @@ func (s *Server) ServeStdio(ctx context.Context) error {
 			case <-monitorCtx.Done():
 				return
 			case <-ticker.C:
-				if err := s.control.AdvanceDynamicPlans(context.Background()); err != nil {
-					fmt.Fprintln(s.errOut, "MCP dynamic plan monitor:", err)
+				if _, err := s.maintenance.Tick(context.Background(), time.Now().UTC()); err != nil {
+					fmt.Fprintln(s.errOut, "MCP maintenance:", err)
 				}
 			}
 		}
@@ -334,534 +354,64 @@ func (s *Server) callTool(ctx context.Context, params callParams) map[string]any
 	return toolSuccess(value)
 }
 
+var canonicalOperations = map[string]string{
+	"takt.task.start":            "task.start",
+	"takt.task.status":           "task.status",
+	"takt.task.respond":          "task.respond",
+	"takt.task.stop":             "task.stop",
+	"takt.task.explain":          "task.explain",
+	"takt.workflow.list":         "workflow.list",
+	"takt.workflow.describe":     "workflow.describe",
+	"takt.block.list":            "block.list",
+	"takt.block.describe":        "block.describe",
+	"takt.host.begin":            "host.begin",
+	"takt.host.confirm":          "host.confirm",
+	"takt.host.get":              "host.get",
+	"takt.host.find":             "host.find",
+	"takt.host.guard_tool":       "host.guard_tool",
+	"takt.host.guard_completion": "host.guard_completion",
+	"takt.host.release":          "host.release",
+	"takt.plan":                  "plan.create",
+	"takt.plan.get":              "plan.get",
+	"takt.execute":               "plan.execute",
+	"takt.run.steer":             "plan.steer",
+	"takt.plan.promote":          "plan.promote",
+	"takt.run.start":             "run.start",
+	"takt.run.get":               "run.get",
+	"takt.run.list":              "run.list",
+	"takt.run.attention":         "run.attention",
+	"takt.run.summary":           "run.summary",
+	"takt.run.pause":             "run.pause",
+	"takt.run.resume_paused":     "run.resume_paused",
+	"takt.run.retry":             "run.retry",
+	"takt.run.fork":              "run.fork",
+	"takt.run.abandon":           "run.abandon",
+	"takt.run.recover":           "run.recover",
+	"takt.notify.list":           "notify.list",
+	"takt.notify.ack":            "notify.ack",
+	"takt.notify.test":           "notify.test",
+	"takt.run.resume":            "run.resume",
+	"takt.run.answer":            "run.answer",
+	"takt.run.cancel":            "run.cancel",
+	"takt.run.children":          "run.children",
+	"takt.run.artifacts":         "run.artifacts",
+	"takt.run.events":            "run.events",
+}
+
+func canonicalOperation(name string) (string, bool) {
+	operation, ok := canonicalOperations[name]
+	return operation, ok
+}
+
 func (s *Server) executeTool(ctx context.Context, name string, args map[string]any) (any, error) {
-	switch name {
-	case "takt.task.start":
-		var in struct {
-			Goal      string `json:"goal,omitempty"`
-			Source    string `json:"source,omitempty"`
-			SourceRef string `json:"source_ref,omitempty"`
-			Profile   string `json:"profile,omitempty"`
-			Go        bool   `json:"go,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.StartTask(ctx, control.TaskStartRequest{Goal: in.Goal, Source: in.Source, SourceRef: in.SourceRef, Profile: in.Profile, Go: in.Go, Detached: true})
-	case "takt.task.status":
-		var in struct {
-			Reference string `json:"reference"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.TaskStatus(in.Reference)
-	case "takt.task.respond":
-		var in struct {
-			Reference string `json:"reference"`
-			Action    string `json:"action"`
-			Message   string `json:"message,omitempty"`
-			NodeID    string `json:"node_id,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.RespondTask(ctx, control.TaskRespondRequest{Reference: in.Reference, Action: in.Action, Message: in.Message, NodeID: in.NodeID, Detached: true})
-	case "takt.task.stop":
-		var in struct {
-			Reference string `json:"reference"`
-			Reason    string `json:"reason,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.StopTask(control.TaskStopRequest{Reference: in.Reference, Reason: in.Reason})
-	case "takt.task.explain":
-		var in struct {
-			Reference string `json:"reference"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.ExplainTask(in.Reference)
-	case "takt.workflow.list":
-		var in struct {
-			Profile string `json:"profile"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		entries, err := s.control.ListWorkflows(in.Profile)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"profile": in.Profile, "workflows": entries}, nil
-	case "takt.workflow.describe":
-		var in struct {
-			Selector string `json:"selector"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.DescribeWorkflow(in.Selector)
-	case "takt.block.list":
-		var in struct {
-			Profile string `json:"profile,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.ListBlocks(in.Profile)
-	case "takt.block.describe":
-		var in struct {
-			Profile string `json:"profile,omitempty"`
-			Name    string `json:"name"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.DescribeBlock(in.Profile, in.Name)
-	case "takt.host.begin":
-		var in control.HostBeginRequest
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.BeginHostSession(ctx, in)
-	case "takt.host.confirm":
-		var in control.HostConfirmRequest
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		in.Detached = true
-		return s.control.ConfirmHostSession(ctx, in)
-	case "takt.host.get":
-		var in struct {
-			SessionID string `json:"session_id"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.GetHostSession(in.SessionID)
-	case "takt.host.find":
-		var in struct {
-			Host          string `json:"host"`
-			HostSessionID string `json:"host_session_id"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.FindHostSession(in.Host, in.HostSessionID)
-	case "takt.host.guard_tool":
-		var in control.HostToolGuardRequest
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.GuardHostTool(in)
-	case "takt.host.guard_completion":
-		var in control.HostCompletionGuardRequest
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.GuardHostCompletion(in)
-	case "takt.host.release":
-		var in struct {
-			SessionID string `json:"session_id"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.ReleaseHostSession(in.SessionID)
-	case "takt.plan":
-		var in struct {
-			Goal      string            `json:"goal"`
-			Profile   string            `json:"profile,omitempty"`
-			Candidate *dynamicplan.Plan `json:"candidate,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.Plan(ctx, control.PlanRequest{Goal: in.Goal, Profile: in.Profile, Candidate: in.Candidate})
-	case "takt.plan.get":
-		var in struct {
-			PlanID string `json:"plan_id"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.GetPlan(in.PlanID)
-	case "takt.execute":
-		var in control.ExecutePlanRequest
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.ExecutePlan(ctx, in)
-	case "takt.run.steer":
-		var in control.SteerRequest
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.Steer(ctx, in)
-	case "takt.plan.promote":
-		var in struct {
-			PlanID string `json:"plan_id"`
-			Name   string `json:"name"`
-			Force  bool   `json:"force,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.PromotePlanWithOptions(in.PlanID, in.Name, control.PromotePlanOptions{Force: in.Force})
-	case "takt.run.start":
-		var in struct {
-			Selector     string `json:"selector"`
-			Input        string `json:"input,omitempty"`
-			ConfigPath   string `json:"config_path,omitempty"`
-			Worktree     *bool  `json:"worktree,omitempty"`
-			WorktreeBase string `json:"worktree_base,omitempty"`
-			KeepWorktree bool   `json:"keep_worktree,omitempty"`
-			AllowDirty   bool   `json:"allow_dirty_worktree,omitempty"`
-			Detached     *bool  `json:"detached,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		detached := true
-		if in.Detached != nil {
-			detached = *in.Detached
-		}
-		return s.control.Start(ctx, control.StartRequest{
-			Selector: in.Selector, Input: in.Input, ConfigPath: in.ConfigPath,
-			Worktree: in.Worktree, WorktreeBase: in.WorktreeBase,
-			KeepWorktree: in.KeepWorktree, AllowDirty: in.AllowDirty, Detached: detached,
-		})
-	case "takt.run.get":
-		var in runIDArguments
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.GetRun(in.RunID)
-	case "takt.run.list":
-		var in control.RunListRequest
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.ListRuns(in)
-	case "takt.run.attention":
-		return s.control.Attention()
-	case "takt.run.summary":
-		var in struct {
-			RunID     string `json:"run_id"`
-			Recursive bool   `json:"recursive,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.Summary(in.RunID, in.Recursive)
-	case "takt.run.pause":
-		var in runIDArguments
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.Pause(in.RunID)
-	case "takt.run.resume_paused":
-		var in runIDArguments
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.ResumePaused(ctx, in.RunID, true)
-	case "takt.run.retry":
-		var in control.RetryRequest
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		in.Detached = true
-		return s.control.Retry(ctx, in)
-	case "takt.run.fork":
-		var in control.ForkRequest
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		in.Detached = true
-		return s.control.Fork(ctx, in)
-	case "takt.run.abandon":
-		var in struct {
-			RunID  string `json:"run_id"`
-			Reason string `json:"reason,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.Abandon(in.RunID, in.Reason)
-	case "takt.run.recover":
-		return s.control.RecoverInterruptedRuns(ctx)
-	case "takt.notify.list":
-		var in struct {
-			UnreadOnly bool `json:"unread_only,omitempty"`
-			Limit      int  `json:"limit,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return (notification.Dispatcher{Workspace: s.control.Workspace}).List(in.UnreadOnly, in.Limit)
-	case "takt.notify.ack":
-		var in struct {
-			ID string `json:"id"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return (notification.Dispatcher{Workspace: s.control.Workspace}).Ack(in.ID)
-	case "takt.notify.test":
-		var in struct {
-			Message string `json:"message,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return (notification.Dispatcher{Workspace: s.control.Workspace}).Test(in.Message)
-	case "takt.run.resume":
-		var in runIDArguments
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.Resume(ctx, in.RunID)
-	case "takt.run.answer":
-		var in struct {
-			RunID  string `json:"run_id"`
-			NodeID string `json:"node_id"`
-			Value  string `json:"value"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.Answer(ctx, in.RunID, in.NodeID, in.Value)
-	case "takt.run.cancel":
-		var in struct {
-			RunID  string `json:"run_id"`
-			Reason string `json:"reason,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.Cancel(in.RunID, in.Reason)
-	case "takt.run.children":
-		var in runIDArguments
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.Children(in.RunID)
-	case "takt.run.artifacts":
-		var in struct {
-			RunID          string `json:"run_id"`
-			NodeID         string `json:"node_id,omitempty"`
-			Type           string `json:"type,omitempty"`
-			Recursive      bool   `json:"recursive,omitempty"`
-			IncludeContent bool   `json:"include_content,omitempty"`
-			MaxBytes       int    `json:"max_bytes,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		result, err := s.control.Artifacts(in.RunID, control.ArtifactQuery{NodeID: in.NodeID, Type: in.Type, Recursive: in.Recursive})
-		if err != nil {
-			return nil, err
-		}
-		if in.IncludeContent {
-			if err := attachArtifactContent(result, in.MaxBytes); err != nil {
-				return nil, err
-			}
-		}
-		return result, nil
-	case "takt.run.events":
-		var in struct {
-			RunID         string `json:"run_id"`
-			AfterRevision uint64 `json:"after_revision,omitempty"`
-			Limit         int    `json:"limit,omitempty"`
-			WaitMS        int    `json:"wait_ms,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		if in.WaitMS < 0 || in.WaitMS > 30000 {
-			return nil, fmt.Errorf("wait_ms must be between 0 and 30000")
-		}
-		return s.control.Events(ctx, in.RunID, in.AfterRevision, in.Limit, time.Duration(in.WaitMS)*time.Millisecond)
-	case "takt.node.pending":
-		var in struct {
-			RunID     string `json:"run_id,omitempty"`
-			Recursive bool   `json:"recursive,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		tasks, err := s.control.PendingExternal(in.RunID, in.Recursive)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"tasks": tasks}, nil
-	case "takt.node.claim":
-		var in struct {
-			RunID        string                          `json:"run_id"`
-			NodeID       string                          `json:"node_id"`
-			WorkerID     string                          `json:"worker_id"`
-			Capabilities []string                        `json:"capabilities,omitempty"`
-			Declaration  assistant.CapabilityDeclaration `json:"capability_declaration,omitempty"`
-			LeaseMS      int                             `json:"lease_ms,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		if in.LeaseMS < 0 || in.LeaseMS > int(time.Hour/time.Millisecond) {
-			return nil, fmt.Errorf("lease_ms must be between 0 and 3600000")
-		}
-		return s.control.ClaimExternal(control.ExternalClaimRequest{RunID: in.RunID, NodeID: in.NodeID, WorkerID: in.WorkerID, Capabilities: in.Capabilities, Declaration: in.Declaration, Lease: time.Duration(in.LeaseMS) * time.Millisecond})
-	case "takt.node.reconcile":
-		var in struct {
-			RunID      string          `json:"run_id"`
-			NodeID     string          `json:"node_id"`
-			Outcome    string          `json:"outcome"`
-			Receipt    string          `json:"receipt,omitempty"`
-			Output     string          `json:"output,omitempty"`
-			Structured json.RawMessage `json:"structured,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.ReconcileExternal(ctx, control.ExternalReconcileRequest{RunID: in.RunID, NodeID: in.NodeID, Outcome: in.Outcome, Receipt: in.Receipt, Submission: control.ExternalSubmission{Output: in.Output, Structured: in.Structured}})
-	case "takt.node.event":
-		var in struct {
-			RunID      string          `json:"run_id"`
-			NodeID     string          `json:"node_id"`
-			ClaimToken string          `json:"claim_token"`
-			Event      assistant.Event `json:"event"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		sequence, err := s.control.AppendExternalEvent(in.RunID, in.NodeID, in.ClaimToken, in.Event)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"sequence": sequence}, nil
-	case "takt.node.tool.request":
-		var in struct {
-			RunID      string          `json:"run_id"`
-			NodeID     string          `json:"node_id"`
-			ClaimToken string          `json:"claim_token"`
-			CallID     string          `json:"call_id"`
-			Tool       string          `json:"tool"`
-			Input      json.RawMessage `json:"input,omitempty"`
-			Message    string          `json:"message,omitempty"`
-			WaitMS     int             `json:"wait_ms,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		if in.WaitMS < 0 || in.WaitMS > 30000 {
-			return nil, fmt.Errorf("wait_ms must be between 0 and 30000")
-		}
-		return s.control.RequestExternalTool(ctx, control.ExternalToolRequest{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Tool: in.Tool, Input: in.Input, Message: in.Message, Wait: time.Duration(in.WaitMS) * time.Millisecond})
-	case "takt.node.tool.decide":
-		var in struct {
-			RunID    string `json:"run_id"`
-			NodeID   string `json:"node_id"`
-			CallID   string `json:"call_id"`
-			Decision string `json:"decision"`
-			Reason   string `json:"reason,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.DecideExternalTool(control.ExternalToolDecisionRequest{RunID: in.RunID, NodeID: in.NodeID, CallID: in.CallID, Decision: in.Decision, Reason: in.Reason})
-	case "takt.node.tool.start":
-		var in struct {
-			RunID      string `json:"run_id"`
-			NodeID     string `json:"node_id"`
-			ClaimToken string `json:"claim_token"`
-			CallID     string `json:"call_id"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.StartExternalTool(control.ExternalToolUpdate{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID})
-	case "takt.node.tool.complete":
-		var in struct {
-			RunID      string          `json:"run_id"`
-			NodeID     string          `json:"node_id"`
-			ClaimToken string          `json:"claim_token"`
-			CallID     string          `json:"call_id"`
-			Output     json.RawMessage `json:"output,omitempty"`
-			Failed     bool            `json:"failed,omitempty"`
-			Reason     string          `json:"reason,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.CompleteExternalTool(control.ExternalToolUpdate{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Output: in.Output, Failed: in.Failed, Reason: in.Reason})
-	case "takt.node.tool.get":
-		var in struct {
-			RunID  string `json:"run_id"`
-			NodeID string `json:"node_id"`
-			CallID string `json:"call_id"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.GetExternalTool(in.RunID, in.NodeID, in.CallID)
-	case "takt.node.tool.cancel":
-		var in struct {
-			RunID  string `json:"run_id"`
-			NodeID string `json:"node_id"`
-			CallID string `json:"call_id"`
-			Reason string `json:"reason,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.CancelExternalTool(in.RunID, in.NodeID, in.CallID, in.Reason)
-	case "takt.node.artifact.declare":
-		var in struct {
-			RunID      string `json:"run_id"`
-			NodeID     string `json:"node_id"`
-			ClaimToken string `json:"claim_token"`
-			CallID     string `json:"call_id"`
-			Type       string `json:"type"`
-			MIME       string `json:"mime,omitempty"`
-			Path       string `json:"path"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		return s.control.DeclareExternalArtifact(control.ExternalArtifactRequest{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Type: in.Type, MIME: in.MIME, Path: in.Path})
-	case "takt.node.complete", "takt.node.fail":
-		var in struct {
-			RunID            string          `json:"run_id"`
-			NodeID           string          `json:"node_id"`
-			ClaimToken       string          `json:"claim_token"`
-			Output           string          `json:"output,omitempty"`
-			Structured       json.RawMessage `json:"structured,omitempty"`
-			Stdout           string          `json:"stdout,omitempty"`
-			Stderr           string          `json:"stderr,omitempty"`
-			ExitCode         int             `json:"exit_code,omitempty"`
-			SessionID        string          `json:"session_id,omitempty"`
-			Resumed          bool            `json:"resumed,omitempty"`
-			AssistantVersion string          `json:"assistant_version,omitempty"`
-			ResolvedModel    *store.ModelRef `json:"resolved_model,omitempty"`
-			Usage            *store.Usage    `json:"usage,omitempty"`
-			ErrorCode        string          `json:"error_code,omitempty"`
-			Error            string          `json:"error,omitempty"`
-		}
-		if err := decodeArguments(args, &in); err != nil {
-			return nil, err
-		}
-		submission := control.ExternalSubmission{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, Output: in.Output, Structured: in.Structured, Stdout: in.Stdout, Stderr: in.Stderr, ExitCode: in.ExitCode, SessionID: in.SessionID, Resumed: in.Resumed, AssistantVersion: in.AssistantVersion, ResolvedModel: in.ResolvedModel, Usage: in.Usage, ErrorCode: in.ErrorCode, Error: in.Error}
-		if name == "takt.node.fail" {
-			return s.control.FailExternal(ctx, submission)
-		}
-		return s.control.CompleteExternal(ctx, submission)
-	default:
+	if operation, ok := canonicalOperation(name); ok {
+		return s.api.CallMap(ctx, operation, args)
+	}
+	handler, ok := s.specialToolHandler(name)
+	if !ok {
 		return nil, fmt.Errorf("unknown tool %q", name)
 	}
+	return handler(ctx, args)
 }
 
 type runIDArguments struct {
@@ -1062,51 +612,6 @@ func externalSubmissionSchema(object func(map[string]any, ...string) map[string]
 		"usage":             map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"input_tokens": integerProp("Input tokens", 0, int(^uint32(0))), "output_tokens": integerProp("Output tokens", 0, int(^uint32(0))), "cost": map[string]any{"type": "number", "minimum": 0}}},
 		"error_code":        stringProp("Takt execution error kind"), "error": stringProp("Failure message"),
 	}, "run_id", "node_id", "claim_token")
-}
-
-func attachArtifactContent(result map[string]any, maxBytes int) error {
-	if maxBytes <= 0 {
-		maxBytes = 64 * 1024
-	}
-	if maxBytes > 1024*1024 {
-		return fmt.Errorf("max_bytes must not exceed 1048576")
-	}
-	artifacts, ok := result["artifacts"].([]store.ArtifactRef)
-	if !ok {
-		return fmt.Errorf("unexpected artifact result")
-	}
-	values := make([]map[string]any, 0, len(artifacts))
-	for _, artifact := range artifacts {
-		raw, err := os.ReadFile(artifact.Path)
-		if err != nil {
-			return fmt.Errorf("read artifact %s: %w", artifact.ID, err)
-		}
-		truncated := len(raw) > maxBytes
-		if truncated {
-			raw = raw[:maxBytes]
-		}
-		encoded, _ := json.Marshal(artifact)
-		var value map[string]any
-		_ = json.Unmarshal(encoded, &value)
-		if isTextMIME(artifact.MIME) {
-			value["content"] = string(raw)
-			value["content_encoding"] = "utf-8"
-		} else {
-			value["content"] = base64.StdEncoding.EncodeToString(raw)
-			value["content_encoding"] = "base64"
-		}
-		if truncated {
-			value["content_truncated"] = true
-		}
-		values = append(values, value)
-	}
-	result["artifacts"] = values
-	return nil
-}
-
-func isTextMIME(value string) bool {
-	value = strings.ToLower(value)
-	return strings.HasPrefix(value, "text/") || strings.Contains(value, "json") || strings.Contains(value, "yaml") || strings.Contains(value, "xml") || value == ""
 }
 
 func decodeArguments(args map[string]any, value any) error {

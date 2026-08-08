@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"takt/internal/control"
-	"takt/internal/dynamicplan"
 	"takt/internal/version"
 	"takt/internal/yamlmini"
 )
@@ -73,11 +71,30 @@ type TaskCase struct {
 	Labels           map[string]string `json:"labels,omitempty"`
 }
 
+type TaskCaseExecution struct {
+	PlanID         string
+	RunID          string
+	Status         string
+	Route          string
+	Template       string
+	Workflow       string
+	PlanRevisions  int
+	ReplannerRuns  int
+	ExecutionRuns  int
+	RouterFallback bool
+	InputTokens    int
+	OutputTokens   int
+	Cost           float64
+}
+
+type TaskCaseRunner func(ctx context.Context, workspace, goal, profile string) (TaskCaseExecution, error)
+
 type TaskMatrixRunOptions struct {
 	MatrixPath string
 	OutputDir  string
 	Repeat     int
 	Replace    bool
+	CaseRunner TaskCaseRunner
 }
 
 type TaskRunRecord struct {
@@ -286,6 +303,9 @@ func loadTaskCases(path string) (TaskCaseManifest, string, error) {
 }
 
 func RunTaskMatrix(ctx context.Context, opts TaskMatrixRunOptions) (*TaskMatrixReport, error) {
+	if opts.CaseRunner == nil {
+		return nil, fmt.Errorf("task evaluation case runner is required")
+	}
 	matrix, matrixPath, matrixFingerprint, err := LoadTaskMatrix(opts.MatrixPath)
 	if err != nil {
 		return nil, err
@@ -343,7 +363,7 @@ func RunTaskMatrix(ctx context.Context, opts TaskMatrixRunOptions) (*TaskMatrixR
 		for _, caseID := range caseIDs {
 			for rep := 1; rep <= repeat; rep++ {
 				workspace := filepath.Join(strategyResult.OutputDir, "workspaces", sanitizeCaseID(caseID), fmt.Sprintf("repeat-%02d", rep))
-				run, runErr := runTaskCase(ctx, template, workspace, strategy, matrix.Benchmark.Profile, caseID, cases.Cases[caseID], rep)
+				run, runErr := runTaskCase(ctx, opts.CaseRunner, template, workspace, strategy, matrix.Benchmark.Profile, caseID, cases.Cases[caseID], rep)
 				strategyResult.Runs = append(strategyResult.Runs, run)
 				if runErr != nil && run.Status == "infrastructure_error" {
 					return report, fmt.Errorf("strategy %s case %s repeat %d: %w", strategy.ID, caseID, rep, runErr)
@@ -393,7 +413,7 @@ func RunTaskMatrix(ctx context.Context, opts TaskMatrixRunOptions) (*TaskMatrixR
 	return report, nil
 }
 
-func runTaskCase(ctx context.Context, template, workspace string, strategy TaskMatrixStrategy, defaultProfile, caseID string, item TaskCase, repeat int) (TaskRunRecord, error) {
+func runTaskCase(ctx context.Context, runner TaskCaseRunner, template, workspace string, strategy TaskMatrixStrategy, defaultProfile, caseID string, item TaskCase, repeat int) (TaskRunRecord, error) {
 	record := TaskRunRecord{CaseID: caseID, Repeat: repeat, Labels: item.Labels, Status: "not_started", ReplanExpected: taskCaseExpectsReplan(item.MinPlanRevisions)}
 	started := time.Now()
 	if err := os.RemoveAll(workspace); err != nil {
@@ -411,12 +431,6 @@ func runTaskCase(ctx context.Context, template, workspace string, strategy TaskM
 		record.Error = err.Error()
 		return record, err
 	}
-	service, err := control.New(workspace, ".takt/config.yaml")
-	if err != nil {
-		record.Status = "infrastructure_error"
-		record.Error = err.Error()
-		return record, err
-	}
 	profile := strategy.Profile
 	if profile == "" {
 		profile = defaultProfile
@@ -424,42 +438,23 @@ func runTaskCase(ctx context.Context, template, workspace string, strategy TaskM
 	if profile == "" {
 		profile = "code"
 	}
-	planned, planErr := service.Plan(ctx, control.PlanRequest{Goal: item.Goal, Profile: profile})
-	var runErr error
-	if planErr != nil {
-		runErr = planErr
-	} else {
-		record.PlanID = planned.PlanID
-		record.Status = planned.Record.Status
-		if planned.Route != nil {
-			record.Route = planned.Route.Route
-			record.Template = planned.Route.Template
-			record.Workflow = planned.Route.Workflow
-		}
-		executed, executeErr := service.ExecutePlan(ctx, control.ExecutePlanRequest{PlanID: planned.PlanID, Confirm: true})
-		runErr = executeErr
-		if executed != nil {
-			record.Status = executed.Status
-			record.RunID = executed.CurrentRunID
-			record.NeedsInput = executed.Status == "waiting" || executed.Status == "paused" || executed.Status == "parked"
-			record.NeedsInputAllowed = item.AllowNeedsInput
-		}
-	}
+	execution, runErr := runner(ctx, workspace, item.Goal, profile)
 	record.DurationMS = time.Since(started).Milliseconds()
-	if record.PlanID != "" {
-		plan, loadErr := (dynamicplan.Store{Workspace: workspace}).Load(record.PlanID)
-		if loadErr == nil {
-			record.Status = plan.Status
-			record.RunID = plan.CurrentRunID
-			record.NeedsInput = plan.Status == "waiting" || plan.Status == "paused" || plan.Status == "parked"
-			record.NeedsInputAllowed = item.AllowNeedsInput
-			record.PlanRevisions = len(plan.Revisions)
-			record.ReplannerRuns = len(plan.ReplannerRunIDs)
-			record.ExecutionRuns = len(plan.ExecutionRunIDs)
-			record.RouterFallback = plan.RouterError != "" || routeHasSignal(plan.Route, "router_fallback")
-			accumulateTaskUsage(service, plan, &record)
-		}
-	}
+	record.PlanID = execution.PlanID
+	record.RunID = execution.RunID
+	record.Status = execution.Status
+	record.Route = execution.Route
+	record.Template = execution.Template
+	record.Workflow = execution.Workflow
+	record.PlanRevisions = execution.PlanRevisions
+	record.ReplannerRuns = execution.ReplannerRuns
+	record.ExecutionRuns = execution.ExecutionRuns
+	record.RouterFallback = execution.RouterFallback
+	record.InputTokens = execution.InputTokens
+	record.OutputTokens = execution.OutputTokens
+	record.Cost = execution.Cost
+	record.NeedsInput = record.Status == "waiting" || record.Status == "paused" || record.Status == "parked"
+	record.NeedsInputAllowed = item.AllowNeedsInput
 	record.RouteCorrect = record.Route == item.ExpectedRoute && (item.ExpectedTemplate == "" || record.Template == item.ExpectedTemplate) && (item.ExpectedWorkflow == "" || record.Workflow == item.ExpectedWorkflow)
 	record.FinalSuccess = record.Status == item.ExpectedStatus && (!record.NeedsInput || record.NeedsInputAllowed)
 	if record.ReplanExpected {
@@ -495,37 +490,6 @@ func routeHasSignal(raw json.RawMessage, signal string) bool {
 		}
 	}
 	return false
-}
-
-func accumulateTaskUsage(service *control.Service, plan *dynamicplan.Record, record *TaskRunRecord) {
-	seen := map[string]bool{}
-	var visit func(string)
-	visit = func(runID string) {
-		if runID == "" || seen[runID] {
-			return
-		}
-		seen[runID] = true
-		state, err := service.GetRun(runID)
-		if err != nil {
-			return
-		}
-		if state.Usage != nil {
-			record.InputTokens += state.Usage.InputTokens
-			record.OutputTokens += state.Usage.OutputTokens
-			record.Cost += state.Usage.Cost
-		}
-		for _, child := range state.ChildRunIDs {
-			visit(child)
-		}
-	}
-	visit(plan.RouterRunID)
-	visit(plan.PlannerRunID)
-	for _, id := range plan.ReplannerRunIDs {
-		visit(id)
-	}
-	for _, id := range plan.ExecutionRunIDs {
-		visit(id)
-	}
 }
 
 func summarizeTaskRuns(runs []TaskRunRecord) TaskSummary {

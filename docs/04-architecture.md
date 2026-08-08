@@ -39,7 +39,7 @@ Runner / Shared DAG Scheduler
 - `internal/definition` — fingerprints workflow/config/commands;
 - `internal/workflow` — загрузка и статическая проверка DAG;
 - `internal/authoring` — diagnostics для templates, output/artifact references и несовместимых параметров;
-- `internal/control` — общий lifecycle API для CLI, MCP и daemon; наружу возвращается только повторно загруженное durable/redacted состояние;
+- `internal/application` — use-case boundary для CLI, MCP и daemon; сервисы Run/Plan/Task/External/Host и tooling возвращают application DTO, а durable Run state после mutation повторно загружается через persistence port;
 - `internal/domainadapter` и `sdk/domainadapter` — нейтральные SCM/tracker/CI operations и process/MCP transports;
 - `internal/packagedist` — переносимые пакеты, lock, dependency/source/signature policy;
 - `internal/workspacecatalog` — bounded multi-repo catalog, discovery и dependency graph;

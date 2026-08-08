@@ -34,7 +34,7 @@ Takt — Go-runtime, который снаружи оркестрирует го
 - Validation envelope декодируется только из stdout при любом terminal status; stderr остаётся диагностикой. Benchmark-успех требует `quality_node_status=completed` и `valid=true`.
 - Текст агента не считается доказательством успеха: завершение подтверждает детерминированная проверка.
 - Ошибки persistence всегда возвращаются вызывающему коду.
-- MCP adapter и local daemon используют общий control service и штатные runtime/store/locks; не реализуйте второй executor или отдельную семантику Run.
+- CLI, MCP и local daemon используют `internal/application`/`internal/appapi` и один production composition root `internal/bootstrap`; не реализуйте второй executor, transport-specific Run semantics или прямой обход application к runtime/store.
 - Domain adapters (`scm|tracker|ci`) являются обычными Node actions единого scheduler; provider/transport details живут в config/adapter, а `side_effect: reconcile` запрещает blind retry после неизвестного внешнего эффекта.
 - Retry/backoff является частью durable runtime state: scheduler обязан сохранять точный `not_before`, а resume не должен сбрасывать задержку или diagnostic fingerprint.
 - Секреты передавайте через `secret://ENV_NAME`. Перед persistence state/events и текстовых artifacts применяется общий redactor; бинарный artifact с известным секретом должен fail-closed. Публичный control/CLI после исполнения возвращает состояние, повторно загруженное из Store, а не живой in-memory state.
@@ -42,6 +42,10 @@ Takt — Go-runtime, который снаружи оркестрирует го
 - Early-exit fan-out не маскируйте под пользовательскую отмену: ненужные siblings получают `cancel_reason=fanout_result_decided`. Внутренний `NodePath` остаётся канонической адресацией вложенных узлов, публичный node ID — совместимым интерфейсом.
 - `always_run` не скрывает failure основного графа; `idle_timeout` измеряет отсутствие нормализованной активности, а не полный timeout.
 - Daemon локальный и однопользовательский: Unix socket не является новой security boundary и не должен публиковаться в сеть.
+- `cmd/takt` остаётся launcher; command parsing/output живёт в `internal/cli`, все use-case operations (включая evaluation/learning/package/compatibility/adapter tooling) — в `internal/application`, concrete wiring — в `internal/bootstrap`.
+- Application services зависят от persistence через consumer-owned ports; transport packages не создают `store.FS`, `runtime.Runner` или notification dispatcher напрямую.
+- Общие MCP/daemon операции добавляются один раз в canonical `internal/appapi` registry. Новый transport-specific business switch запрещён.
+- Closed-world switch node actions допустим и предпочтительнее generic plugin framework; новую абстракцию добавляйте только при двух фактических реализациях/потребителях или подтверждённой внешней extension boundary.
 
 ## Порядок изменения
 
@@ -59,6 +63,7 @@ Takt — Go-runtime, который снаружи оркестрирует го
 ```bash
 gofmt -w cmd internal sdk
 go test ./... -count=1
+./scripts/test-architecture.sh
 go test -race ./... -count=1
 go vet ./...
 ./scripts/check-docs.sh

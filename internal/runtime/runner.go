@@ -45,19 +45,39 @@ func (e *RunFailedError) Error() string {
 }
 
 type Runner struct {
+	workflow         *spec.Workflow
+	config           *spec.Config
+	workflowPath     string
+	configPath       string
+	controlWorkspace string
+	workspace        string
+	commands         command.Resolver
+	store            store.Repository
+	assistants       assistant.Resolver
+	adapters         domainadapter.Resolver
+	redactor         *redact.Redactor
+	startOptions     StartOptions
+	inheritedPolicy  assistant.Policy
+}
+
+// Definition is the immutable workflow definition and path context supplied
+// to a Runner. Runtime does not resolve profiles or transport arguments.
+type Definition struct {
 	Workflow         *spec.Workflow
 	Config           *spec.Config
 	WorkflowPath     string
 	ConfigPath       string
 	ControlWorkspace string
-	Workspace        string
-	Commands         command.Resolver
-	Store            store.Repository
-	Assistants       assistant.Resolver
-	Adapters         domainadapter.Resolver
-	redactor         *redact.Redactor
-	startOptions     StartOptions
-	inheritedPolicy  assistant.Policy
+}
+
+// Dependencies are runtime capabilities supplied by the composition root.
+// The interfaces remain deliberately concrete-to-domain rather than generic DI.
+type Dependencies struct {
+	Commands   command.Resolver
+	Store      store.Repository
+	Assistants assistant.Resolver
+	Adapters   domainadapter.Resolver
+	Redactor   *redact.Redactor
 }
 
 type StartOptions struct {
@@ -72,13 +92,33 @@ type StartOptions struct {
 	InheritedPolicy    *assistant.Policy
 }
 
+// New keeps the historical in-process constructor for tests and compatibility.
+// Production composition should prefer NewWithDependencies.
 func New(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspace string) *Runner {
+	def := Definition{Workflow: wf, Config: cfg, WorkflowPath: workflowPath, ConfigPath: configPath, ControlWorkspace: workspace}
+	return NewWithDependencies(def, DefaultDependencies(def))
+}
+
+func NewWithDependencies(def Definition, deps Dependencies) *Runner {
 	return &Runner{
-		Workflow: wf, Config: cfg, WorkflowPath: workflowPath, ConfigPath: configPath,
-		ControlWorkspace: workspace, Workspace: workspace,
-		Commands: buildCommandResolver(workflowPath, workspace, workspace),
-		Store:    store.FS{Workspace: workspace}, Assistants: assistant.Factory{Config: cfg}, Adapters: domainadapter.Factory{Config: cfg},
-		redactor: runtimeRedactor(cfg),
+		workflow: def.Workflow, config: def.Config, workflowPath: def.WorkflowPath, configPath: def.ConfigPath,
+		controlWorkspace: def.ControlWorkspace, workspace: def.ControlWorkspace,
+		commands: deps.Commands, store: deps.Store, assistants: deps.Assistants, adapters: deps.Adapters,
+		redactor: deps.Redactor,
+	}
+}
+
+// CommandResolver exposes the immutable command lookup configured for this runner.
+// Callers may inspect it for preflight validation but cannot replace runtime dependencies.
+func (r *Runner) CommandResolver() command.Resolver { return r.commands }
+
+func DefaultDependencies(def Definition) Dependencies {
+	return Dependencies{
+		Commands:   NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
+		Store:      store.FS{Workspace: def.ControlWorkspace},
+		Assistants: assistant.Factory{Config: def.Config},
+		Adapters:   domainadapter.Factory{Config: def.Config},
+		Redactor:   runtimeRedactor(def.Config),
 	}
 }
 
@@ -86,7 +126,7 @@ func runtimeRedactor(cfg *spec.Config) *redact.Redactor {
 	return redact.NewFromConfig(cfg)
 }
 
-func buildCommandResolver(workflowPath, executionWorkspace, controlWorkspace string) command.Resolver {
+func NewCommandResolver(workflowPath, executionWorkspace, controlWorkspace string) command.Resolver {
 	workflowDir := filepath.Dir(workflowPath)
 	home, _ := os.UserHomeDir()
 	// Definitions and bundled commands belong to the control checkout. Keep
@@ -104,8 +144,8 @@ func buildCommandResolver(workflowPath, executionWorkspace, controlWorkspace str
 }
 
 func (r *Runner) SetExecutionWorkspace(workspace string) {
-	r.Workspace = workspace
-	r.Commands = buildCommandResolver(r.WorkflowPath, workspace, r.ControlWorkspace)
+	r.workspace = workspace
+	r.commands = NewCommandResolver(r.workflowPath, workspace, r.controlWorkspace)
 }
 
 func (r *Runner) SetStartOptions(options StartOptions) {
@@ -168,7 +208,7 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 		}
 		r.SetExecutionWorkspace(executionWorkspace)
 	}
-	worktreeSpec := r.Workflow.Worktree
+	worktreeSpec := r.workflow.Worktree
 	if options.Worktree != nil {
 		worktreeSpec.Enabled = *options.Worktree
 	}
@@ -186,38 +226,38 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 	}
 	var worktreeState *store.WorktreeState
 	if worktreeSpec.Enabled {
-		info, prepareErr := gitworktree.Prepare(ctx, r.ControlWorkspace, id, r.Workflow.Metadata.Name, gitworktree.Options{
+		info, prepareErr := gitworktree.Prepare(ctx, r.controlWorkspace, id, r.workflow.Metadata.Name, gitworktree.Options{
 			Base: worktreeSpec.Base, BranchPrefix: worktreeSpec.BranchPrefix, AllowDirty: worktreeSpec.AllowDirty,
 		})
 		if prepareErr != nil {
 			return nil, prepareErr
 		}
-		r.Workspace = info.ExecutionWorkspace
-		r.Commands = buildCommandResolver(r.WorkflowPath, r.Workspace, r.ControlWorkspace)
+		r.workspace = info.ExecutionWorkspace
+		r.commands = NewCommandResolver(r.workflowPath, r.workspace, r.controlWorkspace)
 		worktreeState = &store.WorktreeState{
 			Enabled: true, RepositoryRoot: info.RepositoryRoot, ControlWorkspace: info.ControlWorkspace,
 			ExecutionWorkspace: info.ExecutionWorkspace, Path: info.Path, Branch: info.Branch,
 			BaseRef: info.BaseRef, BaseCommit: info.BaseCommit, Cleanup: worktreeSpec.Cleanup, BaseDirty: info.BaseDirty,
 		}
 	}
-	fingerprints, err := definition.Compute(r.Workflow, r.Config, r.WorkflowPath, r.ConfigPath, r.Commands)
+	fingerprints, err := definition.Compute(r.workflow, r.config, r.workflowPath, r.configPath, r.commands)
 	if err != nil {
 		r.rollbackPreparedWorktree(worktreeState)
 		return nil, err
 	}
 	now := time.Now().UTC()
 	state := &store.RunState{
-		ID: id, Status: store.RunRunning, ParentRunID: options.ParentRunID, ParentNodeID: options.ParentNodeID, WorkflowPath: r.WorkflowPath, ConfigPath: r.ConfigPath,
-		Workspace: r.ControlWorkspace, ExecutionWorkspace: r.Workspace, Worktree: worktreeState, RunOptions: runOptionsState(options), InheritedPolicy: policyState(r.inheritedPolicy, nil), Input: input, Nodes: map[string]*store.NodeState{},
+		ID: id, Status: store.RunRunning, ParentRunID: options.ParentRunID, ParentNodeID: options.ParentNodeID, WorkflowPath: r.workflowPath, ConfigPath: r.configPath,
+		Workspace: r.controlWorkspace, ExecutionWorkspace: r.workspace, Worktree: worktreeState, RunOptions: runOptionsState(options), InheritedPolicy: policyState(r.inheritedPolicy, nil), Input: input, Nodes: map[string]*store.NodeState{},
 		Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now, ExecutorPID: os.Getpid(), HeartbeatAt: &now,
 		WorkflowFingerprint: fingerprints.Workflow,
 		ConfigFingerprint:   fingerprints.Config,
 		CommandsFingerprint: fingerprints.Commands,
 	}
-	for _, node := range r.Workflow.Nodes {
+	for _, node := range r.workflow.Nodes {
 		state.Nodes[node.ID] = &store.NodeState{Status: store.NodePending, Path: canonicalNodePath(node.ID), Hidden: node.Hidden, PublicParent: node.PublicParent}
 	}
-	data := map[string]any{"workflow": r.Workflow.Metadata.Name, "execution_workspace": r.Workspace}
+	data := map[string]any{"workflow": r.workflow.Metadata.Name, "execution_workspace": r.workspace}
 	if options.ParentRunID != "" {
 		data["parent_run_id"] = options.ParentRunID
 		data["parent_node_id"] = options.ParentNodeID
@@ -295,7 +335,7 @@ func (r *Runner) prepareDynamicWorktree(ctx context.Context, state *store.RunSta
 	if policy.Cleanup == "" {
 		policy.Cleanup = "on_success"
 	}
-	info, err := gitworktree.Prepare(ctx, r.ControlWorkspace, state.ID, internal.WorkflowName, gitworktree.Options{
+	info, err := gitworktree.Prepare(ctx, r.controlWorkspace, state.ID, internal.WorkflowName, gitworktree.Options{
 		Base: policy.Base, BranchPrefix: policy.BranchPrefix, AllowDirty: policy.AllowDirty,
 	})
 	if err != nil {
@@ -306,7 +346,7 @@ func (r *Runner) prepareDynamicWorktree(ctx context.Context, state *store.RunSta
 		ExecutionWorkspace: info.ExecutionWorkspace, Path: info.Path, Branch: info.Branch,
 		BaseRef: info.BaseRef, BaseCommit: info.BaseCommit, Cleanup: policy.Cleanup, BaseDirty: info.BaseDirty,
 	}
-	previousWorkspace := r.Workspace
+	previousWorkspace := r.workspace
 	r.SetExecutionWorkspace(info.ExecutionWorkspace)
 	state.ExecutionWorkspace = info.ExecutionWorkspace
 	state.Worktree = value
@@ -334,7 +374,7 @@ func (r *Runner) rollbackPreparedWorktree(value *store.WorktreeState) {
 }
 
 func (r *Runner) VerifyDefinitions(state *store.RunState) error {
-	actual, err := definition.Compute(r.Workflow, r.Config, r.WorkflowPath, r.ConfigPath, r.Commands)
+	actual, err := definition.Compute(r.workflow, r.config, r.workflowPath, r.configPath, r.commands)
 	if err != nil {
 		return err
 	}
@@ -398,7 +438,7 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 	if state.CancelRequested {
 		return r.cancelState(state, "cancel_requested")
 	}
-	err := r.executeGraph(ctx, state, r.Workflow.Nodes, nil)
+	err := r.executeGraph(ctx, state, r.workflow.Nodes, nil)
 	if errors.Is(err, ErrWaiting) {
 		return state, ErrWaiting
 	}
@@ -419,7 +459,7 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 		// Clear the request only after the paused state is durable. If persistence
 		// fails, the marker remains and recovery cannot silently discard an
 		// operator decision.
-		if value, ok := r.Store.(operatorStore); ok {
+		if value, ok := r.store.(operatorStore); ok {
 			if clearErr := value.ClearPause(state.ID); clearErr != nil {
 				return state, clearErr
 			}
@@ -460,7 +500,7 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 		return state, err
 	}
 
-	status, nodeID, code, cause := graphResult(r.Workflow.Nodes, state.Nodes)
+	status, nodeID, code, cause := graphResult(r.workflow.Nodes, state.Nodes)
 	state.CurrentNode = ""
 	state.CurrentNodes = nil
 	state.Status = status
@@ -468,7 +508,7 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 	state.Error = cause
 	state.Usage = aggregateRunUsage(state.Nodes)
 	if status == store.RunCompleted {
-		state.Output = defaultRunOutput(r.Workflow.Nodes, state.Nodes)
+		state.Output = defaultRunOutput(r.workflow.Nodes, state.Nodes)
 	}
 	switch status {
 	case store.RunCompleted:
@@ -632,15 +672,11 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 	if max <= 0 {
 		max = 1
 	}
-	hooks := mergeHooks(r.Workflow.Hooks, node.Hooks)
+	hooks := mergeHooks(r.workflow.Hooks, node.Hooks)
 	if node.Internal != nil {
 		hooks = spec.HookSet{}
 	}
 	for ns.Attempts < max {
-		// Attempts and before-node hook retries are new work. Honor an operator
-		// pause before consuming the next attempt rather than only at the next
-		// executeGraph iteration. A persisted retry deadline also survives daemon
-		// restart and is observed before a new attempt starts.
 		if r.pauseRequested(state.ID) {
 			state.PauseRequested = true
 			return ErrPaused
@@ -648,201 +684,12 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		if err := r.awaitRetry(ctx, state, node.ID); err != nil {
 			return err
 		}
-		ns.Attempts++
-		ns.Status = store.NodeRunning
-		ns.Error, ns.ErrorCode = "", ""
-		state.CurrentNode = node.ID
-		state.CurrentNodes = nil
-		if err := r.commit(state, "node.started", node.ID, map[string]any{"attempt": ns.Attempts}); err != nil {
-			return err
-		}
-
-		attemptCtx, cancel, err := nodeContext(ctx, node.Timeout)
+		disposition, err := r.runAttempt(ctx, state, node, hooks, loopPrevious, max)
 		if err != nil {
-			return r.finishNodeError(state, node.ID, "invalid_timeout", err, execResult{})
-		}
-		attemptCtx, cancelWatch := r.watchCancellation(attemptCtx, state.ID)
-		originalCancel := cancel
-		cancel = func() { cancelWatch(); originalCancel() }
-
-		decision, feedback, hookErr := r.runHooks(attemptCtx, state, node, hooks.BeforeNode, loopPrevious)
-		if hookErr != nil {
-			cancel()
-			return r.finishAttemptExecutionError(state, node.ID, hookErr, execResult{})
-		}
-		if decision == "retry" {
-			cancel()
-			ns.Feedback = joinFeedback(ns.Feedback, feedback)
-			if err := r.scheduleRetry(state, node, "hook", "before_node", feedback); err != nil {
-				return err
-			}
-			continue
-		}
-		if decision == "fail" {
-			cancel()
-			return r.finishNodeFailure(state, node.ID, "hook_failed", fmt.Errorf("before_node hook failed: %s", feedback), execResult{})
-		}
-
-		result, execErr := r.execute(attemptCtx, state, node, loopPrevious)
-		if errors.Is(execErr, ErrWaiting) {
-			cancel()
-			// Waiting is a suspension point, not a consumed attempt. Persist the
-			// rollback so a separate CLI process can resume the same attempt.
-			ns.Attempts--
-			reason := "approval"
-			if state.Waiting != nil && state.Waiting.Kind != "" {
-				reason = state.Waiting.Kind
-			}
-			if err := r.commit(state, "node.suspended", node.ID, map[string]any{"reason": reason}); err != nil {
-				return err
-			}
-			return ErrWaiting
-		}
-		if errors.Is(execErr, ErrPaused) {
-			cancel()
-			// A paused child or nested execution is also a suspension point. Keep
-			// the parent node pending so resume reuses the same governed child Run.
-			ns.Attempts--
-			ns.Status = store.NodePending
-			if err := r.commit(state, "node.suspended", node.ID, map[string]any{"reason": "paused"}); err != nil {
-				return err
-			}
-			return ErrPaused
-		}
-		if err := r.flushAssistantEvents(state, node.ID, result.AssistantEvents, "adapter"); err != nil {
-			cancel()
 			return err
 		}
-		// The node timeout/cancellation covers the whole attempt, including
-		// container nodes such as loop_group. A child graph may finish by
-		// returning a derived error (for example loop exhaustion) after the
-		// parent attempt context has already expired. Preserve the context
-		// classification before allow_failure or generic error handling can
-		// turn it into an ordinary exit failure.
-		if contextErr := attemptContextError(attemptCtx, "node attempt"); contextErr != nil {
-			// Specialized adapters may already have classified the same parent
-			// timeout/cancellation and attached provider diagnostics. Preserve
-			// that richer error instead of replacing it with the generic node
-			// attempt message. Derived exit/protocol errors are still overridden
-			// by the authoritative parent context classification.
-			kind := execution.KindOf(execErr)
-			if execErr == nil || (kind != execution.KindTimedOut && kind != execution.KindCancelled) {
-				execErr = contextErr
-			}
-		}
-		retryable := execErr != nil && shouldRetryAttempt(node.Attempts, execution.KindOf(execErr), ns.Attempts, max)
-		recordExecution(ns, result, execErr)
-		if execErr != nil {
-			d := r.diagnosticFor(string(execution.KindOf(execErr)), execErr, retryable)
-			ns.Diagnostic = &d
-			if len(ns.Executions) > 0 {
-				ns.Executions[len(ns.Executions)-1].Diagnostic = cloneDiagnostic(&d)
-			}
-		} else {
-			ns.Diagnostic = nil
-		}
-		applyExecResult(ns, result)
-		mergeRunArtifacts(state, result.Artifacts)
-		accumulateUsage(ns, result.Usage)
-		if execErr != nil && node.AllowFailure && execution.IsExit(execErr) {
-			execErr = nil
-			if err := r.commit(state, "node.failure_allowed", node.ID, map[string]any{"exit_code": result.ExitCode}); err != nil {
-				cancel()
-				return err
-			}
-		}
-		if execErr != nil {
-			kind := execution.KindOf(execErr)
-			if shouldRetryAttempt(node.Attempts, kind, ns.Attempts, max) {
-				cancel()
-				ns.Feedback = joinFeedback(ns.Feedback, execErr.Error())
-				if node.Attempts.RetrySession == "fresh" {
-					ns.SessionID = ""
-				}
-				if err := r.scheduleRetry(state, node, string(kind), "attempts", ns.Feedback); err != nil {
-					return err
-				}
-				continue
-			}
-			if kind == execution.KindCancelled || kind == execution.KindTimedOut {
-				cancel()
-				return r.finishAttemptExecutionError(state, node.ID, execErr, result)
-			}
-			decision, feedback, hookErr = r.runHooks(attemptCtx, state, node, hooks.OnFailure, loopPrevious)
-			if hookErr != nil {
-				cancel()
-				return r.finishAttemptExecutionError(state, node.ID, hookErr, result)
-			}
-			if decision == "retry" {
-				cancel()
-				ns.Feedback = joinFeedback(ns.Feedback, feedback, execErr.Error())
-				if err := r.scheduleRetry(state, node, "hook", "on_failure", ns.Feedback); err != nil {
-					return err
-				}
-				continue
-			}
-			if decision == "fail" && feedback != "" {
-				ns.Feedback = joinFeedback(ns.Feedback, feedback)
-			}
-			cancel()
-			if err := r.finishNodeExecutionError(state, node.ID, kind, execErr, result); err != nil {
-				return err
-			}
-			return nil
-		}
-
-		decision, feedback, hookErr = r.runHooks(attemptCtx, state, node, hooks.AfterNode, loopPrevious)
-		if hookErr != nil {
-			cancel()
-			return r.finishAttemptExecutionError(state, node.ID, hookErr, result)
-		}
-		if decision == "retry" {
-			cancel()
-			ns.Feedback = joinFeedback(ns.Feedback, feedback)
-			if err := r.scheduleRetry(state, node, "hook", "after_node", feedback); err != nil {
-				return err
-			}
+		if disposition == attemptRetry {
 			continue
-		}
-		if decision == "fail" {
-			cancel()
-			return r.finishNodeFailure(state, node.ID, "hook_failed", fmt.Errorf("after_node hook failed: %s", feedback), result)
-		}
-
-		decision, feedback, hookErr = r.runHooks(attemptCtx, state, node, hooks.BeforeComplete, loopPrevious)
-		if hookErr != nil {
-			cancel()
-			return r.finishAttemptExecutionError(state, node.ID, hookErr, result)
-		}
-		if decision == "retry" {
-			cancel()
-			ns.Feedback = joinFeedback(ns.Feedback, feedback)
-			if err := r.scheduleRetry(state, node, "hook", "before_complete", feedback); err != nil {
-				return err
-			}
-			continue
-		}
-		if decision == "fail" {
-			cancel()
-			return r.finishNodeFailure(state, node.ID, "hook_failed", fmt.Errorf("before_complete hook failed: %s", feedback), result)
-		}
-		if err := attemptContextError(attemptCtx, "node attempt"); err != nil {
-			cancel()
-			return r.finishAttemptExecutionError(state, node.ID, err, result)
-		}
-		if err := r.captureDeclaredArtifact(state, node, loopPrevious); err != nil {
-			cancel()
-			return r.finishNodeError(state, node.ID, "artifact", fmt.Errorf("persist typed artifact: %w", err), result)
-		}
-
-		cancel()
-		ns.Status = store.NodeCompleted
-		ns.Diagnostic = nil
-		ns.Retry = nil
-		state.CurrentNode = ""
-		state.CurrentNodes = nil
-		if err := r.commit(state, "node.completed", node.ID, map[string]any{"attempts": ns.Attempts, "exit_code": ns.ExitCode, "output_truncated": ns.OutputTruncated, "usage": ns.Usage, "artifacts": ns.Artifacts}); err != nil {
-			return err
 		}
 		return nil
 	}
@@ -899,170 +746,24 @@ type execResult struct {
 }
 
 func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.Node, loopPrevious map[string]store.NodeState) (execResult, error) {
-	local := loopPrevious
-	if local == nil {
-		local = map[string]store.NodeState{}
-	}
-	artifacts := r.Store.ArtifactsDir(state.ID)
-	feedback := state.Nodes[node.ID].Feedback
+	action := r.actionContext(state, node, loopPrevious)
 	switch {
 	case node.Bash != "":
-		rendered, err := renderTemplate(node.Bash, state, local, feedback, artifacts)
-		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render bash node", Err: err}
-		}
-		return r.runBash(ctx, node, rendered)
+		return r.executeBashAction(ctx, state, node, action)
 	case node.Script != nil:
-		result, err := r.runScript(ctx, state, node, local, feedback, artifacts)
-		if err == nil && node.OutputFormat != nil {
-			normalized, validationErr := validateAndNormalizeOutput(result.Output, node.OutputFormat)
-			if validationErr != nil {
-				return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "validate structured output", Err: validationErr}
-			}
-			result.Output = normalized
-		}
-		return result, err
+		return r.executeScriptAction(ctx, state, node, action)
 	case node.Approval != nil:
-		if answer, ok := state.Approvals[node.ID]; ok {
-			output := ""
-			if node.Approval.CaptureResponse {
-				output = answer
-			}
-			return execResult{Output: output, Stdout: output, ExitCode: 0}, nil
-		}
-		message, err := renderTemplate(node.Approval.Message, state, local, feedback, artifacts)
-		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render approval message", Err: err}
-		}
-		state.Status = store.RunWaiting
-		kind := "approval"
-		eventType := "approval.requested"
-		if node.Approval.CaptureResponse {
-			kind = "question"
-			eventType = "question.requested"
-		}
-		state.Waiting = &store.WaitingState{NodeID: node.ID, Message: message, Kind: kind}
-		state.Nodes[node.ID].Status = store.NodeWaiting
-		if err := r.commit(state, eventType, node.ID, map[string]any{"message": message}); err != nil {
-			return execResult{}, err
-		}
-		return execResult{}, ErrWaiting
+		return r.executeApprovalAction(state, node, action)
 	case node.LoopGroup != nil:
 		return r.runLoopGroup(ctx, state, node)
 	case node.WorkflowRun != nil:
-		return r.runChildWorkflow(ctx, state, node, local, feedback, artifacts)
+		return r.runChildWorkflow(ctx, state, node, action.local, action.feedback, action.artifacts)
 	case node.Internal != nil:
-		switch node.Internal.Mode {
-		case "noop":
-			return execResult{ExitCode: 0}, nil
-		case "worktree":
-			if err := r.prepareDynamicWorktree(ctx, state, node.Internal); err != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "prepare worktree", Err: err}
-			}
-			return execResult{Output: r.Workspace, Stdout: r.Workspace, ExitCode: 0}, nil
-		case "result":
-			source := state.Nodes[node.Internal.ResultFrom]
-			if source == nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "workflow group result", Err: fmt.Errorf("result source %q is missing", node.Internal.ResultFrom)}
-			}
-			return execResult{Output: source.Output, Stdout: source.Stdout, Stderr: source.Stderr, ExitCode: source.ExitCode, SessionID: source.SessionID, Resumed: source.Resumed, Truncated: source.OutputTruncated}, nil
-		case "collect":
-			output, err := collectNodeOutputs(state, node.Internal.ResultsFrom)
-			if err != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "workflow group collect", Err: err}
-			}
-			return execResult{Output: output, Stdout: output, ExitCode: 0}, nil
-		default:
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "workflow group", Err: fmt.Errorf("unsupported internal mode %q", node.Internal.Mode)}
-		}
+		return r.executeInternalAction(ctx, state, node)
 	case node.Adapter != nil:
-		result, err := r.runDomainAdapter(ctx, state, node, local, feedback, artifacts)
-		if err == nil && node.OutputFormat != nil {
-			normalized, validationErr := validateAndNormalizeOutput(result.Output, node.OutputFormat)
-			if validationErr != nil {
-				return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "validate adapter structured output", Err: validationErr}
-			}
-			result.Output = normalized
-		}
-		return result, err
+		return r.executeAdapterAction(ctx, state, node, action)
 	case node.Command != "" || node.Prompt != "":
-		resolved, err := r.resolveAssistantNode(state, node, local, feedback, artifacts)
-		if err != nil {
-			return execResult{}, err
-		}
-		if node.Executor == "external" {
-			result, err := r.executeExternalNode(state, node, resolved)
-			if err == nil && node.OutputFormat != nil {
-				normalized, validationErr := validateAndNormalizeOutput(result.Output, node.OutputFormat)
-				if validationErr != nil {
-					return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "validate structured output", Err: validationErr}
-				}
-				result.Output = normalized
-			}
-			return result, err
-		}
-		idle, idleErr := newIdleMonitor(ctx, node.IdleTimeout)
-		if idleErr != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "node idle timeout", Err: idleErr}
-		}
-		defer idle.Close()
-		ctx = idle.Context()
-		resolver := r.Assistants
-		if resolver == nil {
-			resolver = assistant.Factory{Config: r.Config}
-		}
-		adapter, err := resolver.Resolve(resolved.AssistantName)
-		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: err}
-		}
-		collector := &assistantEventCollector{onEvent: idle.Touch}
-		sessionEvent := assistant.EventSessionStarted
-		if resolved.SessionMode == "resume" && resolved.SessionID != "" {
-			sessionEvent = assistant.EventSessionResumed
-		}
-		collector.Emit(assistant.Event{Type: sessionEvent, Provider: resolved.Model.Provider, SessionID: resolved.SessionID, Data: map[string]any{"assistant": resolved.AssistantName, "attempt": state.Nodes[node.ID].Attempts}})
-		request := assistant.Request{
-			RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts,
-			Prompt: resolved.Prompt, Workspace: r.Workspace, ModelName: resolved.ModelName, Model: resolved.Model,
-			SessionMode: resolved.SessionMode, SessionID: resolved.SessionID, NativeHooks: node.NativeHooks, Policy: resolved.Policy,
-			Emit: collector.Emit,
-		}
-		if r.redactor == nil {
-			r.redactor = runtimeRedactor(r.Config)
-		}
-		if r.Config != nil {
-			for _, assistantSpec := range r.Config.Assistants {
-				assistant.RegisterRenderedEnvSecrets(r.redactor, assistantSpec, request)
-			}
-		}
-		result, err := adapter.Run(ctx, request)
-		if errors.Is(context.Cause(ctx), ErrIdleTimeout) {
-			err = &execution.Error{Kind: execution.KindTimedOut, ExitCode: -1, Op: "assistant idle timeout", Err: ErrIdleTimeout}
-		}
-		events, eventErr := collectAssistantResultEvents(collector, resolved, result, err)
-		if eventErr != nil && err == nil {
-			err = eventErr
-		}
-		execResult := execResult{
-			Output: result.Output, Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, SessionID: result.SessionID,
-			Resumed: result.Resumed, Truncated: result.Truncated, Usage: result.Usage,
-			Assistant:        resolved.AssistantName,
-			AssistantVersion: result.AssistantVersion,
-			AssistantEvents:  events,
-			RequestedModel:   &store.ModelRef{Name: resolved.ModelName, Provider: resolved.Model.Provider, ID: resolved.Model.ID, Params: cloneParams(resolved.Model.Params)},
-		}
-		if result.ResolvedModel != nil {
-			execResult.ResolvedModel = &store.ModelRef{Name: result.ResolvedModel.Name, Provider: result.ResolvedModel.Provider, ID: result.ResolvedModel.ID, Params: cloneParams(result.ResolvedModel.Params)}
-		}
-		if err == nil && node.OutputFormat != nil {
-			normalized, validationErr := validateAndNormalizeOutput(result.Output, node.OutputFormat)
-			if validationErr != nil {
-				return execResult, &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "validate structured output", Err: validationErr}
-			}
-			execResult.Output = normalized
-		}
-		return execResult, err
-
+		return r.executeAssistantAction(ctx, state, node, action)
 	default:
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "execute node", Err: fmt.Errorf("unsupported node %q", node.ID)}
 	}
@@ -1202,7 +903,7 @@ func cloneLoopNodes(in map[string]store.NodeState) map[string]store.NodeState {
 
 func (r *Runner) runHooks(ctx context.Context, state *store.RunState, node spec.Node, hooks []spec.HookSpec, local map[string]store.NodeState) (string, string, error) {
 	for _, hook := range hooks {
-		rendered, renderErr := renderTemplate(hook.Bash, state, local, state.Nodes[node.ID].Feedback, r.Store.ArtifactsDir(state.ID))
+		rendered, renderErr := renderTemplate(hook.Bash, state, local, state.Nodes[node.ID].Feedback, r.store.ArtifactsDir(state.ID))
 		if renderErr != nil {
 			return "fail", renderErr.Error(), &execution.Error{Kind: execution.KindInternal, Op: "render hook", Err: renderErr}
 		}
@@ -1449,7 +1150,7 @@ func (r *Runner) commit(state *store.RunState, eventType, nodeID string, data ma
 	}
 	redactRunState(r.redactor, persisted)
 	eventData := r.redactor.Map(data)
-	if err := r.Store.Commit(persisted, store.Event{Type: eventType, NodeID: nodeID, Data: eventData}); err != nil {
+	if err := r.store.Commit(persisted, store.Event{Type: eventType, NodeID: nodeID, Data: eventData}); err != nil {
 		return err
 	}
 	state.Revision = persisted.Revision
@@ -1548,7 +1249,7 @@ func untilSatisfied(until spec.UntilSpec, node store.NodeState) bool {
 }
 
 func (r *Runner) diagnosticFor(code string, err error, retryable bool) store.DiagnosticState {
-	value := diagnostic.FromError(code, err, retryable, r.ControlWorkspace, r.Workspace)
+	value := diagnostic.FromError(code, err, retryable, r.controlWorkspace, r.workspace)
 	return store.DiagnosticState{Code: value.Code, Kind: value.Kind, Op: value.Op, Message: value.Message, Fingerprint: value.Fingerprint, Retryable: value.Retryable}
 }
 

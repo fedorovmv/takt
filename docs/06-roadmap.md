@@ -1,12 +1,27 @@
 # План развития Takt
 
-Актуальный план после `v0.1.51-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/65-*.md`.
+Актуальный план после `v0.1.52-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/66-*.md`.
 
 ## Текущая позиция
 
-Takt уже закрывает основной локальный control plane: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
+Takt уже закрывает основной локальный control plane и в `v0.1.52` прошёл отдельную архитектурную стабилизацию application/transport/runtime границ: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
 
 Главный риск теперь — продолжать добавлять механизмы быстрее, чем появляется evidence их пользы. Поэтому ближайший порядок меняется с feature-driven на evidence-driven.
+
+## P-1. Architecture quality — выполнено в v0.1.52
+
+Перед продолжением feature work проведён feature-freeze refactor:
+
+- thin `cmd/takt` и разделённый CLI transport;
+- application services вместо `control.Service`;
+- один production `bootstrap` composition root;
+- canonical daemon/MCP operation registry;
+- consumer-owned RunStore port;
+- explicit runtime dependencies;
+- decomposition node actions/workflow validation;
+- executable architecture import gate.
+
+Новые core-функции снова допускаются только через эти границы; architecture gate является обязательной частью `make check`.
 
 ## P0. Evidence
 

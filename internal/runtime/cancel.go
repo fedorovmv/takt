@@ -25,7 +25,7 @@ type operatorStore interface {
 }
 
 func (r *Runner) cancellationRequested(runID string) bool {
-	value, ok := r.Store.(cancellationStore)
+	value, ok := r.store.(cancellationStore)
 	if !ok {
 		return false
 	}
@@ -34,7 +34,7 @@ func (r *Runner) cancellationRequested(runID string) bool {
 }
 
 func (r *Runner) pauseRequested(runID string) bool {
-	value, ok := r.Store.(operatorStore)
+	value, ok := r.store.(operatorStore)
 	if !ok {
 		return false
 	}
@@ -43,7 +43,7 @@ func (r *Runner) pauseRequested(runID string) bool {
 }
 
 func (r *Runner) abandonmentRequested(runID string) (bool, string) {
-	value, ok := r.Store.(operatorStore)
+	value, ok := r.store.(operatorStore)
 	if !ok {
 		return false, ""
 	}
@@ -56,7 +56,7 @@ func (r *Runner) abandonmentRequested(runID string) (bool, string) {
 
 func (r *Runner) watchCancellation(parent context.Context, runID string) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(parent)
-	value, ok := r.Store.(cancellationStore)
+	value, ok := r.store.(cancellationStore)
 	if !ok {
 		return ctx, cancel
 	}
@@ -105,13 +105,13 @@ func (r *Runner) abandonState(state *store.RunState, reason string) (*store.RunS
 			node.Error = reason
 		}
 	}
-	if value, ok := r.Store.(cancellationStore); ok {
+	if value, ok := r.store.(cancellationStore); ok {
 		for _, childID := range state.ChildRunIDs {
-			child, loadErr := r.Store.Load(childID)
+			child, loadErr := r.store.Load(childID)
 			if loadErr == nil && terminalRunStatus(child.Status) {
 				continue
 			}
-			if operator, ok := r.Store.(operatorStore); ok {
+			if operator, ok := r.store.(operatorStore); ok {
 				_ = operator.RequestAbandon(childID, reason)
 			} else {
 				_ = value.RequestCancel(childID)
@@ -124,7 +124,7 @@ func (r *Runner) abandonState(state *store.RunState, reason string) (*store.RunS
 	if err := r.commit(state, "run.abandoned", "", map[string]any{"reason": reason, "children": state.ChildRunIDs}); err != nil {
 		return state, err
 	}
-	if value, ok := r.Store.(operatorStore); ok {
+	if value, ok := r.store.(operatorStore); ok {
 		if err := value.ClearAbandon(state.ID); err != nil {
 			return state, err
 		}
@@ -132,7 +132,7 @@ func (r *Runner) abandonState(state *store.RunState, reason string) (*store.RunS
 			return state, err
 		}
 	}
-	if value, ok := r.Store.(cancellationStore); ok {
+	if value, ok := r.store.(cancellationStore); ok {
 		if err := value.ClearCancel(state.ID); err != nil {
 			return state, err
 		}
@@ -165,9 +165,9 @@ func (r *Runner) cancelState(state *store.RunState, reason string) (*store.RunSt
 			node.Error = reason
 		}
 	}
-	if value, ok := r.Store.(cancellationStore); ok {
+	if value, ok := r.store.(cancellationStore); ok {
 		for _, childID := range state.ChildRunIDs {
-			child, loadErr := r.Store.Load(childID)
+			child, loadErr := r.store.Load(childID)
 			if loadErr == nil && (child.Status == store.RunCompleted || child.Status == store.RunCancelled || child.Status == store.RunFailed || child.Status == store.RunAbandoned) {
 				continue
 			}
@@ -180,7 +180,7 @@ func (r *Runner) cancelState(state *store.RunState, reason string) (*store.RunSt
 	if err := r.commit(state, "run.cancelled", "", map[string]any{"reason": reason, "children": state.ChildRunIDs}); err != nil {
 		return state, err
 	}
-	if value, ok := r.Store.(cancellationStore); ok {
+	if value, ok := r.store.(cancellationStore); ok {
 		if err := value.ClearCancel(state.ID); err != nil {
 			return state, err
 		}

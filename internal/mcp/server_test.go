@@ -11,15 +11,16 @@ import (
 	"testing"
 	"time"
 
-	"takt/internal/control"
+	"takt/internal/application"
 	"takt/internal/dynamicplan"
 	"takt/internal/notification"
 	"takt/internal/profile"
 	"takt/internal/store"
+	"takt/internal/testsupport/appfixture"
 )
 
 func TestServeStdioSupportsLegacyInitializeAndModernDiscover(t *testing.T) {
-	service, err := control.New(t.TempDir(), ".takt/config.yaml")
+	service, err := appfixture.New(t.TempDir(), ".takt/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func TestServeStdioSupportsLegacyInitializeAndModernDiscover(t *testing.T) {
 }
 
 func TestAgentSurfaceExposesOnlyCompactTaskAPI(t *testing.T) {
-	service, err := control.New(t.TempDir(), ".takt/config.yaml")
+	service, err := appfixture.New(t.TempDir(), ".takt/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +104,7 @@ nodes:
       message: Continue?
       capture_response: true
 `)
-	service, err := control.New(workspace, configPath)
+	service, err := appfixture.New(workspace, configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +116,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started := startedValue.(*control.StartResult)
+	started := startedValue.(*application.StartResult)
 	if started.State == nil || started.State.Status != store.RunWaiting {
 		t.Fatalf("started state = %#v", started.State)
 	}
@@ -125,7 +126,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := eventsValue.(*control.EventsResult)
+	events := eventsValue.(*application.EventsResult)
 	if len(events.Events) < 3 || events.NextRevision == 0 {
 		t.Fatalf("events = %#v", events)
 	}
@@ -169,7 +170,7 @@ nodes:
   - id: wait
     bash: sleep 30
 `)
-	service, err := control.New(workspace, configPath)
+	service, err := appfixture.New(workspace, configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +182,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started := startedValue.(*control.StartResult)
+	started := startedValue.(*application.StartResult)
 	if !started.Accepted || started.RunID == "" {
 		t.Fatalf("start result = %#v", started)
 	}
@@ -211,7 +212,7 @@ nodes:
 }
 
 func TestToolArgumentsRejectUnknownFields(t *testing.T) {
-	service, err := control.New(t.TempDir(), ".takt/config.yaml")
+	service, err := appfixture.New(t.TempDir(), ".takt/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +271,7 @@ func TestRequestIDKeyPreservesLargeNumericIDs(t *testing.T) {
 }
 
 func TestServeStdioAcceptsEnvelopeExtensionsAndRejectsInvalidEnvelope(t *testing.T) {
-	service, err := control.New(t.TempDir(), ".takt/config.yaml")
+	service, err := appfixture.New(t.TempDir(), ".takt/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +331,7 @@ nodes:
     depends_on: [delegated]
     bash: test '${nodes.delegated.output.ok}' = 'true'
 `)
-	service, err := control.New(workspace, configPath)
+	service, err := appfixture.New(workspace, configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +340,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started := startedValue.(*control.StartResult)
+	started := startedValue.(*application.StartResult)
 	if started.State == nil || started.State.Status != store.RunWaiting || started.State.Waiting == nil || started.State.Waiting.Kind != "external_node" {
 		t.Fatalf("start state = %#v", started.State)
 	}
@@ -347,7 +348,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	tasks := pendingValue.(map[string]any)["tasks"].([]control.ExternalTask)
+	tasks := pendingValue.(map[string]any)["tasks"].([]application.ExternalTask)
 	if len(tasks) != 1 || tasks[0].NodeID != "delegated" {
 		t.Fatalf("tasks = %#v", tasks)
 	}
@@ -360,7 +361,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	claimed := claimedValue.(*control.ExternalTask)
+	claimed := claimedValue.(*application.ExternalTask)
 	if claimed.ClaimToken == "" {
 		t.Fatal("claim token is empty")
 	}
@@ -416,7 +417,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := eventsValue.(*control.EventsResult).Events
+	events := eventsValue.(*application.EventsResult).Events
 	foundTool := false
 	for _, event := range events {
 		if event.Type == "assistant.tool.started" {
@@ -457,7 +458,7 @@ nodes:
       max: 2
       retry_on: [exit]
 `)
-	service, err := control.New(workspace, configPath)
+	service, err := appfixture.New(workspace, configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,12 +467,12 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	runID := startedValue.(*control.StartResult).RunID
+	runID := startedValue.(*application.StartResult).RunID
 	firstValue, err := server.executeTool(context.Background(), "takt.node.claim", map[string]any{"run_id": runID, "node_id": "delegated", "worker_id": "worker-1", "lease_ms": 60000})
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := firstValue.(*control.ExternalTask)
+	first := firstValue.(*application.ExternalTask)
 	failedValue, err := server.executeTool(context.Background(), "takt.node.fail", map[string]any{"run_id": runID, "node_id": "delegated", "claim_token": first.ClaimToken, "exit_code": 7, "error_code": "exit", "error": "temporary provider failure"})
 	if err != nil {
 		t.Fatal(err)
@@ -484,7 +485,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := secondValue.(*control.ExternalTask)
+	second := secondValue.(*application.ExternalTask)
 	if second.ClaimToken == first.ClaimToken || second.Attempt != 2 {
 		t.Fatalf("claim was not renewed: first=%#v second=%#v", first, second)
 	}
@@ -524,7 +525,7 @@ nodes:
     prompt: lease
     executor: external
 `)
-	service, err := control.New(workspace, configPath)
+	service, err := appfixture.New(workspace, configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,18 +534,18 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	runID := startedValue.(*control.StartResult).RunID
+	runID := startedValue.(*application.StartResult).RunID
 	firstValue, err := server.executeTool(context.Background(), "takt.node.claim", map[string]any{"run_id": runID, "node_id": "delegated", "worker_id": "worker-1", "lease_ms": 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := firstValue.(*control.ExternalTask)
+	first := firstValue.(*application.ExternalTask)
 	time.Sleep(10 * time.Millisecond)
 	secondValue, err := server.executeTool(context.Background(), "takt.node.claim", map[string]any{"run_id": runID, "node_id": "delegated", "worker_id": "worker-2", "lease_ms": 60000})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := secondValue.(*control.ExternalTask)
+	second := secondValue.(*application.ExternalTask)
 	if second.ClaimToken == first.ClaimToken || second.ClaimedBy != "worker-2" {
 		t.Fatalf("lease was not reclaimed: first=%#v second=%#v", first, second)
 	}
@@ -555,7 +556,7 @@ func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
 	if _, err := profile.Init("code", workspace, false); err != nil {
 		t.Fatal(err)
 	}
-	service, err := control.New(workspace, filepath.Join(workspace, ".takt", "config.yaml"))
+	service, err := appfixture.New(workspace, filepath.Join(workspace, ".takt", "config.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,7 +576,7 @@ func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	begun := beginValue.(*control.HostBeginResult)
+	begun := beginValue.(*application.HostBeginResult)
 	if begun.Session.ID == "" || begun.Session.Status != "preview" {
 		t.Fatalf("host begin = %#v", begun)
 	}
@@ -583,14 +584,14 @@ func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if getValue.(*control.HostSessionView).Session.ID != begun.Session.ID {
+	if getValue.(*application.HostSessionView).Session.ID != begun.Session.ID {
 		t.Fatalf("host get = %#v", getValue)
 	}
 	guardValue, err := server.executeTool(context.Background(), "takt.host.guard_tool", map[string]any{"session_id": begun.Session.ID, "tool": "edit"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if guardValue.(*control.HostGuardDecision).Allowed {
+	if guardValue.(*application.HostGuardDecision).Allowed {
 		t.Fatalf("edit tool escaped MCP guard: %#v", guardValue)
 	}
 	startedAt := time.Now()

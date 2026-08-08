@@ -478,6 +478,22 @@ func definitionFingerprint(workflow, config, commands string) string {
 }
 
 func validateProposal(proposal *Proposal) error {
+	if err := validateProposalIdentity(proposal); err != nil {
+		return err
+	}
+	if err := validatePattern(proposal.Pattern); err != nil {
+		return err
+	}
+	if err := validateCandidate(proposal); err != nil {
+		return err
+	}
+	if err := validateReviewAndEvaluation(proposal); err != nil {
+		return err
+	}
+	return validateProposalStatus(proposal)
+}
+
+func validateProposalIdentity(proposal *Proposal) error {
 	if proposal == nil || proposal.APIVersion != APIVersion || proposal.Kind != Kind || !proposalIDPattern.MatchString(proposal.ID) {
 		return fmt.Errorf("invalid learning proposal contract")
 	}
@@ -485,25 +501,37 @@ func validateProposal(proposal *Proposal) error {
 	if !validStatus[proposal.Status] {
 		return fmt.Errorf("invalid learning proposal status %q", proposal.Status)
 	}
-	if proposal.Pattern.Kind != "diagnostic" && proposal.Pattern.Kind != "workflow_success" {
-		return fmt.Errorf("invalid learning pattern kind %q", proposal.Pattern.Kind)
+	if strings.TrimSpace(proposal.ExpectedBenefit) == "" || proposal.CreatedAt.IsZero() || proposal.UpdatedAt.IsZero() {
+		return fmt.Errorf("invalid learning proposal metadata")
 	}
-	if strings.TrimSpace(proposal.Pattern.Fingerprint) == "" || proposal.Pattern.Count < 2 || len(proposal.Pattern.RunIDs) != proposal.Pattern.Count || strings.TrimSpace(proposal.Pattern.Summary) == "" {
+	return nil
+}
+
+func validatePattern(pattern Pattern) error {
+	if pattern.Kind != "diagnostic" && pattern.Kind != "workflow_success" {
+		return fmt.Errorf("invalid learning pattern kind %q", pattern.Kind)
+	}
+	if strings.TrimSpace(pattern.Fingerprint) == "" || pattern.Count < 2 || len(pattern.RunIDs) != pattern.Count || strings.TrimSpace(pattern.Summary) == "" {
 		return fmt.Errorf("invalid learning pattern provenance")
 	}
 	seen := map[string]bool{}
-	for _, id := range proposal.Pattern.RunIDs {
+	for _, id := range pattern.RunIDs {
 		if strings.TrimSpace(id) == "" || seen[id] {
 			return fmt.Errorf("invalid learning pattern run ids")
 		}
 		seen[id] = true
 	}
+	return nil
+}
+
+func validateCandidate(proposal *Proposal) error {
 	if (proposal.Candidate.Kind != "skill" && proposal.Candidate.Kind != "block") || !candidateNamePattern.MatchString(proposal.Candidate.Name) || strings.TrimSpace(proposal.Candidate.SnapshotPath) == "" || !sha256Pattern.MatchString(proposal.Candidate.SHA256) {
 		return fmt.Errorf("invalid learning candidate contract")
 	}
-	if strings.TrimSpace(proposal.ExpectedBenefit) == "" || proposal.CreatedAt.IsZero() || proposal.UpdatedAt.IsZero() {
-		return fmt.Errorf("invalid learning proposal metadata")
-	}
+	return nil
+}
+
+func validateReviewAndEvaluation(proposal *Proposal) error {
 	if proposal.Review != nil {
 		if (proposal.Review.Decision != "accept" && proposal.Review.Decision != "reject") || strings.TrimSpace(proposal.Review.Reason) == "" || proposal.Review.At.IsZero() {
 			return fmt.Errorf("invalid learning review contract")
@@ -517,6 +545,10 @@ func validateProposal(proposal *Proposal) error {
 			return fmt.Errorf("invalid learning evaluation contract")
 		}
 	}
+	return nil
+}
+
+func validateProposalStatus(proposal *Proposal) error {
 	switch proposal.Status {
 	case StatusPending:
 		if proposal.Review != nil || proposal.Evaluation != nil || proposal.ReadyPath != "" {

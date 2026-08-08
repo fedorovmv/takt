@@ -33,7 +33,7 @@ func TestStructuredOutputIsValidatedAndNormalized(t *testing.T) {
 		Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}},
 	}
 	r := New(wf, cfg, "<workflow>", "<config>", t.TempDir())
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(context.Context, assistant.Request) (assistant.Result, error) {
 			return assistant.Result{Output: " { \"workflow\" : \"assist\" } ", ExitCode: 0}, nil
 		}), nil
@@ -57,7 +57,7 @@ func TestStructuredOutputPreservesRawStdout(t *testing.T) {
 	}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "test", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
 	r := New(wf, cfg, "<workflow>", "<config>", t.TempDir())
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(context.Context, assistant.Request) (assistant.Result, error) {
 			return assistant.Result{Output: ` { "workflow" : "assist" } `, Stdout: "{\"type\":\"start\"}\n{\"type\":\"result\"}\n", ExitCode: 0}, nil
 		}), nil
@@ -96,7 +96,7 @@ func TestStructuredOutputFailureIsProtocolError(t *testing.T) {
 		Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}},
 	}
 	r := New(wf, cfg, "<workflow>", "<config>", t.TempDir())
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(context.Context, assistant.Request) (assistant.Result, error) {
 			return assistant.Result{Output: `{"workflow":"missing"}`, ExitCode: 0}, nil
 		}), nil
@@ -159,7 +159,7 @@ func TestStructuredOutputRetryPolicyPassesValidationFeedback(t *testing.T) {
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "test", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
 	var prompts []string
 	r := New(wf, cfg, "<workflow>", "<config>", t.TempDir())
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
 			prompts = append(prompts, req.Prompt)
 			if len(prompts) == 1 {

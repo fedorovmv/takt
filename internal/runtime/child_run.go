@@ -26,7 +26,7 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 	}
 	childPath := definition.Path
 	if !filepath.IsAbs(childPath) {
-		childPath = filepath.Join(filepath.Dir(r.WorkflowPath), childPath)
+		childPath = filepath.Join(filepath.Dir(r.workflowPath), childPath)
 	}
 	childPath, err := filepath.Abs(childPath)
 	if err != nil {
@@ -53,7 +53,7 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 	}
 
 	nodeState := state.Nodes[node.ID]
-	childState, loadErr := loadCurrentChildRun(r.Store, nodeState.ChildRunID)
+	childState, loadErr := loadCurrentChildRun(r.store, nodeState.ChildRunID)
 	if loadErr != nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "load child run", Err: loadErr}
 	}
@@ -87,9 +87,9 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 	if err != nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child repository", Err: err}
 	}
-	childRunner := New(childWorkflow, r.Config, childPath, r.ConfigPath, childControlWorkspace)
-	childRunner.Store = r.Store
-	childRunner.Assistants = r.Assistants
+	childRunner := New(childWorkflow, r.config, childPath, r.configPath, childControlWorkspace)
+	childRunner.store = r.store
+	childRunner.assistants = r.assistants
 	if childState == nil {
 		input, renderErr := renderTemplate(definition.Input, state, local, feedback, artifacts)
 		if renderErr != nil {
@@ -102,7 +102,7 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 		options := StartOptions{RunID: nodeState.ChildRunID, ParentRunID: state.ID, ParentNodeID: node.ID}
 		childPolicy := r.inheritedPolicy
 		if definition.Policy != nil {
-			resolvedPolicy, policyErr := resolvePolicyFields(*definition.Policy, r.WorkflowPath)
+			resolvedPolicy, policyErr := resolvePolicyFields(*definition.Policy, r.workflowPath)
 			if policyErr != nil {
 				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child policy", Err: policyErr}
 			}
@@ -120,7 +120,7 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 		case "inherit":
 			value := false
 			options.Worktree = &value
-			childRunner.SetExecutionWorkspace(r.Workspace)
+			childRunner.SetExecutionWorkspace(r.workspace)
 		case "none":
 			value := false
 			options.Worktree = &value
@@ -174,12 +174,12 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 func (r *Runner) resolveChildControlWorkspace(repository string) (string, error) {
 	repository = strings.TrimSpace(repository)
 	if repository == "" || repository == "." {
-		return r.ControlWorkspace, nil
+		return r.controlWorkspace, nil
 	}
 	if filepath.IsAbs(repository) {
 		return "", fmt.Errorf("repository %q must be relative to control workspace", repository)
 	}
-	root, err := filepath.Abs(r.ControlWorkspace)
+	root, err := filepath.Abs(r.controlWorkspace)
 	if err != nil {
 		return "", err
 	}

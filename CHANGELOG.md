@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.52-alpha
+
+- Feature freeze release: продуктовые возможности не добавлялись; проведён application/transport/runtime refactor по SOLID/DRY/KISS/YAGNI перед дальнейшим развитием.
+- `cmd/takt` превращён в тонкий launcher; CLI перенесён в `internal/cli` и разделён на небольшие command adapters по областям ответственности.
+- Монолитный `internal/control.Service` удалён. Use cases разделены на Run/Plan/Task/External/Host/Catalog/Authoring/Worktree/Command/Notification/Maintenance/Evaluation/Learning/Compatibility/Adapter/Package services в `internal/application`.
+- Добавлен единственный production composition root `internal/bootstrap`; application persistence инвертирован через consumer-owned `RunStore`, production implementation остаётся `store.FS`.
+- Daemon переведён на общий `internal/appapi` operation registry; MCP использует тот же registry для общих операций и получает узкие `API/Plan/External/Maintenance` dependencies.
+- Background lifecycle daemon/MCP унифицирован через `MaintenanceService.Tick`; transport-specific business loops удалены.
+- Runtime получил явные `Definition + Dependencies` и `NewWithDependencies`; dependency fields `Runner` стали private, attempt lifecycle и node action implementations вынесены из scheduler orchestration без введения plugin framework.
+- CLI evaluation/learning/package/compatibility/adapter operations переведены за application boundary; evaluation task matrix использует injected application callback вместо самостоятельной сборки control plane.
+- Монолитные workflow/config/learning validators разложены на тематические проверки с сохранением error semantics.
+- Добавлен архитектурный regression gate `scripts/test-architecture.sh`, ADR-085 и `docs/66-application-boundary-architecture-refactor-v0.1.52.md`; Takt skill обновлён до 0.34.0.
+
 ## v0.1.51-alpha
 
 - Открыт P3: добавлен human-reviewed Skill/Block Learning Loop `takt learn scan|propose|list|get|review|evaluate|stage` поверх durable Run history без нового runtime/workflow node.

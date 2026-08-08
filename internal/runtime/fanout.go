@@ -33,7 +33,7 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 
 	childPath := definition.Path
 	if !filepath.IsAbs(childPath) {
-		childPath = filepath.Join(filepath.Dir(r.WorkflowPath), childPath)
+		childPath = filepath.Join(filepath.Dir(r.workflowPath), childPath)
 	}
 	childPath, err := filepath.Abs(childPath)
 	if err != nil {
@@ -104,7 +104,7 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 	pending := make([]int, 0, len(positions))
 	for _, position := range positions {
 		record := &nodeState.ChildRuns[position]
-		childState, loadErr := loadCurrentChildRun(r.Store, record.RunID)
+		childState, loadErr := loadCurrentChildRun(r.store, record.RunID)
 		if loadErr != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "load fan-out child run", Err: loadErr}
 		}
@@ -245,10 +245,10 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 
 func (r *Runner) runFanOutChild(ctx context.Context, parent *store.RunState, node spec.Node, childWorkflow *spec.Workflow, childPath string, record store.ChildRunItemState, item any, total int, local map[string]store.NodeState, feedback, artifacts string) (*store.RunState, error) {
 	definition := node.WorkflowRun
-	childRunner := New(childWorkflow, r.Config, childPath, r.ConfigPath, r.ControlWorkspace)
-	childRunner.Store = r.Store
-	childRunner.Assistants = r.Assistants
-	childState, loadErr := loadCurrentChildRun(r.Store, record.RunID)
+	childRunner := New(childWorkflow, r.config, childPath, r.configPath, r.controlWorkspace)
+	childRunner.store = r.store
+	childRunner.assistants = r.assistants
+	childState, loadErr := loadCurrentChildRun(r.store, record.RunID)
 	if loadErr != nil {
 		return nil, loadErr
 	}
@@ -271,7 +271,7 @@ func (r *Runner) runFanOutChild(ctx context.Context, parent *store.RunState, nod
 	options := StartOptions{RunID: record.RunID, ParentRunID: parent.ID, ParentNodeID: fmt.Sprintf("%s[%d]", node.ID, record.Index)}
 	childPolicy := r.inheritedPolicy
 	if definition.Policy != nil {
-		resolvedPolicy, policyErr := resolvePolicyFields(*definition.Policy, r.WorkflowPath)
+		resolvedPolicy, policyErr := resolvePolicyFields(*definition.Policy, r.workflowPath)
 		if policyErr != nil {
 			return nil, policyErr
 		}
@@ -287,11 +287,11 @@ func (r *Runner) runFanOutChild(ctx context.Context, parent *store.RunState, nod
 	case "inherit":
 		value := false
 		options.Worktree = &value
-		childRunner.SetExecutionWorkspace(r.Workspace)
+		childRunner.SetExecutionWorkspace(r.workspace)
 	case "none":
 		value := false
 		options.Worktree = &value
-		childRunner.SetExecutionWorkspace(r.ControlWorkspace)
+		childRunner.SetExecutionWorkspace(r.controlWorkspace)
 	case "worktree":
 		value := true
 		options.Worktree = &value

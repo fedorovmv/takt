@@ -30,9 +30,9 @@ func (r *Runner) runDomainAdapter(ctx context.Context, state *store.RunState, no
 		return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "validate domain adapter input", Err: fmt.Errorf("adapter input must be a JSON object")}
 	}
 
-	resolver := r.Adapters
+	resolver := r.adapters
 	if resolver == nil {
-		resolver = domainadapter.Factory{Config: r.Config}
+		resolver = domainadapter.Factory{Config: r.config}
 	}
 	adapter, err := resolver.Resolve(node.Adapter.Name)
 	if err != nil {

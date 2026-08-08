@@ -251,7 +251,7 @@ nodes:
 
 func approveFanOutChild(t *testing.T, parentRunner *Runner, childPath, childID, answer string) {
 	t.Helper()
-	child, err := parentRunner.Store.Load(childID)
+	child, err := parentRunner.store.Load(childID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,13 +259,13 @@ func approveFanOutChild(t *testing.T, parentRunner *Runner, childPath, childID, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	childRunner := New(childWorkflow, &spec.Config{}, childPath, "<config>", parentRunner.ControlWorkspace)
-	childRunner.Store = parentRunner.Store
+	childRunner := New(childWorkflow, &spec.Config{}, childPath, "<config>", parentRunner.controlWorkspace)
+	childRunner.store = parentRunner.store
 	child.Approvals["approve"] = answer
 	child.Nodes["approve"].Status = store.NodePending
 	child.Status = store.RunRunning
 	child.Waiting = nil
-	if err := childRunner.Store.Commit(child, store.Event{Type: "approval.answered", NodeID: "approve"}); err != nil {
+	if err := childRunner.store.Commit(child, store.Event{Type: "approval.answered", NodeID: "approve"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := childRunner.Resume(context.Background(), child); err != nil {

@@ -202,7 +202,7 @@ func TestResolveArtifactSourcePathUsesExistingSymlinkPrefix(t *testing.T) {
 	if err := os.Symlink(realRoot, alias); err != nil {
 		t.Fatal(err)
 	}
-	runner := &Runner{Workspace: alias}
+	runner := &Runner{workspace: alias}
 	artifactsDir := filepath.Join(alias, ".takt", "runs", "run-test", "artifacts")
 	resolved, err := runner.resolveArtifactSourcePath(filepath.Join(alias, "future", "validation.json"), artifactsDir)
 	if err != nil {

@@ -9,7 +9,7 @@ go test ./internal/runtime -run 'TestRetryBackoffPersistsDeadlineAndDiagnosticFi
 go test ./internal/workflow -run 'TestValidateRetryBackoffAndTimeoutRetryKind|TestValidateOSSandboxEnforcementOnlyForDeterministicLocalNodes|TestValidateRepositoryChildRunRules' -count=1
 go test ./internal/workspacecatalog -run 'TestDiscoveryResolvesSymlinkedWorkspacePath|TestManifestRejectsEmptyRepositories' -count=1
 go test ./internal/packagedist -run 'TestGitSourceAllowlistUsesRepositoryBoundary|TestSourceAllowlistUsesPathBoundary|TestSignaturePolicyNegativeCases' -count=1
-go test ./internal/control -run 'TestSegmentControlsDenyUndeclaredMultiRepoWorkspaceChange|TestReplannerPayloadContainsRepositoriesAndExecutions|TestRepositoriesForRecordRejectsFingerprintDrift|TestForegroundStartReturnsDurableRedactedState' -count=1
+go test ./internal/application -run 'TestSegmentControlsDenyUndeclaredMultiRepoWorkspaceChange|TestReplannerPayloadContainsRepositoriesAndExecutions|TestRepositoriesForRecordRejectsFingerprintDrift|TestForegroundStartReturnsDurableRedactedState' -count=1
 go test ./internal/dynamicplan -run 'TestRepositoryTaskBriefIncludesDependencyResults|TestRepositoryMergeOrderUsesDependenciesNotPhaseOrder' -count=1
 go test ./cmd/takt -run 'TestAdapterDoctorReturnsErrorForCapabilityMismatch' -count=1
 

@@ -1,6 +1,6 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.51-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.52-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
 ## Ядро runtime — реализовано
 
@@ -135,6 +135,21 @@ Deterministic fixture доказывает measurement correctness. Production q
 - `learn evaluate` принимает только versioned matrix reports с `matrix_fingerprint`, `benchmark_id` и regression gates;
 - `learn stage` повторно проверяет candidate hash и пишет только `.takt/learning/ready`, не изменяя trusted packages/skill config;
 - `scripts/test-learning-loop.sh` закрепляет весь gate end-to-end.
+
+## Архитектурная стабилизация — v0.1.52
+
+- `cmd/takt` оставлен только launcher; transport parsing перенесён в разбитый по областям `internal/cli`;
+- монолитный `internal/control.Service` удалён и заменён application services по use cases;
+- `internal/bootstrap` является production composition root;
+- application использует consumer-owned `RunStore`, а production связывает его с `store.FS`;
+- daemon и общие MCP operations используют canonical `internal/appapi` registry;
+- MCP production constructor получает только API/Plan/External/Maintenance dependencies;
+- daemon/MCP background lifecycle унифицирован через `MaintenanceService`;
+- runtime construction использует explicit `Definition + Dependencies`;
+- node action execution и workflow validation разложены по ответственности без plugin/DI framework;
+- `scripts/test-architecture.sh` закрепляет import boundaries и thin `cmd/takt` в release gate.
+
+Внешние workflow/config/state/protocol contracts в этом срезе не менялись.
 
 ## Фактические незакрытые gaps
 

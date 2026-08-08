@@ -27,7 +27,7 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 	prompt := node.Prompt
 	assistantName, modelName := node.Assistant, node.Model
 	if node.Command != "" {
-		cmd, err := r.Commands.Resolve(node.Command)
+		cmd, err := r.commands.Resolve(node.Command)
 		if err != nil {
 			return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve command", Err: err}
 		}
@@ -40,27 +40,27 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 		}
 	}
 	if assistantName == "" {
-		assistantName = r.Workflow.Defaults.Assistant
+		assistantName = r.workflow.Defaults.Assistant
 	}
 	if modelName == "" {
-		modelName = r.Workflow.Defaults.Model
+		modelName = r.workflow.Defaults.Model
 	}
 	if assistantName == "" {
 		return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: fmt.Errorf("node %q does not resolve an assistant", node.ID)}
 	}
-	model, ok := r.Config.Models[modelName]
+	model, ok := r.config.Models[modelName]
 	if !ok {
 		return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve model", Err: fmt.Errorf("node %q references unknown model %q", node.ID, modelName)}
 	}
-	policy, err := resolveNodePolicy(node, r.WorkflowPath, r.inheritedPolicy)
+	policy, err := resolveNodePolicy(node, r.workflowPath, r.inheritedPolicy)
 	if err != nil {
 		return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve node policy", Err: err}
 	}
 	var capabilities []string
 	if node.Executor != "external" {
-		resolver := r.Assistants
+		resolver := r.assistants
 		if resolver == nil {
-			resolver = assistant.Factory{Config: r.Config}
+			resolver = assistant.Factory{Config: r.config}
 		}
 		adapter, err := resolver.Resolve(assistantName)
 		if err != nil {
@@ -90,7 +90,7 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 	}
 	sessionMode := node.Session
 	if sessionMode == "" {
-		sessionMode = r.Workflow.Defaults.Session
+		sessionMode = r.workflow.Defaults.Session
 	}
 	if sessionMode == "" {
 		sessionMode = "fresh"
@@ -118,7 +118,7 @@ func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, reso
 			outputFormat, _ = json.Marshal(node.OutputFormat)
 		}
 		ns.External = &store.ExternalExecutionState{
-			Status: "pending", Attempt: ns.Attempts, Prompt: resolved.Prompt, Workspace: r.Workspace, ToolCalls: map[string]*store.ToolCallState{},
+			Status: "pending", Attempt: ns.Attempts, Prompt: resolved.Prompt, Workspace: r.workspace, ToolCalls: map[string]*store.ToolCallState{},
 			IdleTimeout: node.IdleTimeout, LastActivityAt: time.Now().UTC(),
 			Assistant:      resolved.AssistantName,
 			RequestedModel: &store.ModelRef{Name: resolved.ModelName, Provider: resolved.Model.Provider, ID: resolved.Model.ID, Params: cloneParams(resolved.Model.Params)},
@@ -140,7 +140,7 @@ func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, reso
 		ns.Status = store.NodeWaiting
 		if err := r.commit(state, "external_node.requested", node.ID, map[string]any{
 			"attempt": ns.Attempts, "assistant": resolved.AssistantName, "model": resolved.ModelName,
-			"workspace": r.Workspace, "policy": ns.External.Policy,
+			"workspace": r.workspace, "policy": ns.External.Policy,
 		}); err != nil {
 			return execResult{}, err
 		}

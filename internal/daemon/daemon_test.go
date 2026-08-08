@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"takt/internal/control"
+	"takt/internal/application"
 	"takt/internal/store"
 )
 
@@ -60,8 +60,8 @@ nodes:
 		t.Fatal(err)
 	}
 
-	var started control.StartResult
-	if err := client.Call(context.Background(), "run.start", control.StartRequest{Selector: workflowPath, ConfigPath: configPath}, &started); err != nil {
+	var started application.StartResult
+	if err := client.Call(context.Background(), "run.start", application.StartRequest{Selector: workflowPath, ConfigPath: configPath}, &started); err != nil {
 		t.Fatal(err)
 	}
 	if !started.Accepted || started.RunID == "" {
@@ -200,13 +200,13 @@ nodes:
 	if _, err := WaitForHealth(waitCtx, client, 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
-	var started control.StartResult
-	if err := client.Call(context.Background(), "run.start", control.StartRequest{Selector: workflowPath, ConfigPath: configPath}, &started); err != nil {
+	var started application.StartResult
+	if err := client.Call(context.Background(), "run.start", application.StartRequest{Selector: workflowPath, ConfigPath: configPath}, &started); err != nil {
 		t.Fatal(err)
 	}
 	claimDeadline := time.Now().Add(2 * time.Second)
 	for {
-		tasks, pendingErr := server.service.PendingExternal(started.RunID, false)
+		tasks, pendingErr := server.maintenance.External.PendingExternal(started.RunID, false)
 		if pendingErr == nil && len(tasks) == 1 {
 			break
 		}
@@ -215,12 +215,12 @@ nodes:
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if _, err := server.service.ClaimExternal(control.ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "idle-worker"}); err != nil {
+	if _, err := server.maintenance.External.ClaimExternal(application.ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "idle-worker"}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(4 * time.Second)
 	for {
-		state, loadErr := server.service.GetRun(started.RunID)
+		state, loadErr := server.runs.GetRun(started.RunID)
 		if loadErr == nil && state.Status == store.RunFailed {
 			if state.ErrorCode != "timed_out" {
 				t.Fatalf("state = %#v", state)

@@ -310,7 +310,7 @@ nodes:
 	if parent.Worktree == nil || parent.ExecutionWorkspace == repo || len(parent.ChildRunIDs) != 1 {
 		t.Fatalf("unexpected parent isolation: %+v", parent)
 	}
-	child, err := runner.Store.Load(parent.ChildRunIDs[0])
+	child, err := runner.store.Load(parent.ChildRunIDs[0])
 	if err != nil {
 		t.Fatal(err)
 	}

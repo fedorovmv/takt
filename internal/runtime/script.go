@@ -22,7 +22,7 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 	if definition == nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "script", Err: fmt.Errorf("missing script definition")}
 	}
-	workingDir := r.Workspace
+	workingDir := r.workspace
 	if definition.WorkingDir != "" {
 		rendered, err := renderTemplate(definition.WorkingDir, state, local, feedback, artifactsDir)
 		if err != nil {
@@ -146,7 +146,7 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		"TAKT_RUN_ID="+state.ID,
 		"TAKT_NODE_ID="+node.ID,
 		fmt.Sprintf("TAKT_ATTEMPT=%d", state.Nodes[node.ID].Attempts),
-		"TAKT_WORKSPACE="+r.Workspace,
+		"TAKT_WORKSPACE="+r.workspace,
 		"TAKT_ARTIFACTS_DIR="+artifactsDir,
 	)
 	if r.redactor == nil {
@@ -290,7 +290,7 @@ func (r *Runner) resolveExecutionPath(value string) (string, error) {
 	}
 	candidate := value
 	if !filepath.IsAbs(candidate) {
-		candidate = filepath.Join(filepath.Dir(r.WorkflowPath), candidate)
+		candidate = filepath.Join(filepath.Dir(r.workflowPath), candidate)
 	}
 	controlPath, err := filepath.Abs(candidate)
 	if err != nil {
@@ -300,7 +300,7 @@ func (r *Runner) resolveExecutionPath(value string) (string, error) {
 	if evaluated, evalErr := filepath.EvalSymlinks(controlPath); evalErr == nil {
 		controlPath = evaluated
 	}
-	controlRoot, err := filepath.Abs(r.ControlWorkspace)
+	controlRoot, err := filepath.Abs(r.controlWorkspace)
 	if err != nil {
 		return "", err
 	}
@@ -310,7 +310,7 @@ func (r *Runner) resolveExecutionPath(value string) (string, error) {
 	}
 	rel, relErr := filepath.Rel(controlRoot, controlPath)
 	if relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return filepath.Join(r.Workspace, rel), nil
+		return filepath.Join(r.workspace, rel), nil
 	}
 	return controlPath, nil
 }

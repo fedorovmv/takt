@@ -1,6 +1,14 @@
 # Актуальный backlog Takt v0.2
 
-Статус пересобран после `v0.1.51-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
+Статус пересобран после `v0.1.52-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
+
+## P-1. Архитектурный долг — закрыт в v0.1.52
+
+### ARCH-001. Application/transport/runtime boundaries — выполнено
+
+Удалён `internal/control.Service`, введены use-case application services и production `bootstrap`; `cmd/takt` оставлен launcher, daemon/MCP используют canonical API, filesystem persistence подключается через `RunStore`, runtime dependencies явные. `scripts/test-architecture.sh` защищает границы от регрессии.
+
+Новый DI/plugin/event-bus framework не вводился; refactor не изменил внешний API/state contracts.
 
 ## P0. Доказать полезность текущего Takt
 

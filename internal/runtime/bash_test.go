@@ -10,7 +10,7 @@ import (
 )
 
 func TestRunBashSeparatesStdoutAndStderr(t *testing.T) {
-	runner := &Runner{Workspace: t.TempDir()}
+	runner := &Runner{workspace: t.TempDir()}
 	result, err := runner.runBash(context.Background(), spec.Node{}, `exec /bin/sh -c 'printf "%s\n" stdout-value; printf "%s\n" stderr-value >&2; exit 1'`)
 	if execution.KindOf(err) != execution.KindExit {
 		t.Fatalf("expected exit error, got result=%+v err=%v", result, err)

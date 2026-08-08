@@ -37,7 +37,7 @@ func (r *Runner) captureDeclaredArtifact(state *store.RunState, node spec.Node, 
 			mime = "text/plain"
 		}
 	}
-	artifactDir := filepath.Join(r.Store.ArtifactsDir(state.ID), "nodes", safeArtifactPart(node.ID), strconv.Itoa(ns.Attempts))
+	artifactDir := filepath.Join(r.store.ArtifactsDir(state.ID), "nodes", safeArtifactPart(node.ID), strconv.Itoa(ns.Attempts))
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
 		return err
 	}
@@ -45,11 +45,11 @@ func (r *Runner) captureDeclaredArtifact(state *store.RunState, node spec.Node, 
 	var data []byte
 	var filename string
 	if strings.TrimSpace(node.OutputPath) != "" {
-		rendered, err := renderTemplate(node.OutputPath, state, local, ns.Feedback, r.Store.ArtifactsDir(state.ID))
+		rendered, err := renderTemplate(node.OutputPath, state, local, ns.Feedback, r.store.ArtifactsDir(state.ID))
 		if err != nil {
 			return fmt.Errorf("render artifact output_path: %w", err)
 		}
-		resolved, err := r.resolveArtifactSourcePath(rendered, r.Store.ArtifactsDir(state.ID))
+		resolved, err := r.resolveArtifactSourcePath(rendered, r.store.ArtifactsDir(state.ID))
 		if err != nil {
 			return err
 		}
@@ -121,7 +121,7 @@ func (r *Runner) resolveArtifactSourcePath(value, artifactsDir string) (string, 
 	}
 	candidate := value
 	if !filepath.IsAbs(candidate) {
-		candidate = filepath.Join(r.Workspace, candidate)
+		candidate = filepath.Join(r.workspace, candidate)
 	}
 	abs, err := filepath.Abs(candidate)
 	if err != nil {
@@ -131,7 +131,7 @@ func (r *Runner) resolveArtifactSourcePath(value, artifactsDir string) (string, 
 	if err != nil {
 		return "", err
 	}
-	allowed := []string{r.Workspace, artifactsDir}
+	allowed := []string{r.workspace, artifactsDir}
 	for _, root := range allowed {
 		rootAbs, rootErr := filepath.Abs(root)
 		if rootErr != nil {

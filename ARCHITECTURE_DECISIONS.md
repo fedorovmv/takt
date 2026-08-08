@@ -595,3 +595,17 @@ Human-reviewed learning использует durable Run history только к
 `stage` копирует кандидат только в `.takt/learning/ready/<proposal-id>`. Он не изменяет package lock, profile `block_packages`, global/corporate scopes и assistant skill configuration. Подключение staged candidate является отдельным явным действием.
 
 **Причина.** История Run является evidence для предложения, но не источником доверия. Автоматическое обучение, сразу влияющее на следующие исполнения, создало бы самоподдерживающуюся мутацию control plane без независимого review/regression boundary.
+
+## ADR-085. Takt uses an explicit application boundary and one production composition root
+
+**Статус:** принято.
+
+`cmd/takt`, CLI, MCP и daemon являются transport adapters и не владеют Run/runtime business semantics. Use cases находятся в `internal/application` и разделены на сервисы Run, Plan, Task, External, Host, Catalog, Authoring, Worktree, Command, Notification, Maintenance, Evaluation, Learning, Compatibility, Adapter и Package. Production concrete dependencies собираются в `internal/bootstrap`. CLI не вызывает runtime/store/evaluation/learning/package engines напрямую.
+
+Общие daemon/MCP операции используют один `internal/appapi` handler registry со strict decode/default semantics. Daemon не реализует отдельный application switch. MCP получает только canonical API, Plan, External и Maintenance dependencies; его собственными остаются только MCP-specific protocol operations и явно отличающаяся foreground semantics `takt.execute`.
+
+Application зависит от filesystem persistence через consumer-owned `RunStore`; production связывает его с текущим `store.FS`. Evaluation зависит от injected `EvaluationEngine`. Runtime создаётся через явные `Definition + Dependencies`; dependency fields `Runner` закрыты и задаются при construction, а не мутируются после него. Scheduler/attempt lifecycle/action implementations разделены, но конечный набор node actions остаётся closed-world: новый generic plugin/DI/event-bus framework не вводится.
+
+Архитектурные import boundaries, отсутствие concrete store construction в application, private runtime dependencies и тонкий `cmd/takt` проверяются `scripts/test-architecture.sh`, входящим в release gate.
+
+**Причина.** К `v0.1.51` один `control.Service`, крупный CLI и отдельные MCP/daemon dispatch paths нарушали SRP/DIP/ISP и создавали несколько мест для одинаковой validation/default semantics. Простое разбиение файлов не устраняло бы эту связность. Application boundary делает операции переиспользуемыми и тестируемыми, DRY оставляет одну бизнес-семантику, а KISS/YAGNI сохраняют обычные Go structs/interfaces вместо нового framework или инфраструктуры без подтверждённой потребности.

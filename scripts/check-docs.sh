@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.33.0" \
-  "VERSION|0.1.51-alpha" \
-  "internal/version/version.go|0.1.51-alpha" \
+  "skills/takt/VERSION|0.34.0" \
+  "VERSION|0.1.52-alpha" \
+  "internal/version/version.go|0.1.52-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/SKILL.md|Human-reviewed Learning Loop" \
@@ -138,6 +138,9 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-082" \
   "ARCHITECTURE_DECISIONS.md|ADR-083" \
   "ARCHITECTURE_DECISIONS.md|ADR-084" \
+  "ARCHITECTURE_DECISIONS.md|ADR-085" \
+  "docs/66-application-boundary-architecture-refactor-v0.1.52.md|Application Boundary Architecture Refactor" \
+  "scripts/test-architecture.sh|architecture boundaries: PASS" \
   "docs/65-human-reviewed-learning-loop-v0.1.51.md|Human-reviewed Skill/Block Learning Loop" \
   "scripts/test-learning-loop.sh|human-reviewed learning loop: PASS" \
   "schemas/learning-proposal.schema.json|takt-learning/v1alpha1" \

@@ -60,14 +60,14 @@ nodes:
 		t.Fatalf("unexpected parent waiting state: %+v", parent.Waiting)
 	}
 	childID := parent.Waiting.ChildRunID
-	child, err := runner.Store.Load(childID)
+	child, err := runner.store.Load(childID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if child.ParentRunID != parent.ID || child.ParentNodeID != "child" || child.Status != store.RunWaiting {
 		t.Fatalf("unexpected child linkage: %+v", child)
 	}
-	if filepath.Clean(runner.Store.ArtifactsDir(child.ID)) == filepath.Clean(runner.Store.ArtifactsDir(parent.ID)) {
+	if filepath.Clean(runner.store.ArtifactsDir(child.ID)) == filepath.Clean(runner.store.ArtifactsDir(parent.ID)) {
 		t.Fatal("child and parent share artifacts directory")
 	}
 
@@ -80,7 +80,7 @@ nodes:
 	child.Nodes["approve"].Status = store.NodePending
 	child.Status = store.RunRunning
 	child.Waiting = nil
-	if err := childRunner.Store.Commit(child, store.Event{Type: "approval.answered", NodeID: "approve"}); err != nil {
+	if err := childRunner.store.Commit(child, store.Event{Type: "approval.answered", NodeID: "approve"}); err != nil {
 		t.Fatal(err)
 	}
 	child, err = childRunner.Resume(context.Background(), child)
@@ -139,7 +139,7 @@ nodes:
 	if parent.Status != store.RunFailed || parent.Nodes["child"].Status != store.NodeFailed {
 		t.Fatalf("unexpected parent failure state: %+v", parent)
 	}
-	child, loadErr := runner.Store.Load(parent.Nodes["child"].ChildRunID)
+	child, loadErr := runner.store.Load(parent.Nodes["child"].ChildRunID)
 	if loadErr != nil {
 		t.Fatal(loadErr)
 	}
@@ -290,11 +290,11 @@ nodes:
 	if node.Attempts != 2 || len(node.ChildRunIDs) != 2 || len(parent.ChildRunIDs) != 2 {
 		t.Fatalf("retry did not create two governed children: node=%+v parent=%+v", node, parent.ChildRunIDs)
 	}
-	first, err := runner.Store.Load(node.ChildRunIDs[0])
+	first, err := runner.store.Load(node.ChildRunIDs[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := runner.Store.Load(node.ChildRunIDs[1])
+	second, err := runner.store.Load(node.ChildRunIDs[1])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +389,7 @@ func TestChildRepositoryRejectsSymlinkEscape(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(root, "repo")); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	r := &Runner{ControlWorkspace: root}
+	r := &Runner{controlWorkspace: root}
 	if _, err := r.resolveChildControlWorkspace("repo"); err == nil || !strings.Contains(err.Error(), "outside") {
 		t.Fatalf("expected escape rejection, got %v", err)
 	}
@@ -466,7 +466,7 @@ nodes:
 	if strings.TrimSpace(string(count)) != "1" {
 		t.Fatalf("completed child executed %s times", strings.TrimSpace(string(count)))
 	}
-	child, err := runner.Store.Load(node.ChildRunID)
+	child, err := runner.store.Load(node.ChildRunID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +524,7 @@ nodes:
 	if loopChild.Status != store.NodeCompleted || loopChild.ChildRunID == "" {
 		t.Fatalf("governed child missing from loop history: %+v", loopChild)
 	}
-	child, err := runner.Store.Load(loopChild.ChildRunID)
+	child, err := runner.store.Load(loopChild.ChildRunID)
 	if err != nil {
 		t.Fatal(err)
 	}

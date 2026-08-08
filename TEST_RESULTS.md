@@ -1,74 +1,59 @@
-# Takt v0.1.51-alpha — test results
+# Takt v0.1.52-alpha — test results
 
-Release verification was performed on Linux from the working tree and then repeated from a clean extraction of the final ZIP. macOS-specific regressions remain in the suite; this report does not claim a fresh macOS run.
+`v0.1.52-alpha` is an architecture-only release. Product features were frozen while the CLI/control/runtime composition was refactored around an explicit application boundary. Verification was performed on Linux. macOS-specific regressions remain in the suite; this report does not claim a fresh macOS run.
 
 ## Working tree
 
 PASS:
 
-- `gofmt`;
+- `gofmt` over `cmd`, `internal`, `sdk`, `reference`;
 - `go vet ./...`;
 - `go test ./... -count=1`;
 - `go build ./...`;
-- offline schema registry: 36 JSON Schemas;
-- docs contract and release manifest;
-- changed-package race contour: `cmd/takt`, learning, control, runtime, domain adapter, assistant, compatibility and GitHub reference adapters;
-- fake assistant, Pi and OpenCode adapter contracts;
-- Route DSL E2E/evaluation/strategy benchmark and task-level Dynamic Takt benchmark;
-- workflow composition, Takt skill and code profile;
-- worktree, governed child Runs/fan-out, node policies and typed artifacts;
-- MCP, external executor, deep workflows, authoring, daemon and Dynamic Takt;
-- trusted BlockPackage, host control and TypeScript host integrations;
-- autonomous Run operations, simple-reliable router and evidence routing;
-- Adapter Platform, package distribution, multi-repo, runtime/security, iteration history and compatibility;
-- reference external adapters and Structured Task Sources;
-- new human-reviewed learning loop contract;
-- public Agent Adapter conformance.
+- `scripts/test-architecture.sh`;
+- `scripts/check-docs.sh`;
+- schema registry contract: 36 JSON Schemas;
+- all repository `scripts/test-*.sh` contracts: 38/38 PASS;
+- changed architecture contour under `-race`: application, appapi, bootstrap, CLI, MCP, daemon, runtime, workflow, config, learning, evaluation and architecture;
+- remaining tested internal/reference/SDK packages under `-race` in bounded groups.
 
-A single `make check` reached the aggregate `go test -race ./...` after successful `gofmt`, `go vet` and full ordinary tests, then was terminated by the external five-minute command limit. No race test failure was observed before termination. The complete changed-package race contour was run separately and passed; this report therefore does not claim one uninterrupted aggregate `go test -race ./...` PASS.
+The 38 contract scripts cover authoring, compatibility/schema contracts, BlockPackage/package distribution, Adapter Platform/reference adapters, Structured Task Sources, learning loop, composition/child runs/fan-out, daemon/MCP, autonomous runs, Dynamic Takt, host control, external executor, iteration history, runtime/security, worktree/multi-repo, policy/artifacts, evidence routing, simple-reliable routing, fake/Pi/OpenCode adapters, Takt skill/code profile, deep workflows, Route DSL evaluation/E2E/benchmark, task evaluation and TypeScript host integrations.
 
-## v0.1.50 review debt closed
+A single `make check` completed `gofmt`, `go vet` and full ordinary tests, then entered `go test -race ./...`. The external five-minute command limit terminated that aggregate race run after successful packages through `internal/architecture`; no race failure was observed. All packages with tests were then exercised under `-race` in bounded groups and passed. This report therefore does not claim one uninterrupted aggregate `go test -race ./...` PASS.
 
-- Dynamic Plan fork preserves the original structured `task_source` and immutable source revision;
-- resume after a durable satisfied loop iteration completes without replaying the next iteration or duplicating side effects, including the `MaxIterations` boundary;
-- legacy loop state without `loop_iterations` now has a real resume regression;
-- MCP Domain Adapter uses the bounded process default timeout, rejects non-positive timeout, and sends the current Takt version in MCP `clientInfo`;
-- Task Source example no longer uses the unsupported `task start --config` flag;
-- compatibility schema contract tests fail closed on unknown keywords and use JSON numeric equality for `uniqueItems`;
-- `schema-subset-v1.schema.json` is contract-tested against `schemasubset.Description()`;
-- `verify-manifest.sh` is part of `make check`;
-- empty process `event_types` has a dedicated deny-all regression;
-- GitHub SCM repository discovery is bounded by timeout;
-- GitHub Task Source rejects non-`github.com` issue URLs instead of dropping a GitHub Enterprise host from provenance;
-- CLI JSON success/error envelope is published as a schema and covered by tests;
-- Task Source has a control-boundary unit regression.
+## Architecture regression coverage
 
-## v0.1.51 feature contract
+The new architecture gate verifies that:
 
-`human-reviewed learning loop: PASS` covers the full local path:
+- legacy `internal/control` stays removed;
+- production `cmd/takt` remains a thin launcher and is capped by an import/line boundary;
+- production CLI cannot import runtime/store/evaluation/learning/package engines directly;
+- application cannot depend on transports, appapi or bootstrap;
+- appapi cannot depend on runtime/transports;
+- MCP/daemon cannot bypass application into runtime/evaluation/notification;
+- production application does not construct concrete `store.FS`;
+- all dependency/state fields of `runtime.Runner` remain private.
 
-```text
-Run history
-→ repeated durable fingerprint across distinct Runs
-→ immutable skill/block candidate snapshot
-→ human accept/reject with rationale
-→ versioned matrix report + regression gates
-→ candidate hash recheck
-→ .takt/learning/ready/<proposal-id>
-```
+Additional regression tests cover the legacy CLI contract where an explicitly supplied workflow/config path is relative to the caller's current directory even when `--workspace` points elsewhere. This regression was found by the Takt skill E2E after the CLI migration and is now fixed without moving workflow semantics back into the transport layer.
 
-The contract verifies that staging is impossible before human review/evaluation and that staging does not install or mutate trusted packages/skill configuration. Learning proposal persistence is fail-closed on corrupted records, and successful-workflow patterns include workflow/config/command definition context.
+## Refactor compatibility fixes found by E2E
+
+The architecture migration also exposed release-test coupling to removed source locations. Dynamic Takt, evidence routing, simple-reliable routing and runtime/security scripts were updated from `internal/control` to `internal/application`, and the Dynamic Takt source assertion now checks `internal/cli` rather than `cmd/takt/main.go`.
+
+No public workflow/config apiVersion, durable Run/event format, MCP tool name, daemon protocol revision, adapter protocol or evaluation/learning schema was intentionally changed by this release.
 
 ## Clean release archive
 
-PASS from a clean extraction of the release ZIP:
+A release-candidate ZIP was extracted into a new directory before final packaging. PASS from that clean extraction:
 
-- `VERSION` = `0.1.51-alpha`; Takt skill = `0.33.0`;
-- no `bin/` directory before verification;
-- manifest verification: 598 files;
-- documentation contract and all 36 JSON Schemas;
-- `go test ./... -count=1`, `go vet ./...`, `go build ./...`;
-- human-reviewed learning loop, Structured Task Sources, iteration history, compatibility, reference external adapters and Adapter Platform contracts;
-- changed-package race contour passed in two bounded commands: `cmd/takt`, learning, control, runtime, domain adapter, assistant, compatibility and both GitHub reference adapters.
+- `VERSION` = `0.1.52-alpha`; Takt skill = `0.34.0`;
+- `bin/` absent before verification;
+- manifest verification: 631 files;
+- architecture and documentation gates;
+- `go vet ./...`, `go test ./... -count=1`, `go build ./...`;
+- daemon, MCP, Dynamic Takt, Structured Task Sources, learning loop, package distribution, reference adapters, iteration history, runtime/security, Takt skill, Route DSL benchmark and task-level evaluation contracts;
+- changed architecture contour under `-race`, split into bounded commands.
 
-Only verification artifacts generated by the test scripts (for example `bin/takt`) appeared after the initial package-hygiene check; they are excluded from the release archive and manifest by design.
+The long clean-extraction E2E group itself reached the environment command limit only while entering the final task-evaluation script; the preceding contracts had passed. `test-task-evaluation.sh` was then run separately and passed. The same bounded approach was used for the final runtime/workflow/config/learning/evaluation architecture race group.
+
+Verification scripts generated `bin/` only after the initial package-hygiene check. `bin/` remains excluded from the release archive and manifest by design.

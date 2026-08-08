@@ -37,7 +37,7 @@ func TestCodeProfileSmartRouterExecutesExactlyOneWorkflow(t *testing.T) {
 	r := New(wf, cfg, resolved.WorkflowPath, filepath.Join(workspace, ".takt", "config.yaml"), workspace)
 	var mu sync.Mutex
 	var calls []string
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
 			mu.Lock()
 			calls = append(calls, req.NodeID)
@@ -106,7 +106,7 @@ func TestCodeProfileRouterCreatesWorktreeForSelectedMutatingWorkflow(t *testing.
 	r := New(wf, cfg, resolved.WorkflowPath, filepath.Join(workspace, ".takt", "config.yaml"), workspace)
 	var mu sync.Mutex
 	workspaces := map[string]string{}
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
 			mu.Lock()
 			workspaces[req.NodeID] = req.Workspace
@@ -127,7 +127,7 @@ func TestCodeProfileRouterCreatesWorktreeForSelectedMutatingWorkflow(t *testing.
 	if len(state.ChildRunIDs) != 1 {
 		t.Fatalf("router did not create exactly one governed child: %+v", state.ChildRunIDs)
 	}
-	child, loadErr := r.Store.Load(state.ChildRunIDs[0])
+	child, loadErr := r.store.Load(state.ChildRunIDs[0])
 	if loadErr != nil {
 		t.Fatal(loadErr)
 	}
@@ -176,7 +176,7 @@ func TestCreateIssueReportsStructuredReproductionFailure(t *testing.T) {
 		Assistants: map[string]spec.AssistantSpec{"opencode": {Type: "mock"}},
 	}
 	r := New(wf, cfg, resolved.WorkflowPath, filepath.Join(workspace, ".takt", "config.yaml"), workspace)
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
 			switch req.NodeID {
 			case "classify":

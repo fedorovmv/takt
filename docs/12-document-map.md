@@ -9,6 +9,7 @@
 1. `docs/01-project.md`;
 1. `docs/05-implementation-status.md`;
 1. `skills/takt/SKILL.md`;
+1. `docs/66-application-boundary-architecture-refactor-v0.1.52.md`;
 1. `docs/65-human-reviewed-learning-loop-v0.1.51.md`;
 1. `docs/64-structured-task-sources-v0.1.50.md`;
 1. `docs/63-reference-external-adapters-v0.1.49.md`;
@@ -190,5 +191,7 @@
 - `58-runtime-reliability-local-security-v0.1.44.md` — durable backoff/diagnostics, fan-out early exit, SecretRef/redaction, локальный OS sandbox, NodePath и исправления ревью multi-repo.
 
 - Structured Task Sources / ingress protocol: `docs/64-structured-task-sources-v0.1.50.md`, `sdk/tasksource`, `schemas/task-source*.schema.json`.
+
+- Application boundary / architecture refactor: `docs/66-application-boundary-architecture-refactor-v0.1.52.md`, `internal/application`, `internal/bootstrap`, `internal/appapi`, `internal/architecture`, `scripts/test-architecture.sh`.
 
 - Human-reviewed Skill/Block Learning Loop: `docs/65-human-reviewed-learning-loop-v0.1.51.md`, `internal/learning`, `schemas/learning-proposal.schema.json`, `scripts/test-learning-loop.sh`.

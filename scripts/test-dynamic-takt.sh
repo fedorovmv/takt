@@ -55,11 +55,11 @@ do
 done
 
 go test "$ROOT/internal/dynamicplan" -count=1 >/dev/null
-go test "$ROOT/internal/control" -run 'TestPlanCandidateProducesPreviewAndRequiresConfirmation|TestPromoteCompletedPlanCreatesProjectWorkflow' -count=1 >/dev/null
+go test "$ROOT/internal/application" -run 'TestPlanCandidateProducesPreviewAndRequiresConfirmation|TestPromoteCompletedPlanCreatesProjectWorkflow' -count=1 >/dev/null
 
-grep -q 'case "plan"' "$ROOT/cmd/takt/main.go"
-grep -q 'case "execute"' "$ROOT/cmd/takt/main.go"
-grep -q 'case "steer"' "$ROOT/cmd/takt/main.go"
+grep -q 'case "plan"' "$ROOT/internal/cli/cli.go"
+grep -q 'case "execute"' "$ROOT/internal/cli/cli.go"
+grep -q 'case "steer"' "$ROOT/internal/cli/cli.go"
 grep -q 'takt.plan.promote' "$ROOT/internal/mcp/server.go"
 grep -q 'Dynamic Takt из кодинг-агента' "$ROOT/skills/takt/SKILL.md"
 

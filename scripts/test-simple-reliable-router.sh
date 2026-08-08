@@ -124,7 +124,7 @@ assert [t['name'] for t in value['result']['tools']] == [
 ], value
 PY
 
-go test "$ROOT/internal/taskroute" "$ROOT/internal/control" -run 'TestCompileSimpleReliable|TestPlanFallsBackToStableTemplate' -count=1 >/dev/null
+go test "$ROOT/internal/taskroute" "$ROOT/internal/application" -run 'TestCompileSimpleReliable|TestPlanFallsBackToStableTemplate' -count=1 >/dev/null
 
 grep -q 'default_assistant' "$ROOT/schemas/config.schema.json"
 grep -q 'takt-assistant/v1alpha2' "$ROOT/schemas/config.schema.json"

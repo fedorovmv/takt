@@ -44,6 +44,7 @@ go build -o bin/takt-fake-domain-adapter ./cmd/takt-fake-domain-adapter
 ./scripts/test-compatibility.sh
 ./scripts/test-reference-adapters.sh
 ./scripts/test-task-sources.sh
+./scripts/test-architecture.sh
 ./scripts/test-schema-contracts.sh
 ./scripts/test-route-dsl-benchmark.sh
 ./scripts/test-task-evaluation.sh

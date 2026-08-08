@@ -18,9 +18,10 @@ import (
 	"syscall"
 	"time"
 
-	"takt/internal/control"
+	"takt/internal/appapi"
+	"takt/internal/application"
+	"takt/internal/bootstrap"
 	"takt/internal/mcp"
-	"takt/internal/notification"
 	"takt/internal/store"
 	"takt/internal/version"
 )
@@ -87,11 +88,13 @@ type Options struct {
 }
 
 type Server struct {
-	service  *control.Service
-	mcps     map[mcp.Surface]*mcp.Server
-	paths    Paths
-	metadata Metadata
-	errOut   io.Writer
+	runs        *application.RunService
+	maintenance *application.MaintenanceService
+	api         *appapi.Registry
+	mcps        map[mcp.Surface]*mcp.Server
+	paths       Paths
+	metadata    Metadata
+	errOut      io.Writer
 
 	lockFile *os.File
 	http     *http.Server
@@ -100,10 +103,11 @@ type Server struct {
 }
 
 func New(options Options) (*Server, error) {
-	service, err := control.New(options.Workspace, options.ConfigPath)
+	app, err := bootstrap.New(options.Workspace, options.ConfigPath)
 	if err != nil {
 		return nil, err
 	}
+	service := app.Services
 	paths, err := ResolvePaths(service.Workspace, options.SocketPath)
 	if err != nil {
 		return nil, err
@@ -111,9 +115,9 @@ func New(options Options) (*Server, error) {
 	if options.ErrOut == nil {
 		options.ErrOut = os.Stderr
 	}
-	server := &Server{service: service, paths: paths, errOut: options.ErrOut, stop: make(chan struct{}), mcps: map[mcp.Surface]*mcp.Server{}}
+	server := &Server{runs: service.RunService, maintenance: service.Maintenance, api: app.API, paths: paths, errOut: options.ErrOut, stop: make(chan struct{}), mcps: map[mcp.Surface]*mcp.Server{}}
 	for _, surface := range []mcp.Surface{mcp.SurfaceAll, mcp.SurfaceAgent, mcp.SurfaceHost, mcp.SurfaceWorker, mcp.SurfaceOperator} {
-		server.mcps[surface] = mcp.NewWithSurface(service, nil, nil, options.ErrOut, surface)
+		server.mcps[surface] = mcp.NewWithDependencies(mcp.Dependencies{API: app.API, Plans: service.PlanService, External: service.ExternalService, Maintenance: service.Maintenance}, nil, nil, options.ErrOut, surface)
 	}
 	server.metadata = Metadata{API: APIRevision, PID: os.Getpid(), Workspace: service.Workspace, Socket: paths.Socket, StartedAt: time.Now().UTC(), Version: version.Value}
 	return server, nil
@@ -151,7 +155,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	if err := writeJSONAtomic(s.paths.Metadata, s.metadata, 0o600); err != nil {
 		return err
 	}
-	if recovered, recoverErr := s.service.RecoverInterruptedRuns(context.Background()); recoverErr != nil {
+	if recovered, recoverErr := s.runs.RecoverInterruptedRuns(context.Background()); recoverErr != nil {
 		fmt.Fprintln(s.errOut, "daemon recovery:", recoverErr)
 	} else if len(recovered.Recovered) > 0 {
 		fmt.Fprintln(s.errOut, "daemon recovered interrupted Runs:", strings.Join(recovered.Recovered, ", "))
@@ -265,322 +269,12 @@ func (s *Server) handleRPC(w http.ResponseWriter, r *http.Request) {
 		writeHTTPError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	result, err := s.call(r.Context(), request.Method, request.Params)
+	result, err := s.api.Call(r.Context(), request.Method, request.Params)
 	if err != nil {
 		writeJSON(w, http.StatusOK, rpcResponse{API: APIRevision, Error: &apiError{Code: "operation_failed", Message: err.Error()}})
 		return
 	}
 	writeJSON(w, http.StatusOK, rpcResponse{API: APIRevision, Result: result})
-}
-
-func decodeParams(raw json.RawMessage, target any) error {
-	if len(raw) == 0 || string(raw) == "null" {
-		raw = []byte("{}")
-	}
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	decoder.DisallowUnknownFields()
-	return decoder.Decode(target)
-}
-
-func (s *Server) call(ctx context.Context, method string, raw json.RawMessage) (any, error) {
-	switch method {
-	case "task.start":
-		var params control.TaskStartRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		params.Detached = true
-		return s.service.StartTask(ctx, params)
-	case "task.status":
-		var params struct {
-			Reference string `json:"reference"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.TaskStatus(params.Reference)
-	case "task.respond":
-		var params control.TaskRespondRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		params.Detached = true
-		return s.service.RespondTask(ctx, params)
-	case "task.stop":
-		var params control.TaskStopRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.StopTask(params)
-	case "task.explain":
-		var params struct {
-			Reference string `json:"reference"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.ExplainTask(params.Reference)
-	case "workflow.list":
-		var params struct {
-			Profile string `json:"profile"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.ListWorkflows(params.Profile)
-	case "workflow.describe":
-		var params struct {
-			Selector string `json:"selector"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.DescribeWorkflow(params.Selector)
-	case "host.begin":
-		var params control.HostBeginRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.BeginHostSession(ctx, params)
-	case "host.confirm":
-		var params control.HostConfirmRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		params.Detached = true
-		return s.service.ConfirmHostSession(ctx, params)
-	case "host.get":
-		var params struct {
-			SessionID string `json:"session_id"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.GetHostSession(params.SessionID)
-	case "host.find":
-		var params struct {
-			Host          string `json:"host"`
-			HostSessionID string `json:"host_session_id"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.FindHostSession(params.Host, params.HostSessionID)
-	case "host.guard_tool":
-		var params control.HostToolGuardRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.GuardHostTool(params)
-	case "host.guard_completion":
-		var params control.HostCompletionGuardRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.GuardHostCompletion(params)
-	case "host.release":
-		var params struct {
-			SessionID string `json:"session_id"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.ReleaseHostSession(params.SessionID)
-	case "plan.create":
-		var params control.PlanRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Plan(ctx, params)
-	case "plan.get":
-		var params struct {
-			PlanID string `json:"plan_id"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.GetPlan(params.PlanID)
-	case "plan.execute":
-		var params control.ExecutePlanRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		params.Detached = true
-		return s.service.ExecutePlan(ctx, params)
-	case "plan.steer":
-		var params control.SteerRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Steer(ctx, params)
-	case "plan.promote":
-		var params struct {
-			PlanID string `json:"plan_id"`
-			Name   string `json:"name"`
-			Force  bool   `json:"force,omitempty"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.PromotePlanWithOptions(params.PlanID, params.Name, control.PromotePlanOptions{Force: params.Force})
-	case "run.start":
-		var params control.StartRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		params.Detached = true
-		return s.service.Start(ctx, params)
-	case "run.get":
-		var params struct {
-			RunID string `json:"run_id"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.GetRun(params.RunID)
-	case "run.list":
-		var params control.RunListRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.ListRuns(params)
-	case "run.attention":
-		return s.service.Attention()
-	case "run.summary":
-		var params struct {
-			RunID     string `json:"run_id"`
-			Recursive bool   `json:"recursive,omitempty"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Summary(params.RunID, params.Recursive)
-	case "run.pause":
-		var params struct {
-			RunID string `json:"run_id"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Pause(params.RunID)
-	case "run.resume_paused":
-		var params struct {
-			RunID string `json:"run_id"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.ResumePaused(ctx, params.RunID, true)
-	case "run.retry":
-		var params control.RetryRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		params.Detached = true
-		return s.service.Retry(ctx, params)
-	case "run.fork":
-		var params control.ForkRequest
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		params.Detached = true
-		return s.service.Fork(ctx, params)
-	case "run.abandon":
-		var params struct {
-			RunID  string `json:"run_id"`
-			Reason string `json:"reason,omitempty"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Abandon(params.RunID, params.Reason)
-	case "run.recover":
-		return s.service.RecoverInterruptedRuns(ctx)
-	case "notify.list":
-		var params struct {
-			UnreadOnly bool `json:"unread_only,omitempty"`
-			Limit      int  `json:"limit,omitempty"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return (notification.Dispatcher{Workspace: s.metadata.Workspace}).List(params.UnreadOnly, params.Limit)
-	case "notify.ack":
-		var params struct {
-			ID string `json:"id"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return (notification.Dispatcher{Workspace: s.metadata.Workspace}).Ack(params.ID)
-	case "notify.test":
-		var params struct {
-			Message string `json:"message,omitempty"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return (notification.Dispatcher{Workspace: s.metadata.Workspace}).Test(params.Message)
-	case "notify.dispatch":
-		return (notification.Dispatcher{Workspace: s.metadata.Workspace}).Dispatch()
-	case "run.resume":
-		var params struct {
-			RunID string `json:"run_id"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Resume(ctx, params.RunID)
-	case "run.answer":
-		var params struct {
-			RunID  string `json:"run_id"`
-			NodeID string `json:"node_id"`
-			Value  string `json:"value"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Answer(ctx, params.RunID, params.NodeID, params.Value)
-	case "run.cancel":
-		var params struct {
-			RunID  string `json:"run_id"`
-			Reason string `json:"reason"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Cancel(params.RunID, params.Reason)
-	case "run.children":
-		var params struct {
-			RunID string `json:"run_id"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Children(params.RunID)
-	case "run.artifacts":
-		var params struct {
-			RunID, NodeID, Type string
-			Recursive           bool
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Artifacts(params.RunID, control.ArtifactQuery{NodeID: params.NodeID, Type: params.Type, Recursive: params.Recursive})
-	case "run.events":
-		var params struct {
-			RunID         string `json:"run_id"`
-			AfterRevision uint64 `json:"after_revision"`
-			Limit         int    `json:"limit"`
-			WaitMS        int    `json:"wait_ms"`
-		}
-		if err := decodeParams(raw, &params); err != nil {
-			return nil, err
-		}
-		return s.service.Events(ctx, params.RunID, params.AfterRevision, params.Limit, time.Duration(params.WaitMS)*time.Millisecond)
-	default:
-		return nil, fmt.Errorf("unknown daemon method %q", method)
-	}
 }
 
 func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
@@ -649,7 +343,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	_ = encoder.Encode(map[string]any{"type": "subscription.started", "run_id": runID, "after_revision": after})
 	flusher.Flush()
 	for {
-		result, eventErr := s.service.Events(r.Context(), runID, after, limit, 25*time.Second)
+		result, eventErr := s.runs.Events(r.Context(), runID, after, limit, 25*time.Second)
 		if eventErr != nil {
 			_ = encoder.Encode(map[string]any{"type": "subscription.error", "error": eventErr.Error()})
 			flusher.Flush()
@@ -665,13 +359,13 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			_ = encoder.Encode(map[string]any{"type": "subscription.heartbeat", "run_id": runID, "revision": after})
 		}
 		flusher.Flush()
-		state, stateErr := s.service.GetRun(runID)
+		state, stateErr := s.runs.GetRun(runID)
 		if stateErr == nil && terminalStatus(state.Status) {
 			// The state and event journal are committed together, but the terminal
 			// state can become visible after Events returned and before GetRun. Drain
 			// through the terminal state's revision before closing the subscription.
 			for after < state.Revision {
-				drain, drainErr := s.service.Events(r.Context(), runID, after, limit, 0)
+				drain, drainErr := s.runs.Events(r.Context(), runID, after, limit, 0)
 				if drainErr != nil {
 					_ = encoder.Encode(map[string]any{"type": "subscription.error", "error": drainErr.Error()})
 					flusher.Flush()
@@ -723,18 +417,15 @@ func (s *Server) monitorIdle(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
-			if err := s.service.AdvanceDynamicPlans(context.Background()); err != nil {
-				fmt.Fprintln(s.errOut, "daemon dynamic plan monitor:", err)
+			result, err := s.maintenance.Tick(context.Background(), now)
+			if err != nil {
+				fmt.Fprintln(s.errOut, "daemon maintenance:", err)
 			}
-			if expired, err := s.service.ExpireIdleExternal(context.Background(), now.UTC()); err != nil {
-				fmt.Fprintln(s.errOut, "daemon idle monitor:", err)
-			} else if len(expired) > 0 {
-				fmt.Fprintln(s.errOut, "daemon expired idle external nodes:", strings.Join(expired, ", "))
+			if result != nil && len(result.ExpiredExternal) > 0 {
+				fmt.Fprintln(s.errOut, "daemon expired idle external nodes:", strings.Join(result.ExpiredExternal, ", "))
 			}
-			if emitted, err := (notification.Dispatcher{Workspace: s.metadata.Workspace}).Dispatch(); err != nil {
-				fmt.Fprintln(s.errOut, "daemon notifications:", err)
-			} else if len(emitted) > 0 {
-				fmt.Fprintln(s.errOut, "daemon notifications emitted:", len(emitted))
+			if result != nil && result.Notifications > 0 {
+				fmt.Fprintln(s.errOut, "daemon notifications emitted:", result.Notifications)
 			}
 		}
 	}

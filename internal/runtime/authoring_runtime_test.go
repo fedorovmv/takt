@@ -34,7 +34,7 @@ func TestAssistantIdleTimeoutUsesEventActivity(t *testing.T) {
 	workflow := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "idle"}, Defaults: spec.Defaults{Assistant: "demo", Model: "model"}, Nodes: []spec.Node{{ID: "agent", Prompt: "work", IdleTimeout: "50ms", Timeout: "2s"}}}
 	config := &spec.Config{Models: map[string]spec.ModelSpec{"model": {Provider: "demo", ID: "demo"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
 	runner := New(workflow, config, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
-	runner.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+	runner.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(ctx context.Context, request assistant.Request) (assistant.Result, error) {
 			<-ctx.Done()
 			return assistant.Result{}, context.Cause(ctx)

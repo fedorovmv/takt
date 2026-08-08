@@ -49,12 +49,12 @@ func TestApprovalResume(t *testing.T) {
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "test"}, Nodes: []spec.Node{{ID: "do", Command: "do"}, {ID: "approve", DependsOn: []string{"do"}, Approval: &spec.ApprovalSpec{Message: "OK?", CaptureResponse: true}}}}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"large": {Provider: "demo", ID: "demo"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
 	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
-	r.Commands.Dirs = []string{cmdDir}
+	r.commands.Dirs = []string{cmdDir}
 	state, err := r.Start(context.Background(), "world")
 	if !errors.Is(err, ErrWaiting) {
 		t.Fatalf("expected waiting, got %v", err)
 	}
-	state, err = r.Store.Load(state.ID)
+	state, err = r.store.Load(state.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestApprovalResume(t *testing.T) {
 	state.Nodes["approve"].Status = "pending"
 	state.Status = "running"
 	state.Waiting = nil
-	if err := r.Store.Save(state); err != nil {
+	if err := r.store.Save(state); err != nil {
 		t.Fatal(err)
 	}
 	state, err = r.Resume(context.Background(), state)
@@ -117,7 +117,7 @@ func TestLoopGroup(t *testing.T) {
 	if loop.LoopPrevious["check"].ExitCode != loop.LoopIterations[1].Nodes["check"].ExitCode {
 		t.Fatalf("loop_previous no longer matches latest iteration: previous=%+v history=%+v", loop.LoopPrevious, loop.LoopIterations)
 	}
-	persisted, err := r.Store.Load(state.ID)
+	persisted, err := r.store.Load(state.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,12 +172,12 @@ func TestLoopGroupCrashBetweenIterationsResumesAfterDurableHistory(t *testing.T)
 	parent := spec.Node{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 3, Nodes: []spec.Node{{ID: "inc", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`}, {ID: "check", DependsOn: []string{"inc"}, Bash: `test $(cat c) -ge 2`, AllowFailure: true}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-crash"}, Nodes: []spec.Node{parent}}
 	r := New(wf, &spec.Config{}, "wf", "cfg", dir)
-	base := r.Store
+	base := r.store
 	state := &store.RunState{ID: "run-loop-crash", Status: store.RunRunning, WorkflowPath: "wf", ConfigPath: "cfg", Workspace: dir, ExecutionWorkspace: dir, Nodes: map[string]*store.NodeState{"loop": {Status: store.NodeRunning, Path: "/loop"}}, Approvals: map[string]string{}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	if err := base.Save(state); err != nil {
 		t.Fatal(err)
 	}
-	r.Store = &failLoopStartStore{Repository: base}
+	r.store = &failLoopStartStore{Repository: base}
 	if _, err := r.runLoopGroup(context.Background(), state, parent); err == nil || !strings.Contains(err.Error(), "simulated crash") {
 		t.Fatalf("expected simulated crash, got %v", err)
 	}
@@ -217,12 +217,12 @@ func TestLoopGroupResumeAfterSatisfiedCommitDoesNotReplaySideEffectsOrExhaust(t 
 	}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-satisfied-crash"}, Nodes: []spec.Node{parent}}
 	r := New(wf, &spec.Config{}, "wf", "cfg", dir)
-	base := r.Store
+	base := r.store
 	state := &store.RunState{ID: "run-loop-satisfied-crash", Status: store.RunRunning, WorkflowPath: "wf", ConfigPath: "cfg", Workspace: dir, ExecutionWorkspace: dir, Nodes: map[string]*store.NodeState{"loop": {Status: store.NodeRunning, Path: "/loop"}}, Approvals: map[string]string{}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	if err := base.Save(state); err != nil {
 		t.Fatal(err)
 	}
-	r.Store = &crashAfterSatisfiedCommitStore{Repository: base}
+	r.store = &crashAfterSatisfiedCommitStore{Repository: base}
 	if _, err := r.runLoopGroup(context.Background(), state, parent); err == nil || !strings.Contains(err.Error(), "simulated process loss") {
 		t.Fatalf("expected simulated crash, got %v", err)
 	}
@@ -266,7 +266,7 @@ func TestLoopGroupRetryAfterExhaustionDoesNotAppendHistory(t *testing.T) {
 	state.Nodes["loop"].Error = ""
 	state.Status = store.RunRunning
 	state.Error = ""
-	if err := r.Store.Save(state); err != nil {
+	if err := r.store.Save(state); err != nil {
 		t.Fatal(err)
 	}
 	resumed, err := r.Resume(context.Background(), state)
@@ -466,7 +466,7 @@ func TestPersistenceErrorsAreReturned(t *testing.T) {
 	dir := t.TempDir()
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "persistence"}, Nodes: []spec.Node{{ID: "node", Bash: "true"}}}
 	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
-	r.Store = &failingRepository{Repository: store.FS{Workspace: dir}, failOn: 2}
+	r.store = &failingRepository{Repository: store.FS{Workspace: dir}, failOn: 2}
 	if _, err := r.Start(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "injected persistence failure") {
 		t.Fatalf("expected persistence error, got %v", err)
 	}
@@ -793,7 +793,7 @@ func TestPiOverflowContextStateIntegration(t *testing.T) {
 				ProjectTrust: "approve", MaxOutputBytes: 1024,
 			}).WithOutputTruncatedObserver(onTruncate)
 			r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
-			r.Assistants = resolverFunc(func(name string) (assistant.Adapter, error) {
+			r.assistants = resolverFunc(func(name string) (assistant.Adapter, error) {
 				if name != "pi" {
 					return nil, fmt.Errorf("unexpected assistant %q", name)
 				}
@@ -1052,7 +1052,7 @@ func TestRetryPreservesPerExecutionModelIdentityAndUsage(t *testing.T) {
 		}, nil
 	})
 	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
 	state, err := r.Start(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -1122,7 +1122,7 @@ func TestApprovalInsideLoopGroupResumesAndPromptsEachIteration(t *testing.T) {
 	state.Nodes[waiting].Status = store.NodePending
 	state.Status = store.RunRunning
 	state.Waiting = nil
-	if err := r.Store.Save(state); err != nil {
+	if err := r.store.Save(state); err != nil {
 		t.Fatal(err)
 	}
 	state, err = r.Resume(context.Background(), state)
@@ -1137,7 +1137,7 @@ func TestApprovalInsideLoopGroupResumesAndPromptsEachIteration(t *testing.T) {
 	state.Nodes[waiting].Status = store.NodePending
 	state.Status = store.RunRunning
 	state.Waiting = nil
-	if err := r.Store.Save(state); err != nil {
+	if err := r.store.Save(state); err != nil {
 		t.Fatal(err)
 	}
 	state, err = r.Resume(context.Background(), state)
@@ -1229,7 +1229,7 @@ func TestNodePolicyRejectsUnsupportedAssistantCapability(t *testing.T) {
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"model": {Provider: "test", ID: "model"}}}
 	adapter := &policyAdapter{}
 	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
 	state, err := r.Start(context.Background(), "")
 	if err == nil || state.Status != store.RunFailed || !strings.Contains(err.Error(), assistant.CapabilityToolPolicy) {
 		t.Fatalf("unsupported policy was not rejected: state=%+v err=%v", state, err)
@@ -1262,7 +1262,7 @@ func TestNodePolicyIsResolvedPassedAndPersisted(t *testing.T) {
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"model": {Provider: "test", ID: "model"}}}
 	adapter := &policyAdapter{caps: []string{assistant.CapabilityToolPolicy, assistant.CapabilitySkills, assistant.CapabilityMCP, assistant.CapabilitySandboxFilesystem, "custom"}}
 	r := New(wf, cfg, workflowPath, filepath.Join(dir, "config.yaml"), dir)
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
 	state, err := r.Start(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -1317,7 +1317,7 @@ nodes:
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"model": {Provider: "test", ID: "model"}}}
 	adapter := &policyAdapter{caps: []string{assistant.CapabilityToolPolicy}}
 	r := New(wf, cfg, parentPath, filepath.Join(dir, "config.yaml"), dir)
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
 	state, err := r.Start(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -1325,7 +1325,7 @@ nodes:
 	if adapter.seen == nil || len(adapter.seen.Policy.AllowedTools) != 1 || adapter.seen.Policy.AllowedTools[0] != "read" || len(adapter.seen.Policy.DeniedTools) != 1 {
 		t.Fatalf("child policy was not inherited as an upper bound: %+v", adapter.seen)
 	}
-	child, err := r.Store.Load(state.ChildRunIDs[0])
+	child, err := r.store.Load(state.ChildRunIDs[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1343,7 +1343,7 @@ func TestAssistantEventsAreNormalizedAndPersisted(t *testing.T) {
 	}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"large": {Provider: "provider-x", ID: "model-x"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
 	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
 			assistant.Emit(req, assistant.Event{Type: assistant.EventToolStarted, Tool: "read", CallID: "call-1", Input: []byte(`{"path":"main.go"}`)})
 			assistant.Emit(req, assistant.Event{Type: assistant.EventToolCompleted, Tool: "read", CallID: "call-1", Output: []byte(`{"bytes":12}`)})
@@ -1407,11 +1407,11 @@ func TestPauseIsRecheckedBeforeRetryAttempt(t *testing.T) {
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "pause-retry"}, Nodes: []spec.Node{{ID: "do", Command: "do", Attempts: spec.AttemptsSpec{Max: 2, RetryOn: []string{"exit"}}}}}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "test", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
 	r := New(wf, cfg, "wf", "cfg", dir)
-	r.Commands.Dirs = []string{cmdDir}
+	r.commands.Dirs = []string{cmdDir}
 	runID := make(chan string, 1)
 	release := make(chan struct{})
 	calls := 0
-	r.Assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(ctx context.Context, req assistant.Request) (assistant.Result, error) {
 			calls++
 			if calls == 1 {
@@ -1445,7 +1445,7 @@ func TestPauseIsRecheckedBeforeRetryAttempt(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("pause boundary allowed %d attempts", calls)
 	}
-	state, err := r.Store.Load(id)
+	state, err := r.store.Load(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1479,7 +1479,7 @@ func TestRetryBackoffPersistsDeadlineAndDiagnosticFingerprint(t *testing.T) {
 	var observed *store.RetryState
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		loaded, err := r.Store.Load(runID)
+		loaded, err := r.store.Load(runID)
 		if err == nil && loaded.Nodes["work"] != nil && loaded.Nodes["work"].Retry != nil {
 			copy := *loaded.Nodes["work"].Retry
 			observed = &copy
@@ -1536,7 +1536,7 @@ func TestSecretRefIsRedactedFromDurableStateEventsAndTextArtifact(t *testing.T) 
 	if !strings.Contains(state.Nodes["emit"].Output, secret) {
 		t.Fatal("execution did not receive resolved secret ref")
 	}
-	persisted, err := r.Store.Load(state.ID)
+	persisted, err := r.store.Load(state.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1584,7 +1584,7 @@ func TestKnownSecretCannotBePersistedInBinaryArtifact(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected binary secret artifact to fail closed")
 	}
-	persisted, loadErr := r.Store.Load(state.ID)
+	persisted, loadErr := r.store.Load(state.ID)
 	if loadErr != nil {
 		t.Fatal(loadErr)
 	}
@@ -1624,7 +1624,7 @@ func TestValidationScriptCannotBypassRequiredOSSandbox(t *testing.T) {
 	if state.Nodes["validate"].Sandbox.Status != "degraded" || !strings.Contains(state.Nodes["validate"].Error, "sandbox") {
 		t.Fatalf("unexpected sandbox failure state: %+v", state.Nodes["validate"])
 	}
-	persisted, loadErr := r.Store.Load(state.ID)
+	persisted, loadErr := r.store.Load(state.ID)
 	if loadErr != nil {
 		t.Fatal(loadErr)
 	}
@@ -1670,7 +1670,7 @@ func TestRetryBackoffDeadlineSurvivesPauseAndNewRunnerResume(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		loaded, err := first.Store.Load(runID)
+		loaded, err := first.store.Load(runID)
 		if err == nil && loaded.Nodes["work"] != nil && loaded.Nodes["work"].Retry != nil {
 			break
 		}
@@ -1682,7 +1682,7 @@ func TestRetryBackoffDeadlineSurvivesPauseAndNewRunnerResume(t *testing.T) {
 	if err := <-resultCh; !errors.Is(err, ErrPaused) {
 		t.Fatalf("start error=%v want ErrPaused", err)
 	}
-	persisted, err := first.Store.Load(runID)
+	persisted, err := first.store.Load(runID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1716,7 +1716,7 @@ func TestCanonicalNodePathIsPersistedInStateAndEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	persisted, err := r.Store.Load(state.ID)
+	persisted, err := r.store.Load(state.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -47,7 +47,7 @@ func TestDomainAdapterNodeRunsNeutralOperation(t *testing.T) {
 	adapter := &fakeDomainAdapter{declaration: domainadapter.Declaration{APIVersion: domainadapter.ProtocolV1Alpha1, Kind: "AdapterCapabilities", Domain: "tracker", Capabilities: []string{"item.get"}}, invoke: domainadapter.Result{Status: "completed", Output: json.RawMessage(`{"id":"ABC-123","title":"bug"}`)}}
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "adapter"}, Nodes: []spec.Node{{ID: "item", Adapter: &spec.AdapterCallSpec{Name: "tracker", Operation: "item.get", Input: `{"id":"ABC-123"}`}}}}
 	r := New(wf, &spec.Config{APIVersion: "takt/v1alpha1", Kind: "Config"}, "<test>", "<test>", t.TempDir())
-	r.Adapters = fakeDomainResolver{adapter}
+	r.adapters = fakeDomainResolver{adapter}
 	state, err := r.Start(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestDomainAdapterPreflightRejectsMissingCapabilityBeforeInvoke(t *testing.T
 	adapter := &fakeDomainAdapter{declaration: domainadapter.Declaration{APIVersion: domainadapter.ProtocolV1Alpha1, Kind: "AdapterCapabilities", Domain: "scm", Capabilities: []string{"change.get"}}}
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "adapter"}, Nodes: []spec.Node{{ID: "create", Adapter: &spec.AdapterCallSpec{Name: "scm", Operation: "change.create", Input: `{}`}}}}
 	r := New(wf, &spec.Config{APIVersion: "takt/v1alpha1", Kind: "Config"}, "<test>", "<test>", t.TempDir())
-	r.Adapters = fakeDomainResolver{adapter}
+	r.adapters = fakeDomainResolver{adapter}
 	state, err := r.Start(context.Background(), "")
 	if err == nil {
 		t.Fatal("expected preflight failure")
@@ -82,7 +82,7 @@ func TestDomainAdapterUnknownSideEffectReconcilesToApplied(t *testing.T) {
 	adapter := &fakeDomainAdapter{declaration: domainadapter.Declaration{APIVersion: domainadapter.ProtocolV1Alpha1, Kind: "AdapterCapabilities", Domain: "scm", Capabilities: []string{"change.create"}, Reconcile: []string{"change.create"}}, invoke: domainadapter.Result{Status: "unknown", Receipt: "r1"}, reconcile: domainadapter.ReconcileResult{Outcome: "applied", Receipt: "r1", Output: json.RawMessage(`{"change":"42"}`)}}
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "adapter"}, Nodes: []spec.Node{{ID: "create", Adapter: &spec.AdapterCallSpec{Name: "scm", Operation: "change.create", Input: `{"title":"x"}`}, SideEffect: &spec.SideEffectSpec{Mode: "reconcile"}}}}
 	r := New(wf, &spec.Config{APIVersion: "takt/v1alpha1", Kind: "Config"}, "<test>", "<test>", t.TempDir())
-	r.Adapters = fakeDomainResolver{adapter}
+	r.adapters = fakeDomainResolver{adapter}
 	state, err := r.Start(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestDomainAdapterUnknownReconcileBlocksRetry(t *testing.T) {
 	adapter := &fakeDomainAdapter{declaration: domainadapter.Declaration{APIVersion: domainadapter.ProtocolV1Alpha1, Kind: "AdapterCapabilities", Domain: "ci", Capabilities: []string{"run.start"}, Reconcile: []string{"run.start"}}, invoke: domainadapter.Result{Status: "unknown"}, reconcile: domainadapter.ReconcileResult{Outcome: "unknown"}}
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "adapter"}, Nodes: []spec.Node{{ID: "ci", Adapter: &spec.AdapterCallSpec{Name: "ci", Operation: "run.start", Input: `{}`}, SideEffect: &spec.SideEffectSpec{Mode: "reconcile"}, Attempts: spec.AttemptsSpec{Max: 2, RetryOn: []string{"internal"}}}}}
 	r := New(wf, &spec.Config{APIVersion: "takt/v1alpha1", Kind: "Config"}, "<test>", "<test>", t.TempDir())
-	r.Adapters = fakeDomainResolver{adapter}
+	r.adapters = fakeDomainResolver{adapter}
 	state, err := r.Start(context.Background(), "")
 	if err == nil {
 		t.Fatal("expected unknown-state failure")
@@ -122,7 +122,7 @@ func TestDomainAdapterNodeHonorsPauseAtNodeBoundary(t *testing.T) {
 		{ID: "second", DependsOn: []string{"first"}, Adapter: &spec.AdapterCallSpec{Name: "tracker", Operation: "item.comment", Input: `{}`}},
 	}}
 	r := New(wf, &spec.Config{APIVersion: "takt/v1alpha1", Kind: "Config"}, "<test>", "<test>", dir)
-	r.Adapters = resolver
+	r.adapters = resolver
 	runID := "adapter-pause"
 	type result struct {
 		state *store.RunState
@@ -153,7 +153,7 @@ func TestDomainAdapterNodeHonorsCancellationWhileInvoking(t *testing.T) {
 	adapter := &cancelDomainAdapter{started: started}
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "adapter-cancel"}, Nodes: []spec.Node{{ID: "call", Adapter: &spec.AdapterCallSpec{Name: "tracker", Operation: "item.get", Input: `{}`}}}}
 	r := New(wf, &spec.Config{APIVersion: "takt/v1alpha1", Kind: "Config"}, "<test>", "<test>", dir)
-	r.Adapters = singleDomainResolver{adapter: adapter}
+	r.adapters = singleDomainResolver{adapter: adapter}
 	runID := "adapter-cancel"
 	type result struct {
 		state *store.RunState

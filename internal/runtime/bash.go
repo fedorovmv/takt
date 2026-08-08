@@ -16,13 +16,13 @@ func (r *Runner) runBash(ctx context.Context, node spec.Node, script string) (ex
 	if node.Sandbox != nil {
 		policy = localsandbox.Policy{Enforcement: node.Sandbox.Enforcement, Filesystem: node.Sandbox.Filesystem, Network: node.Sandbox.Network}
 	}
-	cmd, decision, err := localsandbox.CommandContext(ctx, r.Workspace, policy, "bash", "-lc", script)
+	cmd, decision, err := localsandbox.CommandContext(ctx, r.workspace, policy, "bash", "-lc", script)
 	sandboxState := &store.SandboxState{Requested: decision.Requested, Status: decision.Status, Backend: decision.Backend, Reason: decision.Reason}
 	if err != nil {
 		return execResult{Sandbox: sandboxState}, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "OS sandbox", Err: err}
 	}
 	execution.ConfigureCommand(cmd)
-	cmd.Dir = r.Workspace
+	cmd.Dir = r.workspace
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err = cmd.Run()
