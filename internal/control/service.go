@@ -192,7 +192,11 @@ func (s *Service) Start(ctx context.Context, request StartRequest) (*StartResult
 		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 			return nil, runErr
 		}
-		return &StartResult{RunID: state.ID, Accepted: true, State: state.PublicView()}, nil
+		public, err := durablePublicRun(store.FS{Workspace: s.Workspace}, state)
+		if err != nil {
+			return nil, err
+		}
+		return &StartResult{RunID: state.ID, Accepted: true, State: public}, nil
 	}
 
 	runID := prepared.options.RunID
@@ -217,7 +221,11 @@ func (s *Service) Start(ctx context.Context, request StartRequest) (*StartResult
 			// exists. Even an immediate terminal failure is observed through run.get,
 			// attention and notifications instead of racing the start RPC response.
 			if outcome.state != nil {
-				return &StartResult{RunID: runID, Accepted: true, State: outcome.state.PublicView()}, nil
+				public, loadErr := durablePublicRun(storeFS, outcome.state)
+				if loadErr != nil {
+					return nil, loadErr
+				}
+				return &StartResult{RunID: runID, Accepted: true, State: public}, nil
 			}
 			if outcome.err != nil && !errors.Is(outcome.err, runtime.ErrWaiting) && !errors.Is(outcome.err, runtime.ErrPaused) {
 				return nil, outcome.err
@@ -359,6 +367,17 @@ func newRunID() (string, error) {
 	return "run-" + hex.EncodeToString(raw[:]), nil
 }
 
+func durablePublicRun(st store.FS, state *store.RunState) (*store.RunState, error) {
+	if state == nil {
+		return nil, nil
+	}
+	persisted, err := st.Load(state.ID)
+	if err != nil {
+		return nil, err
+	}
+	return persisted.PublicView(), nil
+}
+
 func (s *Service) GetRun(runID string) (*store.RunState, error) {
 	state, err := (store.FS{Workspace: s.Workspace}).Load(runID)
 	if err != nil {
@@ -389,7 +408,7 @@ func (s *Service) Resume(ctx context.Context, runID string) (*store.RunState, er
 	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 		return nil, runErr
 	}
-	return state.PublicView(), nil
+	return durablePublicRun(st, state)
 }
 
 func (s *Service) Answer(ctx context.Context, runID, requestedNodeID, value string) (*store.RunState, error) {
@@ -442,7 +461,7 @@ func (s *Service) Answer(ctx context.Context, runID, requestedNodeID, value stri
 	if cascadeErr != nil && !errors.Is(cascadeErr, runtime.ErrWaiting) && !errors.Is(cascadeErr, runtime.ErrPaused) {
 		return nil, cascadeErr
 	}
-	return root.PublicView(), nil
+	return durablePublicRun(st, root)
 }
 
 func resolveApprovalTarget(st store.FS, runID, requestedNodeID string) (*store.RunState, string, error) {
@@ -579,7 +598,7 @@ func (s *Service) Cancel(runID, reason string) (any, error) {
 		}
 		root, cascadeErr := resumeParentChain(context.Background(), st, state)
 		if cascadeErr == nil || errors.Is(cascadeErr, runtime.ErrWaiting) {
-			return root.PublicView(), nil
+			return durablePublicRun(st, root)
 		}
 		return nil, cascadeErr
 	}

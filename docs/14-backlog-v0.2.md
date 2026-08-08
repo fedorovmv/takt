@@ -137,9 +137,9 @@
 
 Типизированные capabilities, `requires` и проверка до запуска.
 
-### TAKT-015. Нормализованные diagnostics
+### TAKT-015. Нормализованные diagnostics — реализовано в v0.1.44-alpha
 
-Общий формат `code/path/line/message`, deduplication и fingerprint ошибки.
+Execution errors сохраняют `code/kind/op/message/fingerprint/retryable`; fingerprint нормализует workspace и volatile process numbers. `NodeState.path` даёт устойчивую структурную привязку узла. Более предметные `path/line` остаются данными конкретного validator/adapter, а не извлекаются эвристически из любого stderr.
 
 ### TAKT-016. Изоляция iteration state
 

@@ -250,6 +250,19 @@ func TestSourceAllowlistUsesPathBoundary(t *testing.T) {
 	}
 }
 
+func TestGitSourceAllowlistUsesRepositoryBoundary(t *testing.T) {
+	allowed := "https://git.example/corp/packages"
+	if !sourceAllowed(Source{Type: "git", Location: allowed}, "git:"+allowed) {
+		t.Fatal("exact git source should be allowed")
+	}
+	if !sourceAllowed(Source{Type: "git", Location: allowed + "/child"}, "git:"+allowed) {
+		t.Fatal("git source below an allowed namespace should be allowed")
+	}
+	if sourceAllowed(Source{Type: "git", Location: allowed + "-evil"}, "git:"+allowed) {
+		t.Fatal("git source prefix without a path boundary must be rejected")
+	}
+}
+
 func TestSignaturePolicyNegativeCases(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {

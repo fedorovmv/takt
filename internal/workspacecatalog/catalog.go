@@ -112,7 +112,10 @@ func resolve(ctx context.Context, root string, manifest Manifest, source string)
 	}
 	resolvedRoot = filepath.Clean(resolvedRoot)
 	if len(manifest.Repositories) == 0 {
-		return &Catalog{Root: root, Source: source, Fingerprint: fingerprint(nil)}, nil
+		if source != "auto" {
+			return nil, fmt.Errorf("workspace manifest repositories must contain at least one repository")
+		}
+		return &Catalog{Root: resolvedRoot, Source: source, Fingerprint: fingerprint(nil)}, nil
 	}
 	seen := map[string]bool{}
 	resolved := make([]ResolvedRepository, 0, len(manifest.Repositories))
@@ -197,11 +200,31 @@ func isRepositoryRoot(ctx context.Context, path string) (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-	a, _ := filepath.Abs(actual)
-	p, _ := filepath.Abs(path)
-	a = filepath.Clean(a)
-	p = filepath.Clean(p)
+	a, err := canonicalPath(actual)
+	if err != nil {
+		return false, ""
+	}
+	p, err := canonicalPath(path)
+	if err != nil {
+		return false, a
+	}
 	return a == p, a
+}
+
+func canonicalPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", err
+	}
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(resolved), nil
 }
 func gitOutput(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)

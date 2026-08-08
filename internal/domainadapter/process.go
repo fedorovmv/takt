@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"takt/internal/redact"
 	"takt/internal/spec"
 	sdk "takt/sdk/domainadapter"
 )
@@ -109,8 +110,13 @@ func (p *Process) call(ctx context.Context, value processEnvelope) ([]byte, erro
 	}
 	cmd := exec.CommandContext(ctx, p.Spec.Argv[0], p.Spec.Argv[1:]...)
 	cmd.Env = os.Environ()
+	secretResolver := redact.NewFromEnvironment()
 	for key, val := range p.Spec.Env {
-		cmd.Env = append(cmd.Env, key+"="+val)
+		resolved, resolveErr := secretResolver.Resolve(val)
+		if resolveErr != nil {
+			return nil, fmt.Errorf("domain adapter secret %s: %w", key, resolveErr)
+		}
+		cmd.Env = append(cmd.Env, key+"="+resolved)
 	}
 	cmd.Stdin = bytes.NewReader(append(body, '\n'))
 	var stdout, stderr bytes.Buffer

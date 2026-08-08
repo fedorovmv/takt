@@ -91,6 +91,7 @@
 | Динамический fan-out governed children | `42-governed-child-fanout-v0.1.28.md` | фактический |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
 | Multi-repo Dynamic Workflows | `57-multi-repo-dynamic-workflows-v0.1.43.md`, `../schemas/workspace.schema.json` | фактический |
+| Runtime reliability, SecretRef и локальный OS sandbox | `58-runtime-reliability-local-security-v0.1.44.md`, `../schemas/workflow.schema.json`, `../schemas/run-state.schema.json` | фактический |
 | Переносимые BlockPackage и lock/policy | `56-portable-package-distribution-v0.1.42.md`, `03-specification.md` | фактический |
 | Domain Adapter Platform | `55-adapter-platform-v0.1.41.md`, `../schemas/domain-adapter-protocol.schema.json` | фактический |
 | Локальный MCP control plane | `44-local-mcp-control-plane-v0.1.30.md` | фактический |
@@ -176,3 +177,5 @@
 - `proposals/001-simple-reliable-agent-neutral-takt.md` — сводное развитие после анализа надёжных flow и KiroCrew.
 
 - `51-autonomous-run-operations-v0.1.37.md` — реестр Run, attention, pause/resume/retry/fork/abandon, recovery, notifications и summary.
+
+- `58-runtime-reliability-local-security-v0.1.44.md` — durable backoff/diagnostics, fan-out early exit, SecretRef/redaction, локальный OS sandbox, NodePath и исправления ревью multi-repo.

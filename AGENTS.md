@@ -36,6 +36,10 @@ Takt — Go-runtime, который снаружи оркестрирует го
 - Ошибки persistence всегда возвращаются вызывающему коду.
 - MCP adapter и local daemon используют общий control service и штатные runtime/store/locks; не реализуйте второй executor или отдельную семантику Run.
 - Domain adapters (`scm|tracker|ci`) являются обычными Node actions единого scheduler; provider/transport details живут в config/adapter, а `side_effect: reconcile` запрещает blind retry после неизвестного внешнего эффекта.
+- Retry/backoff является частью durable runtime state: scheduler обязан сохранять точный `not_before`, а resume не должен сбрасывать задержку или diagnostic fingerprint.
+- Секреты передавайте через `secret://ENV_NAME`. Перед persistence state/events и текстовых artifacts применяется общий redactor; бинарный artifact с известным секретом должен fail-closed. Публичный control/CLI после исполнения возвращает состояние, повторно загруженное из Store, а не живой in-memory state.
+- `sandbox.enforcement` — отдельный локальный OS слой только для deterministic `bash/script`; assistant sandbox остаётся adapter capability. `required` обязан fail-before-execution, если OS backend недоступен; `optional` сохраняет degraded decision.
+- Early-exit fan-out не маскируйте под пользовательскую отмену: ненужные siblings получают `cancel_reason=fanout_result_decided`. Внутренний `NodePath` остаётся канонической адресацией вложенных узлов, публичный node ID — совместимым интерфейсом.
 - `always_run` не скрывает failure основного графа; `idle_timeout` измеряет отсутствие нормализованной активности, а не полный timeout.
 - Daemon локальный и однопользовательский: Unix socket не является новой security boundary и не должен публиковаться в сеть.
 

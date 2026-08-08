@@ -965,13 +965,25 @@ func runCmd(args []string) error {
 	state, runErr := runner.StartWithOptions(context.Background(), inputValue, runtime.StartOptions{
 		Worktree: worktreeOverride, WorktreeBase: *worktreeBase, KeepWorktree: *keepWorktree, AllowDirty: *allowDirtyWorktree,
 	})
-	if errors.Is(runErr, runtime.ErrWaiting) {
-		return printResult(*jsonOut, state)
-	}
-	if runErr != nil {
+	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
 		return runErr
 	}
-	return printResult(*jsonOut, state)
+	publicState, err := loadDurablePublicRun(absWorkspace, state)
+	if err != nil {
+		return err
+	}
+	return printResult(*jsonOut, publicState)
+}
+
+func loadDurablePublicRun(workspace string, state *store.RunState) (*store.RunState, error) {
+	if state == nil {
+		return nil, nil
+	}
+	persisted, err := (store.FS{Workspace: workspace}).Load(state.ID)
+	if err != nil {
+		return nil, err
+	}
+	return persisted.PublicView(), nil
 }
 
 type workflowListEntry struct {
@@ -1445,7 +1457,11 @@ func commandCmd(args []string) error {
 	if runErr != nil {
 		return runErr
 	}
-	return printResult(*jsonOut, state)
+	publicState, err := loadDurablePublicRun(abs, state)
+	if err != nil {
+		return err
+	}
+	return printResult(*jsonOut, publicState)
 }
 
 func evalCmd(args []string) error {

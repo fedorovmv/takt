@@ -103,6 +103,30 @@
             "fresh",
             "reuse"
           ]
+        },
+        "backoff": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "initial"
+          ],
+          "properties": {
+            "initial": {
+              "type": "string",
+              "minLength": 1
+            },
+            "multiplier": {
+              "type": "number",
+              "minimum": 1
+            },
+            "max": {
+              "type": "string",
+              "minLength": 1
+            },
+            "jitter": {
+              "type": "boolean"
+            }
+          }
         }
       }
     },
@@ -450,6 +474,30 @@
                   },
                   "retry_session": {
                     "maxLength": 0
+                  },
+                  "backoff": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "initial"
+                    ],
+                    "properties": {
+                      "initial": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "multiplier": {
+                        "type": "number",
+                        "minimum": 1
+                      },
+                      "max": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "jitter": {
+                        "type": "boolean"
+                      }
+                    }
                   }
                 }
               },
@@ -518,6 +566,30 @@
                   },
                   "retry_session": {
                     "maxLength": 0
+                  },
+                  "backoff": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "initial"
+                    ],
+                    "properties": {
+                      "initial": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "multiplier": {
+                        "type": "number",
+                        "minimum": 1
+                      },
+                      "max": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "jitter": {
+                        "type": "boolean"
+                      }
+                    }
                   }
                 }
               },
@@ -1148,6 +1220,13 @@
         },
         "network": {
           "const": "deny"
+        },
+        "enforcement": {
+          "type": "string",
+          "enum": [
+            "required",
+            "optional"
+          ]
         }
       },
       "minProperties": 1

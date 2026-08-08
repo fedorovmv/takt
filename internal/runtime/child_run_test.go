@@ -368,7 +368,11 @@ nodes:
 		t.Fatal(err)
 	}
 	node := state.Nodes["repo-change"]
-	if node == nil || node.ChildRunID == "" || node.ChildControlWorkspace != repo || node.ChildExecutionWorkspace == "" || node.ChildExecutionWorkspace == repo || node.ChildBranch == "" || node.ChildBaseCommit == "" {
+	resolvedRepo, resolveErr := filepath.EvalSymlinks(repo)
+	if resolveErr != nil {
+		t.Fatal(resolveErr)
+	}
+	if node == nil || node.ChildRunID == "" || node.ChildControlWorkspace != resolvedRepo || node.ChildExecutionWorkspace == "" || node.ChildExecutionWorkspace == resolvedRepo || node.ChildBranch == "" || node.ChildBaseCommit == "" {
 		t.Fatalf("child metadata not captured: %+v", node)
 	}
 	if _, err := os.Stat(filepath.Join(node.ChildExecutionWorkspace, "changed.txt")); err != nil {
@@ -397,5 +401,76 @@ func runGitTest(t *testing.T, dir string, args ...string) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+}
+
+func TestGovernedChildRetryReusesCompletedChildRun(t *testing.T) {
+	dir := t.TempDir()
+	childPath := filepath.Join(dir, "child.yaml")
+	parentPath := filepath.Join(dir, "parent.yaml")
+	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: completed-child
+nodes:
+  - id: run
+    bash: |
+      n=0
+      test -f child-count && n=$(cat child-count)
+      n=$((n+1))
+      printf %s "$n" > child-count
+      printf child-ok
+`)
+	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: retry-parent-postcheck
+nodes:
+  - id: child
+    attempts:
+      max: 2
+    hooks:
+      after_node:
+        - id: transient-parent-check
+          bash: |
+            if [ ! -f parent-check-marker ]; then
+              touch parent-check-marker
+              exit 1
+            fi
+          on_failure:
+            action: retry
+    workflow:
+      path: child.yaml
+      isolation: inherit
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := New(wf, &spec.Config{}, parentPath, "<config>", dir)
+	parent, err := runner.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := parent.Nodes["child"]
+	if node.Attempts != 2 {
+		t.Fatalf("parent attempts=%d want 2", node.Attempts)
+	}
+	if len(node.ChildRunIDs) != 1 || len(parent.ChildRunIDs) != 1 {
+		t.Fatalf("completed child should be reused, node=%v parent=%v", node.ChildRunIDs, parent.ChildRunIDs)
+	}
+	count, err := os.ReadFile(filepath.Join(dir, "child-count"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(count)) != "1" {
+		t.Fatalf("completed child executed %s times", strings.TrimSpace(string(count)))
+	}
+	child, err := runner.Store.Load(node.ChildRunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Status != store.RunCompleted {
+		t.Fatalf("child status=%s", child.Status)
 	}
 }

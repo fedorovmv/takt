@@ -1105,6 +1105,22 @@ func appendUniqueString(values []string, value string) []string {
 	return append(values, value)
 }
 
+func buildReplannerPayload(plan dynamicplan.Plan, record *dynamicplan.Record, remaining []dynamicplan.Phase, catalog *blockcatalog.Catalog, repositories *workspacecatalog.Catalog) map[string]any {
+	payload := map[string]any{
+		"goal":                  plan.Goal,
+		"current_plan":          plan,
+		"completed_phases":      record.CompletedPhases,
+		"results":               record.Results,
+		"remaining_phases":      remaining,
+		"remaining_budget":      plan.Budget,
+		"steering":              pendingSteering(record),
+		"trusted_catalog":       catalog.PlannerView(),
+		"repositories":          repositories.PlannerView(),
+		"repository_executions": record.RepositoryExecutions,
+	}
+	return payload
+}
+
 func (s *Service) replanAtCheckpoint(ctx context.Context, record *dynamicplan.Record) error {
 	plan := latestPlan(record)
 	if len(record.Revisions) >= plan.Budget.MaxIterations {
@@ -1122,7 +1138,7 @@ func (s *Service) replanAtCheckpoint(ctx context.Context, record *dynamicplan.Re
 	if err != nil {
 		return err
 	}
-	payload := map[string]any{"goal": plan.Goal, "current_plan": plan, "completed_phases": record.CompletedPhases, "results": record.Results, "remaining_phases": remaining, "remaining_budget": plan.Budget, "steering": pendingSteering(record), "trusted_catalog": catalog.PlannerView(), "repositories": repositories.PlannerView(), "repository_executions": record.RepositoryExecutions}
+	payload := buildReplannerPayload(plan, record, remaining, catalog, repositories)
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("encode dynamic replanner input: %w", err)

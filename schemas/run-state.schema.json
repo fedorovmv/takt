@@ -350,6 +350,20 @@
         "child_base_commit": {
           "type": "string",
           "description": "Base commit of the managed child worktree."
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Canonical structured node path; internal legacy node IDs remain stable."
+        },
+        "diagnostic": {
+          "$ref": "#/$defs/diagnosticState"
+        },
+        "retry": {
+          "$ref": "#/$defs/retryState"
+        },
+        "sandbox": {
+          "$ref": "#/$defs/sandboxState"
         }
       }
     },
@@ -443,6 +457,9 @@
         },
         "usage": {
           "$ref": "#/$defs/usage"
+        },
+        "diagnostic": {
+          "$ref": "#/$defs/diagnosticState"
         }
       }
     },
@@ -641,6 +658,9 @@
           "items": {
             "$ref": "#/$defs/artifactRef"
           }
+        },
+        "cancel_reason": {
+          "type": "string"
         }
       }
     },
@@ -915,6 +935,91 @@
             "not_applied",
             "unknown"
           ]
+        }
+      }
+    },
+    "diagnosticState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "kind",
+        "message",
+        "fingerprint"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "retryState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "next_attempt",
+        "not_before",
+        "delay"
+      ],
+      "properties": {
+        "next_attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "delay": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        }
+      }
+    },
+    "sandboxState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requested": {
+          "enum": [
+            "required",
+            "optional"
+          ]
+        },
+        "status": {
+          "enum": [
+            "enforced",
+            "degraded",
+            "not_requested"
+          ]
+        },
+        "backend": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
         }
       }
     }

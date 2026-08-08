@@ -379,13 +379,63 @@ func phaseTransitivelyDependsOn(phases map[string]Phase, phaseID, dependency str
 }
 
 func RepositoryMergeOrder(plan Plan) []string {
-	var order []string
-	seen := map[string]bool{}
+	phaseByID := make(map[string]Phase, len(plan.Phases))
+	repoPhase := map[string]string{}
 	for _, phase := range plan.Phases {
-		if phase.Repository != "" && !seen[phase.Repository] {
-			seen[phase.Repository] = true
-			order = append(order, phase.Repository)
+		phaseByID[phase.ID] = phase
+		if phase.Repository != "" {
+			repoPhase[phase.Repository] = phase.ID
 		}
+	}
+	if len(repoPhase) == 0 {
+		return nil
+	}
+	deps := make(map[string]map[string]bool, len(repoPhase))
+	reverse := make(map[string][]string, len(repoPhase))
+	indegree := make(map[string]int, len(repoPhase))
+	for repo := range repoPhase {
+		deps[repo] = map[string]bool{}
+	}
+	for repo, phaseID := range repoPhase {
+		for otherRepo, otherPhaseID := range repoPhase {
+			if repo == otherRepo {
+				continue
+			}
+			if phaseTransitivelyDependsOn(phaseByID, phaseID, otherPhaseID, map[string]bool{}) {
+				deps[repo][otherRepo] = true
+			}
+		}
+	}
+	for repo, repoDeps := range deps {
+		indegree[repo] = len(repoDeps)
+		for dep := range repoDeps {
+			reverse[dep] = append(reverse[dep], repo)
+		}
+	}
+	ready := make([]string, 0)
+	for repo, degree := range indegree {
+		if degree == 0 {
+			ready = append(ready, repo)
+		}
+	}
+	sort.Strings(ready)
+	order := make([]string, 0, len(repoPhase))
+	for len(ready) > 0 {
+		repo := ready[0]
+		ready = ready[1:]
+		order = append(order, repo)
+		children := append([]string(nil), reverse[repo]...)
+		sort.Strings(children)
+		for _, child := range children {
+			indegree[child]--
+			if indegree[child] == 0 {
+				ready = append(ready, child)
+				sort.Strings(ready)
+			}
+		}
+	}
+	if len(order) != len(repoPhase) {
+		return nil
 	}
 	return order
 }

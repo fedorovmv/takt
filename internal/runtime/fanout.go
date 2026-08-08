@@ -116,6 +116,16 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 	}
 
 	maxParallel := normalizedMaxParallel(fanOut.MaxParallel)
+	join := normalizedFanOutJoin(fanOut.Join)
+	if decided, _ := fanOutJoinDecision(nodeState.ChildRuns, attempt, len(items), join); decided {
+		cancelled := cancelFanOutPositions(nodeState.ChildRuns, pending, attempt, "fanout_result_decided")
+		if cancelled > 0 {
+			if err := r.commit(state, "child_run.fan_out.cancelled", node.ID, map[string]any{"attempt": attempt, "cancelled": cancelled, "reason": "fanout_result_decided", "join": join}); err != nil {
+				return execResult{}, err
+			}
+		}
+		pending = nil
+	}
 	for start := 0; start < len(pending); start += maxParallel {
 		// A fan-out is one governed node. Once an operator requests a safe
 		// pause, do not start another batch. Already running children are allowed
@@ -129,6 +139,7 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 			end = len(pending)
 		}
 		batch := pending[start:end]
+		batchCtx, cancelBatch := context.WithCancel(ctx)
 		results := make(chan fanOutRunResult, len(batch))
 		var wg sync.WaitGroup
 		for _, position := range batch {
@@ -137,25 +148,53 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 			go func() {
 				defer wg.Done()
 				record := nodeState.ChildRuns[position]
-				childState, runErr := r.runFanOutChild(ctx, state, node, childWorkflow, childPath, record, items[record.Index], len(items), local, feedback, artifacts)
+				childState, runErr := r.runFanOutChild(batchCtx, state, node, childWorkflow, childPath, record, items[record.Index], len(items), local, feedback, artifacts)
 				results <- fanOutRunResult{position: position, state: childState, err: runErr}
 			}()
 		}
+		decided := false
+		for range batch {
+			result := <-results
+			updateFanOutRecord(&nodeState.ChildRuns[result.position], childWorkflow, definition.OutputNode, result.state, result.err)
+			if !decided {
+				if done, _ := fanOutJoinDecision(nodeState.ChildRuns, attempt, len(items), join); done && join != "all_done" {
+					decided = true
+					cancelBatch()
+				}
+			}
+		}
+		cancelBatch()
 		wg.Wait()
 		close(results)
-		for result := range results {
-			updateFanOutRecord(&nodeState.ChildRuns[result.position], childWorkflow, definition.OutputNode, result.state, result.err)
+		if decided {
+			for _, position := range batch {
+				record := &nodeState.ChildRuns[position]
+				if record.Attempt == attempt && record.Status == store.RunCancelled && record.CancelReason == "" {
+					record.CancelReason = "fanout_result_decided"
+				}
+			}
 		}
+
 		if err := r.commit(state, "child_run.fan_out.progress", node.ID, map[string]any{
 			"attempt": attempt, "completed": fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunCompleted),
 			"waiting": fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunWaiting),
-			"paused":  fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunPaused),
+			"paused":  fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunPaused), "join": join,
 		}); err != nil {
 			return execResult{}, err
 		}
 		if fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunPaused) > 0 || r.pauseRequested(state.ID) {
 			state.PauseRequested = true
 			return execResult{}, ErrPaused
+		}
+		if decided {
+			remaining := pending[end:]
+			cancelled := cancelFanOutPositions(nodeState.ChildRuns, remaining, attempt, "fanout_result_decided")
+			if cancelled > 0 {
+				if err := r.commit(state, "child_run.fan_out.cancelled", node.ID, map[string]any{"attempt": attempt, "cancelled": cancelled, "reason": "fanout_result_decided", "join": join}); err != nil {
+					return execResult{}, err
+				}
+			}
+			break
 		}
 	}
 
@@ -180,7 +219,6 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 
 	result := execResult{Output: output, Stdout: output, ExitCode: 0, Usage: usage, Artifacts: fanOutArtifacts(nodeState.ChildRuns, attempt)}
 	completed, failed := fanOutTerminalCounts(nodeState.ChildRuns, attempt)
-	join := normalizedFanOutJoin(fanOut.Join)
 	var joinErr error
 	switch join {
 	case "all_success":
@@ -450,6 +488,9 @@ func fanOutAggregate(records []store.ChildRunItemState, attempt int) (string, *a
 		if record.Error != "" {
 			value["error"] = record.Error
 		}
+		if record.CancelReason != "" {
+			value["cancel_reason"] = record.CancelReason
+		}
 		if record.Usage != nil {
 			value["usage"] = record.Usage
 			usage.InputTokens += record.Usage.InputTokens
@@ -467,6 +508,64 @@ func fanOutAggregate(records []store.ChildRunItemState, attempt int) (string, *a
 		usage = nil
 	}
 	return string(raw), usage, nil
+}
+
+func fanOutJoinDecision(records []store.ChildRunItemState, attempt, total int, join string) (decided, success bool) {
+	completed, terminal := 0, 0
+	for _, record := range records {
+		if record.Attempt != attempt {
+			continue
+		}
+		if record.Status == store.RunCompleted {
+			completed++
+			terminal++
+			continue
+		}
+		switch record.Status {
+		case store.RunFailed, store.RunCancelled, store.RunAbandoned:
+			terminal++
+		}
+	}
+	switch join {
+	case "one_success":
+		if completed > 0 {
+			return true, true
+		}
+		if terminal == total {
+			return true, false
+		}
+	case "all_success":
+		if terminal-completed > 0 {
+			return true, false
+		}
+		if completed == total {
+			return true, true
+		}
+	case "all_done":
+		if terminal == total {
+			return true, true
+		}
+	}
+	return false, false
+}
+
+func cancelFanOutPositions(records []store.ChildRunItemState, positions []int, attempt int, reason string) int {
+	count := 0
+	for _, position := range positions {
+		if position < 0 || position >= len(records) {
+			continue
+		}
+		record := &records[position]
+		if record.Attempt != attempt || record.Status != store.NodePending {
+			continue
+		}
+		record.Status = store.RunCancelled
+		record.ErrorCode = string(execution.KindCancelled)
+		record.Error = reason
+		record.CancelReason = reason
+		count++
+	}
+	return count
 }
 
 func fanOutWaitingIDs(records []store.ChildRunItemState, attempt int) []string {

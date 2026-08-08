@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"takt/internal/execution"
+	"takt/internal/redact"
 	"takt/internal/spec"
 )
 
@@ -35,10 +36,15 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 	cmd.Dir = req.Workspace
 	cmd.Env = append([]string{}, os.Environ()...)
 	renderedEnv := make(map[string]string, len(p.spec.Env))
+	secretResolver := redact.NewFromEnvironment()
 	for k, v := range p.spec.Env {
 		rendered := renderArg(v, req)
-		renderedEnv[k] = rendered
-		cmd.Env = append(cmd.Env, k+"="+rendered)
+		resolved, resolveErr := secretResolver.Resolve(rendered)
+		if resolveErr != nil {
+			return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process secret", Err: resolveErr}
+		}
+		renderedEnv[k] = resolved
+		cmd.Env = append(cmd.Env, k+"="+resolved)
 	}
 	paramsJSON, _ := json.Marshal(req.Model.Params)
 	mode, sessionID := effectiveSession(req.SessionMode, req.SessionID)

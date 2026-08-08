@@ -82,7 +82,7 @@ func TestRunStateSchemaContainsExecutionIdentity(t *testing.T) {
 	}
 	defs := schema["$defs"].(map[string]any)
 	node := defs["nodeState"].(map[string]any)["properties"].(map[string]any)
-	for _, field := range []string{"assistant", "assistant_version", "requested_model", "resolved_model", "executions"} {
+	for _, field := range []string{"assistant", "assistant_version", "requested_model", "resolved_model", "executions", "path", "diagnostic", "retry", "sandbox"} {
 		if _, ok := node[field]; !ok {
 			t.Fatalf("run-state schema misses %s", field)
 		}

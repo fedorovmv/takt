@@ -2,116 +2,110 @@
 
 ## Supported trust model
 
-Takt `v0.1.33-alpha` is a local, single-user, trusted runtime. `takt daemon` allows several clients owned by the same OS user but does not create a multi-user trust boundary.
+Takt `v0.1.44-alpha` is a local, single-user, trusted runtime. `takt daemon` may serve several clients owned by the same OS user but does not create authentication, authorization, tenant isolation or an untrusted execution boundary.
 
-Trusted inputs:
+Trusted inputs include workflow/config/package files, Markdown commands, scripts and hooks, assistant/adapter binaries and argv, workspace contents and locally installed package sources. Do not expose the current runtime as a service that accepts these values from untrusted users.
 
-- workflow and config files;
-- Markdown commands;
-- shell scripts and hook commands;
-- assistant argv/env/binary configuration, including OpenCode `agent` and `auto_approve`;
-- workspace contents;
-- Run ID received from the local CLI after validation.
+## Current protection layers
 
-The current version must not be exposed as a service that accepts these values from untrusted users.
+Takt combines several independent controls:
 
-## Current protections
+- strict config/workflow/schema validation and bounded path checks;
+- per-Run locking, revisions and definition/content fingerprints;
+- managed Git worktrees and repository-aware integrity checks;
+- process timeout/output limits and process-group cancellation;
+- durable retry/backoff, normalized diagnostics and failure fingerprints;
+- `SecretRef` (`secret://ENV_NAME`) plus redaction before state/event/text-artifact persistence;
+- local OS sandbox enforcement for deterministic `bash/script` nodes when explicitly requested;
+- assistant capability/policy preflight for tools, skills, MCP and assistant-level sandbox contracts;
+- side-effect idempotency/reconciliation for external/domain operations with unknown outcomes.
 
-- strict unknown-field validation;
-- safe Run ID format;
-- per-Run lock for control mutations, with bounded serialization for concurrent CLI/MCP/daemon clients;
-- definition fingerprints before resume;
-- timeout and output limit for process assistants;
-- Unix process-group termination on context cancellation;
-- revision consistency between state and event log;
-- managed Git worktree separation for code-changing Runs, with safe retention of dirty results;
-- explicit parent/child Run links and durable local cancellation markers.
+No single item above is the security boundary for the whole system. Worktrees isolate changes from the control checkout, not arbitrary filesystem/process/network access. Assistant policy constrains an adapter interface, not a malicious local binary. Local OS sandbox applies only to deterministic nodes that Takt launches itself.
 
-These controls improve reliability but do not form a sandbox. A Git worktree isolates changes from the control checkout, but it does not restrict filesystem access, processes, network, credentials, or agent tools.
+## Secrets and redaction
 
-## OpenCode approval mode
+Prefer environment-backed references instead of literal credentials:
 
-`assistants.*.auto_approve: true` passes OpenCode `--auto`. It removes an external safety boundary and must be enabled only for a trusted workspace, trusted workflow and explicitly reviewed OpenCode agent configuration. Takt approval nodes remain the durable workflow-level confirmation mechanism and are independent of OpenCode tool permissions.
+```yaml
+script:
+  runtime: command
+  path: ./scripts/check.sh
+  env:
+    TOKEN: secret://CORP_TOKEN
+```
+
+`secret://NAME` resolves from the current process environment immediately before execution. The resolved value is registered with the runtime redactor even when it is short. Takt also heuristically registers values of environment variables whose names look secret-bearing; this heuristic is defense-in-depth and is not a replacement for explicit `SecretRef`.
+
+Before persistence, Takt redacts known secrets from Run state, node/execution output, diagnostics, event data and textual artifacts. A non-text artifact containing a known secret is rejected instead of being stored. Foreground control/CLI responses are reloaded from the durable Store after execution so a resolved secret is not returned from the live in-memory state.
+
+Limitations:
+
+- redaction only protects values known to the redactor; transformed, encoded, encrypted, split or previously unknown values may not match;
+- resolved values necessarily exist in the environment/memory of the process that needs them;
+- trusted subprocesses, coding agents and MCP servers still run with the OS credentials available to them unless an independent sandbox restricts those capabilities;
+- artifact filenames/paths and trusted configuration metadata should not contain credentials;
+- evaluation model `params` are persisted as execution identity; keep credentials and secret headers out of `models.*.params`.
+
+## Local OS sandbox
+
+For deterministic `bash` and `script` nodes, `sandbox.enforcement` requests an OS-level wrapper in addition to ordinary workflow policy:
+
+```yaml
+sandbox:
+  enforcement: required
+  filesystem: read_only
+  network: deny
+```
+
+Current local backends are:
+
+- Linux: `bwrap`/bubblewrap when available;
+- macOS: `sandbox-exec` when available.
+
+`required` fails before the payload command if a supported backend is unavailable. `optional` executes with a persisted `degraded` sandbox decision. Validation commands and node hooks use the same deterministic-node sandbox and cannot silently bypass a required sandbox.
+
+This is deliberately a local hardening layer, not a general container/security runtime. The current filesystem policy is coarse (`read_only` versus normal host access), and backend availability/behavior is OS-specific. `command`/`prompt` coding-agent nodes do not claim OS sandbox enforcement: their `sandbox.filesystem/network` fields remain adapter capability contracts.
+
+## OpenCode/Pi and host control
+
+`assistants.*.auto_approve: true` (OpenCode `--auto`) removes an external approval boundary. Enable it only for a trusted workspace and reviewed agent configuration. Takt approval nodes remain workflow-level durable gates but do not replace the coding-agent host's tool permissions.
+
+Host session/cache are not authentication. Go host guards are default-deny, but physical blocking depends on capabilities of the coding-agent host. Bundled Pi/OpenCode integrations remain `guarded` until live contract tests on pinned host versions prove the relevant enforcement path.
+
+## Worktrees, multi-repo and packages
+
+A managed worktree is an execution-lifecycle boundary, not an OS security boundary. Multi-repo repository paths are bounded to the control workspace and checked again after symlink resolution; repository fingerprints are rechecked before execution/replanning. These controls prevent accidental repository/path substitution but do not make workspace contents untrusted-safe.
+
+Portable packages support source allowlists, integrity locks, dependency/capability preflight and optional Ed25519 signature policy. These mechanisms prove the selected package source/content against configured local trust policy; they do not make arbitrary package scripts safe to execute. Package commands/scripts/skills/MCP configuration are trusted executable content.
+
+## External/domain side effects
+
+For operations that may outlive the local process, use an idempotent adapter or `side_effect.mode: reconcile`. If an outcome becomes unknown, Takt blocks blind retry until the external fact is checked. `applied` requires a receipt; `not_applied` permits a new attempt; `unknown` remains parked. This reduces duplicate effects but does not provide exactly-once semantics unless the external system itself supplies the required guarantees.
+
+External worker claim tokens are local lease secrets and must not be copied into prompts, tool payloads, diagnostics or artifacts. Cooperative tool cancellation cannot forcibly terminate a worker process outside Takt's process group.
+
+## Local MCP and daemon
+
+`takt mcp` is intended as a stdio child process of a trusted local coding-agent host. `takt daemon` uses a local Unix socket and the same `control.Service`; any process that can access that socket has the effective authority of the local CLI over the workspace. Do not proxy the socket over TCP or place the workspace/socket in a directory writable by untrusted users.
+
+Daemon restart recovery may create a new attempt after a lost subprocess. Durable backoff deadlines and side-effect reconciliation are preserved, but an arbitrary external action still needs an idempotency/reconciliation contract to avoid duplication.
+
+Notifications are local convenience outputs, not an independent security boundary. Notification data normally originates from persisted/redacted Run events, but trusted notification configuration, paths and process-sink behavior remain visible to the local user/process. A `process` sink executes a trusted local binary with the user's privileges.
+
+## Evaluation and connected definitions
+
+`takt eval run`, `subworkflow.path`, governed `workflow.path`, package content and workspace templates are trusted inputs. Evaluation isolation uses copied workspaces/worktrees and does not automatically turn arbitrary cases or validators into untrusted code. Absolute/linked definition paths and local MCP servers must be governed by the same trusted-local policy.
 
 ## Unsupported scenarios
 
-- multi-user server;
-- arbitrary workflows from external users;
-- execution in a shared privileged workspace;
-- secret-bearing stdout/stderr without external redaction;
-- network isolation;
-- filesystem isolation;
-- protection from malicious shell commands or coding agents.
+The current version is not intended for:
 
-## Secrets
+- a multi-user or Internet-facing server;
+- arbitrary workflows/packages supplied by untrusted users;
+- shared privileged execution workspaces;
+- a guarantee that malicious coding-agent binaries cannot access host credentials;
+- distributed workers or tenant-separated secrets;
+- a built-in secret store/broker;
+- a portable cross-platform sandbox stronger than the available local OS backend.
 
-Takt does not intentionally copy assistant environment variables into state or events. However, command output, hook feedback, model responses and error messages may contain secrets and are currently persisted without automatic redaction. Evaluation reports also persist model `params` used for execution identity; credentials and secret headers must remain in environment or an external secret source, not in `models.*.params`.
-
-Before production-like use, define:
-
-- secret sources;
-- redaction patterns and structured secret markers;
-- fields prohibited in state/events;
-- retention and deletion policy;
-- tests for stdout/stderr and error-message leakage.
-
-## Server/untrusted prerequisites
-
-A future server or untrusted mode requires at minimum:
-
-- sandboxed process execution;
-- workspace and artifact path policy;
-- network egress policy;
-- secret broker and redaction;
-- authentication and authorization;
-- durable distributed locking;
-- quotas and resource limits;
-- audit retention policy;
-- recovery from stale locks and interrupted commits.
-
-
-## Evaluation
-
-`takt eval run` копирует и выполняет workspace template для каждого задания. Template, workflow, config, cases, assistant binaries и внешний validator входят в trusted input. Evaluation runner не создаёт sandbox и не должен использоваться для запуска недоверенных наборов заданий или шаблонов.
-
-## Подключённые workflow
-
-Пути `subworkflow.path` считаются доверенными и могут ссылаться на локальные файлы, включая абсолютные пути. Компиляция не создаёт sandbox и не ограничивает чтение definition files. Для untrusted/server режима потребуются отдельная политика корней, запрет выхода из package и проверка символических ссылок.
-
-## Governed child Runs
-
-`workflow.path` is a trusted local definition path. A child Run has separate state, events and artifacts, but this is an execution-lifecycle boundary rather than a security boundary. `isolation: inherit` deliberately shares the parent execution workspace; `worktree` creates a Git worktree but still does not restrict filesystem, network, credentials or process access. Cascading cancellation is cooperative and relies on local context/process termination.
-
-## Assistant-enforced node policies
-
-`allowed_tools`, `denied_tools`, `skills`, `mcp`, `sandbox` and `requires` prevent silent policy omission: Takt verifies adapter capabilities before invocation and persists the effective policy. These controls constrain the coding agent interface but do not isolate the assistant binary, arbitrary subprocesses, custom MCP servers or host credentials. `sandbox.filesystem` and `sandbox.network` are contracts that an adapter must implement; they are not an OS security boundary.
-
-
-## Локальный MCP control plane
-
-`takt mcp` предоставляет тем же локальным полномочиям структурированный интерфейс запуска, approval, cancellation и чтения state/events/artifacts. Он не содержит аутентификации и не является сетевой security boundary. Запускай его только как stdio child process доверенного coding-agent host того же пользователя.
-
-Tool arguments считаются доверенными локальными запросами, но декодируются строго. Artifact content ограничивается по размеру; это ограничение защищает transport от случайного большого ответа, но не выполняет redaction. Содержимое state, events, stdout/stderr и artifacts может включать секреты согласно общему trust model.
-
-## Локальный daemon
-
-`takt daemon` слушает только Unix socket в `.takt/daemon.sock`; socket, metadata и log создаются для текущего пользователя. Любой процесс с доступом к socket получает полномочия локального CLI над workspace: запуск, чтение output/artifacts, approval, cancellation и внешний worker control. Это механизм локальной координации, а не аутентификация.
-
-Не публикуй socket через TCP proxy и не размещай workspace в каталоге с доступом недоверенных пользователей. Daemon переживает закрытие клиента. После перезапуска он выполняет PID-based recovery локальных `running|pausing` Run: прежний subprocess не продолжается, а node запускается новой attempt с diagnostic `worker_lost`. Это может повторить внешний side effect. Для критичных SCM/tracker/CI операций используй идемпотентный adapter либо `executor: external` с `side_effect.mode: reconcile`: после неизвестного исхода новый claim блокируется до проверки внешнего факта, а подтверждённый `applied` требует receipt. Это снижает риск blind retry, но не является exactly-once гарантией внешней системы.
-
-`idle_timeout` внешнего executor выполняется daemon. Он закрывает незавершённые tool calls и сохраняет timeout transition, но не может принудительно остановить сторонний процесс worker, который находится вне process group Takt.
-
-## Управляемые tool calls внешнего executor
-
-`tool_approval` и `tool_control` являются сохраняемым управляющим контрактом, но действуют только для adapter, который способен передать запрос до фактического запуска инструмента. OpenCode и Pi в текущих интеграциях публикуют наблюдательные события и не предоставляют этот security boundary.
-
-Claim token внешнего worker является локальным секретом lease. Его нельзя записывать в assistant messages, tool input/output, state-visible diagnostics или artifacts. Controller может отменить отдельный tool call; для уже выполняющегося внешнего действия это cooperative `cancel_requested`, который worker обязан подтвердить terminal-событием. Takt не может принудительно остановить произвольный внешний процесс за пределами своего process group.
-
-Policy/approval не заменяют OS sandbox. Разрешённый tool call всё ещё выполняется с полномочиями внешнего worker и текущего пользователя.
-
-
-## Host control и уведомления
-
-Host session и локальный cache не являются аутентификацией. Go guard работает default-deny, но реальная блокировка зависит от capabilities конкретного coding-agent host. Bundled Pi/OpenCode integrations имеют уровень `guarded`; до live contract test на зафиксированной версии их нельзя использовать как строгую security boundary.
-
-Notification inbox может содержать имена workflow, ошибки, пути и команды открытия Run. Он создаётся под `.takt/notifications/` с правами текущего пользователя и не выполняет redaction. `process` sink запускает доверенный локальный бинарник с полномочиями пользователя и передаёт notification JSON через stdin. Конфигурация `notifications.yaml` считается доверенной; не подключай команды из недоверенного пакета.
+A future untrusted/server mode needs a separate threat model and, at minimum, authenticated/authorized control, a hardened sandbox/container boundary, explicit filesystem and network egress policy, a secret broker, quotas, distributed locking and audited retention/recovery.

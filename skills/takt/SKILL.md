@@ -179,6 +179,8 @@ takt block validate path/to/package.yaml
 - OpenCode запускается через `opencode run --format json`; не парси TUI и не подменяй его собственный агентный цикл логикой Takt.
 - `auto_approve: true` для OpenCode используй только в доверенной рабочей директории.
 - Для исправления результата используй детерминированную проверку в hook и `on_failure.action: retry`.
+- Для transient `attempts.retry_on` можно добавить bounded `backoff` (`initial`, `multiplier`, `max`, `jitter`); cancellation и неизвестный side effect не превращай в обычный retry.
+- Секреты в process/script env передавай как `secret://ENV_NAME`, чтобы durable state/events/artifacts проходили через redaction; не вставляй literal secret в task input.
 - `${feedback}` содержит вывод неуспешных hooks предыдущей попытки.
 - Текст агента и наличие файла сами по себе не подтверждают успех; нужен bash-валидатор или другой детерминированный gate.
 - Approval оформляй отдельным узлом. Внутри `loop_group` он сохраняет активную итерацию и после `takt answer` продолжает её.
@@ -189,7 +191,7 @@ takt block validate path/to/package.yaml
 - Takt поддерживает ограниченный YAML subset. Для многострочного prompt или bash используй block scalar `|`.
 - Markdown-план не преобразуй в task AST ради `foreach`: используй явный `foreach.items` или `foreach.items_from.path` к YAML/JSON-массиву.
 - Неподдерживаемая capability должна завершать узел до вызова модели; не описывай ограничения только в prompt.
-- Filesystem/network policy текущей версии является assistant-enforced и не заменяет OS sandbox.
+- Для `command/prompt` filesystem/network policy остаётся assistant-enforced. Для локального `bash/script` используй `sandbox.enforcement: required|optional`, когда нужен реальный OS wrapper (`bwrap` Linux / `sandbox-exec` macOS); `required` должен fail-closed при отсутствии backend.
 - Значимые файлы публикуй через `output_type` и `output_path`; downstream использует `${nodes.<id>.artifacts.<type>.path}`, а не временный путь producer.
 - Обязательная шаблонная ссылка записывается `${path}` и должна разрешиться; отсутствие допускай только явно через `${path?}` или `${path:-default}`.
 - `takt validate` проверяет output/artifact references и adapter capabilities до Run; не откладывай эти ошибки до модели.

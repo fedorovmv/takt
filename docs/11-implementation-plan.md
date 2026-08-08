@@ -167,19 +167,20 @@ agent draft
 
 ## 10. Текущий порядок ближайших задач
 
-Завершённые крупные срезы:
+Завершённые крупные срезы после базовой стабилизации:
 
-1. локальный MCP control plane — `docs/44-local-mcp-control-plane-v0.1.30.md`;
-2. базовые агентные события и внешний executor — `docs/45-agent-events-external-executor-v0.1.31.md`;
-3. управляемый event protocol v2 и углубление шести workflow — `docs/46-controlled-agent-events-deep-workflows-v0.1.32.md`.
+1. локальный MCP control plane, external executor, authoring daemon и Dynamic Takt — `v0.1.30–v0.1.34`;
+2. trusted blocks, host control, autonomous Run operations и Simple Reliable — `v0.1.35–v0.1.38`;
+3. Role/Brief controls и Evidence/baseline/failure routing — `v0.1.39–v0.1.40`;
+4. Adapter Platform и Portable Package Distribution — `v0.1.41–v0.1.42`;
+5. Multi-repo Dynamic Workflows — `v0.1.43`;
+6. Runtime Reliability & Local Security — `v0.1.44`: durable retry/backoff, diagnostic fingerprints, early-exit fan-out, SecretRef/redaction, local OS sandbox для deterministic nodes и NodePath.
 
 Активный порядок:
 
-1. authoring diagnostics: suspicious fields, capability validation, output-reference analysis, strict renderer, optional/default, `always_run`, `idle_timeout`;
-2. опциональный локальный `takt daemon` на файловом Store;
-3. runtime security hardening: early-exit fan-out, retry backoff, secret protection, OS sandbox;
-4. Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями;
-5. более полный JSON Schema, iteration history и v1beta1 design.
+1. Route DSL benchmark со штатным валидатором и реальными обезличенными заданиями: получить воспроизводимый baseline `success@1`, final success, attempts, cost/time и устойчивость failure fingerprints;
+2. более полный JSON Schema, полная iteration history и проектирование `v1beta1`;
+3. только после результатов benchmark — точечные изменения runtime semantics, подтверждённые реальными Run.
 
 ## 11. Пока не начинать
 

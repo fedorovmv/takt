@@ -31,12 +31,18 @@ Runner / Shared DAG Scheduler
 - `internal/config` — модели и исполнители;
 - `internal/command` — Markdown-команды;
 - `internal/execution` — классы ошибок и управление process group;
+- `internal/diagnostic` — нормализация runtime-ошибок и стабильные SHA-256 fingerprints;
+- `internal/redact` — `secret://ENV_NAME`, регистрация известных секретов и редактирование сохраняемых данных;
+- `internal/localsandbox` — локальный OS enforcement для deterministic `bash/script` узлов через bubblewrap/sandbox-exec;
 - `internal/gitworktree` — создание ветки/worktree, проверка dirty state, удаление и prune;
 - `internal/assistant` — адаптеры `mock`, универсальный `process` и специализированные `pi` и `opencode`;
 - `internal/definition` — fingerprints workflow/config/commands;
 - `internal/workflow` — загрузка и статическая проверка DAG;
 - `internal/authoring` — diagnostics для templates, output/artifact references и несовместимых параметров;
-- `internal/control` — общий lifecycle API для CLI, MCP и daemon;
+- `internal/control` — общий lifecycle API для CLI, MCP и daemon; наружу возвращается только повторно загруженное durable/redacted состояние;
+- `internal/domainadapter` и `sdk/domainadapter` — нейтральные SCM/tracker/CI operations и process/MCP transports;
+- `internal/packagedist` — переносимые пакеты, lock, dependency/source/signature policy;
+- `internal/workspacecatalog` — bounded multi-repo catalog, discovery и dependency graph;
 - `internal/daemon` — локальный Unix-socket процесс для background Runs и subscriptions;
 - `internal/runtime` — общий scheduler, hooks, loops, approval, governed child lifecycle, cancellation tree и итог Run;
 - `internal/store` — revisioned state/event store, parent/child links, durable cancel markers, aggregate usage и lock Run;
@@ -48,7 +54,7 @@ Takt не реализует собственный tool loop. Встроенн�
 
 ## Семантика выполнения
 
-Failure узла не завершает Run немедленно. Node становится terminal, после чего scheduler выполняет разрешённые ветви, включая `all_done`. Корневой workflow и дочерний DAG `loop_group` используют один механизм. Завершение attempt context имеет приоритет над производными ошибками контейнера, поэтому timeout/cancellation дочерней работы сохраняются на родительском `loop_group`.
+Failure узла не завершает Run немедленно. Node становится terminal, после чего scheduler выполняет разрешённые ветви, включая `all_done`. Корневой workflow и дочерний DAG `loop_group` используют один механизм. Завершение attempt context имеет приоритет над производными ошибками контейнера, поэтому timeout/cancellation дочерней работы сохраняются на родительском `loop_group`. Retry/backoff хранит точный `not_before` в RunState; одинаковые ошибки получают нормализованный diagnostic fingerprint. Fan-out `one_success|all_success` может завершить волну досрочно и помечает ненужных siblings причиной `fanout_result_decided`.
 
 ## Process assistant
 
@@ -78,15 +84,15 @@ TAKT_NATIVE_HOOKS_JSON
 
 ## Control и execution workspace
 
-Workflow definitions, config, commands, Run state, events, locks и artifacts принадлежат control workspace. При `worktree.enabled` node actions получают отдельный execution workspace. Умный router остаётся в control workspace и запускает выбранный процесс отдельным governed child Run; ребёнок применяет собственную worktree policy или явный `isolation`. Это защищает исходный checkout от изменений, но не является sandbox.
+Workflow definitions, config, commands, Run state, events, locks и artifacts принадлежат control workspace. При `worktree.enabled` node actions получают отдельный execution workspace. Умный router остаётся в control workspace и запускает выбранный процесс отдельным governed child Run; ребёнок применяет собственную worktree policy или явный `isolation`. Это защищает исходный checkout от изменений, но само по себе не является sandbox. Для deterministic `bash/script` узлов `sandbox.enforcement: required|optional` может добавить отдельный OS enforcement слой; assistant nodes по-прежнему зависят от capabilities/policy кодинг-агента.
 
 ## Script runtime и артефакты
 
-`script`-узел исполняется тем же scheduler и execution context, что `bash`, но запускает явный command/Python/Node/Go source без assistant. Source и dependencies входят в definition fingerprint. После успешного действия `output_type` фиксирует Output либо файл как снимок в Run store с SHA-256 и producer metadata. Ссылки governed children агрегируются родителем, но физический файл остаётся у producer Run.
+`script`-узел исполняется тем же scheduler и execution context, что `bash`, но запускает явный command/Python/Node/Go source без assistant. Source и dependencies входят в definition fingerprint. После успешного действия `output_type` фиксирует Output либо файл как снимок в Run store с SHA-256 и producer metadata. Перед persistence известные секреты редактируются в текстовых artifacts; бинарный artifact с известным секретом отклоняется. Ссылки governed children агрегируются родителем, но физический файл остаётся у producer Run.
 
 ## Состояние
 
-Каждый transition записывается через `Store.Commit`. State и event получают одну revision. `Load` обнаруживает рассогласование. `answer` и `resume` получают lock и проверяют fingerprints определений. Usage всех агентных попыток накапливается в состоянии узла и используется evaluation report. Каждый governed child имеет собственный state/events/artifacts и связывается с родителем через явные IDs; approval/resume/cancel проходят по этой связи без объединения файлов состояния.
+Каждый transition записывается через `Store.Commit`. Перед записью runtime создаёт redacted durable copy; живое in-memory состояние может использовать resolved secret только в пределах текущего исполнения, а CLI/MCP/control после выполнения повторно загружают состояние из Store. State и event получают одну revision. `Load` обнаруживает рассогласование. `answer` и `resume` получают lock и проверяют fingerprints определений. Usage всех агентных попыток накапливается в состоянии узла и используется evaluation report. Каждый governed child имеет собственный state/events/artifacts и связывается с родителем через явные IDs; approval/resume/cancel проходят по этой связи без объединения файлов состояния.
 
 ## Evaluation
 
@@ -100,7 +106,7 @@ Authoring preflight выполняется до создания Run: loader п�
 
 ## Scope безопасности
 
-Текущая архитектура предполагает trusted local input. Наличие path validation для Run ID и process limits не делает runtime безопасным для недоверенных workflow.
+Текущая архитектура предполагает trusted local input. SecretRef/redaction и локальный OS sandbox уменьшают риск утечки/лишних полномочий, но не создают multi-user или untrusted security boundary. Подробная граница описана в `SECURITY.md`.
 
 ## Компиляция композиции
 
@@ -108,7 +114,7 @@ Loader разворачивает `subworkflow` и `foreach` до валидац
 
 ## Governed child execution
 
-Узел `workflow` остаётся в DAG родителя как одна action boundary. Runtime создаёт отдельный Child Run ID и запускает новый Runner с тем же файловым Repository, но другим каталогом Run. Parent node ждёт terminal status ребёнка и получает его output/usage как execution result. При approval родитель хранит waiting link, а CLI продолжает фактического ребёнка и затем parent chain. При retry создаётся новый child Run.
+Узел `workflow` остаётся в DAG родителя как одна action boundary. Runtime создаёт отдельный Child Run ID и запускает новый Runner с тем же файловым Repository, но другим каталогом Run. Parent node ждёт terminal status ребёнка и получает его output/usage как execution result. При approval родитель хранит waiting link, а CLI продолжает фактического ребёнка и затем parent chain. При retry failed/cancelled child создаётся новый Run; уже completed child переиспользуется, а повторяются только post-child проверки родительского узла. Это предотвращает повторную мутацию успешно завершённого repository child.
 
 Governed lifecycle не требует сервера или БД: связи сохраняются в локальном RunState, cancellation — в durable marker. Эта модель подходит однопользовательскому локальному runtime, но не заменяет distributed orchestration.
 

@@ -113,3 +113,34 @@ func TestDiscoverySanitizesRepositoryIDToPlanContract(t *testing.T) {
 		t.Fatalf("repositories=%+v", catalog.Repositories)
 	}
 }
+
+func TestDiscoveryResolvesSymlinkedWorkspacePath(t *testing.T) {
+	realRoot := t.TempDir()
+	initRepo(t, filepath.Join(realRoot, "api"))
+	linkParent := t.TempDir()
+	link := filepath.Join(linkParent, "workspace")
+	if err := os.Symlink(realRoot, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	catalog, err := Load(context.Background(), link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Repositories) != 1 || catalog.Repositories[0].ID != "api" {
+		t.Fatalf("repositories=%+v", catalog.Repositories)
+	}
+}
+
+func TestManifestRejectsEmptyRepositories(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".takt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "apiVersion: takt/v1alpha1\nkind: Workspace\nrepositories: []\n"
+	if err := os.WriteFile(filepath.Join(root, ".takt", "workspace.yaml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(context.Background(), root); err == nil {
+		t.Fatal("empty explicit repository list accepted")
+	}
+}

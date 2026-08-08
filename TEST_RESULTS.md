@@ -1,155 +1,154 @@
-# Takt v0.1.43-alpha — результаты проверок
+# Takt v0.1.44-alpha — release verification
 
-Дата проверки: 2026-08-07.
+Release slice: **Runtime Reliability & Local Security** plus the accepted review fixes for `v0.1.43-alpha`.
 
-## Состав релиза
+## Baseline / ordinary Go gate
 
-- Takt: `0.1.43-alpha`.
-- `code` profile: `0.16.0`.
-- `code-core` BlockPackage: `0.5.0`.
-- Takt authoring skill: `0.25.0`.
-- Публичная agent MCP surface сохраняет пять `takt.task.*` tools.
-- Основной срез: Multi-repo Dynamic Workflows поверх существующего `WorkflowPlan -> Workflow -> scheduler -> governed child Run`.
-
-## Multi-repo Dynamic Workflows
-
-Проверено:
-
-- `.takt/workspace.yaml` с `takt/v1alpha1 Workspace`, явными repository IDs, paths и `depends_on`;
-- bounded auto-discovery root Git repository либо immediate child repositories;
-- обязательные `apiVersion`/`kind` для явного manifest;
-- repository ID contract `[a-z][a-z0-9-]{0,62}` и нормализация auto-discovery IDs;
-- запрет lexical path escape и escape через symlink после `EvalSymlinks`;
-- проверка Git roots, уникальности IDs и ацикличности repository dependency graph;
-- durable workspace-catalog fingerprint по repositories/dependencies/HEAD;
-- доставка repository catalog и adapter preflight в semantic Router, Planner и Replanner;
-- `WorkflowPlan.phase.repository` и `publish_change`;
-- проверка, что repository dependency graph отражён phase dependencies;
-- один mutating owner phase на repository в первом multi-repo контракте;
-- компиляция repository phase в обычный governed child Run, без второго scheduler/runtime;
-- отдельный managed worktree на изменяемый repository;
-- сохранение child run ID/control workspace/execution workspace/branch/base commit;
-- cross-repository TaskBrief context с результатами и явными workspace/branch/base references;
-- per-repository candidate SHA-256 и `EvidenceManifest`;
-- plan-level candidate SHA из repository candidate fingerprints;
-- multi-repo changed-files integrity gate по реальному Git diff с namespace `<repo-id>/<path>`;
-- `publish_change` через нейтральный `scm/change.create` adapter с существующими idempotency/reconcile semantics;
-- deterministic merge order из dependency graph;
-- read-only `integration-verify` после repository phases;
-- `PendingPhases`/checkpoint replanning только незавершённого хвоста с сохранением `repository_executions`;
-- удержание repository worktrees до завершения parent plan для интеграционной проверки и evidence.
-
-Сквозной release-контракт создаёт три настоящих локальных Git repository `api -> client -> service`, строит semantic multi-repo plan, выполняет три изолированных repository child Runs, публикует три fake neutral SCM changes, запускает integration verification, проверяет per-repository и общий evidence и подтверждает, что базовые checkout не изменились:
+From the final working tree:
 
 ```text
-scripts/test-multi-repo.sh                 PASS
+gofmt                                  PASS
+go vet ./...                           PASS
+go test ./... -count=1                 PASS
+go build ./...                         PASS
+20 JSON schemas parse                  PASS
+scripts/check-docs.sh                  PASS
 ```
 
-## Исправления по ревью v0.1.42
+The ordinary full test run covers all Go packages, including the new `diagnostic`, `redact` and `localsandbox` packages and the updated runtime/control/workspacecatalog behavior.
 
-Закрыты и закреплены постоянными тестами:
+## Race verification
 
-1. Security-negative package tests:
-   - source вне `allowed_sources`;
-   - tampered content после подписи;
-   - untrusted signing key;
-   - missing signature при `required`;
-   - несовместимый `requirements.takt`;
-   - local source drift при `sync`.
-2. Local source allowlist использует реальную path boundary, а не строковый prefix: `/opt/takt/packages` не разрешает `/opt/takt/packages-evil`.
-3. `examples/portable-package/` устанавливается и реально выполняется из locked copy; E2E проверяет bundled command/script/skill/MCP resolution.
-4. Lock-write injection добавлен; rollback установленного каталога при ошибке сохранения lock покрыт прямым тестом.
-5. Caret-version semantics уточнена для `0.x`: `^0.1.42` не принимает `0.2.0`; `^0.0.3` не принимает `0.0.4`.
-6. Package dependency resolution учитывает scope; неоднозначное имя без scope fail-closed.
-7. `takt adapter doctor` возвращает non-zero exit при `status: error`.
-8. Process-adapter error paths дочитывают stderr до `Wait()`, исключая тот же pipe lifecycle race на ошибочных ветках.
-9. Добавлены regression tests для:
-   - adapter preflight в Router/Planner payloads;
-   - duplicate conformance `call_id`;
-   - update, ломающего установленный dependent package;
-   - Git sync точно на locked commit;
-   - package CLI lifecycle через `packageCmd`.
-
-Дополнительно multi-repo preflight ужесточён: manifest repository path проверяется после symlink resolution до запуска child Run, чтобы security boundary совпадала между plan/preflight и runtime.
-
-## Go quality gates
-
-Финальный working tree после всех изменений:
+A single aggregated:
 
 ```text
-gofmt -w cmd internal sdk                 PASS
-go vet ./...                              PASS
-go test ./... -count=1                    PASS (40 packages)
-go build ./...                            PASS
-schemas/*.json parse                      PASS (20 schemas)
+go test -race ./... -count=1
 ```
 
-Race подтверждён для всего изменённого и критичного контура:
+was attempted. The external command harness terminated the long aggregate after packages through `internal/rolecontract` had reported PASS. It did **not** report a Go test failure or race detector finding.
+
+The packages not reported before that external timeout were then run explicitly and all passed:
 
 ```text
-internal/workspacecatalog                 PASS
-internal/dynamicplan                      PASS
-internal/control                          PASS
-internal/runtime                          PASS
-internal/packagedist                      PASS
-internal/assistant                        PASS
-cmd/takt                                  PASS
-sdk/agentadapter                          PASS
-sdk/domainadapter                         PASS
+internal/runtime                       PASS
+internal/store                         PASS
+internal/taskroute                     PASS
+internal/validation                    PASS
+internal/workflow                      PASS
+internal/workspacecatalog              PASS
+internal/yamlmini                      PASS
+sdk/agentadapter                       PASS
+sdk/domainadapter                      PASS
 ```
 
-На более раннем полном regression pass остальные `internal/...` пакеты также завершились под `-race` без FAIL. Единый агрегированный `go test -race ./...`/`make check` в этой песочнице периодически не возвращает управление после уже завершившихся пакетов и был остановлен внешним лимитом команды без test failure. Поэтому релиз не заявляет PASS одной агрегированной race-команды; изменённые и критичные пакеты проверены отдельными race-прогонами.
-
-## Сквозные контракты
-
-В ходе regression gate завершились PASS:
+After the final public-state redaction change, the changed/security-critical set was run again under race and all passed:
 
 ```text
-scripts/test-fake-assistant.sh                 PASS
-scripts/test-pi-adapter.sh                     PASS
-scripts/test-opencode-adapter.sh               PASS
-scripts/test-route-dsl-e2e.sh                  PASS
-scripts/test-route-dsl-eval.sh                 PASS
-scripts/test-composition.sh                    PASS
-scripts/test-takt-skill.sh                     PASS
-scripts/test-code-profile.sh                   PASS
-scripts/test-worktree.sh                       PASS
-scripts/test-child-runs.sh                     PASS
-scripts/test-policies.sh                       PASS
-scripts/test-child-fanout.sh                   PASS
-scripts/test-script-artifacts.sh               PASS
-scripts/test-mcp.sh                            PASS
-scripts/test-external-executor.sh              PASS
-scripts/test-deep-code-workflows.sh            PASS
-scripts/test-authoring.sh                      PASS
-scripts/test-daemon.sh                         PASS
-scripts/test-dynamic-takt.sh                   PASS
-scripts/test-block-packages.sh                 PASS
-scripts/test-host-control.sh                   PASS
-scripts/test-host-integrations-typescript.sh   PASS
-scripts/test-autonomous-runs.sh                PASS
-scripts/test-simple-reliable-router.sh          PASS
-scripts/test-evidence-routing.sh               PASS
-scripts/test-adapter-platform.sh               PASS
-scripts/test-package-distribution.sh            PASS
-scripts/test-multi-repo.sh                     PASS
-scripts/check-docs.sh                          PASS
+internal/diagnostic                    PASS
+internal/redact                        PASS
+internal/localsandbox                  PASS
+internal/runtime                       PASS
+internal/control                       PASS
+internal/workspacecatalog              PASS
+internal/dynamicplan                   PASS
+internal/packagedist                   PASS
+cmd/takt                               PASS
 ```
 
-После финального workspace security-hardening повторно прошли наиболее затронутые контракты:
+Therefore the release does not claim that one uninterrupted aggregate race command completed in this sandbox; it records the aggregate timeout and the successful package-level coverage instead.
+
+## v0.1.43 review regressions
+
+Verified by permanent tests / scripts:
 
 ```text
-scripts/test-multi-repo.sh                     PASS
-scripts/test-package-distribution.sh            PASS
-scripts/test-adapter-platform.sh               PASS
-scripts/test-dynamic-takt.sh                   PASS
-scripts/test-code-profile.sh                   PASS
-scripts/test-block-packages.sh                 PASS
-scripts/test-evidence-routing.sh               PASS
-scripts/test-opencode-adapter.sh               PASS
-scripts/check-docs.sh                          PASS
+macOS logical/physical path discovery (EvalSymlinks)       PASS
+repository child resolved workspace comparison             PASS
+python3 with python fallback in multi-repo E2E             PASS
+real topological repository merge order                    PASS
+explicit Workspace with empty repositories rejected        PASS
+Git/local source allowlist path/repository boundary         PASS
+adapter doctor negative exit                               PASS
+multi-repo integrity deny path                              PASS
+replanner repository payload                               PASS
+repository fingerprint drift                               PASS
+dependency_results in TaskBrief                            PASS
+workflow.repository node rules                             PASS
+completed child reuse on parent retry                      PASS
 ```
 
-## Известная граница v0.1.43
+GitHub Actions keeps both `ubuntu-latest` and `macos-latest` in the CI matrix.
 
-Первый multi-repo срез намеренно ограничен локально доступными Git repositories в одном workspace. Он не добавляет distributed workers, автоматическое merge change requests, удалённый mass checkout или отдельный dependency resolver. Один repository пока имеет не более одного mutating owner phase; это сохраняет однозначное владение candidate worktree и evidence.
+## Runtime Reliability & Local Security
+
+`scripts/test-runtime-reliability-security.sh` — **PASS**.
+
+The focused contract verifies:
+
+- durable retry deadline/backoff and stable diagnostic fingerprints;
+- timeout as an explicit retry kind;
+- `secret://ENV_NAME` resolution and persistence redaction;
+- explicit short secrets are redacted;
+- foreground `control.Start` returns the durable/redacted state rather than live in-memory state;
+- textual artifact redaction and fail-closed binary artifact handling;
+- required OS sandbox cannot be bypassed by `runtime: validation`;
+- canonical `NodeState.path`;
+- fan-out `one_success` / `all_success` early termination with `fanout_result_decided`;
+- completed governed child reuse on parent post-check retry;
+- macOS/symlink workspace discovery regression;
+- package source/signature negative cases;
+- multi-repo deny/replanner/fingerprint regressions;
+- deterministic repository merge order;
+- `adapter doctor` negative result.
+
+## Existing end-to-end / contract suites
+
+The following existing contracts passed after the v0.1.44 changes:
+
+```text
+fake assistant protocol                  PASS
+Pi adapter                               PASS
+OpenCode adapter                         PASS
+Route DSL end-to-end                     PASS
+Route DSL evaluation/isolation           PASS
+workflow composition                     PASS
+Takt authoring skill                      PASS
+code profile                              PASS
+Git worktree                              PASS
+governed child Runs                      PASS
+node capability policies                 PASS
+governed child fan-out                   PASS
+script / typed artifacts                 PASS
+local MCP                                 PASS
+external executor                        PASS
+deep code workflows                      PASS
+authoring                                PASS
+daemon                                   PASS
+Dynamic Takt                             PASS
+trusted block packages                   PASS
+host control                             PASS
+host integration TypeScript              PASS
+autonomous Run operations               PASS
+Simple Reliable Router                   PASS
+Evidence / baseline / failure routing    PASS
+Adapter Platform                         PASS
+Portable Package Distribution            PASS
+Multi-repo Dynamic Workflows             PASS
+Runtime Reliability & Local Security     PASS
+agent-adapter conformance                 PASS
+documentation                            PASS
+```
+
+Some very long make target chains were terminated by the surrounding command harness after earlier targets had passed. The interrupted targets (`OpenCode` and `multi-repo`) were rerun directly and passed; later targets were run in smaller groups. No contract FAIL was hidden behind those external timeouts.
+
+## Security boundary verified for this release
+
+`v0.1.44-alpha` remains a local single-user trusted runtime.
+
+- Assistant `sandbox.filesystem/network` remains an adapter capability contract.
+- OS enforcement is available only for deterministic `bash/script` nodes through `bwrap` on Linux or `sandbox-exec` on macOS when available.
+- `required` fails before payload execution when no backend is available; `optional` records `degraded`.
+- Takt is not a secret store. SecretRef values are resolved from the environment for execution, then known values are redacted at persistence boundaries.
+- Worktrees, package signatures and path checks are separate hardening layers and do not make arbitrary workflows/packages untrusted-safe.
+
+See `SECURITY.md`, ADR-070/071 and `docs/58-runtime-reliability-local-security-v0.1.44.md` for the exact boundary.

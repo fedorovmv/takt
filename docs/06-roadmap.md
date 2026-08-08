@@ -1,6 +1,6 @@
 # План развития
 
-Документ показывает приоритеты после `v0.1.43-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
+Документ показывает приоритеты после `v0.1.44-alpha`. Server, Web UI и БД остаются proposal-направлением для возможного нелокального режима и не определяют ближайший локальный runtime.
 
 ## Выполнено в v0.1.27-alpha. Политики и возможности узлов
 
@@ -87,18 +87,22 @@ Dynamic Plan хранит внутренний `EvidenceManifest` с baseline pr
 
 Добавлены `.takt/workspace.yaml`, bounded discovery локальных Git-репозиториев, repository-aware Router/Planner/Replanner, проверяемый dependency graph, отдельный governed child Run + managed worktree на изменяемый repository, cross-repo TaskBrief context, per-repository candidate SHA/EvidenceManifest и общий content fingerprint. `publish_change` компилируется в нейтральный `scm/change.create`, а `integration-verify` выполняет общий required check. Completed repository phases сохраняются при retry/replan; release E2E проверяет цепочку `api -> client -> service`. Полный срез: `57-multi-repo-dynamic-workflows-v0.1.43.md`.
 
-## Приоритет 1. Усиление runtime и безопасность локального исполнения
+## Выполнено в v0.1.44-alpha. Runtime Reliability & Local Security
 
-- раннее завершение `one_success` и `all_success` с отменой ненужных детей;
-- нормализованные diagnostics и fingerprints ошибок;
-- retry с backoff;
-- защита секретов в state/events/artifacts;
-- реальный OS sandbox для недоверенных процессов;
-- path-based namespace для вложенных циклов.
+- `one_success`/`all_success` short-circuit с `fanout_result_decided`;
+- machine-readable diagnostics и стабильные fingerprints;
+- durable `attempts.backoff` с сохранённым `not_before`;
+- `secret://ENV_NAME`, persistence redaction и fail-closed binary artifacts;
+- реальный OS wrapper для `bash/script`: `bwrap` Linux / `sandbox-exec` macOS, `required|optional`;
+- канонический `NodeState.path` для вложенной композиции;
+- completed governed child переиспользуется при retry родительского post-check;
+- закрыты macOS/symlink, merge-order, repository integrity/payload/fingerprint и allowlist замечания ревью v0.1.43.
 
-## Предметная проверка
+Полный срез: `58-runtime-reliability-local-security-v0.1.44.md`.
 
-Отдельно от системных функций нужен Route DSL benchmark со штатным валидатором и обезличенными реальными заданиями: success@1, final success, число попыток, стоимость и стабильность на неизменных fingerprints.
+## Приоритет 1. Route DSL benchmark и реальные evals
+
+Следующий крупный шаг — предметная проверка уже собранного runtime со штатным валидатором и обезличенными реальными заданиями: success@1, final success, число попыток, стоимость, time-to-valid и стабильность diagnostics/evidence на неизменных fingerprints. Infrastructure-contract suites остаются отдельными от quality benchmark.
 
 ## Отложенные proposals
 

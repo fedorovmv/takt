@@ -180,11 +180,13 @@ type InternalNodeSpec struct {
 	Worktree       *WorktreeSpec
 }
 
-// SandboxSpec is an assistant-enforced node policy. It is not an OS sandbox.
-// Adapters must reject unsupported guarantees instead of silently ignoring them.
+// SandboxSpec describes sandbox intent. Command/prompt nodes use adapter-enforced
+// guarantees when Enforcement is empty. Bash/script nodes may request local OS
+// enforcement with required|optional; required fails closed when no supported backend exists.
 type SandboxSpec struct {
-	Filesystem string `json:"filesystem,omitempty"`
-	Network    string `json:"network,omitempty"`
+	Filesystem  string `json:"filesystem,omitempty"`
+	Network     string `json:"network,omitempty"`
+	Enforcement string `json:"enforcement,omitempty"` // required | optional; empty keeps adapter-only semantics
 }
 
 // OutputFormat describes the JSON value an AI node must return. It is a
@@ -211,9 +213,17 @@ type OutputFormat struct {
 }
 
 type AttemptsSpec struct {
-	Max          int      `json:"max,omitempty"`
-	RetryOn      []string `json:"retry_on,omitempty"`
-	RetrySession string   `json:"retry_session,omitempty"`
+	Max          int          `json:"max,omitempty"`
+	RetryOn      []string     `json:"retry_on,omitempty"`
+	RetrySession string       `json:"retry_session,omitempty"`
+	Backoff      *BackoffSpec `json:"backoff,omitempty"`
+}
+
+type BackoffSpec struct {
+	Initial    string  `json:"initial"`
+	Multiplier float64 `json:"multiplier,omitempty"`
+	Max        string  `json:"max,omitempty"`
+	Jitter     bool    `json:"jitter,omitempty"`
 }
 
 // WorktreeSpec isolates a Run in a dedicated Git branch and worktree. The

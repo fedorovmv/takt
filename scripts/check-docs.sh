@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.25.0" \
-  "VERSION|0.1.43-alpha" \
-  "internal/version/version.go|0.1.43-alpha" \
+  "skills/takt/VERSION|0.26.0" \
+  "VERSION|0.1.44-alpha" \
+  "internal/version/version.go|0.1.44-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -118,6 +118,17 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-067" \
   "ARCHITECTURE_DECISIONS.md|ADR-068" \
   "ARCHITECTURE_DECISIONS.md|ADR-069" \
+  "ARCHITECTURE_DECISIONS.md|ADR-070" \
+  "ARCHITECTURE_DECISIONS.md|ADR-071" \
+  "docs/58-runtime-reliability-local-security-v0.1.44.md|Runtime Reliability & Local Security" \
+  "docs/06-roadmap.md|Выполнено в v0.1.44-alpha" \
+  "schemas/workflow.schema.json|backoff" \
+  "schemas/workflow.schema.json|enforcement" \
+  "schemas/run-state.schema.json|diagnosticState" \
+  "schemas/run-state.schema.json|retryState" \
+  "schemas/run-state.schema.json|sandboxState" \
+  "scripts/test-runtime-reliability-security.sh|Runtime Reliability & Local Security: PASS" \
+  "SECURITY.md|secret://ENV_NAME" \
   "docs/57-multi-repo-dynamic-workflows-v0.1.43.md|Multi-repo Dynamic Workflows" \
   "docs/06-roadmap.md|Выполнено в v0.1.43-alpha" \
   "schemas/workspace.schema.json|Takt Workspace v1alpha1" \
@@ -193,7 +204,7 @@ for check in \
   "schemas/workflow.schema.json|always_run" \
   "schemas/workflow.schema.json|idle_timeout" \
   "skills/takt/SKILL.md|--warnings-as-errors" \
-  "SECURITY.md|Локальный daemon" \
+  "SECURITY.md|Local MCP and daemon" \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|assistant.tool.requested" \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|scripts/test-deep-code-workflows.sh" \
   "docs/06-roadmap.md|Выполнено в v0.1.33-alpha" \

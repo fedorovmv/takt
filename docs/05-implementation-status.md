@@ -200,12 +200,12 @@
 
 - удалённый server/Web UI, БД, внешние message adapters и многопользовательская авторизация — proposal для будущего нелокального режима. Локальные уведомления уже реализованы через inbox/desktop/process sinks.
 
-Tool/skills/MCP policy теперь является контрактом ядра и adapters. Filesystem/network policy остаётся assistant-enforced и не заменяет OS sandbox.
+Tool/skills/MCP policy является контрактом ядра и adapters. Для `command/prompt` filesystem/network policy остаётся assistant-enforced. Начиная с v0.1.44 `bash/script` дополнительно поддерживают настоящий локальный OS wrapper (`bwrap` Linux / `sandbox-exec` macOS) с `required|optional`; это не превращает runtime в многопользовательскую security boundary.
 
 ## Текущая граница безопасности
 
-Текущая версия — локальный однопользовательский trusted runtime. Daemon расширяет время жизни и число локальных клиентов, но не меняет trust boundary. Workflow, config, Markdown-команды, shell, assistants и workspace считаются доверенными. Separate child Run и Git worktree являются границами lifecycle/изменений, но не sandbox. Server/untrusted scope требует sandbox, path/network policy, secret redaction, авторизацию и отдельную threat model.
+Текущая версия — локальный однопользовательский trusted runtime. Daemon расширяет время жизни и число локальных клиентов, но не меняет trust boundary. Workflow, config, Markdown-команды, assistants и workspace считаются доверенными. `secret://ENV_NAME` и persistence redaction защищают durable state/events/artifacts от известных секретов, а node-level OS sandbox уменьшает blast radius локальных `bash/script`; separate child Run и Git worktree остаются lifecycle/change границами, а не изоляцией пользователей. Server/untrusted scope всё ещё требует отдельной threat model, авторизации, полноценной path/network политики и управления секретами.
 
 ## Ближайший целевой срез
 
-Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief, реакции `deny|repair|warn`, EvidenceManifest, baseline classification, parking и external side-effect reconciliation реализованы к `v0.1.40-alpha`; Adapter Platform и conformance kit — к `v0.1.41-alpha`, Portable Package Distribution — к `v0.1.42-alpha`, Multi-repo Dynamic Workflows — к `v0.1.43-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — runtime/security hardening и предметный Route DSL benchmark.
+Dynamic Takt, доверенные блоки, host-control core, автономная эксплуатация Run, Simple Reliable Task Router, Role Contract, bounded TaskBrief, реакции `deny|repair|warn`, EvidenceManifest, baseline classification, parking и external side-effect reconciliation реализованы к `v0.1.40-alpha`; Adapter Platform и conformance kit — к `v0.1.41-alpha`, Portable Package Distribution — к `v0.1.42-alpha`, Multi-repo Dynamic Workflows — к `v0.1.43-alpha`, runtime reliability/local security — к `v0.1.44-alpha`. Bundled Pi/OpenCode остаются guarded до live contract tests. Следующий крупный продуктовый приоритет — предметный Route DSL benchmark на реальных обезличенных заданиях.

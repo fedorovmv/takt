@@ -533,6 +533,30 @@ adapters:
 	}
 }
 
+func TestAdapterDoctorReturnsErrorForCapabilityMismatch(t *testing.T) {
+	dir := t.TempDir()
+	config := `apiVersion: takt/v1alpha1
+kind: Config
+adapters:
+  scm:
+    domain: scm
+    transport: process
+    argv: ["` + os.Args[0] + `", "-test.run=TestAdapterCLIHelper"]
+    env:
+      TAKT_ADAPTER_CLI_HELPER: "1"
+    operations:
+      change.create: change.create
+      change.review: change.review
+`
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapterCmd([]string{"doctor", "scm", "--workspace", dir, "--config", path}); err == nil || !strings.Contains(err.Error(), "configuration problems") {
+		t.Fatalf("expected non-zero doctor result for capability mismatch, got %v", err)
+	}
+}
+
 func TestAdapterCLIHelper(t *testing.T) {
 	if os.Getenv("TAKT_ADAPTER_CLI_HELPER") == "" {
 		return

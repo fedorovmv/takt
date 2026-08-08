@@ -57,7 +57,7 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 	if loadErr != nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "load child run", Err: loadErr}
 	}
-	if nodeState.ChildRunID == "" || (nodeState.Attempts > 1 && childState != nil && terminalRunStatus(childState.Status)) {
+	if nodeState.ChildRunID == "" || (nodeState.Attempts > 1 && childState != nil && terminalRunStatus(childState.Status) && childState.Status != store.RunCompleted) {
 		previousID := nodeState.ChildRunID
 		childID, idErr := newID()
 		if idErr != nil {

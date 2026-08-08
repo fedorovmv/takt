@@ -39,6 +39,7 @@ go build -o bin/takt-fake-domain-adapter ./cmd/takt-fake-domain-adapter
 ./scripts/test-adapter-platform.sh
 ./scripts/test-package-distribution.sh
 ./scripts/test-multi-repo.sh
+./scripts/test-runtime-reliability-security.sh
 go test ./sdk/agentadapter -count=1
 ./scripts/check-docs.sh
 

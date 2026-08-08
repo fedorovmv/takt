@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -1212,5 +1213,177 @@ func TestPauseIsRecheckedBeforeRetryAttempt(t *testing.T) {
 	}
 	if state.Status != store.RunPaused {
 		t.Fatalf("status=%s", state.Status)
+	}
+}
+
+func TestRetryBackoffPersistsDeadlineAndDiagnosticFingerprint(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "backoff"}, Nodes: []spec.Node{{
+		ID:       "work",
+		Bash:     `n=0; test -f count && n=$(cat count); n=$((n+1)); printf %s "$n" > count; if test "$n" -lt 3; then echo transient >&2; exit 7; fi; echo done`,
+		Attempts: spec.AttemptsSpec{Max: 3, RetryOn: []string{"exit"}, Backoff: &spec.BackoffSpec{Initial: "80ms", Multiplier: 2, Max: "120ms"}},
+	}}}
+	r := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	runID := "retry-backoff-durable"
+	resultCh := make(chan struct {
+		state *store.RunState
+		err   error
+	}, 1)
+	started := time.Now()
+	go func() {
+		state, err := r.StartWithOptions(context.Background(), "", StartOptions{RunID: runID})
+		resultCh <- struct {
+			state *store.RunState
+			err   error
+		}{state, err}
+	}()
+
+	var observed *store.RetryState
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		loaded, err := r.Store.Load(runID)
+		if err == nil && loaded.Nodes["work"] != nil && loaded.Nodes["work"].Retry != nil {
+			copy := *loaded.Nodes["work"].Retry
+			observed = &copy
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if observed == nil {
+		t.Fatal("retry deadline was not persisted while backoff was active")
+	}
+	if observed.NotBefore.IsZero() || observed.Delay == "" || observed.Fingerprint == "" {
+		t.Fatalf("incomplete durable retry state: %+v", observed)
+	}
+
+	result := <-resultCh
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	if got := result.state.Nodes["work"].Attempts; got != 3 {
+		t.Fatalf("attempts=%d want 3", got)
+	}
+	if elapsed := time.Since(started); elapsed < 160*time.Millisecond {
+		t.Fatalf("backoff did not delay retries: elapsed=%v", elapsed)
+	}
+	executions := result.state.Nodes["work"].Executions
+	if len(executions) < 3 || executions[0].Diagnostic == nil || executions[1].Diagnostic == nil {
+		t.Fatalf("missing execution diagnostics: %+v", executions)
+	}
+	if executions[0].Diagnostic.Fingerprint == "" || executions[0].Diagnostic.Fingerprint != executions[1].Diagnostic.Fingerprint {
+		t.Fatalf("equivalent retry failures should share a fingerprint: %+v %+v", executions[0].Diagnostic, executions[1].Diagnostic)
+	}
+	if executions[0].Diagnostic.Retryable != true {
+		t.Fatalf("first diagnostic should be retryable: %+v", executions[0].Diagnostic)
+	}
+}
+
+func TestSecretRefIsRedactedFromDurableStateEventsAndTextArtifact(t *testing.T) {
+	dir := t.TempDir()
+	secret := "takt-super-secret-044"
+	t.Setenv("TAKT_TEST_SECRET_TOKEN", secret)
+	scriptPath := filepath.Join(dir, "emit.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\nprintf '%s' \"$TOKEN\"\nprintf '%s' \"$TOKEN\" >&2\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "secret"}, Nodes: []spec.Node{{
+		ID: "emit", Script: &spec.ScriptSpec{Runtime: "command", Path: "emit.sh", Env: map[string]string{"TOKEN": "secret://TAKT_TEST_SECRET_TOKEN"}},
+		OutputType: "secret-output", OutputMIME: "text/plain",
+	}}}
+	r := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(state.Nodes["emit"].Output, secret) {
+		t.Fatal("execution did not receive resolved secret ref")
+	}
+	persisted, err := r.Store.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(persisted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), secret) {
+		t.Fatalf("secret leaked into durable state: %s", raw)
+	}
+	events, err := (store.FS{Workspace: dir}).ReadEvents(state.ID, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventRaw, _ := json.Marshal(events)
+	if strings.Contains(string(eventRaw), secret) {
+		t.Fatalf("secret leaked into durable events: %s", eventRaw)
+	}
+	if len(persisted.Artifacts) != 1 {
+		t.Fatalf("artifacts=%d want 1", len(persisted.Artifacts))
+	}
+	artifactData, err := os.ReadFile(persisted.Artifacts[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(artifactData), secret) || !strings.Contains(string(artifactData), "<redacted>") {
+		t.Fatalf("text artifact was not redacted: %q", artifactData)
+	}
+}
+
+func TestKnownSecretCannotBePersistedInBinaryArtifact(t *testing.T) {
+	dir := t.TempDir()
+	secret := "takt-binary-secret-044"
+	t.Setenv("TAKT_TEST_BINARY_SECRET", secret)
+	scriptPath := filepath.Join(dir, "emit.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\nprintf '%s' \"$TOKEN\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "secret-binary"}, Nodes: []spec.Node{{
+		ID: "emit", Script: &spec.ScriptSpec{Runtime: "command", Path: "emit.sh", Env: map[string]string{"TOKEN": "secret://TAKT_TEST_BINARY_SECRET"}},
+		OutputType: "binary-output", OutputMIME: "application/octet-stream",
+	}}}
+	r := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected binary secret artifact to fail closed")
+	}
+	persisted, loadErr := r.Store.Load(state.ID)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	raw, _ := json.Marshal(persisted)
+	if strings.Contains(string(raw), secret) {
+		t.Fatalf("secret leaked into failed run state: %s", raw)
+	}
+}
+
+func TestCanonicalNodePathUsesStructuredNamespace(t *testing.T) {
+	cases := map[string]string{
+		"build":                  "/build",
+		"batch__001__append":     "/batch[1]/append",
+		"outer__002__inner__003": "/outer[2]/inner[3]",
+	}
+	for id, want := range cases {
+		if got := canonicalNodePath(id); got != want {
+			t.Fatalf("canonicalNodePath(%q)=%q want %q", id, got, want)
+		}
+	}
+}
+
+func TestValidationScriptCannotBypassRequiredOSSandbox(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "validation-sandbox"}, Nodes: []spec.Node{{
+		ID: "validate", Script: &spec.ScriptSpec{Runtime: "validation"}, Sandbox: &spec.SandboxSpec{Enforcement: "required", Network: "deny"},
+	}}}
+	r := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	state, err := r.Start(context.Background(), `{"validation_commands":["true"]}`)
+	if err == nil {
+		t.Fatal("required OS sandbox should fail closed when no backend is available")
+	}
+	if state == nil || state.Nodes["validate"] == nil || state.Nodes["validate"].Sandbox == nil {
+		t.Fatalf("sandbox decision was not persisted: %+v", state)
+	}
+	if state.Nodes["validate"].Sandbox.Status != "degraded" || !strings.Contains(state.Nodes["validate"].Error, "sandbox") {
+		t.Fatalf("unexpected sandbox failure state: %+v", state.Nodes["validate"])
 	}
 }

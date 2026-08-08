@@ -635,3 +635,124 @@ nodes:
 		t.Fatalf("explicit duplicate fan-out failed: state=%+v err=%v", state, err)
 	}
 }
+
+func TestGovernedChildFanOutOneSuccessCancelsUnneededChildren(t *testing.T) {
+	dir := t.TempDir()
+	childPath := filepath.Join(dir, "child.yaml")
+	parentPath := filepath.Join(dir, "parent.yaml")
+	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: early-success-child
+nodes:
+  - id: run
+    bash: |
+      if [ '${input}' = fast ]; then
+        sleep 0.05
+        printf success
+        exit 0
+      fi
+      sleep 10
+      printf slow
+`)
+	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: early-success-parent
+nodes:
+  - id: discover
+    bash: printf '["fast","slow-a","slow-b"]'
+  - id: execute
+    depends_on: [discover]
+    workflow:
+      path: child.yaml
+      input: '${fanout.item}'
+      isolation: inherit
+      fan_out:
+        items_from: nodes.discover.output
+        max_parallel: 3
+        join: one_success
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	state, err := New(wf, &spec.Config{}, parentPath, "<config>", dir).Start(context.Background(), "")
+	if err != nil || state.Status != store.RunCompleted {
+		t.Fatalf("state=%+v err=%v", state, err)
+	}
+	if time.Since(started) > 3*time.Second {
+		t.Fatalf("one_success did not terminate early: %s", time.Since(started))
+	}
+	completed, cancelled := 0, 0
+	for _, child := range state.Nodes["execute"].ChildRuns {
+		switch child.Status {
+		case store.RunCompleted:
+			completed++
+		case store.RunCancelled:
+			cancelled++
+		}
+	}
+	if completed < 1 || cancelled < 1 {
+		t.Fatalf("children=%+v", state.Nodes["execute"].ChildRuns)
+	}
+}
+
+func TestGovernedChildFanOutAllSuccessCancelsAfterFirstFailure(t *testing.T) {
+	dir := t.TempDir()
+	childPath := filepath.Join(dir, "child.yaml")
+	parentPath := filepath.Join(dir, "parent.yaml")
+	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: early-failure-child
+nodes:
+  - id: run
+    bash: |
+      if [ '${input}' = fail ]; then
+        sleep 0.05
+        exit 7
+      fi
+      sleep 10
+`)
+	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: early-failure-parent
+nodes:
+  - id: discover
+    bash: printf '["fail","slow-a","slow-b"]'
+  - id: execute
+    depends_on: [discover]
+    workflow:
+      path: child.yaml
+      input: '${fanout.item}'
+      isolation: inherit
+      fan_out:
+        items_from: nodes.discover.output
+        max_parallel: 3
+        join: all_success
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	state, err := New(wf, &spec.Config{}, parentPath, "<config>", dir).Start(context.Background(), "")
+	if err == nil || state.Status != store.RunFailed {
+		t.Fatalf("state=%+v err=%v", state, err)
+	}
+	if time.Since(started) > 3*time.Second {
+		t.Fatalf("all_success did not terminate early: %s", time.Since(started))
+	}
+	cancelled := 0
+	for _, child := range state.Nodes["execute"].ChildRuns {
+		if child.Status == store.RunCancelled {
+			cancelled++
+		}
+	}
+	if cancelled < 1 {
+		t.Fatalf("children=%+v", state.Nodes["execute"].ChildRuns)
+	}
+}

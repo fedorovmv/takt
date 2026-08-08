@@ -15,6 +15,7 @@ import (
 	"takt/internal/evidence"
 	"takt/internal/profile"
 	"takt/internal/rolecontract"
+	"takt/internal/workspacecatalog"
 )
 
 func candidateDynamicPlan() dynamicplan.Plan {
@@ -582,5 +583,58 @@ func TestBoundaryViolationUsesParkingModelThroughDenyReason(t *testing.T) {
 	}
 	if record.Status != "parked" || record.Failure == nil || record.Failure.Code != evidence.FailureBoundary || record.ParkedAt == nil {
 		t.Fatalf("record=%#v", record)
+	}
+}
+
+func TestSegmentControlsDenyUndeclaredMultiRepoWorkspaceChange(t *testing.T) {
+	role := rolecontract.Definition{Paths: rolecontract.PathScope{Allowed: []string{"src/**"}}}
+	catalog := &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{
+		"repository-change": {Name: "repository-change", Role: "implementer", RoleDefinition: &role},
+	}}
+	plan := dynamicplan.Plan{Decision: "planned", Goal: "multi", Budget: dynamicplan.Budget{MaxChildRuns: 4, MaxParallel: 1, MaxIterations: 2}, Phases: []dynamicplan.Phase{{ID: "api-change", Uses: "repository-change", Repository: "api"}}}
+	dynamicplan.Normalize(&plan)
+	now := time.Now().UTC()
+	record := &dynamicplan.Record{Results: map[string]string{"api-change": `{"changed_files":["src/declared.go"]}`}, Revisions: []dynamicplan.Revision{{Number: 1, CreatedAt: now, Plan: plan}}}
+	outcome, err := evaluateSegmentControls(record, plan.Phases, catalog, []string{"api/src/declared.go", "api/src/hidden.go"}, "sha256:test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.DenyReason == "" || !strings.Contains(outcome.DenyReason, "api/src/hidden.go") {
+		t.Fatalf("multi-repo undeclared change was not denied: %#v", outcome)
+	}
+}
+
+func TestReplannerPayloadContainsRepositoriesAndExecutions(t *testing.T) {
+	plan := candidateDynamicPlan()
+	remaining := plan.Phases[1:]
+	record := &dynamicplan.Record{
+		CompletedPhases: []string{"inventory"},
+		Results:         map[string]string{"inventory": `{"items":["api"]}`},
+		RepositoryExecutions: map[string]dynamicplan.RepositoryExecution{
+			"api": {Repository: "api", ExecutionWorkspace: "/tmp/api-worktree", Branch: "takt/api", BaseCommit: "abc123"},
+		},
+	}
+	catalog := &blockcatalog.Catalog{Fingerprint: "blocks-fp", Blocks: map[string]blockcatalog.ResolvedBlock{}}
+	repositories := &workspacecatalog.Catalog{Fingerprint: "repos-fp", Repositories: []workspacecatalog.ResolvedRepository{{ID: "api", Path: "api", AbsolutePath: "/tmp/api", Head: "abc123"}}}
+	payload := buildReplannerPayload(plan, record, remaining, catalog, repositories)
+	if payload["repositories"] == nil || payload["repository_executions"] == nil {
+		t.Fatalf("repository context missing from replanner payload: %#v", payload)
+	}
+	executions, ok := payload["repository_executions"].(map[string]dynamicplan.RepositoryExecution)
+	if !ok || executions["api"].ExecutionWorkspace != "/tmp/api-worktree" {
+		t.Fatalf("repository executions lost: %#v", payload["repository_executions"])
+	}
+}
+
+func TestRepositoriesForRecordRejectsFingerprintDrift(t *testing.T) {
+	workspace := t.TempDir()
+	cmd := exec.Command("git", "-C", workspace, "init", "-q")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	service := &Service{Workspace: workspace}
+	record := &dynamicplan.Record{RepositoryCatalogFingerprint: "sha256:definitely-stale"}
+	if _, err := service.repositoriesForRecord(context.Background(), record); err == nil || !strings.Contains(err.Error(), "repository catalog changed") {
+		t.Fatalf("expected repository fingerprint mismatch, got %v", err)
 	}
 }

@@ -479,14 +479,14 @@ func (s *Service) ResumePaused(ctx context.Context, runID string, detached bool)
 		if err := s.setOwningPlanStatus(runID, "waiting", ""); err != nil {
 			return nil, err
 		}
-		return state.PublicView(), nil
+		return durablePublicRun(st, state)
 	}
 	if err := s.setOwningPlanStatus(runID, "running", ""); err != nil {
 		return nil, err
 	}
 	if detached {
 		go func() { _, _ = s.Resume(context.Background(), runID) }()
-		return state.PublicView(), nil
+		return durablePublicRun(st, state)
 	}
 	return s.Resume(ctx, runID)
 }
@@ -667,13 +667,13 @@ func (s *Service) Retry(ctx context.Context, request RetryRequest) (*store.RunSt
 				_, _ = resumeParentChain(context.Background(), st, result)
 			}
 		}()
-		return state.PublicView(), nil
+		return durablePublicRun(st, state)
 	}
 	result, runErr := runner.Resume(ctx, state)
 	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 		return nil, runErr
 	}
-	return result.PublicView(), nil
+	return durablePublicRun(st, result)
 }
 
 func failedNodeID(state *store.RunState, nodes []spec.Node) string {

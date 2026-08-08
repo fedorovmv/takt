@@ -66,20 +66,45 @@ type Usage struct {
 // aggregate fields for compatibility and quick inspection, while Executions
 // preserves the per-attempt identity needed to attribute usage when retries
 // resolve to different assistants or models.
+type DiagnosticState struct {
+	Code        string `json:"code"`
+	Kind        string `json:"kind"`
+	Op          string `json:"op,omitempty"`
+	Message     string `json:"message"`
+	Fingerprint string `json:"fingerprint"`
+	Retryable   bool   `json:"retryable,omitempty"`
+}
+
+type RetryState struct {
+	NextAttempt int       `json:"next_attempt"`
+	NotBefore   time.Time `json:"not_before"`
+	Delay       string    `json:"delay"`
+	Kind        string    `json:"kind,omitempty"`
+	Fingerprint string    `json:"fingerprint,omitempty"`
+}
+
+type SandboxState struct {
+	Requested string `json:"requested,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Backend   string `json:"backend,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+}
+
 type ExecutionState struct {
-	Attempt          int       `json:"attempt"`
-	Status           string    `json:"status"`
-	Assistant        string    `json:"assistant,omitempty"`
-	AssistantVersion string    `json:"assistant_version,omitempty"`
-	RequestedModel   *ModelRef `json:"requested_model,omitempty"`
-	ResolvedModel    *ModelRef `json:"resolved_model,omitempty"`
-	SessionID        string    `json:"session_id,omitempty"`
-	Resumed          bool      `json:"resumed,omitempty"`
-	ExitCode         int       `json:"exit_code,omitempty"`
-	ErrorCode        string    `json:"error_code,omitempty"`
-	Error            string    `json:"error,omitempty"`
-	OutputTruncated  bool      `json:"output_truncated,omitempty"`
-	Usage            *Usage    `json:"usage,omitempty"`
+	Attempt          int              `json:"attempt"`
+	Status           string           `json:"status"`
+	Assistant        string           `json:"assistant,omitempty"`
+	AssistantVersion string           `json:"assistant_version,omitempty"`
+	RequestedModel   *ModelRef        `json:"requested_model,omitempty"`
+	ResolvedModel    *ModelRef        `json:"resolved_model,omitempty"`
+	SessionID        string           `json:"session_id,omitempty"`
+	Resumed          bool             `json:"resumed,omitempty"`
+	ExitCode         int              `json:"exit_code,omitempty"`
+	ErrorCode        string           `json:"error_code,omitempty"`
+	Error            string           `json:"error,omitempty"`
+	Diagnostic       *DiagnosticState `json:"diagnostic,omitempty"`
+	OutputTruncated  bool             `json:"output_truncated,omitempty"`
+	Usage            *Usage           `json:"usage,omitempty"`
 }
 
 type ToolApprovalState struct {
@@ -173,6 +198,7 @@ type ChildRunItemState struct {
 	Output          string          `json:"output,omitempty"`
 	ErrorCode       string          `json:"error_code,omitempty"`
 	Error           string          `json:"error,omitempty"`
+	CancelReason    string          `json:"cancel_reason,omitempty"`
 	Usage           *Usage          `json:"usage,omitempty"`
 	Artifacts       []ArtifactRef   `json:"artifacts,omitempty"`
 }
@@ -196,6 +222,7 @@ type ArtifactRef struct {
 
 type NodeState struct {
 	Status                  string                  `json:"status"`
+	Path                    string                  `json:"path,omitempty"`
 	Output                  string                  `json:"output,omitempty"`
 	Stdout                  string                  `json:"stdout,omitempty"`
 	Stderr                  string                  `json:"stderr,omitempty"`
@@ -212,6 +239,9 @@ type NodeState struct {
 	Resumed                 bool                    `json:"resumed,omitempty"`
 	ErrorCode               string                  `json:"error_code,omitempty"`
 	Error                   string                  `json:"error,omitempty"`
+	Diagnostic              *DiagnosticState        `json:"diagnostic,omitempty"`
+	Retry                   *RetryState             `json:"retry,omitempty"`
+	Sandbox                 *SandboxState           `json:"sandbox,omitempty"`
 	Executions              []ExecutionState        `json:"executions,omitempty"`
 	LoopPrevious            map[string]NodeState    `json:"loop_previous,omitempty"`
 	LoopIteration           int                     `json:"loop_iteration,omitempty"`

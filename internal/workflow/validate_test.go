@@ -243,3 +243,78 @@ func TestValidateDomainAdapterNode(t *testing.T) {
 		t.Fatalf("multiple actions error = %v", err)
 	}
 }
+
+func TestValidateRetryBackoffAndTimeoutRetryKind(t *testing.T) {
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "backoff"}, Nodes: []spec.Node{{
+		ID: "work", Bash: "true", Attempts: spec.AttemptsSpec{Max: 3, RetryOn: []string{"timed_out"}, Backoff: &spec.BackoffSpec{Initial: "100ms", Multiplier: 2, Max: "1s", Jitter: true}},
+	}}}
+	if err := Validate(wf); err != nil {
+		t.Fatalf("valid backoff rejected: %v", err)
+	}
+	wf.Nodes[0].Attempts.Backoff.Initial = "0s"
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "backoff.initial") {
+		t.Fatalf("invalid initial backoff accepted: %v", err)
+	}
+	wf.Nodes[0].Attempts.Backoff.Initial = "2s"
+	wf.Nodes[0].Attempts.Backoff.Max = "1s"
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "backoff.max") {
+		t.Fatalf("max below initial accepted: %v", err)
+	}
+	wf.Nodes[0].Attempts.Backoff.Initial = "100ms"
+	wf.Nodes[0].Attempts.Backoff.Max = "1s"
+	wf.Nodes[0].Attempts.Backoff.Multiplier = 0.5
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "backoff.multiplier") {
+		t.Fatalf("invalid multiplier accepted: %v", err)
+	}
+}
+
+func TestValidateOSSandboxEnforcementOnlyForDeterministicLocalNodes(t *testing.T) {
+	for _, node := range []spec.Node{
+		{ID: "bash", Bash: "true", Sandbox: &spec.SandboxSpec{Enforcement: "required", Network: "deny"}},
+		{ID: "script", Script: &spec.ScriptSpec{Runtime: "command", Path: "tool.sh"}, Sandbox: &spec.SandboxSpec{Enforcement: "optional", Filesystem: "read_only"}},
+	} {
+		wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "sandbox"}, Nodes: []spec.Node{node}}
+		if err := Validate(wf); err != nil {
+			t.Fatalf("valid sandbox node %s rejected: %v", node.ID, err)
+		}
+	}
+	assistantNode := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "sandbox"}, Nodes: []spec.Node{{ID: "agent", Prompt: "work", Sandbox: &spec.SandboxSpec{Enforcement: "required"}}}}
+	if err := Validate(assistantNode); err == nil || !strings.Contains(err.Error(), "OS sandbox enforcement") {
+		t.Fatalf("assistant OS enforcement should be rejected until host wrapping exists: %v", err)
+	}
+	invalid := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "sandbox"}, Nodes: []spec.Node{{ID: "bash", Bash: "true", Sandbox: &spec.SandboxSpec{Enforcement: "maybe"}}}}
+	if err := Validate(invalid); err == nil || !strings.Contains(err.Error(), "sandbox.enforcement") {
+		t.Fatalf("invalid enforcement accepted: %v", err)
+	}
+}
+
+func TestValidateRepositoryChildRunRules(t *testing.T) {
+	valid := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "repo-child"}, Nodes: []spec.Node{{ID: "api", WorkflowRun: &spec.WorkflowRunSpec{Path: "child.yaml", Repository: "repos/api", Isolation: "worktree"}}}}
+	if err := Validate(valid); err != nil {
+		t.Fatalf("valid repository child rejected: %v", err)
+	}
+	absolute := *valid
+	absolute.Nodes = append([]spec.Node(nil), valid.Nodes...)
+	copyRun := *valid.Nodes[0].WorkflowRun
+	copyRun.Repository = filepath.Join(string(filepath.Separator), "tmp", "repo")
+	absolute.Nodes[0].WorkflowRun = &copyRun
+	if err := Validate(&absolute); err == nil || !strings.Contains(err.Error(), "must be relative") {
+		t.Fatalf("absolute repository path accepted: %v", err)
+	}
+	inherit := *valid
+	inherit.Nodes = append([]spec.Node(nil), valid.Nodes...)
+	copyRun = *valid.Nodes[0].WorkflowRun
+	copyRun.Isolation = "inherit"
+	inherit.Nodes[0].WorkflowRun = &copyRun
+	if err := Validate(&inherit); err == nil || !strings.Contains(err.Error(), "cannot use isolation inherit") {
+		t.Fatalf("repository inherit accepted: %v", err)
+	}
+	fanout := *valid
+	fanout.Nodes = append([]spec.Node(nil), valid.Nodes...)
+	copyRun = *valid.Nodes[0].WorkflowRun
+	copyRun.FanOut = &spec.WorkflowFanOutSpec{ItemsFrom: "nodes.source.output"}
+	fanout.Nodes[0].WorkflowRun = &copyRun
+	if err := Validate(&fanout); err == nil || !strings.Contains(err.Error(), "does not support fan_out") {
+		t.Fatalf("repository fan_out accepted: %v", err)
+	}
+}

@@ -65,7 +65,12 @@ repositories:
 YAML
 
 "$tmp/bin/takt" plan 'update API, client and service together' --workspace "$tmp/work" --json > "$tmp/plan.json"
-plan_id="$(python - "$tmp/plan.json" <<'PY'
+python_cmd="$(command -v python3 || command -v python || true)"
+if [ -z "$python_cmd" ]; then
+  echo "python3 or python is required for JSON assertions" >&2
+  exit 1
+fi
+plan_id="$("$python_cmd" - "$tmp/plan.json" <<'PY'
 import json,sys
 x=json.load(open(sys.argv[1]))['result']
 assert x['decision']=='planned'
@@ -75,7 +80,7 @@ print(x['plan_id'])
 PY
 )"
 "$tmp/bin/takt" execute "$plan_id" --confirm --workspace "$tmp/work" --json > "$tmp/result.json"
-python - "$tmp/result.json" <<'PY'
+"$python_cmd" - "$tmp/result.json" <<'PY'
 import json,os,sys
 record=json.load(open(sys.argv[1]))['result']
 assert record['status']=='completed', record.get('last_error')

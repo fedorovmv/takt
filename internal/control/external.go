@@ -321,7 +321,7 @@ func (s *Service) ReconcileExternal(ctx context.Context, request ExternalReconci
 		if err != nil {
 			return nil, err
 		}
-		return state.PublicView(), nil
+		return durablePublicRun(st, state)
 	case "not_applied":
 		external.Status = "pending"
 		external.ClaimToken = ""
@@ -335,7 +335,7 @@ func (s *Service) ReconcileExternal(ctx context.Context, request ExternalReconci
 		if err != nil {
 			return nil, err
 		}
-		return state.PublicView(), nil
+		return durablePublicRun(st, state)
 	case "applied":
 		if external.Receipt == "" {
 			_ = release()
@@ -481,12 +481,12 @@ func (s *Service) timeoutExternalIdle(ctx context.Context, runID, nodeID string,
 	}
 	if external.Status != "claimed" || strings.TrimSpace(external.IdleTimeout) == "" || externalAwaitingApproval(external) {
 		_ = release()
-		return state.PublicView(), nil
+		return durablePublicRun(st, state)
 	}
 	duration, err := time.ParseDuration(external.IdleTimeout)
 	if err != nil || duration <= 0 || now.Sub(external.LastActivityAt) < duration {
 		_ = release()
-		return state.PublicView(), nil
+		return durablePublicRun(st, state)
 	}
 	reason := fmt.Sprintf("external node idle for %s", external.IdleTimeout)
 	for _, call := range external.ToolCalls {
@@ -552,7 +552,7 @@ func (s *Service) timeoutExternalIdle(ctx context.Context, runID, nodeID string,
 	if cascadeErr != nil && !errors.Is(cascadeErr, runtime.ErrWaiting) && !errors.As(cascadeErr, &failedRun) {
 		return nil, cascadeErr
 	}
-	return root.PublicView(), nil
+	return durablePublicRun(st, root)
 }
 
 func (s *Service) submitExternal(ctx context.Context, submission ExternalSubmission, failed bool) (*store.RunState, error) {
@@ -642,7 +642,7 @@ func (s *Service) submitExternal(ctx context.Context, submission ExternalSubmiss
 	if cascadeErr != nil && !errors.Is(cascadeErr, runtime.ErrWaiting) {
 		return nil, cascadeErr
 	}
-	return root.PublicView(), nil
+	return durablePublicRun(st, root)
 }
 
 func loadExternalNode(st store.FS, runID, nodeID string) (*store.RunState, *store.NodeState, *store.ExternalExecutionState, error) {

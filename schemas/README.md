@@ -4,10 +4,10 @@
 - `task-route.schema.json` — проверяемое решение Task Router: `workflow|template|dynamic`, сигналы и прогрессивные controls;
 - `evidence-manifest.schema.json` — внутренний EvidenceManifest: baseline, fingerprints известных failures, check-to-evidence mapping и verdict, привязанный к candidate SHA-256;
 - `workspace.schema.json` — bounded multi-repo `takt/v1alpha1 Workspace`: repository IDs, relative paths and acyclic `depends_on`;
-- `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`, `idle_timeout`, `always_run`, расширенный `output_format`, `one_success`, approval в цикле, `foreach.parallel` и governed child `workflow`;
+- `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`, `idle_timeout`, `attempts.backoff`, `sandbox.enforcement`, `always_run`, расширенный `output_format`, `one_success`, approval в цикле, `foreach.parallel` и governed child `workflow`;
 - `profile.schema.json` — Profile с default workflow и картой именованных `workflows`;
 - `command-frontmatter.schema.json` — frontmatter Markdown-команд;
-- `run-state.schema.json` — состояние Run, parent/child links, pause/abandon/recovery/operator retry, fingerprints, revisions, типизированные Node statuses, execution identity и aggregate usage;
+- `run-state.schema.json` — состояние Run, parent/child links, pause/abandon/recovery/operator retry, canonical `NodePath`, diagnostics/retry/sandbox decisions, fingerprints, revisions, типизированные Node statuses, execution identity и aggregate usage;
 - `event.schema.json` — JSONL-событие с revision;
 - `notification-config.schema.json` — локальные attention/terminal события и sinks `coding_agent_host|desktop|process`;
 - `assistant-protocol.schema.json` — реализованный JSON-протокол `takt-assistant/v1alpha1|v1alpha2` со строгими status/exit и неотрицательным usage;
@@ -25,3 +25,5 @@ Go-loader и authoring preflight остаются главным валидат�
 `workflow.schema.json` также описывает reusable `subworkflow`, последовательный/параллельный `foreach` с `items` или `items_from.path`, проверяемый JSON output и композицию с approval внутри `loop_group`. Подключённые workflow проверяются той же схемой после загрузки и компиляции.
 
 `workflow.schema.json` различает structural `subworkflow` и governed `workflow`. Последний задаёт `path`, `input`, `output_node` и `isolation`. `run-state.schema.json` описывает `parent_run_id`, `parent_node_id`, `child_run_ids`, waiting kind/link, Run output/usage/cancel state и историю child attempts на узле.
+
+Начиная с `v0.1.44`, `attempts.backoff` имеет durable deadline в RunState, а `sandbox.enforcement` описывает только локальное OS enforcement для deterministic `bash/script` узлов. Assistant-level `sandbox.filesystem/network` остаётся capability-контрактом adapter. `run-state.schema.json` фиксирует diagnostic fingerprint, retry deadline и фактическое sandbox decision для воспроизводимого resume.

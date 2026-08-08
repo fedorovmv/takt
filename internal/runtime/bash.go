@@ -3,26 +3,31 @@ package runtime
 import (
 	"bytes"
 	"context"
-	"os/exec"
 	"strings"
 
 	"takt/internal/execution"
+	"takt/internal/localsandbox"
+	"takt/internal/spec"
+	"takt/internal/store"
 )
 
-func runBash(ctx context.Context, workspace, script string) (execResult, error) {
-	cmd := exec.CommandContext(ctx, "bash", "-lc", script)
+func (r *Runner) runBash(ctx context.Context, node spec.Node, script string) (execResult, error) {
+	policy := localsandbox.Policy{}
+	if node.Sandbox != nil {
+		policy = localsandbox.Policy{Enforcement: node.Sandbox.Enforcement, Filesystem: node.Sandbox.Filesystem, Network: node.Sandbox.Network}
+	}
+	cmd, decision, err := localsandbox.CommandContext(ctx, r.Workspace, policy, "bash", "-lc", script)
+	sandboxState := &store.SandboxState{Requested: decision.Requested, Status: decision.Status, Backend: decision.Backend, Reason: decision.Reason}
+	if err != nil {
+		return execResult{Sandbox: sandboxState}, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "OS sandbox", Err: err}
+	}
 	execution.ConfigureCommand(cmd)
-	cmd.Dir = workspace
+	cmd.Dir = r.Workspace
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	stdoutText, stderrText := stdout.String(), stderr.String()
-	result := execResult{
-		Output:   combineBashOutput(stdoutText, stderrText),
-		Stdout:   stdoutText,
-		Stderr:   stderrText,
-		ExitCode: 0,
-	}
+	result := execResult{Output: combineBashOutput(stdoutText, stderrText), Stdout: stdoutText, Stderr: stderrText, ExitCode: 0, Sandbox: sandboxState}
 	if err == nil {
 		return result, nil
 	}
@@ -34,7 +39,7 @@ func runBash(ctx context.Context, workspace, script string) (execResult, error) 
 		result.ExitCode = -1
 		return result, &execution.Error{Kind: kind, ExitCode: -1, Op: "bash", Err: ctx.Err()}
 	}
-	if ee, ok := err.(*exec.ExitError); ok {
+	if ee, ok := err.(interface{ ExitCode() int }); ok {
 		result.ExitCode = ee.ExitCode()
 		return result, &execution.Error{Kind: execution.KindExit, ExitCode: result.ExitCode, Op: "bash", Err: err}
 	}

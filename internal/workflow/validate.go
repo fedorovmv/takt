@@ -233,13 +233,34 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			}
 			seenRetryKinds := map[string]bool{}
 			for _, kind := range n.Attempts.RetryOn {
-				if kind != "exit" && kind != "start" && kind != "protocol" && kind != "internal" {
+				if kind != "exit" && kind != "start" && kind != "protocol" && kind != "internal" && kind != "timed_out" {
 					return fmt.Errorf("node %q attempts.retry_on contains unsupported kind %q", n.ID, kind)
 				}
 				if seenRetryKinds[kind] {
 					return fmt.Errorf("node %q attempts.retry_on contains duplicate kind %q", n.ID, kind)
 				}
 				seenRetryKinds[kind] = true
+			}
+		}
+		if n.Attempts.Backoff != nil {
+			if n.Attempts.Max < 2 {
+				return fmt.Errorf("node %q attempts.backoff requires attempts.max >= 2", n.ID)
+			}
+			initial, err := time.ParseDuration(n.Attempts.Backoff.Initial)
+			if err != nil || initial <= 0 {
+				return fmt.Errorf("node %q attempts.backoff.initial must be a positive duration", n.ID)
+			}
+			if n.Attempts.Backoff.Multiplier != 0 && n.Attempts.Backoff.Multiplier < 1 {
+				return fmt.Errorf("node %q attempts.backoff.multiplier must be >= 1", n.ID)
+			}
+			if n.Attempts.Backoff.Max != "" {
+				maximum, err := time.ParseDuration(n.Attempts.Backoff.Max)
+				if err != nil || maximum <= 0 {
+					return fmt.Errorf("node %q attempts.backoff.max must be a positive duration", n.ID)
+				}
+				if maximum < initial {
+					return fmt.Errorf("node %q attempts.backoff.max must be >= attempts.backoff.initial", n.ID)
+				}
 			}
 		}
 		if n.Attempts.RetrySession != "" && n.Attempts.RetrySession != "fresh" && n.Attempts.RetrySession != "reuse" {
@@ -268,7 +289,7 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 				return fmt.Errorf("node %q always_run is incompatible with when; use an explicit all_done node without always_run when conditional cleanup is required", n.ID)
 			}
 		}
-		if n.AllowedTools != nil || len(n.DeniedTools) > 0 || n.Skills != nil || n.MCP != "" || n.Sandbox != nil || len(n.Requires) > 0 {
+		if n.AllowedTools != nil || len(n.DeniedTools) > 0 || n.Skills != nil || n.MCP != "" || len(n.Requires) > 0 {
 			if n.Command == "" && n.Prompt == "" {
 				return fmt.Errorf("node %q assistant policies are supported only for command or prompt nodes", n.ID)
 			}
@@ -293,19 +314,28 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 					return fmt.Errorf("node %q tool %q appears in both allowed_tools and denied_tools", n.ID, tool)
 				}
 			}
-			if n.Sandbox != nil {
-				if n.Sandbox.Filesystem != "" && n.Sandbox.Filesystem != "read_only" {
-					return fmt.Errorf("node %q sandbox.filesystem must be read_only", n.ID)
-				}
-				if n.Sandbox.Network != "" && n.Sandbox.Network != "deny" {
-					return fmt.Errorf("node %q sandbox.network must be deny", n.ID)
-				}
-				if n.Sandbox.Filesystem == "read_only" {
-					mutating := map[string]bool{"bash": true, "edit": true, "write": true, "patch": true}
-					for _, tool := range optionalStrings(n.AllowedTools) {
-						if mutating[tool] {
-							return fmt.Errorf("node %q read_only sandbox cannot allow tool %q", n.ID, tool)
-						}
+		}
+		if n.Sandbox != nil {
+			if n.Sandbox.Filesystem != "" && n.Sandbox.Filesystem != "read_only" {
+				return fmt.Errorf("node %q sandbox.filesystem must be read_only", n.ID)
+			}
+			if n.Sandbox.Network != "" && n.Sandbox.Network != "deny" {
+				return fmt.Errorf("node %q sandbox.network must be deny", n.ID)
+			}
+			if n.Sandbox.Enforcement != "" && n.Sandbox.Enforcement != "required" && n.Sandbox.Enforcement != "optional" {
+				return fmt.Errorf("node %q sandbox.enforcement must be required or optional", n.ID)
+			}
+			if n.Sandbox.Enforcement != "" && n.Bash == "" && n.Script == nil {
+				return fmt.Errorf("node %q OS sandbox enforcement is supported only for bash or script nodes", n.ID)
+			}
+			if n.Sandbox.Enforcement == "" && n.Command == "" && n.Prompt == "" && n.Bash == "" && n.Script == nil {
+				return fmt.Errorf("node %q sandbox is supported only for command, prompt, bash, or script nodes", n.ID)
+			}
+			if n.Sandbox.Filesystem == "read_only" && (n.Command != "" || n.Prompt != "") {
+				mutating := map[string]bool{"bash": true, "edit": true, "write": true, "patch": true}
+				for _, tool := range optionalStrings(n.AllowedTools) {
+					if mutating[tool] {
+						return fmt.Errorf("node %q read_only sandbox cannot allow tool %q", n.ID, tool)
 					}
 				}
 			}
@@ -603,6 +633,9 @@ func validatePolicySpec(value spec.PolicySpec, path string) error {
 		}
 	}
 	if value.Sandbox != nil {
+		if value.Sandbox.Enforcement != "" {
+			return fmt.Errorf("%s sandbox.enforcement is not supported in assistant policy; use node-level bash/script sandbox enforcement", path)
+		}
 		if value.Sandbox.Filesystem != "" && value.Sandbox.Filesystem != "read_only" {
 			return fmt.Errorf("%s sandbox.filesystem must be read_only", path)
 		}

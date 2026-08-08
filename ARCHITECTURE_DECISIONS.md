@@ -464,3 +464,23 @@ Repository path проверяется относительно control workspac
 Каждый repository execution сохраняет candidate SHA, child worktree metadata, evidence и publisher output. Общий candidate fingerprint агрегирует repository fingerprints; фактический diff агрегируется как `<repository-id>/<path>` и сверяется с repository worker `changed_files`. Integration verification является обычным trusted read-only block.
 
 **Причина.** Пользователь должен получить несколько переносимых change requests и общий verdict без потери доказательств конкретного репозитория и без GitHub-specific orchestration.
+
+## ADR-070. Retry decisions and fan-out termination are durable runtime state
+
+**Статус:** принято.
+
+Retry остаётся явным свойством node policy. При настроенном backoff runtime фиксирует точный `not_before`, delay, execution kind и diagnostic fingerprint до ожидания; restart/resume не пересчитывает уже принятое решение. Нормализованный diagnostic является machine-readable записью конкретной попытки, а не результатом LLM similarity.
+
+`workflow.fan_out` short-circuit выполняется тем же scheduler: `one_success` может остановить siblings после первого success, `all_success` — после первого failure. Отмена, вызванная уже известным результатом join, имеет отдельную причину `fanout_result_decided` и не смешивается с operator cancellation.
+
+**Причина.** Автономный Run должен переживать восстановление без изменения времени retry и не тратить ресурсы после того, как результат fan-out уже детерминирован. Для этого не нужен второй scheduler или новый тип Run.
+
+## ADR-071. Secret protection and OS sandbox are separate local security layers
+
+**Статус:** принято.
+
+Takt не хранит секреты самостоятельно. `secret://ENV_NAME` разрешается непосредственно перед process/script execution; известные значения удаляются из durable Run state, event data и текстовых artifacts. Non-text artifact с известным секретом отклоняется, потому что байтовая подмена сделала бы artifact недостоверным.
+
+Assistant sandbox без `enforcement` остаётся capability-контрактом конкретного coding-agent. Реальный OS wrapper применяется только к локальным `bash/script` nodes, которые Takt запускает сам: `bubblewrap` на Linux или `sandbox-exec` на macOS при наличии. `enforcement: required` fail-closed до payload execution, `optional` сохраняет degraded decision.
+
+**Причина.** Нельзя называть инструкцию coding-agent системной песочницей и нельзя делать секретное значение частью durable orchestration state. При этом текущий продукт остаётся trusted local single-user runtime; server/RBAC/Vault/container orchestration требуют отдельной threat model.

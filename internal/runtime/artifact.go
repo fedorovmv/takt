@@ -67,15 +67,23 @@ func (r *Runner) captureDeclaredArtifact(state *store.RunState, node spec.Node, 
 	}
 	destination := filepath.Join(artifactDir, filename)
 	if sourcePath != "" {
-		if err := copyArtifactFile(sourcePath, destination); err != nil {
-			return err
-		}
 		var err error
-		data, err = os.ReadFile(destination)
+		data, err = os.ReadFile(sourcePath)
 		if err != nil {
 			return err
 		}
-	} else if err := os.WriteFile(destination, data, 0o644); err != nil {
+	}
+	if r.redactor != nil {
+		redacted, found := r.redactor.Bytes(data)
+		if found {
+			if textualArtifactMIME(mime) {
+				data = redacted
+			} else {
+				return fmt.Errorf("artifact %s contains a known secret and cannot be persisted as non-text content", node.OutputType)
+			}
+		}
+	}
+	if err := os.WriteFile(destination, data, 0o644); err != nil {
 		return err
 	}
 	absolute, err := filepath.Abs(destination)
@@ -167,6 +175,11 @@ func resolveExistingSymlinkPrefix(path string) (string, error) {
 		evaluated = filepath.Join(evaluated, suffix[i])
 	}
 	return filepath.Clean(evaluated), nil
+}
+
+func textualArtifactMIME(mime string) bool {
+	base := strings.ToLower(strings.TrimSpace(strings.Split(mime, ";")[0]))
+	return strings.HasPrefix(base, "text/") || base == "application/json" || base == "application/xml" || strings.HasSuffix(base, "+json") || strings.HasSuffix(base, "+xml")
 }
 
 func copyArtifactFile(source, destination string) error {

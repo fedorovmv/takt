@@ -6,10 +6,12 @@ import (
 	"testing"
 
 	"takt/internal/execution"
+	"takt/internal/spec"
 )
 
 func TestRunBashSeparatesStdoutAndStderr(t *testing.T) {
-	result, err := runBash(context.Background(), t.TempDir(), `exec /bin/sh -c 'printf "%s\n" stdout-value; printf "%s\n" stderr-value >&2; exit 1'`)
+	runner := &Runner{Workspace: t.TempDir()}
+	result, err := runner.runBash(context.Background(), spec.Node{}, `exec /bin/sh -c 'printf "%s\n" stdout-value; printf "%s\n" stderr-value >&2; exit 1'`)
 	if execution.KindOf(err) != execution.KindExit {
 		t.Fatalf("expected exit error, got result=%+v err=%v", result, err)
 	}

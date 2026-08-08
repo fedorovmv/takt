@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.43-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.44-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -273,6 +273,12 @@ nodes:
     timeout: 10m
     attempts:
       max: 3
+      retry_on: [exit, timed_out]
+      backoff:
+        initial: 1s
+        multiplier: 2
+        max: 15s
+        jitter: true
     hooks:
       after_node:
         - id: validate
@@ -295,7 +301,13 @@ nodes:
 
 `timeout` использует формат Go duration: `500ms`, `30s`, `5m`, `1h` и ограничивает всю попытку узла. `idle_timeout` поддерживается AI-узлами и сбрасывается нормализованными событиями активности; для claimed внешнего узла его обслуживает daemon. `always_run: true` запускает cleanup-узел после terminal-состояния всех зависимостей независимо от их результата, но не скрывает failure основного графа.
 
+`attempts.retry_on` задаёт execution kinds, для которых разрешён автоматический повтор (`exit|start|protocol|internal|timed_out`). Cancellation и неизвестный внешний side effect не являются обычным retry. `attempts.backoff` требует `attempts.max >= 2`: `initial` и `max` — положительные Go duration, `multiplier` по умолчанию 2 и не меньше 1, `jitter` выбирает задержку в диапазоне 50–100% от расчётной. Runtime сохраняет выбранный `not_before` в `NodeState.retry`, поэтому restart/resume не пересчитывает уже принятое ожидание.
+
+Каждая неуспешная execution получает machine-readable `diagnostic` с `code`, `kind`, `op`, исходным `message`, стабильным `fingerprint` и `retryable`. Fingerprint нормализует workspace path и volatile numbers и сохраняется отдельно для каждой `ExecutionState`; LLM similarity в этом контракте не используется.
+
 Независимые готовые узлы `command`, `prompt` и `bash` без portable hooks и повторных попыток выполняются одной параллельной волной. Переходы `pending → running → terminal` и запись событий сериализуются, поэтому Run и журнал остаются едиными и детерминированными. Узлы с hooks или `attempts.max > 1` пока исполняются последовательно.
+
+`NodeState.path` хранит каноническую структурированную идентичность (`/build`, `/batch[1]/append`) и публикуется как `node_path` в node events. Совместимый `NodeState` key/ID не меняется: path добавляет устойчивую namespace-модель поверх существующих скомпилированных `__` IDs.
 
 ## 6. Типы узлов
 
@@ -350,12 +362,23 @@ nodes:
 - `denied_tools` — дополнительный deny-list; пересечение с allowlist запрещено;
 - `skills` — список имён или путей; явный пустой список запрещает inherited skills;
 - `mcp` — JSON-файл конфигурации относительно workflow;
-- `sandbox.filesystem: read_only` и `sandbox.network: deny` — обязательные гарантии adapter;
+- `sandbox.filesystem: read_only` и `sandbox.network: deny` — гарантии assistant adapter, когда `enforcement` не задан;
 - `requires` — дополнительные capability names.
 
 До запуска assistant runtime вычисляет эффективную политику, проверяет `Adapter.Capabilities()`, сохраняет её в `NodeState.policy` и передаёт adapter. Неподдерживаемая capability завершает узел до запуска процесса. Для governed child Run поле `workflow.policy` задаёт inherited upper bound. Allowlist и skills пересекаются, deny/requirements объединяются, а более строгая sandbox-политика наследуется. Файлы MCP и локальные skills входят в fingerprint.
 
-Это assistant-enforced contract, а не OS sandbox. `process` обязан объявить поддерживаемые capabilities в config и получает политику через `takt-assistant/v1alpha1` и `TAKT_POLICY_JSON`. Pi поддерживает tool policy, path skills и read-only tool restriction. OpenCode получает permission/MCP config через `OPENCODE_CONFIG_CONTENT`; локальные path skills дополнительно внедряются в prompt. Network deny не объявляется встроенными Pi/OpenCode и потому отклоняется до запуска.
+Для `command/prompt` это assistant-enforced contract, а не OS sandbox. `process` обязан объявить поддерживаемые capabilities в config и получает политику через `takt-assistant/v1alpha1`/`v1alpha2` и `TAKT_POLICY_JSON`. Pi поддерживает tool policy, path skills и read-only tool restriction. OpenCode получает permission/MCP config через `OPENCODE_CONFIG_CONTENT`; локальные path skills дополнительно внедряются в prompt. Network deny не объявляется встроенными Pi/OpenCode и потому отклоняется до запуска.
+
+Реальный локальный OS wrapper доступен только для `bash` и `script`, которыми Takt управляет напрямую:
+
+```yaml
+sandbox:
+  enforcement: required   # required | optional
+  filesystem: read_only
+  network: deny
+```
+
+Linux использует `bwrap`, macOS — `sandbox-exec` при наличии. `required` без backend завершает node до запуска payload; `optional` выполняет node без системной изоляции, но фиксирует `NodeState.sandbox.status: degraded`. `runtime: validation` и hooks проходят через ту же node-level политику. OS `enforcement` у `command/prompt` отклоняется: Takt не может честно обернуть внутренние tool calls чужого coding-agent.
 
 ### `bash`
 
@@ -363,6 +386,9 @@ nodes:
 
 `allow_failure: true` разрешает только штатный ненулевой exit code. Ошибка запуска, timeout, cancellation или ошибка runtime остаются ошибкой узла.
 
+### SecretRef для process/script environment
+
+Значение вида `secret://ENV_NAME` разрешается из окружения непосредственно перед запуском process assistant, process domain adapter или `script.env`. Отсутствующий explicit secret завершает запуск fail-closed. Известные secret values редактируются перед записью durable state/events и textual artifacts; non-text artifact с известным secret отклоняется. Foreground control/CLI возвращает повторно загруженный durable state, а не transient live state. Takt не хранит секреты и не заменяет Vault/Keychain. Для resume используйте SecretRef, а не literal secret в task input.
 
 ### `script`
 
@@ -497,7 +523,7 @@ until:
 
 `path` вычисляется относительно содержащего workflow. `input` проходит обычный renderer. Если `output_node` не задан, в дочернем определении должен быть ровно один terminal-узел. В отличие от `subworkflow`, дочерние узлы не встраиваются в DAG родителя.
 
-Ребёнок хранит `parent_run_id` и `parent_node_id`; родитель — список `child_run_ids`, а узел — текущий `child_run_id` и историю попыток. Failure/cancellation ребёнка определяет результат родительского узла. Retry узла создаёт новый child Run и сохраняет прежнюю попытку.
+Ребёнок хранит `parent_run_id` и `parent_node_id`; родитель — список `child_run_ids`, а узел — текущий `child_run_id` и историю попыток. Failure/cancellation ребёнка определяет результат родительского узла. Retry после failed/cancelled child создаёт новый child Run; уже `completed` child переиспользуется, поэтому повтор post-child hook/validation не повторяет успешную mutating работу.
 
 Режимы `isolation`:
 
@@ -526,7 +552,7 @@ Approval ребёнка переводит родителя в `waiting` с `kin
       allow_duplicates: false
 ```
 
-`items_from` должен указывать на JSON-массив в структурированном output upstream-узла. `max_parallel` по умолчанию равен 1 и ограничен 64. `join` принимает `all_success`, `all_done` или `one_success`. Каждый элемент получает отдельный child Run и устойчивую запись в состоянии; completed-дети переиспользуются при resume, а изменение массива внутри попытки отклоняется. В `input` доступны `${fanout.item}`, `${fanout.index}`, `${fanout.total}` и алиас из `as`. Дубли канонических элементов отклоняются по умолчанию; `allow_duplicates: true` является явным разрешением двойного запуска. Output родительского узла — упорядоченный JSON-массив статусов, outputs, usage и Run ID детей. `all_success` и `one_success` пока ожидают terminal-состояния всей группы и не останавливают оставшиеся children досрочно.
+`items_from` должен указывать на JSON-массив в структурированном output upstream-узла. `max_parallel` по умолчанию равен 1 и ограничен 64. `join` принимает `all_success`, `all_done` или `one_success`. Каждый элемент получает отдельный child Run и устойчивую запись в состоянии; completed-дети переиспользуются при resume, а изменение массива внутри попытки отклоняется. В `input` доступны `${fanout.item}`, `${fanout.index}`, `${fanout.total}` и алиас из `as`. Дубли канонических элементов отклоняются по умолчанию; `allow_duplicates: true` является явным разрешением двойного запуска. Output родительского узла — упорядоченный JSON-массив статусов, outputs, usage, Run ID и при наличии `cancel_reason`. `one_success` отменяет уже ненужных siblings после первого success; `all_success` прекращает оставшуюся работу после первого failure-like результата; `all_done` ждёт всех children. Такая внутренняя отмена имеет `cancel_reason: fanout_result_decided` и отличается от operator cancellation.
 
 ### `foreach`
 

@@ -2,8 +2,10 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -762,5 +764,49 @@ func TestAttentionIncludesParkedPlanWithFailureCode(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].PlanID != record.ID || items[0].Reason != "owner_decision_required" {
 		t.Fatalf("attention = %#v", items)
+	}
+}
+
+func TestForegroundStartReturnsDurableRedactedState(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	scriptPath := filepath.Join(workspace, "emit-secret.sh")
+	const envName = "TAKT_TEST_CONTROL_PUBLIC_SECRET"
+	const secret = "control-boundary-secret-441"
+	t.Setenv(envName, secret)
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, scriptPath, "#!/bin/sh\nprintf '%s' \"$TOKEN\"\n")
+	if err := os.Chmod(scriptPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: public-redaction
+nodes:
+  - id: emit
+    script:
+      runtime: command
+      path: emit-secret.sh
+      env:
+        TOKEN: secret://`+envName+`
+`)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.State == nil || started.State.Nodes["emit"] == nil {
+		t.Fatalf("missing public state: %#v", started)
+	}
+	if got := started.State.Nodes["emit"].Output; got != "<redacted>" {
+		t.Fatalf("foreground public output leaked secret: %q", got)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", started.State), secret) {
+		t.Fatal("foreground public state contains secret")
 	}
 }

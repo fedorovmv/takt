@@ -224,4 +224,4 @@ takt command run
 - capability declaration adapter/worker;
 - шесть глубоких workflow профиля `code` со строгими JSON-входами, checkpoint artifacts, domain errors, Git decision trees и recovery E2E.
 
-Дополнительно реализованы authoring diagnostics/strict renderer, `always_run`, `idle_timeout` и локальный daemon. Оставшиеся направления v0.2: secret protection/OS sandbox, runtime early-exit/backoff и реальный Route DSL baseline.
+Дополнительно реализованы authoring diagnostics/strict renderer, `always_run`, `idle_timeout`, локальный daemon, а к `v0.1.44-alpha` — SecretRef/persistence redaction, локальный OS sandbox для `bash/script`, runtime fan-out early-exit, durable backoff, error fingerprints и NodePath. Главный оставшийся сквозной пробел перед стабилизацией — реальный Route DSL baseline/eval на обезличенных заданиях со штатным валидатором.

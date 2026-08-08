@@ -393,6 +393,20 @@ Detached start генерирует Run ID до запуска goroutine и во
 JSON-RPC cancellation отменяет контекст текущего MCP-запроса. Отмена самого Run выполняется только явным `takt.run.cancel`, сохраняется в store и каскадируется governed children по общей runtime-семантике.
 
 
+## Runtime reliability and local security (v0.1.44)
+
+`attempts.backoff` is scheduler state, not a sleep hidden inside an adapter. After a retryable failure Takt records `NodeState.retry.next_attempt/not_before/delay/kind/fingerprint`, commits `node.retry.scheduled`, and waits while continuing to honor pause/cancel. When the deadline is reached the marker is cleared by `node.retry.ready`. A restart therefore consumes the stored deadline instead of choosing a new jitter value.
+
+Execution failures also receive a normalized `DiagnosticState`. The human message is preserved, while the fingerprint is computed from `code/kind/op` and a normalized message with control/execution workspace paths and volatile process numbers removed. `ExecutionState.diagnostic` keeps per-attempt history; `NodeState.diagnostic` describes the current terminal/retry failure and is cleared after success.
+
+Governed fan-out short-circuits inside the existing scheduler. `one_success` cancels remaining work after the first success; `all_success` cancels remaining work after the first failure-like result. Children not yet started are marked cancelled without execution. Running siblings receive context cancellation. Parent records use `cancel_reason=fanout_result_decided`, so operator cancellation remains distinguishable.
+
+`NodeState.path` is a canonical structural namespace generated from the expanded node ID. It does not replace the compatible ID/key in v1alpha1; state/events can use the path for diagnostics/evidence while existing templates continue to address node IDs.
+
+Secret protection is applied at the persistence boundary. The live executor may temporarily hold the resolved value of `secret://ENV_NAME`; `Runner.commit` clones state, redacts known values, then writes only the redacted clone and event data. Text artifacts are redacted before hashing/persistence; a non-text artifact containing a known secret fails closed. Public control/CLI responses reload the Run from Store after foreground execution instead of exposing the transient live state. SecretRef itself, rather than a resolved value, is the resumable source of truth.
+
+OS sandbox enforcement is intentionally narrower than assistant policy. `command/prompt` sandbox remains adapter-enforced. For local `bash/script` nodes, `sandbox.enforcement=required|optional` wraps every deterministic process (including validation runtime and hooks) with `bubblewrap` on Linux or `sandbox-exec` on macOS when available. `required` fails before payload execution when no supported backend is available; `optional` records a degraded decision and continues. This does not create an untrusted multi-user runtime.
+
 ## Dynamic plan revisions
 
 `WorkflowPlan` не исполняется напрямую. Проверенная редакция компилируется в обычные governed workflow-сегменты. Checkpoint отделяет immutable завершённую историю от ещё не начатого хвоста. Steering применяется только планировщиком checkpoint. Новая редакция может заменить оставшиеся фазы, но не статус, output, events, usage или artifacts завершённых Run.
@@ -418,4 +432,4 @@ Process и MCP являются transport-реализациями одной г
 
 `v0.1.43-alpha` разрешает governed child Run выбрать `workflow.repository`. Runtime разрешает repository path только внутри общего control workspace, повторяет проверку после `EvalSymlinks` и использует выбранный Git repository как child control workspace. `isolation: worktree` создаёт отдельный repository worktree; он удерживается до завершения Dynamic Plan, чтобы downstream repositories, integration verification и evidence могли читать фактический candidate. Parent `NodeState` сохраняет child control/execution workspace, branch и base commit.
 
-Repository-aware Dynamic Plan не меняет retry/replan semantics: completed repository phase остаётся completed, а `PendingPhases` и operator retry работают с незавершённым dependency tail. Per-repository Git diffs агрегируются с prefix repository ID и проходят тот же post-action declared-change gate.
+Repository-aware Dynamic Plan не меняет retry/replan semantics: completed repository phase остаётся completed, а `PendingPhases` и operator retry работают с незавершённым dependency tail. Если retry родительского workflow-узла вызван post-child hook/check, уже completed governed child переиспользуется; новый child создаётся только для неуспешной предыдущей попытки. Per-repository Git diffs агрегируются с prefix repository ID и проходят тот же post-action declared-change gate.

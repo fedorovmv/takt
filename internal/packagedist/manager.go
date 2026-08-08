@@ -604,7 +604,9 @@ func sourceAllowed(src Source, allowed string) bool {
 		return false
 	}
 	if src.Type != "local" {
-		return strings.HasPrefix(src.Location, want)
+		actual := strings.TrimRight(strings.TrimSpace(src.Location), "/")
+		base := strings.TrimRight(want, "/")
+		return actual == base || strings.HasPrefix(actual, base+"/")
 	}
 	actual, err := filepath.Abs(src.Location)
 	if err != nil {

@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"takt/internal/execution"
+	"takt/internal/localsandbox"
+	"takt/internal/redact"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
@@ -32,6 +34,20 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		}
 		workingDir = resolved
 	}
+	policy := localsandbox.Policy{}
+	if node.Sandbox != nil {
+		policy = localsandbox.Policy{Enforcement: node.Sandbox.Enforcement, Filesystem: node.Sandbox.Filesystem, Network: node.Sandbox.Network}
+	}
+	var sandboxState *store.SandboxState
+	newCommand := func(name string, args ...string) (*exec.Cmd, error) {
+		cmd, decision, err := localsandbox.CommandContext(ctx, workingDir, policy, name, args...)
+		sandboxState = &store.SandboxState{Requested: decision.Requested, Status: decision.Status, Backend: decision.Backend, Reason: decision.Reason}
+		if err != nil {
+			return nil, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "OS sandbox", Err: err}
+		}
+		return cmd, nil
+	}
+
 	args := make([]string, len(definition.Args))
 	for index, value := range definition.Args {
 		rendered, err := renderTemplate(value, state, local, feedback, artifactsDir)
@@ -41,6 +57,7 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		args[index] = rendered
 	}
 	var cmd *exec.Cmd
+	var err error
 	runtimeName := strings.TrimSpace(definition.Runtime)
 	switch runtimeName {
 	case "command":
@@ -52,14 +69,20 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		if err != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve command script", Err: err}
 		}
-		cmd = exec.CommandContext(ctx, path, args...)
+		cmd, err = newCommand(path, args...)
+		if err != nil {
+			return execResult{Sandbox: sandboxState}, err
+		}
 	case "python":
 		if definition.Inline != "" {
 			inline, renderErr := renderTemplate(definition.Inline, state, local, feedback, artifactsDir)
 			if renderErr != nil {
 				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render python inline script", Err: renderErr}
 			}
-			cmd = exec.CommandContext(ctx, "python3", append([]string{"-c", inline}, args...)...)
+			cmd, err = newCommand("python3", append([]string{"-c", inline}, args...)...)
+			if err != nil {
+				return execResult{Sandbox: sandboxState}, err
+			}
 		} else {
 			renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
 			if renderErr != nil {
@@ -69,7 +92,10 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 			if err != nil {
 				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve python script", Err: err}
 			}
-			cmd = exec.CommandContext(ctx, "python3", append([]string{path}, args...)...)
+			cmd, err = newCommand("python3", append([]string{path}, args...)...)
+			if err != nil {
+				return execResult{Sandbox: sandboxState}, err
+			}
 		}
 	case "node":
 		if definition.Inline != "" {
@@ -77,7 +103,10 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 			if renderErr != nil {
 				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render node inline script", Err: renderErr}
 			}
-			cmd = exec.CommandContext(ctx, "node", append([]string{"-e", inline}, args...)...)
+			cmd, err = newCommand("node", append([]string{"-e", inline}, args...)...)
+			if err != nil {
+				return execResult{Sandbox: sandboxState}, err
+			}
 		} else {
 			renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
 			if renderErr != nil {
@@ -87,7 +116,10 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 			if err != nil {
 				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve node script", Err: err}
 			}
-			cmd = exec.CommandContext(ctx, "node", append([]string{path}, args...)...)
+			cmd, err = newCommand("node", append([]string{path}, args...)...)
+			if err != nil {
+				return execResult{Sandbox: sandboxState}, err
+			}
 		}
 	case "go":
 		renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
@@ -98,7 +130,10 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		if err != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve go script", Err: err}
 		}
-		cmd = exec.CommandContext(ctx, "go", append([]string{"run", path}, args...)...)
+		cmd, err = newCommand("go", append([]string{"run", path}, args...)...)
+		if err != nil {
+			return execResult{Sandbox: sandboxState}, err
+		}
 	case "validation":
 		return r.runValidationCommands(ctx, state, node, local, feedback, artifactsDir, workingDir)
 	default:
@@ -114,17 +149,24 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		"TAKT_WORKSPACE="+r.Workspace,
 		"TAKT_ARTIFACTS_DIR="+artifactsDir,
 	)
+	if r.redactor == nil {
+		r.redactor = redact.NewFromEnvironment()
+	}
 	for key, value := range definition.Env {
 		rendered, err := renderTemplate(value, state, local, feedback, artifactsDir)
 		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render script environment", Err: err}
+			return execResult{Sandbox: sandboxState}, &execution.Error{Kind: execution.KindInternal, Op: "render script environment", Err: err}
 		}
-		cmd.Env = append(cmd.Env, key+"="+rendered)
+		resolved, err := r.redactor.Resolve(rendered)
+		if err != nil {
+			return execResult{Sandbox: sandboxState}, &execution.Error{Kind: execution.KindProtocol, Op: "resolve script secret", Err: err}
+		}
+		cmd.Env = append(cmd.Env, key+"="+resolved)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := cmd.Run()
-	result := execResult{Output: strings.TrimSpace(stdout.String()), Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: 0}
+	err = cmd.Run()
+	result := execResult{Output: strings.TrimSpace(stdout.String()), Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: 0, Sandbox: sandboxState}
 	if err == nil {
 		return result, nil
 	}
@@ -165,6 +207,11 @@ func (r *Runner) runValidationCommands(ctx context.Context, state *store.RunStat
 		Status  string                    `json:"status"`
 		Results []validationCommandResult `json:"results"`
 	}{Status: "ready"}
+	policy := localsandbox.Policy{}
+	if node.Sandbox != nil {
+		policy = localsandbox.Policy{Enforcement: node.Sandbox.Enforcement, Filesystem: node.Sandbox.Filesystem, Network: node.Sandbox.Network}
+	}
+	var sandboxState *store.SandboxState
 	var combinedOut, combinedErr strings.Builder
 	firstFailure := 0
 	for _, raw := range input.ValidationCommands {
@@ -172,7 +219,11 @@ func (r *Runner) runValidationCommands(ctx context.Context, state *store.RunStat
 		if commandText == "" {
 			return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "validation commands input", Err: fmt.Errorf("validation_commands contains an empty command")}
 		}
-		cmd := exec.CommandContext(ctx, "sh", "-lc", commandText)
+		cmd, decision, sandboxErr := localsandbox.CommandContext(ctx, workingDir, policy, "sh", "-lc", commandText)
+		sandboxState = &store.SandboxState{Requested: decision.Requested, Status: decision.Status, Backend: decision.Backend, Reason: decision.Reason}
+		if sandboxErr != nil {
+			return execResult{Sandbox: sandboxState}, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "OS sandbox", Err: sandboxErr}
+		}
 		execution.ConfigureCommand(cmd)
 		cmd.Dir = workingDir
 		cmd.Env = append([]string(nil), os.Environ()...)
@@ -186,7 +237,7 @@ func (r *Runner) runValidationCommands(ctx context.Context, state *store.RunStat
 				if ctx.Err() == context.DeadlineExceeded {
 					kind = execution.KindTimedOut
 				}
-				return execResult{}, &execution.Error{Kind: kind, ExitCode: -1, Op: "validation command", Err: ctx.Err()}
+				return execResult{Sandbox: sandboxState}, &execution.Error{Kind: kind, ExitCode: -1, Op: "validation command", Err: ctx.Err()}
 			}
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				exitCode = exitErr.ExitCode()
@@ -222,7 +273,7 @@ func (r *Runner) runValidationCommands(ctx context.Context, state *store.RunStat
 			return execResult{}, writeErr
 		}
 	}
-	result := execResult{Output: string(rawReport), Stdout: combinedOut.String(), Stderr: combinedErr.String(), ExitCode: firstFailure}
+	result := execResult{Output: string(rawReport), Stdout: combinedOut.String(), Stderr: combinedErr.String(), ExitCode: firstFailure, Sandbox: sandboxState}
 	if firstFailure != 0 {
 		return result, &execution.Error{Kind: execution.KindExit, ExitCode: firstFailure, Op: "validation commands", Err: fmt.Errorf("one or more validation commands failed")}
 	}

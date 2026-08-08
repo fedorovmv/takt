@@ -265,3 +265,53 @@ func TestPendingPhasesPreserveCompletedMultiRepoWork(t *testing.T) {
 		t.Fatalf("pending=%#v", pending)
 	}
 }
+
+func TestRepositoryMergeOrderUsesDependenciesNotPhaseOrder(t *testing.T) {
+	plan := Plan{Phases: []Phase{
+		{ID: "service", Repository: "service", DependsOn: []string{"client"}},
+		{ID: "api", Repository: "api"},
+		{ID: "client", Repository: "client", DependsOn: []string{"api"}},
+	}}
+	got := RepositoryMergeOrder(plan)
+	want := []string{"api", "client", "service"}
+	if len(got) != len(want) {
+		t.Fatalf("merge order=%v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("merge order=%v want=%v", got, want)
+		}
+	}
+}
+
+func TestRepositoryTaskBriefIncludesDependencyResults(t *testing.T) {
+	role := rolecontract.Definition{Paths: rolecontract.PathScope{Allowed: []string{"**"}}}
+	block := blockcatalog.ResolvedBlock{Name: "repo", Role: "implementer", RoleDefinition: &role}
+	phase := Phase{ID: "client", Uses: "repo", Objective: "update client", Repository: "client", DependsOn: []string{"api"}}
+	raw, err := phaseInput("update protocol", phase, "", "", false, nil, &block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var brief rolecontract.Brief
+	if err := json.Unmarshal([]byte(raw), &brief); err != nil {
+		t.Fatalf("decode brief: %v\n%s", err, raw)
+	}
+	deps, ok := brief.Context["dependency_results"].(map[string]any)
+	if !ok {
+		t.Fatalf("dependency_results missing: %#v", brief.Context)
+	}
+	api, ok := deps["api"].(map[string]any)
+	if !ok {
+		t.Fatalf("api dependency missing: %#v", deps)
+	}
+	for key, want := range map[string]string{
+		"output":              "${nodes.api.output}",
+		"execution_workspace": "${nodes.api.child_execution_workspace}",
+		"branch":              "${nodes.api.child_branch}",
+		"base_commit":         "${nodes.api.child_base_commit}",
+	} {
+		if got, _ := api[key].(string); got != want {
+			t.Fatalf("dependency_results.api.%s=%q want %q", key, got, want)
+		}
+	}
+}

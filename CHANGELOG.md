@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.44-alpha
+
+- Добавлены durable retry/backoff (`attempts.backoff`) и machine-readable diagnostics с нормализованным SHA-256 fingerprint; retry decision хранит точный `not_before` и переживает restart/resume.
+- Governed fan-out получил раннее завершение: `one_success` и `all_success` отменяют ненужные siblings с отдельной причиной `fanout_result_decided`; `all_done` сохраняет полное ожидание.
+- Добавлены `secret://ENV_NAME`, централизованный redaction durable state/events/text artifacts, durable-only public foreground state и fail-closed запрет non-text artifact с известным secret. Explicit SecretRef защищается независимо от длины значения.
+- `bash/script` получили локальный OS sandbox `enforcement: required|optional`: `bubblewrap` на Linux, `sandbox-exec` на macOS при наличии. Validation runtime и hooks используют тот же node-level enforcement; command/prompt остаются честным assistant-enforced contract.
+- `NodeState.path` и `node_path` events добавляют канонический path namespace для вложенной композиции без смены совместимых node IDs.
+- Исправлены замечания v0.1.43: macOS symlink auto-discovery, resolved child paths, python3 fallback, настоящий topological merge order, пустой Workspace fail-closed, Git allowlist boundary, adapter-doctor negative regression, multi-repo deny/replanner/fingerprint/brief/node-rule tests. Completed governed child теперь переиспользуется при retry родительского post-check.
+- Добавлены ADR-070/071, `docs/58-runtime-reliability-local-security-v0.1.44.md` и `scripts/test-runtime-reliability-security.sh`. Takt skill обновлён до 0.26.0; профиль `code` и `code-core` не меняют содержимое и остаются 0.16.0 / 0.5.0.
+
 ## v0.1.43-alpha
 
 - Добавлен bounded multi-repo workspace catalog (`.takt/workspace.yaml`) с Git repository IDs, dependency graph, automatic local discovery и fingerprint HEAD/path/dependencies.

@@ -10,15 +10,18 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"takt/internal/assistant"
 	"takt/internal/command"
 	"takt/internal/definition"
+	"takt/internal/diagnostic"
 	"takt/internal/domainadapter"
 	"takt/internal/execution"
 	"takt/internal/gitworktree"
+	"takt/internal/redact"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
@@ -52,6 +55,7 @@ type Runner struct {
 	Store            store.Repository
 	Assistants       assistant.Resolver
 	Adapters         domainadapter.Resolver
+	redactor         *redact.Redactor
 	startOptions     StartOptions
 	inheritedPolicy  assistant.Policy
 }
@@ -74,7 +78,34 @@ func New(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspac
 		ControlWorkspace: workspace, Workspace: workspace,
 		Commands: buildCommandResolver(workflowPath, workspace, workspace),
 		Store:    store.FS{Workspace: workspace}, Assistants: assistant.Factory{Config: cfg}, Adapters: domainadapter.Factory{Config: cfg},
+		redactor: runtimeRedactor(cfg),
 	}
+}
+
+func runtimeRedactor(cfg *spec.Config) *redact.Redactor {
+	r := redact.NewFromEnvironment()
+	if cfg == nil {
+		return r
+	}
+	register := func(values map[string]string) {
+		for _, value := range values {
+			trimmed := strings.TrimSpace(value)
+			if !strings.HasPrefix(trimmed, redact.SecretPrefix) {
+				continue
+			}
+			name := strings.TrimSpace(strings.TrimPrefix(trimmed, redact.SecretPrefix))
+			if actual, ok := os.LookupEnv(name); ok {
+				r.AddSecret(actual)
+			}
+		}
+	}
+	for _, assistantSpec := range cfg.Assistants {
+		register(assistantSpec.Env)
+	}
+	for _, adapterSpec := range cfg.Adapters {
+		register(adapterSpec.Env)
+	}
+	return r
 }
 
 func buildCommandResolver(workflowPath, executionWorkspace, controlWorkspace string) command.Resolver {
@@ -206,7 +237,7 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 		CommandsFingerprint: fingerprints.Commands,
 	}
 	for _, node := range r.Workflow.Nodes {
-		state.Nodes[node.ID] = &store.NodeState{Status: store.NodePending, Hidden: node.Hidden, PublicParent: node.PublicParent}
+		state.Nodes[node.ID] = &store.NodeState{Status: store.NodePending, Path: canonicalNodePath(node.ID), Hidden: node.Hidden, PublicParent: node.PublicParent}
 	}
 	data := map[string]any{"workflow": r.Workflow.Metadata.Name, "execution_workspace": r.Workspace}
 	if options.ParentRunID != "" {
@@ -506,7 +537,7 @@ func (r *Runner) executeGraph(ctx context.Context, state *store.RunState, nodes 
 		for _, node := range nodes {
 			ns := state.Nodes[node.ID]
 			if ns == nil {
-				ns = &store.NodeState{Status: store.NodePending}
+				ns = &store.NodeState{Status: store.NodePending, Path: canonicalNodePath(node.ID)}
 				state.Nodes[node.ID] = ns
 			}
 			if ns.Terminal() {
@@ -630,10 +661,14 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 	for ns.Attempts < max {
 		// Attempts and before-node hook retries are new work. Honor an operator
 		// pause before consuming the next attempt rather than only at the next
-		// executeGraph iteration.
+		// executeGraph iteration. A persisted retry deadline also survives daemon
+		// restart and is observed before a new attempt starts.
 		if r.pauseRequested(state.ID) {
 			state.PauseRequested = true
 			return ErrPaused
+		}
+		if err := r.awaitRetry(ctx, state, node.ID); err != nil {
+			return err
 		}
 		ns.Attempts++
 		ns.Status = store.NodeRunning
@@ -660,7 +695,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		if decision == "retry" {
 			cancel()
 			ns.Feedback = joinFeedback(ns.Feedback, feedback)
-			if err := r.commit(state, "node.retry", node.ID, map[string]any{"feedback": feedback, "phase": "before_node"}); err != nil {
+			if err := r.scheduleRetry(state, node, "hook", "before_node", feedback); err != nil {
 				return err
 			}
 			continue
@@ -717,7 +752,17 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 				execErr = contextErr
 			}
 		}
+		retryable := execErr != nil && shouldRetryAttempt(node.Attempts, execution.KindOf(execErr), ns.Attempts, max)
 		recordExecution(ns, result, execErr)
+		if execErr != nil {
+			d := r.diagnosticFor(string(execution.KindOf(execErr)), execErr, retryable)
+			ns.Diagnostic = &d
+			if len(ns.Executions) > 0 {
+				ns.Executions[len(ns.Executions)-1].Diagnostic = cloneDiagnostic(&d)
+			}
+		} else {
+			ns.Diagnostic = nil
+		}
 		applyExecResult(ns, result)
 		mergeRunArtifacts(state, result.Artifacts)
 		accumulateUsage(ns, result.Usage)
@@ -736,7 +781,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 				if node.Attempts.RetrySession == "fresh" {
 					ns.SessionID = ""
 				}
-				if err := r.commit(state, "node.retry", node.ID, map[string]any{"feedback": ns.Feedback, "phase": "attempts", "kind": string(kind)}); err != nil {
+				if err := r.scheduleRetry(state, node, string(kind), "attempts", ns.Feedback); err != nil {
 					return err
 				}
 				continue
@@ -753,7 +798,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 			if decision == "retry" {
 				cancel()
 				ns.Feedback = joinFeedback(ns.Feedback, feedback, execErr.Error())
-				if err := r.commit(state, "node.retry", node.ID, map[string]any{"feedback": ns.Feedback, "phase": "on_failure"}); err != nil {
+				if err := r.scheduleRetry(state, node, "hook", "on_failure", ns.Feedback); err != nil {
 					return err
 				}
 				continue
@@ -776,7 +821,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		if decision == "retry" {
 			cancel()
 			ns.Feedback = joinFeedback(ns.Feedback, feedback)
-			if err := r.commit(state, "node.retry", node.ID, map[string]any{"feedback": feedback, "phase": "after_node"}); err != nil {
+			if err := r.scheduleRetry(state, node, "hook", "after_node", feedback); err != nil {
 				return err
 			}
 			continue
@@ -794,7 +839,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		if decision == "retry" {
 			cancel()
 			ns.Feedback = joinFeedback(ns.Feedback, feedback)
-			if err := r.commit(state, "node.retry", node.ID, map[string]any{"feedback": feedback, "phase": "before_complete"}); err != nil {
+			if err := r.scheduleRetry(state, node, "hook", "before_complete", feedback); err != nil {
 				return err
 			}
 			continue
@@ -814,6 +859,8 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 
 		cancel()
 		ns.Status = store.NodeCompleted
+		ns.Diagnostic = nil
+		ns.Retry = nil
 		state.CurrentNode = ""
 		state.CurrentNodes = nil
 		if err := r.commit(state, "node.completed", node.ID, map[string]any{"attempts": ns.Attempts, "exit_code": ns.ExitCode, "output_truncated": ns.OutputTruncated, "usage": ns.Usage, "artifacts": ns.Artifacts}); err != nil {
@@ -870,6 +917,7 @@ type execResult struct {
 	Artifacts        []store.ArtifactRef
 	AssistantEvents  []assistant.Event
 	DomainOperation  *store.DomainOperationState
+	Sandbox          *store.SandboxState
 }
 
 func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.Node, loopPrevious map[string]store.NodeState) (execResult, error) {
@@ -885,7 +933,7 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		if err != nil {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render bash node", Err: err}
 		}
-		return runBash(ctx, r.Workspace, rendered)
+		return r.runBash(ctx, node, rendered)
 	case node.Script != nil:
 		result, err := r.runScript(ctx, state, node, local, feedback, artifacts)
 		if err == nil && node.OutputFormat != nil {
@@ -1083,7 +1131,7 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 				}
 			}
 			for _, child := range parent.LoopGroup.Nodes {
-				state.Nodes[child.ID] = &store.NodeState{Status: store.NodePending, Hidden: child.Hidden, PublicParent: child.PublicParent}
+				state.Nodes[child.ID] = &store.NodeState{Status: store.NodePending, Path: canonicalNodePath(child.ID), Hidden: child.Hidden, PublicParent: child.PublicParent}
 			}
 			parentState.LoopIteration = iteration
 			if err := r.commit(state, "loop.iteration.started", parent.ID, map[string]any{"iteration": iteration}); err != nil {
@@ -1125,7 +1173,7 @@ func (r *Runner) runHooks(ctx context.Context, state *store.RunState, node spec.
 		if renderErr != nil {
 			return "fail", renderErr.Error(), &execution.Error{Kind: execution.KindInternal, Op: "render hook", Err: renderErr}
 		}
-		result, err := runBash(ctx, r.Workspace, rendered)
+		result, err := r.runBash(ctx, node, rendered)
 		if err == nil && result.ExitCode == 0 {
 			continue
 		}
@@ -1197,6 +1245,10 @@ func applyExecResult(node *store.NodeState, result execResult) {
 		copy := *result.DomainOperation
 		copy.Capabilities = append([]string(nil), result.DomainOperation.Capabilities...)
 		node.DomainOperation = &copy
+	}
+	if result.Sandbox != nil {
+		copy := *result.Sandbox
+		node.Sandbox = &copy
 	}
 }
 
@@ -1298,12 +1350,14 @@ func (r *Runner) finishNodeExecutionError(state *store.RunState, nodeID string, 
 	ns.Status = status
 	ns.ErrorCode = string(kind)
 	ns.Error = err.Error()
+	diagnostic := r.diagnosticFor(ns.ErrorCode, err, false)
+	ns.Diagnostic = &diagnostic
 	applyExecResult(ns, result)
 	mergeRunArtifacts(state, result.Artifacts)
 
 	state.CurrentNode = ""
 	state.CurrentNodes = nil
-	return r.commit(state, "node."+status, nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "exit_code": ns.ExitCode, "usage": ns.Usage})
+	return r.commit(state, "node."+status, nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "exit_code": ns.ExitCode, "usage": ns.Usage, "diagnostic": ns.Diagnostic})
 }
 
 func (r *Runner) finishNodeError(state *store.RunState, nodeID, code string, err error, result execResult) error {
@@ -1311,12 +1365,14 @@ func (r *Runner) finishNodeError(state *store.RunState, nodeID, code string, err
 	ns.Status = store.NodeErrored
 	ns.ErrorCode = code
 	ns.Error = err.Error()
+	diagnostic := r.diagnosticFor(code, err, false)
+	ns.Diagnostic = &diagnostic
 	applyExecResult(ns, result)
 	mergeRunArtifacts(state, result.Artifacts)
 
 	state.CurrentNode = ""
 	state.CurrentNodes = nil
-	return r.commit(state, "node.errored", nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "usage": ns.Usage})
+	return r.commit(state, "node.errored", nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "usage": ns.Usage, "diagnostic": ns.Diagnostic})
 }
 
 func (r *Runner) finishNodeFailure(state *store.RunState, nodeID, code string, err error, result execResult) error {
@@ -1324,19 +1380,48 @@ func (r *Runner) finishNodeFailure(state *store.RunState, nodeID, code string, e
 	ns.Status = store.NodeFailed
 	ns.ErrorCode = code
 	ns.Error = err.Error()
+	diagnostic := r.diagnosticFor(code, err, false)
+	ns.Diagnostic = &diagnostic
 	applyExecResult(ns, result)
 	mergeRunArtifacts(state, result.Artifacts)
 
 	state.CurrentNode = ""
 	state.CurrentNodes = nil
-	return r.commit(state, "node.failed", nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "usage": ns.Usage})
+	return r.commit(state, "node.failed", nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "usage": ns.Usage, "diagnostic": ns.Diagnostic})
 }
 
 func (r *Runner) commit(state *store.RunState, eventType, nodeID string, data map[string]any) error {
 	now := time.Now().UTC()
 	state.ExecutorPID = os.Getpid()
 	state.HeartbeatAt = &now
-	return r.Store.Commit(state, store.Event{Type: eventType, NodeID: nodeID, Data: data})
+	for id, node := range state.Nodes {
+		if node != nil && node.Path == "" {
+			node.Path = canonicalNodePath(id)
+		}
+	}
+	if nodeID != "" {
+		if data == nil {
+			data = map[string]any{}
+		}
+		if _, exists := data["node_path"]; !exists {
+			data["node_path"] = canonicalNodePath(nodeID)
+		}
+	}
+	if r.redactor == nil {
+		r.redactor = redact.NewFromEnvironment()
+	}
+	persisted, err := cloneRunStateForPersistence(state)
+	if err != nil {
+		return err
+	}
+	redactRunState(r.redactor, persisted)
+	eventData := r.redactor.Map(data)
+	if err := r.Store.Commit(persisted, store.Event{Type: eventType, NodeID: nodeID, Data: eventData}); err != nil {
+		return err
+	}
+	state.Revision = persisted.Revision
+	state.UpdatedAt = persisted.UpdatedAt
+	return nil
 }
 
 func mergeHooks(global, local spec.HookSet) spec.HookSet {
@@ -1427,6 +1512,140 @@ func untilSatisfied(until spec.UntilSpec, node store.NodeState) bool {
 		return false
 	}
 	return true
+}
+
+func (r *Runner) diagnosticFor(code string, err error, retryable bool) store.DiagnosticState {
+	value := diagnostic.FromError(code, err, retryable, r.ControlWorkspace, r.Workspace)
+	return store.DiagnosticState{Code: value.Code, Kind: value.Kind, Op: value.Op, Message: value.Message, Fingerprint: value.Fingerprint, Retryable: value.Retryable}
+}
+
+func cloneDiagnostic(value *store.DiagnosticState) *store.DiagnosticState {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
+}
+
+func retryBackoff(policy spec.AttemptsSpec, nextAttempt int) (time.Duration, error) {
+	if policy.Backoff == nil {
+		return 0, nil
+	}
+	initial, err := time.ParseDuration(strings.TrimSpace(policy.Backoff.Initial))
+	if err != nil || initial <= 0 {
+		return 0, fmt.Errorf("attempts.backoff.initial must be a positive duration")
+	}
+	multiplier := policy.Backoff.Multiplier
+	if multiplier == 0 {
+		multiplier = 2
+	}
+	if multiplier < 1 {
+		return 0, fmt.Errorf("attempts.backoff.multiplier must be >= 1")
+	}
+	maximum := time.Duration(0)
+	if strings.TrimSpace(policy.Backoff.Max) != "" {
+		maximum, err = time.ParseDuration(strings.TrimSpace(policy.Backoff.Max))
+		if err != nil || maximum <= 0 {
+			return 0, fmt.Errorf("attempts.backoff.max must be a positive duration")
+		}
+	}
+	delay := float64(initial)
+	for attempt := 2; attempt < nextAttempt; attempt++ {
+		delay *= multiplier
+		if maximum > 0 && delay >= float64(maximum) {
+			delay = float64(maximum)
+			break
+		}
+	}
+	value := time.Duration(delay)
+	if maximum > 0 && value > maximum {
+		value = maximum
+	}
+	if policy.Backoff.Jitter && value > 0 {
+		var b [1]byte
+		if _, err := rand.Read(b[:]); err == nil {
+			// Full decisions are persisted, so random jitter does not change after
+			// restart. Keep the delay in [50%, 100%].
+			factor := 0.5 + (float64(b[0])/255.0)*0.5
+			value = time.Duration(float64(value) * factor)
+		}
+	}
+	return value, nil
+}
+
+func (r *Runner) scheduleRetry(state *store.RunState, node spec.Node, kind, phase, feedback string) error {
+	ns := state.Nodes[node.ID]
+	delay, err := retryBackoff(node.Attempts, ns.Attempts+1)
+	if err != nil {
+		return err
+	}
+	data := map[string]any{"feedback": feedback, "phase": phase, "kind": kind, "next_attempt": ns.Attempts + 1}
+	if delay > 0 {
+		notBefore := time.Now().UTC().Add(delay)
+		fingerprint := ""
+		if ns.Diagnostic != nil {
+			fingerprint = ns.Diagnostic.Fingerprint
+		}
+		ns.Retry = &store.RetryState{NextAttempt: ns.Attempts + 1, NotBefore: notBefore, Delay: delay.String(), Kind: kind, Fingerprint: fingerprint}
+		data["delay"] = delay.String()
+		data["not_before"] = notBefore
+		data["fingerprint"] = fingerprint
+		return r.commit(state, "node.retry.scheduled", node.ID, data)
+	}
+	ns.Retry = nil
+	return r.commit(state, "node.retry", node.ID, data)
+}
+
+func (r *Runner) awaitRetry(ctx context.Context, state *store.RunState, nodeID string) error {
+	ns := state.Nodes[nodeID]
+	if ns == nil || ns.Retry == nil {
+		return nil
+	}
+	for {
+		if r.pauseRequested(state.ID) {
+			state.PauseRequested = true
+			return ErrPaused
+		}
+		if state.CancelRequested || r.cancellationRequested(state.ID) {
+			return context.Canceled
+		}
+		remaining := time.Until(ns.Retry.NotBefore)
+		if remaining <= 0 {
+			break
+		}
+		if remaining > 100*time.Millisecond {
+			remaining = 100 * time.Millisecond
+		}
+		timer := time.NewTimer(remaining)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	completed := ns.Retry
+	ns.Retry = nil
+	return r.commit(state, "node.retry.ready", nodeID, map[string]any{"next_attempt": completed.NextAttempt, "delay": completed.Delay, "fingerprint": completed.Fingerprint})
+}
+
+func canonicalNodePath(id string) string {
+	parts := strings.Split(strings.TrimSpace(id), "__")
+	if len(parts) == 0 || parts[0] == "" {
+		return "/"
+	}
+	path := "/" + parts[0]
+	for _, part := range parts[1:] {
+		if part == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(part); err == nil && n > 0 {
+			path += fmt.Sprintf("[%d]", n)
+		} else {
+			path += "/" + part
+		}
+	}
+	return path
 }
 
 func shouldRetryAttempt(policy spec.AttemptsSpec, kind execution.Kind, attempt, max int) bool {
