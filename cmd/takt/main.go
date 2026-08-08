@@ -65,6 +65,8 @@ func run(args []string) error {
 		return runDispatchCmd(args[1:])
 	case "task":
 		return taskCmd(args[1:])
+	case "learn":
+		return learnCmd(args[1:])
 	case "runs":
 		return runsCmd(args[1:])
 	case "attention":
@@ -1881,7 +1883,7 @@ func wantsJSON(args []string) bool {
 	value := false
 	if len(args) > 0 {
 		switch args[0] {
-		case "run", "plan", "execute", "steer", "answer", "resume", "status", "children", "artifacts", "worktree", "eval", "adapter", "compatibility":
+		case "run", "plan", "execute", "steer", "answer", "resume", "status", "children", "artifacts", "worktree", "eval", "adapter", "compatibility", "learn":
 			value = true
 		case "command":
 			value = len(args) > 1 && args[1] == "run"
@@ -1938,5 +1940,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|task|run|runs|attention|notify|plan|execute|steer|host|workflow|block|adapter|compatibility|package|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
+	return fmt.Errorf("usage: takt <init|validate|task|learn|run|runs|attention|notify|plan|execute|steer|host|workflow|block|adapter|compatibility|package|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
 }

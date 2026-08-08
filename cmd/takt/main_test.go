@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -683,5 +685,72 @@ adapters:
 	}
 	if err := compatibilityCmd([]string{"check", "--workspace", dir, "--config", path, "--live"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPrintResultJSONUsesStableEnvelope(t *testing.T) {
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+	if err := printResult(true, map[string]any{"value": 7}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		OK     bool `json:"ok"`
+		Result struct {
+			Value int `json:"value"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if !envelope.OK || envelope.Result.Value != 7 {
+		t.Fatalf("unexpected CLI envelope: %s", raw)
+	}
+}
+
+func TestPrintErrorJSONUsesStableEnvelope(t *testing.T) {
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = old }()
+	if err := printErrorJSON(errors.New("fixture failure")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Code      string         `json:"code"`
+			Message   string         `json:"message"`
+			Retryable bool           `json:"retryable"`
+			Details   map[string]any `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.OK || envelope.Error.Code != "internal_error" || envelope.Error.Message != "fixture failure" || envelope.Error.Details == nil {
+		t.Fatalf("unexpected CLI error envelope: %s", raw)
 	}
 }

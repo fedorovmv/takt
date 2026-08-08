@@ -2,7 +2,9 @@ package control
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -134,5 +136,38 @@ func TestTaskStatusProjectsParkedPlanAsNeedsInput(t *testing.T) {
 	}
 	if _, err := service.RespondTask(context.Background(), TaskRespondRequest{Reference: record.ID, Action: "continue"}); err == nil || !strings.Contains(err.Error(), "parked") {
 		t.Fatalf("continue on parked plan error = %v", err)
+	}
+}
+
+func TestResolveTaskSourceAtControlBoundary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process fixture uses POSIX shell")
+	}
+	workspace := t.TempDir()
+	adapterPath := filepath.Join(workspace, "fixture-task-source")
+	if err := os.WriteFile(adapterPath, []byte(`#!/bin/sh
+read req
+printf '%s\n' '{"apiVersion":"takt-task-source/v1alpha1","kind":"ResolveResponse","task":{"apiVersion":"takt-task-source/v1alpha1","kind":"Task","id":"issue-42","title":"Fix the issue","goal":"Repair route handling","description":"Keep structured context","acceptance":["route passes"],"source":{"adapter":"untrusted-adapter-name","kind":"fixture.issue","reference":"ACME-42","revision":"sha256:immutable"}}}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(workspace, ".takt", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\ntask_sources:\n  fixture:\n    transport: process\n    argv: ["+adapterPath+"]\n    timeout: 2s\n")
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	goal, task, err := service.resolveTaskStart(context.Background(), TaskStartRequest{Source: "fixture", SourceRef: "ACME-42"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task == nil || task.Source.Adapter != "fixture" || task.Source.Reference != "ACME-42" || task.Source.Revision != "sha256:immutable" {
+		t.Fatalf("task source boundary lost provenance: %#v", task)
+	}
+	if !strings.Contains(goal, "Repair route handling") || !strings.Contains(goal, "route passes") || !strings.Contains(goal, "sha256:immutable") {
+		t.Fatalf("normalized goal lost structured task fields: %q", goal)
 	}
 }

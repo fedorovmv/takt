@@ -21,6 +21,8 @@ import (
 
 const DefaultGHBinary = "gh"
 
+const defaultCommandTimeout = 30 * time.Second
+
 type Adapter struct {
 	GHBinary string
 	Timeout  time.Duration
@@ -316,7 +318,7 @@ func (a Adapter) gh(ctx context.Context, dir, repo string, allowedNonZero int, a
 	}
 	timeout := a.Timeout
 	if timeout <= 0 {
-		timeout = 30 * time.Second
+		timeout = defaultCommandTimeout
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -385,8 +387,13 @@ func resolveRepository(ctx context.Context, workspace string, input changeInput)
 	return "", "", fmt.Errorf("cannot resolve GitHub repository from workspace/input; set repository, repository_workspace, or GH_REPO")
 }
 func repoFromGit(ctx context.Context, dir string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "remote", "get-url", "origin")
+	callCtx, cancel := context.WithTimeout(ctx, defaultCommandTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(callCtx, "git", "-C", dir, "remote", "get-url", "origin")
 	raw, err := cmd.Output()
+	if callCtx.Err() != nil {
+		return "", fmt.Errorf("git remote get-url origin: %w", callCtx.Err())
+	}
 	if err != nil {
 		return "", err
 	}

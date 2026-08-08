@@ -1,4 +1,4 @@
-.PHONY: build test race vet fmt docs contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract simple-reliable-contract evidence-routing-contract check demo
+.PHONY: build test race vet fmt docs manifest contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract simple-reliable-contract evidence-routing-contract check demo
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -17,6 +17,9 @@ fmt:
 
 docs:
 	./scripts/check-docs.sh
+
+manifest:
+	./scripts/verify-manifest.sh
 
 contracts:
 	./scripts/test-fake-assistant.sh
@@ -129,13 +132,16 @@ reference-adapters-contract: build
 task-source-contract: build
 	./scripts/test-task-sources.sh
 
+learning-loop-contract: build
+	./scripts/test-learning-loop.sh
+
 schema-contract:
 	./scripts/test-schema-contracts.sh
 
 agent-adapter-conformance:
 	go test ./sdk/agentadapter -count=1
 
-check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract dynamic-takt-contract block-package-contract host-control-contract host-integration-typescript autonomous-run-contract simple-reliable-contract evidence-routing-contract adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract schema-contract agent-adapter-conformance docs
+check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract dynamic-takt-contract block-package-contract host-control-contract host-integration-typescript autonomous-run-contract simple-reliable-contract evidence-routing-contract adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract schema-contract agent-adapter-conformance docs manifest
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml

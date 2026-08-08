@@ -1,37 +1,74 @@
-# Takt v0.1.50-alpha — test results
+# Takt v0.1.51-alpha — test results
 
-Release verification was performed from the working tree and repeated from a clean extraction of the final release archive. The current execution environment is Linux; macOS-specific regressions are included but this report does not claim a fresh macOS run.
+Release verification was performed on Linux from the working tree and then repeated from a clean extraction of the final ZIP. macOS-specific regressions remain in the suite; this report does not claim a fresh macOS run.
 
 ## Working tree
 
 PASS:
 
-- `gofmt` / `go vet ./...`;
+- `gofmt`;
+- `go vet ./...`;
 - `go test ./... -count=1`;
 - `go build ./...`;
-- all 34 JSON Schema files parse and the offline schema registry contract passes;
-- changed-package race contour: runtime, control, assistant, evaluation, schema subset, workflow, domain/task-source transports, compatibility, reference adapters, public SDKs and CLI;
-- iteration history, structured task sources, reference adapters, Adapter Platform, package distribution, multi-repo, runtime/security, compatibility, Route DSL strategy benchmark and task-level benchmark;
-- MCP, external executor, deep workflows, authoring, daemon, Dynamic Takt, trusted block packages, host control, autonomous runs, simple router and evidence routing.
+- offline schema registry: 36 JSON Schemas;
+- docs contract and release manifest;
+- changed-package race contour: `cmd/takt`, learning, control, runtime, domain adapter, assistant, compatibility and GitHub reference adapters;
+- fake assistant, Pi and OpenCode adapter contracts;
+- Route DSL E2E/evaluation/strategy benchmark and task-level Dynamic Takt benchmark;
+- workflow composition, Takt skill and code profile;
+- worktree, governed child Runs/fan-out, node policies and typed artifacts;
+- MCP, external executor, deep workflows, authoring, daemon and Dynamic Takt;
+- trusted BlockPackage, host control and TypeScript host integrations;
+- autonomous Run operations, simple-reliable router and evidence routing;
+- Adapter Platform, package distribution, multi-repo, runtime/security, iteration history and compatibility;
+- reference external adapters and Structured Task Sources;
+- new human-reviewed learning loop contract;
+- public Agent Adapter conformance.
 
-The single aggregate `go test -race ./... -count=1` run was stopped by the external command timeout after packages through `internal/rolecontract` had passed. No test failure was observed. The remaining package tail was then run separately under `-race` and passed, including runtime/store/workspace/workflow/reference/SDK packages. This report therefore does not claim one uninterrupted aggregate race PASS.
+A single `make check` reached the aggregate `go test -race ./...` after successful `gofmt`, `go vet` and full ordinary tests, then was terminated by the external five-minute command limit. No race test failure was observed before termination. The complete changed-package race contour was run separately and passed; this report therefore does not claim one uninterrupted aggregate `go test -race ./...` PASS.
 
-## Review debt closed in v0.1.50
+## v0.1.50 review debt closed
 
-- durable loop history resumes after the last completed iteration and remains bounded at 64 across operator retry;
-- `foreach` and governed child workflow inside `loop_group` have direct regressions; old state without `loop_iterations` remains readable;
-- task-evaluation excludes `.git` from identity/copy and reconstructs a clean Git baseline for cases that require worktree isolation;
-- redaction fails closed on an unreadable per-run config;
-- `input.schema` and `output_format` share behaviorally tested `takt-schema-subset/v1`; unsupported keywords fail closed;
-- all published schemas form an offline registry with local `$ref` only;
-- Pi/OpenCode probes, Domain Describe and reference GitHub commands have bounded timeouts;
-- MCP Domain Adapter env resolves `secret://`; Qwen-side budget exit is normalized as `timed_out`;
-- GitHub SCM macOS path expectation is canonicalized and release garbage such as `version.go.tmp` is rejected by manifest verification.
+- Dynamic Plan fork preserves the original structured `task_source` and immutable source revision;
+- resume after a durable satisfied loop iteration completes without replaying the next iteration or duplicating side effects, including the `MaxIterations` boundary;
+- legacy loop state without `loop_iterations` now has a real resume regression;
+- MCP Domain Adapter uses the bounded process default timeout, rejects non-positive timeout, and sends the current Takt version in MCP `clientInfo`;
+- Task Source example no longer uses the unsupported `task start --config` flag;
+- compatibility schema contract tests fail closed on unknown keywords and use JSON numeric equality for `uniqueItems`;
+- `schema-subset-v1.schema.json` is contract-tested against `schemasubset.Description()`;
+- `verify-manifest.sh` is part of `make check`;
+- empty process `event_types` has a dedicated deny-all regression;
+- GitHub SCM repository discovery is bounded by timeout;
+- GitHub Task Source rejects non-`github.com` issue URLs instead of dropping a GitHub Enterprise host from provenance;
+- CLI JSON success/error envelope is published as a schema and covered by tests;
+- Task Source has a control-boundary unit regression.
 
-## v0.1.50 feature contract
+## v0.1.51 feature contract
 
-`structured task sources: PASS`: the GitHub Issue fixture is resolved through `takt-task-source/v1alpha1`, normalized into a Task with immutable revision/acceptance data, passed through the ordinary `task start`/MCP Task API, and exposed to Router/Planner/Replanner without a second runtime.
+`human-reviewed learning loop: PASS` covers the full local path:
+
+```text
+Run history
+→ repeated durable fingerprint across distinct Runs
+→ immutable skill/block candidate snapshot
+→ human accept/reject with rationale
+→ versioned matrix report + regression gates
+→ candidate hash recheck
+→ .takt/learning/ready/<proposal-id>
+```
+
+The contract verifies that staging is impossible before human review/evaluation and that staging does not install or mutate trusted packages/skill configuration. Learning proposal persistence is fail-closed on corrupted records, and successful-workflow patterns include workflow/config/command definition context.
 
 ## Clean release archive
 
-The release ZIP was extracted to a new directory. From that extraction the following passed: `verify-manifest`, no `bin/`, `gofmt`, `go vet ./...`, full `go test ./... -count=1`, `go build ./...`, the 34-schema offline registry, docs, Structured Task Sources, iteration history, reference adapters, Adapter Platform, package distribution, multi-repo, runtime/security, compatibility, Route DSL strategy benchmark and task-level benchmark. The changed-package race contour also passed from the extracted archive; two long combined race invocations were split after the external command wrapper timed out between package groups.
+PASS from a clean extraction of the release ZIP:
+
+- `VERSION` = `0.1.51-alpha`; Takt skill = `0.33.0`;
+- no `bin/` directory before verification;
+- manifest verification: 598 files;
+- documentation contract and all 36 JSON Schemas;
+- `go test ./... -count=1`, `go vet ./...`, `go build ./...`;
+- human-reviewed learning loop, Structured Task Sources, iteration history, compatibility, reference external adapters and Adapter Platform contracts;
+- changed-package race contour passed in two bounded commands: `cmd/takt`, learning, control, runtime, domain adapter, assistant, compatibility and both GitHub reference adapters.
+
+Only verification artifacts generated by the test scripts (for example `bin/takt`) appeared after the initial package-hygiene check; they are excluded from the release archive and manifest by design.

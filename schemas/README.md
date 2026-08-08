@@ -1,5 +1,7 @@
 # Машиночитаемые схемы
 
+- `cli-envelope.schema.json` — стабильный верхнеуровневый JSON-конверт CLI: `{"ok":true,"result":...}` или структурированная ошибка;
+- `learning-proposal.schema.json` — durable proposal human-reviewed Skill/Block Learning Loop: повторяемый pattern, immutable candidate snapshot, решение ревью, evaluation evidence и staged ready-path;
 - `schema-subset-v1.schema.json` — meta-schema для `takt-schema-subset/v1`, общего контракта `input.schema` и `output_format`;
 - `schema-subset-description.schema.json` — payload `takt compatibility schema`, публикующий точную версию, keywords и неподдерживаемые конструкции subset;
 - `compatibility-matrix.schema.json` — machine-readable support/verification matrix session adapters, host integrations, domain adapters и MCP surfaces;

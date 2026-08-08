@@ -131,6 +131,28 @@ type failLoopStartStore struct {
 	crashed bool
 }
 
+type crashAfterSatisfiedCommitStore struct {
+	store.Repository
+	crashed bool
+}
+
+func (s *crashAfterSatisfiedCommitStore) Commit(state *store.RunState, event store.Event) error {
+	if s.crashed {
+		return errors.New("simulated process loss after satisfied commit")
+	}
+	if event.Type == "loop.iteration.completed" {
+		satisfied, _ := event.Data["satisfied"].(bool)
+		if satisfied {
+			if err := s.Repository.Commit(state, event); err != nil {
+				return err
+			}
+			s.crashed = true
+			return errors.New("simulated process loss after satisfied commit")
+		}
+	}
+	return s.Repository.Commit(state, event)
+}
+
 func (s *failLoopStartStore) Commit(state *store.RunState, event store.Event) error {
 	if s.crashed {
 		return errors.New("simulated crash between iterations")
@@ -186,6 +208,47 @@ func TestLoopGroupCrashBetweenIterationsResumesAfterDurableHistory(t *testing.T)
 	}
 }
 
+func TestLoopGroupResumeAfterSatisfiedCommitDoesNotReplaySideEffectsOrExhaust(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	parent := spec.Node{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{
+		{ID: "effect", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`},
+		{ID: "check", DependsOn: []string{"effect"}, Bash: `test $(cat c) -eq 1`, AllowFailure: true},
+	}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-satisfied-crash"}, Nodes: []spec.Node{parent}}
+	r := New(wf, &spec.Config{}, "wf", "cfg", dir)
+	base := r.Store
+	state := &store.RunState{ID: "run-loop-satisfied-crash", Status: store.RunRunning, WorkflowPath: "wf", ConfigPath: "cfg", Workspace: dir, ExecutionWorkspace: dir, Nodes: map[string]*store.NodeState{"loop": {Status: store.NodeRunning, Path: "/loop"}}, Approvals: map[string]string{}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := base.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	r.Store = &crashAfterSatisfiedCommitStore{Repository: base}
+	if _, err := r.runLoopGroup(context.Background(), state, parent); err == nil || !strings.Contains(err.Error(), "simulated process loss") {
+		t.Fatalf("expected simulated crash, got %v", err)
+	}
+	persisted, err := base.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Nodes["loop"].LoopIterations) != 1 || !persisted.Nodes["loop"].LoopIterations[0].Satisfied {
+		t.Fatalf("satisfied iteration was not durable: %+v", persisted.Nodes["loop"])
+	}
+	r2 := New(wf, &spec.Config{}, "wf", "cfg", dir)
+	result, err := r2.runLoopGroup(context.Background(), persisted, parent)
+	if err != nil {
+		t.Fatalf("resume after satisfied commit must complete, got %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if got := strings.TrimSpace(readFileForTest(t, filepath.Join(dir, "c"))); got != "1" {
+		t.Fatalf("satisfied iteration replayed side effects, counter=%q", got)
+	}
+	if len(persisted.Nodes["loop"].LoopIterations) != 1 {
+		t.Fatalf("resume appended history after satisfied iteration: %+v", persisted.Nodes["loop"].LoopIterations)
+	}
+}
+
 func TestLoopGroupRetryAfterExhaustionDoesNotAppendHistory(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
@@ -227,6 +290,31 @@ func TestLoopHistoryBackwardCompatibleWithoutLoopIterations(t *testing.T) {
 	}
 	if len(state.Nodes["loop"].LoopIterations) != 0 || state.Nodes["loop"].LoopPrevious["check"].ExitCode != 1 {
 		t.Fatalf("legacy state did not decode: %+v", state.Nodes["loop"])
+	}
+}
+
+func TestLoopHistoryBackwardCompatibleStateResumesWithoutLoopIterations(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "legacy-loop-resume"}, Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{ID: "check", Bash: `echo resumed`}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	raw := `{"id":"run-old-loop-resume","status":"running","workflow_path":"<workflow>","config_path":"<config>","workspace":"` + dir + `","execution_workspace":"` + dir + `","nodes":{"loop":{"status":"pending","loop_previous":{"check":{"status":"completed","exit_code":1}}}},"approvals":{}}`
+	var state store.RunState
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		t.Fatal(err)
+	}
+	if err := (store.FS{Workspace: dir}).Save(&state); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := r.Resume(context.Background(), &state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.Status != store.RunCompleted || len(resumed.Nodes["loop"].LoopIterations) != 1 || !resumed.Nodes["loop"].LoopIterations[0].Satisfied {
+		t.Fatalf("legacy loop did not resume into durable history: %+v", resumed.Nodes["loop"])
+	}
+	if got := resumed.Nodes["loop"].LoopIterations[0].Nodes["check"].Output; !strings.Contains(got, "resumed") {
+		t.Fatalf("resume did not execute the next legacy iteration: %q", got)
 	}
 }
 

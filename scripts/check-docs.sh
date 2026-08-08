@@ -41,11 +41,12 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.32.0" \
-  "VERSION|0.1.50-alpha" \
-  "internal/version/version.go|0.1.50-alpha" \
+  "skills/takt/VERSION|0.33.0" \
+  "VERSION|0.1.51-alpha" \
+  "internal/version/version.go|0.1.51-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
+  "skills/takt/SKILL.md|Human-reviewed Learning Loop" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
   "skills/takt/references/workflows.md|Approval, \`subworkflow\`, \`foreach\` и governed \`workflow\`" \
   "skills/takt/references/patterns.md|валидатор → feedback → retry" \
@@ -136,6 +137,12 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-081" \
   "ARCHITECTURE_DECISIONS.md|ADR-082" \
   "ARCHITECTURE_DECISIONS.md|ADR-083" \
+  "ARCHITECTURE_DECISIONS.md|ADR-084" \
+  "docs/65-human-reviewed-learning-loop-v0.1.51.md|Human-reviewed Skill/Block Learning Loop" \
+  "scripts/test-learning-loop.sh|human-reviewed learning loop: PASS" \
+  "schemas/learning-proposal.schema.json|takt-learning/v1alpha1" \
+  "internal/learning/learning.go|StatusPending" \
+  "examples/learning-loop/README.md|Human-reviewed learning loop" \
   "docs/64-structured-task-sources-v0.1.50.md|Structured Task Sources" \
   "scripts/test-task-sources.sh|structured task sources: PASS" \
   "scripts/test-schema-contracts.sh|schema registry contract: PASS" \

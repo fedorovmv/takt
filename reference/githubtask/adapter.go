@@ -134,6 +134,9 @@ func parseReference(raw string) (string, int, string, error) {
 		if err != nil {
 			return "", 0, "", err
 		}
+		if !strings.EqualFold(u.Hostname(), "github.com") {
+			return "", 0, "", fmt.Errorf("GitHub issue URL host must be github.com")
+		}
 		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 		if len(parts) == 4 && parts[2] == "issues" {
 			raw = parts[0] + "/" + parts[1] + "#" + parts[3]

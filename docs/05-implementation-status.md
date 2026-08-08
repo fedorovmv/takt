@@ -1,6 +1,6 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.50-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.51-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
 ## Ядро runtime — реализовано
 
@@ -126,6 +126,16 @@ Deterministic fixture доказывает measurement correctness. Production q
 - `scripts/test-reference-adapters.sh` доказывает оба seams без сетевых credentials;
 - `v0.1.50` добавляет `takt-task-source/v1alpha1`, public `sdk/tasksource`, `source + source_ref` в Task API и reference GitHub Issue source до Router.
 
+## P3 Human-reviewed learning — v0.1.51
+
+- `takt learn scan` находит repeated diagnostic/workflow fingerprints минимум в двух distinct Run;
+- `learn propose` создаёт durable `takt-learning/v1alpha1` proposal с supporting Run IDs, expected benefit и immutable candidate SHA-256;
+- skill и BlockPackage candidates проходят локальную structural validation и snapshot без symlink;
+- `learn review` требует явного решения человека и rationale;
+- `learn evaluate` принимает только versioned matrix reports с `matrix_fingerprint`, `benchmark_id` и regression gates;
+- `learn stage` повторно проверяет candidate hash и пишет только `.takt/learning/ready`, не изменяя trusted packages/skill config;
+- `scripts/test-learning-loop.sh` закрепляет весь gate end-to-end.
+
 ## Фактические незакрытые gaps
 
 1. Live Route DSL production evidence.
@@ -133,8 +143,7 @@ Deterministic fixture доказывает measurement correctness. Production q
 3. Финальная v0.2/v1beta1 migration после production evidence; schema subset, field audit и compatibility matrix закрыты в v0.1.48.
 4. Live strict host conformance Pi/OpenCode.
 5. Live Qwen/GitHub smoke reference adapters с внешними credentials при внедрении; public SDK/reference implementations закрыты в v0.1.49–v0.1.50.
-6. Human-reviewed skill/block learning loop.
-7. Workflow graph/explain/scaffold и статический reject/revise contract.
+6. Workflow graph/explain/scaffold и статический reject/revise contract.
 
 Подробный порядок — `06-roadmap.md`; задачи — `14-backlog-v0.2.md`.
 

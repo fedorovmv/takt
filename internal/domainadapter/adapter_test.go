@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"takt/internal/spec"
+	"takt/internal/version"
 )
 
 func TestProcessTransportDescribeInvokeAndReconcile(t *testing.T) {
@@ -43,7 +44,7 @@ func TestProcessTransportDescribeInvokeAndReconcile(t *testing.T) {
 func TestMCPTransportDiscoversMappedCapabilitiesAndCallsTool(t *testing.T) {
 	argv := []string{os.Args[0], "-test.run=TestDomainAdapterHelper"}
 	workspace := t.TempDir()
-	adapter := &MCP{Spec: spec.DomainAdapterSpec{Domain: "tracker", Transport: "mcp", Argv: argv, Env: map[string]string{"TAKT_DOMAIN_HELPER": "mcp"}, Operations: map[string]string{"item.get": "corp_item_get"}, ReconcileOperations: map[string]string{"item.get": "corp_item_get_reconcile"}}}
+	adapter := &MCP{Spec: spec.DomainAdapterSpec{Domain: "tracker", Transport: "mcp", Argv: argv, Env: map[string]string{"TAKT_DOMAIN_HELPER": "mcp", "TAKT_EXPECT_CLIENT_VERSION": version.Value}, Operations: map[string]string{"item.get": "corp_item_get"}, ReconcileOperations: map[string]string{"item.get": "corp_item_get_reconcile"}}}
 	dec, err := adapter.Describe(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -153,6 +154,13 @@ func helperMCP() {
 		var result any
 		switch method {
 		case "initialize":
+			if expected := os.Getenv("TAKT_EXPECT_CLIENT_VERSION"); expected != "" {
+				params, _ := msg["params"].(map[string]any)
+				client, _ := params["clientInfo"].(map[string]any)
+				if fmt.Sprint(client["version"]) != expected {
+					os.Exit(8)
+				}
+			}
 			result = map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "helper", "version": "1"}}
 		case "tools/list":
 			result = map[string]any{"tools": []map[string]any{{"name": "corp_item_get", "inputSchema": map[string]any{"type": "object"}}, {"name": "corp_item_get_reconcile", "inputSchema": map[string]any{"type": "object"}}}}
@@ -188,5 +196,12 @@ func TestProcessTimeoutDefaultsAndRejectsInvalid(t *testing.T) {
 		if _, err := processTimeout(raw); err == nil {
 			t.Fatalf("timeout %q should fail", raw)
 		}
+	}
+}
+
+func TestMCPTransportRejectsNonPositiveTimeoutBeforeStartingServer(t *testing.T) {
+	m := MCP{Spec: spec.DomainAdapterSpec{Domain: "tracker", Transport: "mcp", Argv: []string{"definitely-not-started"}, Timeout: "0s"}}
+	if _, err := m.start(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "must be positive") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

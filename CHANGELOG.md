@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.51-alpha
+
+- Открыт P3: добавлен human-reviewed Skill/Block Learning Loop `takt learn scan|propose|list|get|review|evaluate|stage` поверх durable Run history без нового runtime/workflow node.
+- Learning proposal `takt-learning/v1alpha1` хранит repeated fingerprint, supporting Run IDs, expected benefit, immutable candidate SHA-256, human rationale и matrix evaluation provenance; schema опубликована как `learning-proposal.schema.json`.
+- `stage` требует human accept и passing regression gates, повторно проверяет candidate hash и пишет только `.takt/learning/ready`; trusted package/skill configuration автоматически не меняется.
+- Исправлен fork structured Task Source provenance и crash-window после durable satisfied loop iteration; добавлены resume regression на satisfied boundary и legacy state без `loop_iterations`.
+- MCP Domain Describe получил bounded default timeout и текущую client version; GitHub SCM discovery получил timeout, GitHub Task Source URL ограничен `github.com`, пустой process `event_types` закреплён как deny-all.
+- Compatibility mini-validator стал fail-closed по schema keywords и использует JSON-number equality; добавлен meta-schema ↔ `schemasubset.Description()` contract test.
+- Исправлен Task Source README, CLI JSON envelope закреплён schema/test, control-level Task Source flow покрыт unit-test, `verify-manifest.sh` включён в `make check`.
+- Добавлены `scripts/test-learning-loop.sh`, `docs/65-human-reviewed-learning-loop-v0.1.51.md`; Takt skill обновлён до 0.33.0.
+
 ## v0.1.50-alpha
 
 - Добавлен `takt-task-source/v1alpha1`, public `sdk/tasksource`, `task_sources` в config и `task start --source/--source-ref`; normalized Task с immutable source revision передаётся Router/Planner/Replanner.

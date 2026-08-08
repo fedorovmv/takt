@@ -585,3 +585,13 @@ Runtime отклоняет configured capability, которой нет в strea
 Нормализованный Task содержит `source.adapter/kind/reference/revision/url` и сохраняется в `dynamicplan.Record`. Router, Planner и Replanner получают тот же структурированный `task_source`; resume/replan не перечитывают источник автоматически. Для старых workflow дополнительно строится совместимый текстовый `GoalText`.
 
 **Причина.** План и evidence должны быть привязаны к определённой ревизии входа. Тихое перечитывание изменившегося issue во время resume/replan сделало бы fingerprint/решения невоспроизводимыми. Новая ревизия внешней задачи должна начинать новый plan/run lineage.
+
+## ADR-084. Learning produces reviewed staged candidates, never implicit trusted-package mutation
+
+**Статус:** принято.
+
+Human-reviewed learning использует durable Run history только как источник повторяемых устойчивых сигналов. Proposal фиксирует supporting Run IDs, expected benefit и immutable SHA-256 snapshot skill/BlockPackage candidate. Переход к `ready` требует отдельного human `accept` с rationale и passing versioned evaluation matrix с regression gates.
+
+`stage` копирует кандидат только в `.takt/learning/ready/<proposal-id>`. Он не изменяет package lock, profile `block_packages`, global/corporate scopes и assistant skill configuration. Подключение staged candidate является отдельным явным действием.
+
+**Причина.** История Run является evidence для предложения, но не источником доверия. Автоматическое обучение, сразу влияющее на следующие исполнения, создало бы самоподдерживающуюся мутацию control plane без независимого review/regression boundary.

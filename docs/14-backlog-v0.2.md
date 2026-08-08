@@ -1,6 +1,6 @@
 # Актуальный backlog Takt v0.2
 
-Статус пересобран после `v0.1.50-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
+Статус пересобран после `v0.1.51-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
 
 ## P0. Доказать полезность текущего Takt
 
@@ -106,23 +106,11 @@ Draft compatibility/migration policy подготовлен. Финальная 
 
 `takt-task-source/v1alpha1` и public `sdk/tasksource` приводят внешний объект к normalized Task до Router. `takt task start`/`takt.task.start` принимают `source + source_ref`; provenance/revision сохраняются в plan и передаются Router/Planner/Replanner. Reference GitHub Issue source доказан E2E. Корпоративные tracker/OpenSpec/PRD adapters используют тот же протокол и не требуют новой core-фичи.
 
-## P3. Следующий продуктовый скачок
+## P3. Product learning и UX
 
-### LEARN-001. Skill/Block Learning Loop
+### LEARN-001. Skill/Block Learning Loop — реализовано в v0.1.51
 
-Построить только как управляемое предложение:
-
-```text
-Run history
-→ повторяющийся паттерн/ошибка
-→ candidate skill/block
-→ provenance + примеры Run + ожидаемая польза
-→ human review
-→ package update
-→ evaluation gate
-```
-
-Автоматическая мутация trusted packages запрещена. Новый skill/block становится активным только после явного принятия и regression evaluation.
+`takt learn scan|propose|review|evaluate|stage` реализует управляемый путь от повторяемого durable fingerprint к immutable candidate snapshot. Proposal сохраняет supporting Run IDs, expected benefit, human rationale и matrix evaluation provenance. Stage доступен только после accept + passing gates и пишет в `.takt/learning/ready`, не изменяя trusted package/skill configuration.
 
 ### UX-001. Представление процесса
 

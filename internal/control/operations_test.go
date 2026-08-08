@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"takt/internal/dynamicplan"
+	"takt/internal/profile"
 	"takt/internal/store"
+	tasksource "takt/sdk/tasksource"
 )
 
 func TestDetachedStartAcceptsImmediateDurableFailure(t *testing.T) {
@@ -704,6 +706,54 @@ func TestForkPersistsSourceFingerprintAndProvenance(t *testing.T) {
 	}
 	if state.ForkedFromRunID != started.RunID || state.ForkSourceFingerprint == "" || state.Input != "fork input" {
 		t.Fatalf("fork provenance missing: %#v", state)
+	}
+}
+
+func TestPlanForkPreservesStructuredTaskSource(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, filepath.Join(workspace, ".takt", "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := candidateDynamicPlan()
+	source := &tasksource.Task{
+		APIVersion: tasksource.ProtocolV1Alpha1,
+		Kind:       "Task",
+		ID:         "github:acme/app#42",
+		Title:      "Fix issue",
+		Goal:       candidate.Goal,
+		Source: tasksource.Source{
+			Adapter: "github", Kind: "github.issue", Reference: "acme/app#42", Revision: "sha256:immutable",
+		},
+	}
+	planned, err := service.Plan(context.Background(), PlanRequest{Goal: candidate.Goal, Profile: "code", Candidate: &candidate, TaskSource: source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceRunID := "run-plan-fork-source"
+	now := time.Now().UTC()
+	run := &store.RunState{ID: sourceRunID, Status: store.RunCompleted, WorkflowPath: "workflow.yaml", ConfigPath: service.ConfigPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now}
+	if err := (store.FS{Workspace: workspace}).Save(run); err != nil {
+		t.Fatal(err)
+	}
+	planned.Record.CurrentRunID = sourceRunID
+	planned.Record.ExecutionRunIDs = []string{sourceRunID}
+	if err := service.savePlanRecord(planned.Record); err != nil {
+		t.Fatal(err)
+	}
+	forked, err := service.Fork(context.Background(), ForkRequest{RunID: sourceRunID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forked.Plan == nil || forked.Plan.Record.TaskSource == nil {
+		t.Fatalf("fork lost task source: %#v", forked)
+	}
+	got := forked.Plan.Record.TaskSource.Source
+	if got.Adapter != "github" || got.Reference != "acme/app#42" || got.Revision != "sha256:immutable" {
+		t.Fatalf("fork changed task provenance: %#v", forked.Plan.Record.TaskSource)
 	}
 }
 

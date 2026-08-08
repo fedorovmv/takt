@@ -1,6 +1,6 @@
 # План развития Takt
 
-Актуальный план после `v0.1.50-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/62-*.md`.
+Актуальный план после `v0.1.51-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/65-*.md`.
 
 ## Текущая позиция
 
@@ -75,13 +75,19 @@ Reference implementations живут поверх публичных SDK/кон�
 
 ## P3. Learning и UX
 
-Следующая крупная продуктовая тема после v0.2:
+P3 открыт в `v0.1.51-alpha`. Реализован первый самостоятельный срез:
 
-- Run history → candidate skill/block → human review → package → eval;
+- Run history → repeated fingerprint → immutable candidate skill/block snapshot;
+- human review с rationale;
+- существующий matrix evaluation + regression gates;
+- staged ready candidate без автоматической установки trusted package/skill.
+
+Следующие P3-срезы:
+
 - `workflow graph/explain/scaffold` и расширенный `plan explain`;
 - bounded reject/revise для статических approvals.
 
-Learning loop не имеет права автоматически изменять trusted package: принятие и evaluation остаются обязательными gates.
+Learning loop сохраняет trust boundary: принятие и evaluation обязательны, а активация staged candidate остаётся отдельным явным действием.
 
 ## Отложено
 

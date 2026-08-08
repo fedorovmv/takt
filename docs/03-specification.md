@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.50-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.51-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -839,3 +839,14 @@ source + source_ref
 ```
 
 Source resolution happens before the existing Task Router. Router, Dynamic Planner and Replanner receive the same structured `task_source`; ordinary workflow input remains the compatible compiled GoalText. Resume/replan does not re-fetch the source. Task Sources are ingress and are distinct from `adapter` nodes / Domain Adapter side effects.
+
+
+## Human-reviewed Learning Loop — v0.1.51
+
+`takt learn` operates on durable local Run history and does not add a workflow node or second runtime. `scan` groups only stable identifiers already persisted by Takt: diagnostic fingerprints across distinct Runs and completed workflow fingerprints. `min-runs` is at least `2`.
+
+`propose` snapshots a `skill` or one-block `BlockPackage` under `.takt/learning/proposals/<id>/candidate`, records supporting Run IDs, expected benefit and SHA-256, and creates `takt-learning/v1alpha1 LearningProposal` in `pending_review`. Skill frontmatter `name` must match the proposal candidate name. Candidate trees reject symlinks/non-regular files.
+
+`review` requires explicit `accept|reject` plus a non-empty human rationale. An accepted proposal still cannot be staged until `learn evaluate` snapshots a passing `takt-evaluation-matrix/v1alpha1` or `takt-task-evaluation-matrix/v1alpha1` report with `matrix_fingerprint`, `benchmark_id` and at least one passing regression gate.
+
+`stage` re-hashes the candidate and fails if the reviewed snapshot changed. A successful stage copies only to `.takt/learning/ready/<id>`; it never updates package locks, profile package lists, global/corporate scopes or assistant skill configuration. Activation remains an explicit operation outside the learning loop. Machine-readable contract: `schemas/learning-proposal.schema.json`.

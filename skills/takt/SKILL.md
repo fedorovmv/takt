@@ -421,3 +421,9 @@ takt run .takt/workflows/main.yaml \
 ## Structured Task Sources
 
 Если задача приходит из issue/tracker/PRD, предпочитай настроенный `task_sources` и запуск `takt task start --source <name> --source-ref <ref>` вместо ручного копирования текста. Source adapter формирует normalized Task с immutable `source.revision`; тот же Task передаётся Router/Planner/Replanner. Не моделируй ingestion как `adapter`-узел workflow.
+
+## Human-reviewed Learning Loop
+
+Используй `takt learn` только для повторяемого durable pattern из истории Run. Сначала `takt learn scan --min-runs 2`, затем создай candidate через `learn propose`, зафиксируй решение человека через `learn review` и приложи versioned matrix report через `learn evaluate`. `learn stage` допустим только после passing regression gates.
+
+Staged candidate находится в `.takt/learning/ready/<proposal-id>`. Не подключай его автоматически к package lock, profile `block_packages` или assistant skills: активация learned skill/block является отдельным явным действием после review/evaluation.

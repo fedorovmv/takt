@@ -10,10 +10,10 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"takt/internal/redact"
 	"takt/internal/spec"
+	"takt/internal/version"
 )
 
 type MCP struct{ Spec spec.DomainAdapterSpec }
@@ -167,16 +167,11 @@ func (m *MCP) start(ctx context.Context, workspace string) (*mcpSession, error) 
 	if len(m.Spec.Argv) == 0 {
 		return nil, fmt.Errorf("MCP domain adapter requires argv")
 	}
-	var cancel context.CancelFunc
-	if m.Spec.Timeout != "" {
-		timeout, err := time.ParseDuration(m.Spec.Timeout)
-		if err != nil {
-			return nil, err
-		}
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-	} else {
-		ctx, cancel = context.WithCancel(ctx)
+	timeout, err := processTimeout(m.Spec.Timeout)
+	if err != nil {
+		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	cmd := exec.CommandContext(ctx, m.Spec.Argv[0], m.Spec.Argv[1:]...)
 	if workspace != "" {
 		cmd.Dir = workspace
@@ -208,7 +203,7 @@ func (m *MCP) start(ctx context.Context, workspace string) (*mcpSession, error) 
 		cancel()
 		return nil, err
 	}
-	if _, err := session.request("initialize", map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "takt", "version": "0.1.42-alpha"}}); err != nil {
+	if _, err := session.request("initialize", map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "takt", "version": version.Value}}); err != nil {
 		session.close()
 		return nil, err
 	}

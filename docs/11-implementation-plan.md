@@ -1,6 +1,6 @@
 # План реализации Takt v0.2
 
-Актуальный план после `v0.1.50-alpha`. Исторические этапы и реализованные возможности перечислены в `05-implementation-status.md`; здесь остаются только действия, которые влияют на решение о стабилизации `v0.2`.
+Актуальный план после `v0.1.51-alpha`. Исторические этапы и реализованные возможности перечислены в `05-implementation-status.md`; здесь остаются только действия, которые влияют на решение о стабилизации `v0.2`.
 
 ## 1. Принцип
 
@@ -123,7 +123,7 @@ Task Router
 
 Live Qwen/GitHub smoke выполняется только при наличии реальных credentials и не подменяется release fixture.
 
-## 8. Веха L1 — human-reviewed learning loop
+## 8. Веха L1 — human-reviewed learning loop — выполнено в v0.1.51
 
 Использовать накопленные Run/evaluation для предложения улучшений:
 
@@ -133,11 +133,12 @@ Run history
 → candidate skill/block
 → provenance + affected cases
 → human review
-→ package update
 → evaluation gate
+→ staged candidate
+→ explicit adoption
 ```
 
-Takt не должен автоматически изменять trusted package без review.
+Реализовано: proposal хранит immutable candidate SHA-256 и supporting Run IDs, human review обязателен, matrix report фиксируется по hash/fingerprint, а stage пишет только в `.takt/learning/ready`. Trusted package/skill configuration автоматически не меняется.
 
 ## 9. UX после стабилизации
 

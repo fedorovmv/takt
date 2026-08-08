@@ -64,3 +64,10 @@ func TestReferencePackageNoInternalImports(t *testing.T) {
 		t.Fatal("internal import")
 	}
 }
+
+func TestReferenceRejectsNonGitHubDotComURLInsteadOfDroppingHost(t *testing.T) {
+	_, _, _, err := parseReference("https://github.example.com/acme/app/issues/42")
+	if err == nil || !strings.Contains(err.Error(), "host must be github.com") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

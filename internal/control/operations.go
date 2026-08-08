@@ -755,7 +755,7 @@ func (s *Service) Fork(ctx context.Context, request ForkRequest) (*ForkResult, e
 		if strings.TrimSpace(request.Input) != "" {
 			candidate.Goal = strings.TrimSpace(request.Input)
 		}
-		result, err := s.Plan(ctx, PlanRequest{Goal: candidate.Goal, Profile: record.Profile, Candidate: &candidate})
+		result, err := s.Plan(ctx, PlanRequest{Goal: candidate.Goal, Profile: record.Profile, Candidate: &candidate, TaskSource: record.TaskSource})
 		if err != nil {
 			return nil, err
 		}

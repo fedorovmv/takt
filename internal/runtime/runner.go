@@ -1109,6 +1109,14 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 	if parentState.LoopIteration > 0 {
 		startIteration = parentState.LoopIteration
 	} else if len(parentState.LoopIterations) > 0 {
+		last := parentState.LoopIterations[len(parentState.LoopIterations)-1]
+		if last.Satisfied {
+			check, ok := last.Nodes[last.UntilNode]
+			if !ok {
+				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("durable satisfied iteration %d is missing until node %q", last.Iteration, last.UntilNode)}
+			}
+			return execResult{Output: check.Output, Stdout: check.Stdout, Stderr: check.Stderr, ExitCode: check.ExitCode, SessionID: check.SessionID, Truncated: check.OutputTruncated}, nil
+		}
 		// loop.iteration.completed is durable before the next iteration starts.
 		// A crash in that boundary window must continue after the last durable
 		// iteration rather than replay iteration 1 and its side effects.

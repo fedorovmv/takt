@@ -10,11 +10,14 @@ go build -o ./bin/takt-github-task-source ./cmd/takt-github-task-source
 
 ```bash
 takt task start \
-  --config examples/task-sources/config.yaml \
   --workspace . \
   --profile code \
   --source github \
   --source-ref owner/repository#42
 ```
+
+Для примера сначала скопируйте `examples/task-sources/config.yaml` в
+`.takt/config.yaml` рабочего каталога или используйте профиль, который уже
+содержит этот `task_sources` config.
 
 GitHub Issue преобразуется в normalized Task до Router. `source.revision` сохраняется в plan; replan/resume использует ту же ревизию и не перечитывает issue автоматически.
