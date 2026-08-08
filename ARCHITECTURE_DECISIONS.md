@@ -606,6 +606,18 @@ Human-reviewed learning использует durable Run history только к
 
 Application зависит от filesystem persistence через consumer-owned `RunStore`; production связывает его с текущим `store.FS`. Evaluation зависит от injected `EvaluationEngine`. Runtime создаётся через явные `Definition + Dependencies`; dependency fields `Runner` закрыты и задаются при construction, а не мутируются после него. Scheduler/attempt lifecycle/action implementations разделены, но конечный набор node actions остаётся closed-world: новый generic plugin/DI/event-bus framework не вводится.
 
-Архитектурные import boundaries, отсутствие concrete store construction в application, private runtime dependencies и тонкий `cmd/takt` проверяются `scripts/test-architecture.sh`, входящим в release gate.
+Архитектурные import boundaries, отсутствие concrete store construction в application, private runtime dependencies и тонкий `cmd/takt` проверяются `go test ./internal/architecture`, входящим в release gate.
 
 **Причина.** К `v0.1.51` один `control.Service`, крупный CLI и отдельные MCP/daemon dispatch paths нарушали SRP/DIP/ISP и создавали несколько мест для одинаковой validation/default semantics. Простое разбиение файлов не устраняло бы эту связность. Application boundary делает операции переиспользуемыми и тестируемыми, DRY оставляет одну бизнес-семантику, а KISS/YAGNI сохраняют обычные Go structs/interfaces вместо нового framework или инфраструктуры без подтверждённой потребности.
+
+## ADR-086. Go tests own product correctness; shell is a bounded external smoke layer
+
+**Статус:** принято.
+
+Product correctness Takt проверяется стандартными Go `*_test.go`. Package-level semantics живут рядом с production code, а black-box CLI/daemon/MCP/evaluation scenarios — в `tests/e2e` с общим Go harness. Harness может запускать настоящие binaries через `os/exec`, но не делегирует assertions shell/Python-скриптам.
+
+`scripts/test-*.sh` разрешены только для явно внешних process/language/package smoke boundaries, которые неудобно или бессмысленно моделировать как Go business test. Текущий allowlist ограничен пятью сценариями: deep code workflows, host control, TypeScript host integrations, portable package distribution и reference external adapters. `internal/architecture` проверяет allowlist и блокирует появление нового shell test framework по умолчанию.
+
+Schema registry/JSON assertions реализуются на Go; отдельная Python-семантика contract validation запрещена. Makefile contract targets могут сохранять исторические имена, но должны вызывать Go tests, если проверяемая семантика доступна внутри Go module.
+
+**Причина.** К `v0.1.52` 38 shell suites образовали второй тестовый framework поверх Go: повторяли build/temp setup, использовали `grep` как structural assertion, Python для JSON и отдельные assertion binaries. Это нарушало DRY, ухудшало diagnostics и делало тестовую архитектуру менее переиспользуемой, чем production architecture после ADR-085. Стандартный Go test stack покрывает те же границы проще; shell остаётся только там, где сама внешняя среда является частью предмета проверки.

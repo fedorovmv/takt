@@ -46,6 +46,7 @@ Takt — Go-runtime, который снаружи оркестрирует го
 - Application services зависят от persistence через consumer-owned ports; transport packages не создают `store.FS`, `runtime.Runner` или notification dispatcher напрямую.
 - Общие MCP/daemon операции добавляются один раз в canonical `internal/appapi` registry. Новый transport-specific business switch запрещён.
 - Closed-world switch node actions допустим и предпочтительнее generic plugin framework; новую абстракцию добавляйте только при двух фактических реализациях/потребителях или подтверждённой внешней extension boundary.
+- Product correctness принадлежит Go `*_test.go`; black-box contracts живут в `tests/e2e`. Новый `scripts/test-*.sh` допускается только как явно обоснованный внешний smoke boundary и должен быть добавлен в allowlist `internal/architecture`.
 
 ## Порядок изменения
 
@@ -61,9 +62,8 @@ Takt — Go-runtime, который снаружи оркестрирует го
 Минимум перед завершением:
 
 ```bash
-gofmt -w cmd internal sdk
+gofmt -w cmd internal sdk reference tests
 go test ./... -count=1
-./scripts/test-architecture.sh
 go test -race ./... -count=1
 go vet ./...
 ./scripts/check-docs.sh

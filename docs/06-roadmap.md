@@ -1,6 +1,6 @@
 # План развития Takt
 
-Актуальный план после `v0.1.52-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/66-*.md`.
+Актуальный план после `v0.1.53-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/67-*.md`.
 
 ## Текущая позиция
 
@@ -22,6 +22,10 @@ Takt уже закрывает основной локальный control plane
 - executable architecture import gate.
 
 Новые core-функции снова допускаются только через эти границы; architecture gate является обязательной частью `make check`.
+
+## P-0.5. Test architecture — выполнено в v0.1.53
+
+После production refactor тестовый контур также переведён на те же принципы DRY/KISS: product correctness принадлежит Go tests, black-box проверки живут в `tests/e2e`, shell ограничен пятью внешними smoke boundaries. Architecture gate контролирует shell allowlist. Детали — `docs/67-go-native-test-architecture-v0.1.53.md`, ADR-086.
 
 ## P0. Evidence
 

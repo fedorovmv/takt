@@ -58,4 +58,4 @@ Go-loader и authoring preflight остаются главным валидат�
 
 ## v0.1.50 structured task sources
 
-`task-source.schema.json` описывает normalized Task/provenance, `task-source-protocol.schema.json` — автономный process protocol `takt-task-source/v1alpha1`, а `schema-subset-description.schema.json` — machine-readable payload `takt compatibility schema`. Все схемы реестра проверяются `scripts/test-schema-contracts.sh`: только local `$ref`, Draft 2020-12 marker и регистрация каждой schema в этом файле.
+`task-source.schema.json` описывает normalized Task/provenance, `task-source-protocol.schema.json` — автономный process protocol `takt-task-source/v1alpha1`, а `schema-subset-description.schema.json` — machine-readable payload `takt compatibility schema`. Все схемы реестра проверяются Go-контрактом `internal/schemacontract`: только local `$ref`, Draft 2020-12 marker и регистрация каждой schema в этом файле.

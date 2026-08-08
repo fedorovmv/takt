@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.34.0" \
-  "VERSION|0.1.52-alpha" \
-  "internal/version/version.go|0.1.52-alpha" \
+  "skills/takt/VERSION|0.35.0" \
+  "VERSION|0.1.53-alpha" \
+  "internal/version/version.go|0.1.53-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/SKILL.md|Human-reviewed Learning Loop" \
@@ -53,7 +53,6 @@ for check in \
   "skills/takt/references/troubleshooting.md|Workflow валиден, но не запускается" \
   "skills/takt/assets/validated-agent-profile/.takt/workflows/basic.yaml|model: deep" \
   "skills/takt/assets/validated-agent-profile/.takt/workflows/validated.yaml|action: retry" \
-  "docs/32-takt-authoring-skill-v0.1.18.md|scripts/test-takt-skill.sh" \
   "README.md|Краткие правила для кодовых агентов" \
   "DEVELOPMENT.md|\`AGENTS.md\`" \
   "docs/12-document-map.md|Правила работы кодовых агентов" \
@@ -90,7 +89,6 @@ for check in \
   "docs/44-local-mcp-control-plane-v0.1.30.md|takt.run.events" \
   "docs/45-agent-events-external-executor-v0.1.31.md|takt.node.claim" \
   "docs/45-agent-events-external-executor-v0.1.31.md|events.idx" \
-  "scripts/test-external-executor.sh|external node executor contract: PASS" \
   "schemas/workflow.schema.json|executor" \
   "schemas/run-state.schema.json|externalExecutionState" \
   "skills/takt/references/mcp.md|takt.node.complete" \
@@ -139,16 +137,16 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-083" \
   "ARCHITECTURE_DECISIONS.md|ADR-084" \
   "ARCHITECTURE_DECISIONS.md|ADR-085" \
+  "ARCHITECTURE_DECISIONS.md|ADR-086" \
+  "docs/67-go-native-test-architecture-v0.1.53.md|Go-native Test Architecture" \
+  "tests/e2e/harness_test.go|func TestMain" \
+  "internal/schemacontract/schema_registry_test.go|TestSchemaRegistryIsOfflineAndDocumented" \
   "docs/66-application-boundary-architecture-refactor-v0.1.52.md|Application Boundary Architecture Refactor" \
-  "scripts/test-architecture.sh|architecture boundaries: PASS" \
   "docs/65-human-reviewed-learning-loop-v0.1.51.md|Human-reviewed Skill/Block Learning Loop" \
-  "scripts/test-learning-loop.sh|human-reviewed learning loop: PASS" \
   "schemas/learning-proposal.schema.json|takt-learning/v1alpha1" \
   "internal/learning/learning.go|StatusPending" \
   "examples/learning-loop/README.md|Human-reviewed learning loop" \
   "docs/64-structured-task-sources-v0.1.50.md|Structured Task Sources" \
-  "scripts/test-task-sources.sh|structured task sources: PASS" \
-  "scripts/test-schema-contracts.sh|schema registry contract: PASS" \
   "schemas/task-source.schema.json|Normalized Takt Task Source" \
   "schemas/task-source-protocol.schema.json|takt-task-source/v1alpha1" \
   "reference/githubtask/adapter.go|takt/sdk/tasksource" \
@@ -169,31 +167,25 @@ for check in \
   "schemas/compatibility-matrix.schema.json|Takt Compatibility Matrix" \
   "schemas/compatibility-check.schema.json|CompatibilityCheck" \
   "schemas/v1beta1-field-matrix.schema.json|V1Beta1FieldMatrix" \
-  "scripts/test-compatibility.sh|compatibility contract: PASS" \
   "docs/61-v0.2-stabilization-iteration-history-v0.1.47.md|Iteration History & Contract Audit" \
   "schemas/run-state.schema.json|loop_iterations" \
-  "scripts/test-iteration-history.sh|iteration history contract: PASS" \
   "schemas/task-case-manifest.schema.json|TaskCaseManifest" \
   "schemas/task-evaluation-matrix.schema.json|TaskEvaluationMatrix" \
   "schemas/task-evaluation-report.schema.json|takt-task-evaluation-matrix/v1alpha1" \
-  "scripts/test-task-evaluation.sh|task-level dynamic evaluation: PASS" \
   "docs/59-route-dsl-evaluation-strategy-benchmark-v0.1.45.md|Route DSL Evaluation & Strategy Benchmark" \
   "schemas/evaluation-matrix.schema.json|EvaluationMatrix" \
   "schemas/evaluation-case-manifest.schema.json|CaseManifest" \
   "schemas/evaluation-compare.schema.json|takt-evaluation-compare/v1alpha1" \
   "schemas/evaluation-matrix-report.schema.json|takt-evaluation-matrix/v1alpha1" \
-  "scripts/test-route-dsl-benchmark.sh|Route DSL strategy benchmark: PASS" \
   "docs/58-runtime-reliability-local-security-v0.1.44.md|Runtime Reliability & Local Security" \
   "schemas/workflow.schema.json|backoff" \
   "schemas/workflow.schema.json|enforcement" \
   "schemas/run-state.schema.json|diagnosticState" \
   "schemas/run-state.schema.json|retryState" \
   "schemas/run-state.schema.json|sandboxState" \
-  "scripts/test-runtime-reliability-security.sh|Runtime Reliability & Local Security: PASS" \
   "SECURITY.md|secret://ENV_NAME" \
   "docs/57-multi-repo-dynamic-workflows-v0.1.43.md|Multi-repo Dynamic Workflows" \
   "schemas/workspace.schema.json|Takt Workspace v1alpha1" \
-  "scripts/test-multi-repo.sh|multi-repo dynamic workflow contract: PASS" \
   "docs/56-portable-package-distribution-v0.1.42.md|Portable Package Distribution" \
   "docs/03-specification.md|takt package install" \
   "schemas/package-lock.schema.json|PackageLock" \
@@ -205,17 +197,14 @@ for check in \
   "docs/55-adapter-platform-v0.1.41.md|Adapter Platform" \
   "docs/03-specification.md|Контракт side_effect" \
   "schemas/domain-adapter-protocol.schema.json|takt-domain-adapter/v1alpha1" \
-  "scripts/test-adapter-platform.sh|adapter platform contract: PASS" \
   "sdk/agentadapter/conformance.go|ProtocolV1Alpha2" \
   "docs/54-evidence-baseline-failure-routing-v0.1.40.md|EvidenceManifest" \
   "schemas/evidence-manifest.schema.json|Takt EvidenceManifest" \
-  "scripts/test-evidence-routing.sh|evidence baseline failure routing contract: PASS" \
   "schemas/workflow.schema.json|side_effect" \
   "schemas/run-state.schema.json|reconcile_status" \
   "skills/takt/SKILL.md|external reconciliation" \
   "docs/52-simple-reliable-agent-neutral-router-v0.1.38.md|Simple Reliable Router" \
   "docs/proposals/001-simple-reliable-agent-neutral-takt.md|Takt не зависит от Kiro CLI" \
-  "scripts/test-simple-reliable-router.sh|simple reliable task router contract: PASS" \
   "schemas/task-route.schema.json|Takt task route" \
   "schemas/config.schema.json|default_assistant" \
   "skills/takt/references/mcp.md|takt.task.start" \
@@ -226,7 +215,6 @@ for check in \
   "examples/agent-session-adapters/README.md|Kiro CLI" \
   "docs/51-autonomous-run-operations-v0.1.37.md|takt run pause" \
   "docs/51-autonomous-run-operations-v0.1.37.md|takt.notify.list" \
-  "scripts/test-autonomous-runs.sh|autonomous run operations contract: PASS" \
   "schemas/run-state.schema.json|abandoned" \
   "skills/takt/references/mcp.md|takt.run.attention" \
   "README.md|Autonomous Run Operations v0.1.37" \
@@ -241,7 +229,6 @@ for check in \
   "internal/profile/builtin/code/profile.yaml|block_packages" \
   "internal/profile/builtin/code/workflows/blocks/package.yaml|code-core" \
   "examples/corporate-block-package/package.yaml|corporate-engineering" \
-  "scripts/test-block-packages.sh|trusted block package contract: PASS" \
   "skills/takt/SKILL.md|Доверенные пакеты блоков" \
   "skills/takt/references/mcp.md|takt.block.list" \
   "docs/48-dynamic-takt-v0.1.34.md|WorkflowPlan" \
@@ -250,11 +237,8 @@ for check in \
   "skills/takt/references/mcp.md|takt.plan.promote" \
   "schemas/workflow.schema.json|validation" \
   "schemas/workflow-plan.schema.json|WorkflowPlan" \
-  "scripts/test-dynamic-takt.sh|dynamic Takt contract: PASS" \
   "docs/47-authoring-local-daemon-v0.1.33.md|takt daemon start" \
   "docs/47-authoring-local-daemon-v0.1.33.md|${path:-default}" \
-  "scripts/test-authoring.sh|authoring contract: PASS" \
-  "scripts/test-daemon.sh|daemon contract: PASS" \
   "schemas/workflow.schema.json|always_run" \
   "schemas/workflow.schema.json|idle_timeout" \
   "skills/takt/SKILL.md|--warnings-as-errors" \
@@ -265,7 +249,6 @@ for check in \
   "schemas/task-brief.schema.json|Takt compiled task brief" \
   "schemas/block-package.schema.json|reaction" \
   "scripts/test-deep-code-workflows.sh|deep code workflows: PASS" \
-  "scripts/test-mcp.sh|takt.node.tool.request" \
   "schemas/assistant-protocol.schema.json|takt-assistant/v1alpha2" \
   "schemas/workflow.schema.json|tool_approval" \
   "schemas/workflow.schema.json|uniqueItems" \
@@ -273,18 +256,15 @@ for check in \
   "internal/profile/builtin/code/workflows/plan-to-pr.yaml|recovery-report" \
   "docs/03-specification.md|server/discover" \
   "skills/takt/references/mcp.md|takt.run.start" \
-  "scripts/test-mcp.sh|local MCP contract: PASS" \
   "README.md|Локальное управление через MCP и daemon" \
   "docs/43-script-nodes-typed-artifacts-v0.1.29.md|Script-узел" \
   "docs/43-script-nodes-typed-artifacts-v0.1.29.md|takt artifacts" \
-  "scripts/test-script-artifacts.sh|script and typed artifact contract: PASS" \
   "schemas/workflow.schema.json|output_type" \
   "schemas/run-state.schema.json|producer_run_id" \
   "README.md|Script-узлы и типизированные артефакты" \
   "docs/12-document-map.md|43-script-nodes-typed-artifacts-v0.1.29.md" \
   "docs/42-governed-child-fanout-v0.1.28.md|child_run.fan_out.linked" \
   "docs/42-governed-child-fanout-v0.1.28.md|max_parallel" \
-  "scripts/test-child-fanout.sh|governed child fan-out contract: PASS" \
   "schemas/workflow.schema.json|fan_out" \
   "schemas/run-state.schema.json|child_runs" \
   "internal/profile/builtin/code/VERSION|0.16.0" \
@@ -292,15 +272,12 @@ for check in \
   "docs/12-document-map.md|42-governed-child-fanout-v0.1.28.md" \
   "docs/41-node-capability-policies-v0.1.27.md|Capability negotiation" \
   "docs/41-node-capability-policies-v0.1.27.md|allowed_tools: []" \
-  "scripts/test-policies.sh|node capability policy contract: PASS" \
   ".github/workflows/ci.yml|macos-latest" \
   "schemas/run-state.schema.json|inherited_policy" \
   "schemas/assistant-protocol.schema.json|tools_restricted" \
   "README.md|Политики возможностей узла" \
   "docs/40-governed-child-runs-v0.1.26.md|Governed child Runs" \
   "docs/40-governed-child-runs-v0.1.26.md|takt children" \
-  "scripts/test-worktree.sh|git worktree contract: PASS" \
-  "scripts/test-child-runs.sh|governed child run contract: PASS" \
   "README.md|takt children <run-id>" \
   "docs/03-specification.md|governed child Run" \
   "schemas/run-state.schema.json|parent_run_id" \
@@ -315,11 +292,9 @@ for check in \
   "skills/takt/references/workflows.md|## Subworkflow" \
   "skills/takt/assets/validated-agent-profile/.takt/workflows/composition.yaml|foreach:" \
   "examples/composition/workflow.yaml|items_from:" \
-  "scripts/test-composition.sh|workflow composition: PASS" \
   "README.md|takt init code" \
   "schemas/profile.schema.json|Takt Profile" \
   "skills/takt/SKILL.md|Готовые профили" \
-  "scripts/test-code-profile.sh|code profile catalog contract: PASS" \
   "docs/10-assistant-adapter-spec.md|OpenCode adapter реализован" \
   "docs/03-specification.md|### OpenCode assistant" \
   "skills/takt/references/configuration.md|Assistant opencode" \
@@ -327,7 +302,6 @@ for check in \
   "examples/opencode-smoke/workflow.yaml|assistant: opencode" \
   "examples/authoring-daemon/workflow.yaml|always_run: true" \
   "examples/authoring-daemon/README.md|takt daemon start" \
-  "scripts/test-opencode-adapter.sh|OpenCode adapter contract suite: PASS" \
   "docs/03-specification.md|allow_failure" \
   "docs/03-specification.md|родительский \`loop_group\`" \
   "docs/03-specification.md|официальный RPC-режим Pi" \
@@ -384,8 +358,6 @@ for check in \
   "examples/route-dsl-eval/README.md|takt eval run" \
   "examples/route-dsl-benchmark/README.md|25 заданиях" \
   "examples/route-dsl-e2e/workflow.yaml|validate-generated-route" \
-  "scripts/test-route-dsl-e2e.sh|Route DSL end-to-end: PASS" \
-  "scripts/test-route-dsl-eval.sh|takt eval run" \
   "schemas/run-state.schema.json|resumed" \
   "schemas/run-state.schema.json|assistant_version" \
   "schemas/run-state.schema.json|resolved_model" \

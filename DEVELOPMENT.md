@@ -75,27 +75,28 @@ make route-benchmark
 
 ## Тесты
 
+Основной контур — стандартный Go toolchain:
+
 ```bash
-go test ./...
-go test -race ./...
+go test ./... -count=1
+go test -race ./... -count=1
 go vet ./...
-go build ./cmd/takt
-go build ./cmd/takt-fake-assistant
-go build ./cmd/takt-fake-pi
-./scripts/test-fake-assistant.sh
-./scripts/test-pi-adapter.sh
-./scripts/test-route-dsl-e2e.sh
-./scripts/test-route-dsl-eval.sh
-./scripts/test-takt-skill.sh
-./scripts/test-script-artifacts.sh
-./scripts/test-mcp.sh
-./scripts/test-authoring.sh
-./scripts/test-daemon.sh
-./scripts/check-docs.sh
-./scripts/verify.sh
+make e2e
 ```
 
-Реальные интеграционные тесты Pi/OpenCode и quality benchmark должны быть opt-in и пропускаться в обычном CI при отсутствии бинарника, credentials, модели или штатного валидатора.
+`tests/e2e` запускает настоящий `takt` и проверяет CLI/daemon/MCP/evaluation через общий Go harness. Shell не используется как второй assertion framework.
+
+Отдельно остаются пять внешних smoke tests:
+
+```bash
+make smoke
+
+# release targets default to GO_TEST_P=8; override if the host has a different safe capacity
+```
+
+Они проверяют process/language/package boundaries: глубокие code workflow, host control, TypeScript host integration, portable package distribution и reference external adapters. Allowlist закреплён в `internal/architecture`; новый shell test требует отдельного архитектурного обоснования. Полный release gate: `make check` или `./scripts/verify.sh`.
+
+Реальные live Pi/OpenCode/credentials smoke и production quality benchmark выполняются отдельно и не подменяются deterministic release fixtures.
 
 ## Структура задачи
 

@@ -194,3 +194,28 @@ func TestArchitectureBoundaries(t *testing.T) {
 	forbidImports(t, root, "internal/daemon",
 		"takt/internal/cli", "takt/internal/runtime", "takt/internal/evaluation", "takt/internal/notification")
 }
+
+func TestShellSmokeBudget(t *testing.T) {
+	root := repoRoot(t)
+	matches, err := filepath.Glob(filepath.Join(root, "scripts", "test-*.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{
+		"test-package-distribution.sh":         true,
+		"test-reference-adapters.sh":           true,
+		"test-deep-code-workflows.sh":          true,
+		"test-host-control.sh":                 true,
+		"test-host-integrations-typescript.sh": true,
+	}
+	for _, path := range matches {
+		name := filepath.Base(path)
+		if !allowed[name] {
+			t.Errorf("Go-native contract expected; unexpected shell test %s", name)
+		}
+		delete(allowed, name)
+	}
+	for name := range allowed {
+		t.Errorf("declared shell smoke test is missing: %s", name)
+	}
+}

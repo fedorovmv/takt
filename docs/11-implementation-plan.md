@@ -1,10 +1,14 @@
 # План реализации Takt v0.2
 
-Актуальный план после `v0.1.52-alpha`. Исторические этапы и реализованные возможности перечислены в `05-implementation-status.md`; здесь остаются только действия, которые влияют на решение о стабилизации `v0.2`.
+Актуальный план после `v0.1.53-alpha`. Исторические этапы и реализованные возможности перечислены в `05-implementation-status.md`; здесь остаются только действия, которые влияют на решение о стабилизации `v0.2`.
 
 ## 0. Веха A1 — application boundary refactor — выполнено в v0.1.52
 
 До новых feature slices выполнен feature freeze: thin CLI transports, application services, production bootstrap, canonical daemon/MCP API, RunStore port, explicit runtime dependencies и architecture gate. Детали — `docs/66-application-boundary-architecture-refactor-v0.1.52.md`, ADR-085.
+
+## 0.5. Веха A2 — Test architecture refactor — выполнено в v0.1.53
+
+38 shell contract suites сведены к Go unit/component + black-box `tests/e2e`; оставлены пять внешних smoke tests. Schema registry больше не имеет отдельной Python-семантики. Architecture gate защищает test boundary. Детали — `docs/67-go-native-test-architecture-v0.1.53.md`, ADR-086.
 
 ## 1. Принцип
 

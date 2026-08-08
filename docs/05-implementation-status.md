@@ -1,6 +1,6 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.52-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.53-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
 ## Ядро runtime — реализовано
 
@@ -134,7 +134,7 @@ Deterministic fixture доказывает measurement correctness. Production q
 - `learn review` требует явного решения человека и rationale;
 - `learn evaluate` принимает только versioned matrix reports с `matrix_fingerprint`, `benchmark_id` и regression gates;
 - `learn stage` повторно проверяет candidate hash и пишет только `.takt/learning/ready`, не изменяя trusted packages/skill config;
-- `scripts/test-learning-loop.sh` закрепляет весь gate end-to-end.
+- `tests/e2e: TestLearningLoopContract` закрепляет весь gate end-to-end.
 
 ## Архитектурная стабилизация — v0.1.52
 
@@ -147,9 +147,20 @@ Deterministic fixture доказывает measurement correctness. Production q
 - daemon/MCP background lifecycle унифицирован через `MaintenanceService`;
 - runtime construction использует explicit `Definition + Dependencies`;
 - node action execution и workflow validation разложены по ответственности без plugin/DI framework;
-- `scripts/test-architecture.sh` закрепляет import boundaries и thin `cmd/takt` в release gate.
+- `go test ./internal/architecture` закрепляет import boundaries и thin `cmd/takt` в release gate.
 
 Внешние workflow/config/state/protocol contracts в этом срезе не менялись.
+
+## Тестовая архитектура — v0.1.53
+
+- product correctness проверяется стандартными Go `*_test.go`;
+- black-box CLI/daemon/MCP/evaluation contracts находятся в `tests/e2e` и используют общий Go harness;
+- schema registry contract перенесён из Python в `internal/schemacontract`;
+- 38 прежних `scripts/test-*.sh` сокращены до пяти внешних smoke boundaries;
+- `internal/architecture` содержит allowlist shell smoke tests и блокирует возврат второго shell test framework;
+- historical Makefile contract targets сохранены, но Go-доступная семантика запускается напрямую через `go test`.
+
+Внешние product contracts не менялись. Детали — `docs/67-go-native-test-architecture-v0.1.53.md`, ADR-086.
 
 ## Фактические незакрытые gaps
 

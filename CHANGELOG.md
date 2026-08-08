@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.53-alpha
+
+- Feature freeze продолжен: продуктовые возможности не добавлялись; тестовый контур переработан после application-boundary refactor.
+- Основной источник product correctness теперь стандартный `go test ./...`; black-box CLI/daemon/MCP/evaluation проверки перенесены в `tests/e2e` и запускают реальные Takt binaries через общий Go harness.
+- 38 исторических `scripts/test-*.sh` сокращены до пяти bounded smoke-сценариев только для внешних process/language/package boundaries; architecture test закрепляет этот allowlist и запрещает рост второго shell test framework.
+- Schema registry/offline contract перенесён из Python/shell в `internal/schemacontract`; Draft 2020-12, локальные `$ref` и регистрация схем проверяются Go-тестом.
+- Удалены test-only `evalassert`/`routee2eassert`; JSON/JSON-RPC, fixtures, temp projects и process assertions переиспользуют `tests/e2e` harness вместо встроенных Python/grep helpers.
+- Исторические Make targets сохранены как совместимые входы, но маршрутизированы в Go packages/tests; `make e2e` и `make smoke` явно разделяют black-box product tests и внешний smoke layer.
+- Монолитный deep-code shell regression сокращён до representative Git/fake-gh/process-agent smoke; валидность полного каталога 19 code workflows закреплена Go E2E и runtime/application suites.
+- Добавлены ADR-086 и `docs/67-go-native-test-architecture-v0.1.53.md`; Takt skill обновлён до 0.35.0.
+
 ## v0.1.52-alpha
 
 - Feature freeze release: продуктовые возможности не добавлялись; проведён application/transport/runtime refactor по SOLID/DRY/KISS/YAGNI перед дальнейшим развитием.

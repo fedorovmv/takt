@@ -166,7 +166,7 @@ Evaluation, learning, compatibility, adapters и package distribution остаю
 
 ## Архитектурный gate
 
-`scripts/test-architecture.sh` и `internal/architecture` проверяют как минимум:
+`internal/architecture` проверяют как минимум:
 
 - отсутствие legacy `internal/control`;
 - `cmd/takt` остаётся launcher и не разрастается;
