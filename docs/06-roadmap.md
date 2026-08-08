@@ -1,6 +1,6 @@
 # План развития Takt
 
-Актуальный план после `v0.1.49-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/62-*.md`.
+Актуальный план после `v0.1.50-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/62-*.md`.
 
 ## Текущая позиция
 
@@ -56,17 +56,20 @@ Stabilization начат в `v0.1.47` и продолжен в `v0.1.48`, но `
 
 ## P2. External seams
 
-P2 начат в `v0.1.49-alpha`. Уже реализованы:
+P2 продолжен в `v0.1.50-alpha`. Уже реализованы:
 
 - reference Qwen Code wrapper через `sdk/agentadapter`;
 - reference GitHub SCM adapter через `sdk/domainadapter`;
 - execution `workspace` как нейтральный domain-request context;
-- conservative process-v1alpha2 capability negotiation без неявного `tool_control`.
+- conservative process-v1alpha2 capability negotiation без неявного `tool_control`;
+- Structured Task Sources: внешний issue/tracker/PRD contract → normalized Task → существующий Router/Dynamic Takt;
+- reference GitHub Issue source через public `sdk/tasksource`.
 
-Остаются:
+Остаётся основной внешний gate:
 
-- live Pi/OpenCode host conformance;
-- один structured task source adapter.
+- live Pi/OpenCode host conformance на pinned versions.
+
+Дополнительные tracker/OpenSpec/PRD source adapters являются integration-level расширениями уже проверенного `takt-task-source/v1alpha1`, а не новой core-фичей.
 
 Reference implementations живут поверх публичных SDK/контрактов; provider-specific логика не переносится в runtime.
 

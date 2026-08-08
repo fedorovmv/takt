@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"takt/internal/spec"
 )
@@ -66,6 +67,24 @@ func TestMCPTransportDiscoversMappedCapabilitiesAndCallsTool(t *testing.T) {
 	}
 }
 
+func TestMCPTransportResolvesSecretEnv(t *testing.T) {
+	t.Setenv("DOMAIN_MCP_TOKEN", "super-secret-value")
+	argv := []string{os.Args[0], "-test.run=TestDomainAdapterHelper"}
+	adapter := &MCP{Spec: spec.DomainAdapterSpec{Domain: "tracker", Transport: "mcp", Argv: argv, Env: map[string]string{"TAKT_DOMAIN_HELPER": "mcp-secret", "TOKEN": "secret://DOMAIN_MCP_TOKEN"}, Operations: map[string]string{"item.get": "corp_item_get"}}}
+	if _, err := adapter.Describe(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMCPTransportMissingSecretFailsClosed(t *testing.T) {
+	_ = os.Unsetenv("TAKT_MISSING_DOMAIN_MCP_SECRET")
+	argv := []string{os.Args[0], "-test.run=TestDomainAdapterHelper"}
+	adapter := &MCP{Spec: spec.DomainAdapterSpec{Domain: "tracker", Transport: "mcp", Argv: argv, Env: map[string]string{"TOKEN": "secret://TAKT_MISSING_DOMAIN_MCP_SECRET"}}}
+	if _, err := adapter.Describe(context.Background()); err == nil || !strings.Contains(err.Error(), "secret") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestProcessTransportEnforcesMaxOutputBytes(t *testing.T) {
 	argv := []string{os.Args[0], "-test.run=TestDomainAdapterHelper"}
 	adapter := &Process{Spec: spec.DomainAdapterSpec{Domain: "scm", Transport: "process", Argv: argv, Env: map[string]string{"TAKT_DOMAIN_HELPER": "process-overflow"}, MaxOutputBytes: 128}}
@@ -83,7 +102,10 @@ func TestDomainAdapterHelper(t *testing.T) {
 		helperProcess()
 		return
 	}
-	if mode == "mcp" {
+	if mode == "mcp" || mode == "mcp-secret" {
+		if mode == "mcp-secret" && os.Getenv("TOKEN") != "super-secret-value" {
+			os.Exit(7)
+		}
 		helperMCP()
 		return
 	}
@@ -151,4 +173,20 @@ func helperMCP() {
 		_ = enc.Encode(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
 	}
 	os.Exit(0)
+}
+
+func TestProcessTimeoutDefaultsAndRejectsInvalid(t *testing.T) {
+	got, err := processTimeout("")
+	if err != nil || got != 10*time.Second {
+		t.Fatalf("default timeout=%s err=%v", got, err)
+	}
+	got, err = processTimeout("250ms")
+	if err != nil || got != 250*time.Millisecond {
+		t.Fatalf("explicit timeout=%s err=%v", got, err)
+	}
+	for _, raw := range []string{"0s", "-1s", "wat"} {
+		if _, err := processTimeout(raw); err == nil {
+			t.Fatalf("timeout %q should fail", raw)
+		}
+	}
 }

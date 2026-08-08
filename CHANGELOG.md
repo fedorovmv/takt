@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.50-alpha
+
+- Добавлен `takt-task-source/v1alpha1`, public `sdk/tasksource`, `task_sources` в config и `task start --source/--source-ref`; normalized Task с immutable source revision передаётся Router/Planner/Replanner.
+- Добавлен reference GitHub Issue source (`reference/githubtask`, `takt-github-task-source`) без imports из `internal/`.
+- Закрыт iteration-history crash/retry debt: resume продолжает после durable history, bounded history не превышает 64, добавлены foreach/governed-child/backward-compat regressions.
+- Schema subset получил поведенческие input/output/unsupported-keyword tests, расширенное keyword coverage и numeric equality для `uniqueItems`; schema registry проверяется offline и без cross-file refs.
+- Pi/OpenCode probes, Domain Describe и reference GitHub commands получили bounded timeouts; MCP domain env поддерживает `secret://`; Qwen budget timeout нормализован через `failure_kind`.
+- Release manifest теперь проверяется `scripts/verify-manifest.sh`; временные `.tmp/.swp/.bak` файлы запрещены в поставке.
+- Добавлены ADR-082/083 и `docs/64-structured-task-sources-v0.1.50.md`.
+
 ## v0.1.49-alpha
 
 - Добавлен `cmd/qwen-takt-adapter` как первая public-SDK-only reference implementation `takt-assistant/v1alpha2`: Qwen Code headless `stream-json`, model selection, fresh/exact resume, timeout, session/message/usage/terminal normalization и fail-closed unsupported Takt policy.

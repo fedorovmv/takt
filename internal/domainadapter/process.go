@@ -101,15 +101,13 @@ func (p *Process) call(ctx context.Context, value processEnvelope) ([]byte, erro
 	if len(p.Spec.Argv) == 0 {
 		return nil, fmt.Errorf("process domain adapter requires argv")
 	}
-	if p.Spec.Timeout != "" {
-		timeout, err := time.ParseDuration(p.Spec.Timeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid domain adapter timeout: %w", err)
-		}
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
+	timeout, err := processTimeout(p.Spec.Timeout)
+	if err != nil {
+		return nil, err
 	}
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, timeout)
+	defer cancel()
 	body, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
@@ -140,6 +138,20 @@ func (p *Process) call(ctx context.Context, value processEnvelope) ([]byte, erro
 		return nil, fmt.Errorf("domain adapter process: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return bytes.TrimSpace(stdout.Bytes()), nil
+}
+
+func processTimeout(raw string) (time.Duration, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 10 * time.Second, nil
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		if err == nil {
+			err = fmt.Errorf("must be positive")
+		}
+		return 0, fmt.Errorf("invalid domain adapter timeout: %w", err)
+	}
+	return parsed, nil
 }
 
 func outputLimit(value int) int64 {

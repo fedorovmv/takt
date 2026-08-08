@@ -42,13 +42,65 @@ YAML
 
 "$ROOT/bin/takt" run "$TMP/workflow.yaml" --config "$TMP/config.yaml" --workspace "$TMP" --json > "$TMP/run.json"
 
-grep -q '"status": "completed"' "$TMP/run.json"
-grep -q '"loop_iterations"' "$TMP/run.json"
-count="$(grep -o '"iteration": [123]' "$TMP/run.json" | wc -l | tr -d ' ')"
-test "$count" = 3
-grep -q '"satisfied": false' "$TMP/run.json"
-grep -q '"satisfied": true' "$TMP/run.json"
-grep -q '"loop_previous"' "$TMP/run.json"
+cat > "$TMP/assert-history.go" <<'GO'
+package main
+
+import (
+  "encoding/json"
+  "fmt"
+  "os"
+  "path/filepath"
+)
+
+type iteration struct {
+  Iteration int `json:"iteration"`
+  Satisfied bool `json:"satisfied"`
+}
+type node struct {
+  LoopIterations []iteration `json:"loop_iterations"`
+  LoopPrevious map[string]any `json:"loop_previous"`
+}
+type state struct {
+  ID string `json:"id"`
+  Status string `json:"status"`
+  Nodes map[string]node `json:"nodes"`
+}
+type envelope struct { Result state `json:"result"` }
+func mustReadState(path string) state {
+  b, err := os.ReadFile(path); if err != nil { panic(err) }
+  var s state
+  if err := json.Unmarshal(b, &s); err != nil { panic(err) }
+  return s
+}
+func mustReadEnvelope(path string) state {
+  b, err := os.ReadFile(path); if err != nil { panic(err) }
+  var e envelope
+  if err := json.Unmarshal(b, &e); err != nil { panic(err) }
+  return e.Result
+}
+func check(label string, s state) {
+  if s.Status != "completed" { panic(fmt.Sprintf("%s status=%q", label, s.Status)) }
+  n, ok := s.Nodes["converge"]; if !ok { panic(label+": missing converge node") }
+  if len(n.LoopIterations) != 3 { panic(fmt.Sprintf("%s iterations=%d", label, len(n.LoopIterations))) }
+  want := []bool{false,false,true}
+  for i, it := range n.LoopIterations {
+    if it.Iteration != i+1 || it.Satisfied != want[i] {
+      panic(fmt.Sprintf("%s iteration[%d]=%+v", label, i, it))
+    }
+  }
+  if len(n.LoopPrevious) == 0 { panic(label+": loop_previous missing") }
+}
+func main() {
+  if len(os.Args) != 3 { panic("usage: assert-history RUN_JSON WORKSPACE") }
+  public := mustReadEnvelope(os.Args[1])
+  check("public", public)
+  durablePath := filepath.Join(os.Args[2], ".takt", "runs", public.ID, "state.json")
+  durable := mustReadState(durablePath)
+  check("durable", durable)
+  if durable.ID != public.ID { panic("durable/public run id mismatch") }
+}
+GO
+go run "$TMP/assert-history.go" "$TMP/run.json" "$TMP"
 
 cat > "$TMP/unbounded.yaml" <<'YAML'
 apiVersion: takt/v1alpha1

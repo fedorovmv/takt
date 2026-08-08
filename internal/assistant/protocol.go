@@ -88,6 +88,7 @@ type ProtocolResult struct {
 	Structured      json.RawMessage        `json:"structured,omitempty"`
 	Session         *ProtocolSessionResult `json:"session,omitempty"`
 	ExitCode        *int                   `json:"exit_code"`
+	FailureKind     string                 `json:"failure_kind,omitempty"`
 	ResolvedModel   *ProtocolModel         `json:"resolved_model,omitempty"`
 	Usage           *ProtocolUsage         `json:"usage,omitempty"`
 }
@@ -184,6 +185,16 @@ func validateProtocolResult(result ProtocolResult, requestedSession ProtocolSess
 	}
 	if result.Status == "failed" && *result.ExitCode == 0 {
 		return fmt.Errorf("failed assistant result cannot have exit_code 0")
+	}
+	if result.FailureKind != "" {
+		if result.Status != "failed" {
+			return fmt.Errorf("assistant result failure_kind requires failed status")
+		}
+		switch result.FailureKind {
+		case "exit", "timed_out", "cancelled":
+		default:
+			return fmt.Errorf("assistant result has unsupported failure_kind %q", result.FailureKind)
+		}
 	}
 	if result.Usage != nil {
 		if result.Usage.InputTokens < 0 {

@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	sdk "takt/sdk/domainadapter"
 )
@@ -58,7 +59,11 @@ esac
 	}
 	raw, _ := os.ReadFile(log)
 	text := string(raw)
-	if !strings.Contains(text, "cwd="+repo) || !strings.Contains(text, "repo=acme/service") {
+	expectedRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "cwd="+expectedRepo) || !strings.Contains(text, "repo=acme/service") {
 		t.Fatalf("wrong gh context: %s", text)
 	}
 }
@@ -259,5 +264,52 @@ func mustRun(t *testing.T, dir, name string, args ...string) {
 	cmd.Dir = dir
 	if raw, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%s %v: %v: %s", name, args, err, raw)
+	}
+}
+
+func TestUnsafeRefsFailBeforeGhInvocation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	root := t.TempDir()
+	marker := filepath.Join(root, "called")
+	fake := fakeGH(t, root, "touch \"$GH_CALLED\"\nprintf '{}\\n'\n")
+	t.Setenv("GH_CALLED", marker)
+	for _, head := range []string{"-evil", "feature/../main", "feature//main", "bad\\ref"} {
+		raw, _ := json.Marshal(changeInput{Repository: "acme/service", Title: "x", Head: head})
+		result := (Adapter{GHBinary: fake}).invoke(context.Background(), sdk.InvokeRequest{RunID: "r", NodeID: "n", Attempt: 1, Workspace: root, Domain: sdk.DomainSCM, Operation: sdk.SCMChangeCreate, Input: raw})
+		if result.Status != "failed" || result.ErrorCode != "INVALID_INPUT" {
+			t.Fatalf("head=%q result=%+v", head, result)
+		}
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("gh invoked for unsafe ref: %v", err)
+	}
+}
+
+func TestGhTimeoutAndDiagnosticsDoNotExposeBody(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	root := t.TempDir()
+	secretBody := "BODY-SHOULD-NOT-LEAK-123"
+	fake := fakeGH(t, root, `
+if [ "$1 $2" = "pr create" ]; then
+  printf '%s\n' "$*" >&2
+  while :; do :; done
+fi
+printf '{}\n'
+`)
+	raw, _ := json.Marshal(changeInput{Repository: "acme/service", Title: "x", Head: "feature/test", Body: secretBody})
+	started := time.Now()
+	result := (Adapter{GHBinary: fake, Timeout: 25 * time.Millisecond}).invoke(context.Background(), sdk.InvokeRequest{RunID: "r", NodeID: "n", Attempt: 1, Workspace: root, Domain: sdk.DomainSCM, Operation: sdk.SCMChangeCreate, Input: raw})
+	if result.Status != "failed" || result.ErrorCode != "GH_ERROR" {
+		t.Fatalf("result=%+v", result)
+	}
+	if time.Since(started) > 500*time.Millisecond {
+		t.Fatalf("gh timeout took %s", time.Since(started))
+	}
+	if strings.Contains(result.Error, secretBody) {
+		t.Fatalf("body leaked through diagnostics: %s", result.Error)
 	}
 }

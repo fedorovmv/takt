@@ -1212,7 +1212,7 @@ func TestTaskSummaryCountsRepeatPairsIndependently(t *testing.T) {
 
 func TestTaskWorkspaceFingerprintMatchesCopiedContentBoundary(t *testing.T) {
 	root := t.TempDir()
-	for _, dir := range []string{".takt/runs/r1", ".takt/plans/p1", ".takt/locks", ".takt/host-sessions", ".takt/notifications"} {
+	for _, dir := range []string{".git/objects", ".takt/runs/r1", ".takt/plans/p1", ".takt/locks", ".takt/host-sessions", ".takt/notifications"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -1236,6 +1236,16 @@ func TestTaskWorkspaceFingerprintMatchesCopiedContentBoundary(t *testing.T) {
 	}
 	if afterIgnored != before {
 		t.Fatalf("runtime-only directory changed fingerprint: before=%s after=%s", before, afterIgnored)
+	}
+	copyDir := filepath.Join(t.TempDir(), "copy")
+	if err := copyTaskTree(root, copyDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(copyDir, ".git")); !os.IsNotExist(err) {
+		t.Fatalf(".git copied into task workspace: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(copyDir, ".takt", "runs")); !os.IsNotExist(err) {
+		t.Fatalf("runtime .takt/runs copied into task workspace: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "kept.txt"), []byte("two"), 0o644); err != nil {
 		t.Fatal(err)

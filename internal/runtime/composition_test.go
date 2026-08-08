@@ -414,3 +414,53 @@ nodes:
 		t.Fatalf("nested script composition failed: state=%+v err=%v", state, err)
 	}
 }
+
+func TestLoopGroupRunsForeachChild(t *testing.T) {
+	dir := t.TempDir()
+	writeCompositionFile(t, filepath.Join(dir, "item.yaml"), `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: item
+nodes:
+  - id: result
+    bash: printf '%s' '${inputs.value}'
+`)
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: loop-foreach
+nodes:
+  - id: retry
+    loop_group:
+      max_iterations: 1
+      nodes:
+        - id: batch
+          foreach:
+            items: [one, two]
+            subworkflow:
+              path: item.yaml
+              inputs:
+                value: ${item}
+      until:
+        node: batch
+        output_contains: two
+`)
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := New(wf, &spec.Config{}, workflowPath, "<config>", dir).Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunCompleted || state.Nodes["retry"].Output != `["one","two"]` {
+		t.Fatalf("unexpected state: %+v", state.Nodes["retry"])
+	}
+	if len(state.Nodes["retry"].LoopIterations) != 1 {
+		t.Fatalf("missing loop history: %+v", state.Nodes["retry"].LoopIterations)
+	}
+	if _, ok := state.Nodes["retry"].LoopIterations[0].Nodes["retry__batch"]; !ok {
+		t.Fatalf("foreach public node missing from history: %+v", state.Nodes["retry"].LoopIterations[0].Nodes)
+	}
+}

@@ -1,6 +1,6 @@
 # Актуальный backlog Takt v0.2
 
-Статус пересобран после `v0.1.49-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
+Статус пересобран после `v0.1.50-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
 
 ## P0. Доказать полезность текущего Takt
 
@@ -102,9 +102,9 @@ Draft compatibility/migration policy подготовлен. Финальная 
 
 `takt-github-scm-adapter` реализует neutral SCM contract через public `sdk/domainadapter` и `gh`: repository/change/check reads, change create/comment/review и reconcile неизвестного side effect. Public domain request получил execution `workspace`, multi-repo publication — точный `repository_workspace`. Корпоративные Git/Tracker/CI должны использовать тот же SDK.
 
-### SEAM-004. Structured task source adapter
+### SEAM-004. Structured task source adapter — реализовано в v0.1.50
 
-Добавить один реальный входной источник (`issue`, tracker item, OpenSpec/PRD или JSON/YAML contract), который приводит внешний объект к Task input до Router. Не смешивать эту границу с domain operations внутри workflow.
+`takt-task-source/v1alpha1` и public `sdk/tasksource` приводят внешний объект к normalized Task до Router. `takt task start`/`takt.task.start` принимают `source + source_ref`; provenance/revision сохраняются в plan и передаются Router/Planner/Replanner. Reference GitHub Issue source доказан E2E. Корпоративные tracker/OpenSpec/PRD adapters используют тот же протокол и не требуют новой core-фичи.
 
 ## P3. Следующий продуктовый скачок
 

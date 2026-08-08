@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.31.0" \
-  "VERSION|0.1.49-alpha" \
-  "internal/version/version.go|0.1.49-alpha" \
+  "skills/takt/VERSION|0.32.0" \
+  "VERSION|0.1.50-alpha" \
+  "internal/version/version.go|0.1.50-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -134,6 +134,17 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-079" \
   "ARCHITECTURE_DECISIONS.md|ADR-080" \
   "ARCHITECTURE_DECISIONS.md|ADR-081" \
+  "ARCHITECTURE_DECISIONS.md|ADR-082" \
+  "ARCHITECTURE_DECISIONS.md|ADR-083" \
+  "docs/64-structured-task-sources-v0.1.50.md|Structured Task Sources" \
+  "scripts/test-task-sources.sh|structured task sources: PASS" \
+  "scripts/test-schema-contracts.sh|schema registry contract: PASS" \
+  "schemas/task-source.schema.json|Normalized Takt Task Source" \
+  "schemas/task-source-protocol.schema.json|takt-task-source/v1alpha1" \
+  "reference/githubtask/adapter.go|takt/sdk/tasksource" \
+  "examples/task-sources/config.yaml|task_sources:" \
+  "examples/task-sources/README.md|Structured Task Source example" \
+  "sdk/tasksource/protocol.go|takt-task-source/v1alpha1" \
   "docs/63-reference-external-adapters-v0.1.49.md|Reference External Adapters" \
   "scripts/test-reference-adapters.sh|reference external adapters contract: PASS" \
   "examples/reference-adapters/config.yaml|qwen-takt-adapter" \

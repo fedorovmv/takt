@@ -328,3 +328,50 @@ func TestValidateRepositoryChildRunRules(t *testing.T) {
 		t.Fatalf("repository fan_out accepted: %v", err)
 	}
 }
+
+func TestLoadRejectsUnsupportedSchemaKeywordsForInputAndOutput(t *testing.T) {
+	dir := t.TempDir()
+	cases := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{name: "input-ref", want: "$ref", yaml: `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: bad-input
+input:
+  format: json
+  schema:
+    type: object
+    $ref: '#/$defs/input'
+nodes:
+  - id: done
+    bash: 'true'
+`},
+		{name: "output-oneof", want: "oneOf", yaml: `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: bad-output
+nodes:
+  - id: done
+    bash: 'printf x'
+    output_format:
+      type: string
+      oneOf:
+        - type: string
+`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(dir, tc.name+".yaml")
+			if err := os.WriteFile(path, []byte(tc.yaml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(path)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected fail-closed error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}

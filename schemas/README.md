@@ -1,14 +1,24 @@
 # Машиночитаемые схемы
 
 - `schema-subset-v1.schema.json` — meta-schema для `takt-schema-subset/v1`, общего контракта `input.schema` и `output_format`;
+- `schema-subset-description.schema.json` — payload `takt compatibility schema`, публикующий точную версию, keywords и неподдерживаемые конструкции subset;
 - `compatibility-matrix.schema.json` — machine-readable support/verification matrix session adapters, host integrations, domain adapters и MCP surfaces;
 - `compatibility-check.schema.json` — отчёт `takt compatibility check` для конкретного Config;
 - `v1beta1-field-matrix.schema.json` — field-level решения `keep|migrate-value|defer|...` для будущей границы v1beta1;
+- `block-package.schema.json` — manifest доверенного BlockPackage, governance, requirements и зависимости;
+- `domain-adapter-protocol.schema.json` — process-протокол публичного `sdk/domainadapter`;
+- `package-lock.schema.json` — воспроизводимый lock установленных packages;
+- `package-policy.schema.json` — source/signature policy для package distribution;
+- `package-signature.schema.json` — detached Ed25519 signature metadata package;
+- `task-brief.schema.json` — скомпилированный bounded brief роли/фазы Dynamic Takt;
+- `task-source.schema.json` — нормализованный provider-neutral Task с immutable source provenance до Router;
+- `task-source-protocol.schema.json` — process-протокол `takt-task-source/v1alpha1` для внешних Task Source adapters;
+- `workflow-plan.schema.json` — ограниченный `WorkflowPlan` Dynamic Takt;
 - `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `default_assistant`, `mock`, `process`, `pi`, `opencode`, Pi-specific `session_dir/project_trust` и OpenCode-specific `agent/auto_approve`, `max_output_bytes` и условные запреты несовместимых полей;
 - `task-route.schema.json` — проверяемое решение Task Router: `workflow|template|dynamic`, сигналы и прогрессивные controls;
 - `evidence-manifest.schema.json` — внутренний EvidenceManifest: baseline, fingerprints известных failures, check-to-evidence mapping и verdict, привязанный к candidate SHA-256;
 - `workspace.schema.json` — bounded multi-repo `takt/v1alpha1 Workspace`: repository IDs, relative paths and acyclic `depends_on`;
-- `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`, `idle_timeout`, `attempts.backoff`, `sandbox.enforcement`, `always_run`, расширенный `output_format`, `one_success`, approval в цикле, `foreach.parallel` и governed child `workflow`;
+- `workflow.schema.json` — текущий `takt/v1alpha1 Workflow` с `loop_group.max_iterations <= 64`, включая `timeout`, `idle_timeout`, `attempts.backoff`, `sandbox.enforcement`, `always_run`, расширенный `output_format`, `one_success`, approval в цикле, `foreach.parallel` и governed child `workflow`;
 - `profile.schema.json` — Profile с default workflow и картой именованных `workflows`;
 - `command-frontmatter.schema.json` — frontmatter Markdown-команд;
 - `run-state.schema.json` — состояние Run, parent/child links, pause/abandon/recovery/operator retry, canonical `NodePath`, bounded `loop_iterations[]`, diagnostics/retry/sandbox decisions, fingerprints, revisions, типизированные Node statuses, execution identity и aggregate usage;
@@ -42,3 +52,8 @@ Go-loader и authoring preflight остаются главным валидат�
 ## v0.1.49 external adapter seam
 
 `domain-adapter-protocol.schema.json` includes optional `workspace` in Invoke/Reconcile requests. It is the execution workspace/cwd supplied by Takt; provider-specific repository identity stays in the operation input/config. Reference implementations are documented in `docs/63-reference-external-adapters-v0.1.49.md`.
+
+
+## v0.1.50 structured task sources
+
+`task-source.schema.json` описывает normalized Task/provenance, `task-source-protocol.schema.json` — автономный process protocol `takt-task-source/v1alpha1`, а `schema-subset-description.schema.json` — machine-readable payload `takt compatibility schema`. Все схемы реестра проверяются `scripts/test-schema-contracts.sh`: только local `$ref`, Draft 2020-12 marker и регистрация каждой schema в этом файле.

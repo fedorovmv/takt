@@ -1,6 +1,6 @@
 # План реализации Takt v0.2
 
-Актуальный план после `v0.1.49-alpha`. Исторические этапы и реализованные возможности перечислены в `05-implementation-status.md`; здесь остаются только действия, которые влияют на решение о стабилизации `v0.2`.
+Актуальный план после `v0.1.50-alpha`. Исторические этапы и реализованные возможности перечислены в `05-implementation-status.md`; здесь остаются только действия, которые влияют на решение о стабилизации `v0.2`.
 
 ## 1. Принцип
 
@@ -105,19 +105,21 @@ Task Router
 - compatibility policy для пакетов и adapters;
 - changelog несовместимых изменений.
 
-## 7. Веха X1 — доказать внешние seams — начато в v0.1.49
+## 7. Веха X1 — доказать внешние seams — продолжено в v0.1.50
 
 `v0.1.49` закрывает два пункта без расширения core:
 
 - `qwen-takt-adapter` использует только public `sdk/agentadapter`;
 - `takt-github-scm-adapter` использует только public `sdk/domainadapter`;
 - domain request получил универсальный execution `workspace`;
-- runtime проверяет фактическую v1alpha2 declaration и не выводит `tool_control` из версии протокола.
+- runtime проверяет фактическую v1alpha2 declaration и не выводит `tool_control` из версии протокола;
+- `v0.1.50` добавляет public `sdk/tasksource`, protocol `takt-task-source/v1alpha1` и reference GitHub Issue source.
 
-Остаются:
+Остаётся core-level внешний gate:
 
-- live host conformance для одной фиксированной версии Pi/OpenCode;
-- один task source adapter, например Issue/Tracker item → Task.
+- live host conformance для одной фиксированной версии Pi/OpenCode.
+
+Дополнительные Issue/Tracker/OpenSpec/PRD source implementations используют уже доказанный Task Source protocol и не требуют нового core seam.
 
 Live Qwen/GitHub smoke выполняется только при наличии реальных credentials и не подменяется release fixture.
 

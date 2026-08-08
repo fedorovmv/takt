@@ -474,3 +474,61 @@ nodes:
 		t.Fatalf("child status=%s", child.Status)
 	}
 }
+
+func TestLoopGroupRunsGovernedWorkflowChild(t *testing.T) {
+	dir := t.TempDir()
+	childPath := filepath.Join(dir, "child-loop.yaml")
+	parentPath := filepath.Join(dir, "parent-loop.yaml")
+	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: child-loop
+nodes:
+  - id: result
+    bash: printf child-done
+`)
+	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: parent-loop
+nodes:
+  - id: retry
+    loop_group:
+      max_iterations: 1
+      nodes:
+        - id: child
+          workflow:
+            path: child-loop.yaml
+            output_node: result
+            isolation: inherit
+      until:
+        node: child
+        output_contains: child-done
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := New(wf, &spec.Config{}, parentPath, "<config>", dir)
+	state, err := runner.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunCompleted || state.Nodes["retry"].Output != "child-done" {
+		t.Fatalf("unexpected loop state: %+v", state.Nodes["retry"])
+	}
+	if len(state.Nodes["retry"].LoopIterations) != 1 {
+		t.Fatalf("missing history: %+v", state.Nodes["retry"].LoopIterations)
+	}
+	loopChild := state.Nodes["retry"].LoopIterations[0].Nodes["retry__child"]
+	if loopChild.Status != store.NodeCompleted || loopChild.ChildRunID == "" {
+		t.Fatalf("governed child missing from loop history: %+v", loopChild)
+	}
+	child, err := runner.Store.Load(loopChild.ChildRunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.Status != store.RunCompleted || child.ParentRunID != state.ID {
+		t.Fatalf("unexpected governed child: %+v", child)
+	}
+}

@@ -6,17 +6,22 @@ import (
 	"strings"
 	"time"
 
+	cfgpkg "takt/internal/config"
 	"takt/internal/dynamicplan"
 	"takt/internal/taskroute"
+	sourceresolver "takt/internal/tasksource"
+	tasksource "takt/sdk/tasksource"
 )
 
 // TaskStartRequest is the compact user-facing entrypoint. Planning and routing
 // always happen first; Go controls whether the preview is immediately accepted.
 type TaskStartRequest struct {
-	Goal     string `json:"goal"`
-	Profile  string `json:"profile,omitempty"`
-	Go       bool   `json:"go,omitempty"`
-	Detached bool   `json:"-"`
+	Goal      string `json:"goal,omitempty"`
+	Source    string `json:"source,omitempty"`
+	SourceRef string `json:"source_ref,omitempty"`
+	Profile   string `json:"profile,omitempty"`
+	Go        bool   `json:"go,omitempty"`
+	Detached  bool   `json:"-"`
 }
 
 type TaskView struct {
@@ -28,6 +33,7 @@ type TaskView struct {
 	PlanID     string              `json:"plan_id,omitempty"`
 	RunID      string              `json:"run_id,omitempty"`
 	Route      *taskroute.Decision `json:"route,omitempty"`
+	TaskSource *tasksource.Task    `json:"task_source,omitempty"`
 	Plan       *PlanView           `json:"plan,omitempty"`
 	Run        *RunSummary         `json:"run,omitempty"`
 }
@@ -46,7 +52,11 @@ type TaskStopRequest struct {
 }
 
 func (s *Service) StartTask(ctx context.Context, request TaskStartRequest) (*TaskView, error) {
-	plan, err := s.Plan(ctx, PlanRequest{Goal: request.Goal, Profile: request.Profile})
+	goal, source, err := s.resolveTaskStart(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := s.Plan(ctx, PlanRequest{Goal: goal, Profile: request.Profile, TaskSource: source})
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +67,7 @@ func (s *Service) StartTask(ctx context.Context, request TaskStartRequest) (*Tas
 		Preview:    conciseTaskPreview(plan),
 		PlanID:     plan.PlanID,
 		Route:      plan.Route,
+		TaskSource: plan.Record.TaskSource,
 		NeedsInput: !request.Go,
 	}
 	if !request.Go {
@@ -82,7 +93,7 @@ func (s *Service) TaskStatus(reference string) (*TaskView, error) {
 		if err != nil {
 			return nil, err
 		}
-		view := &TaskView{Reference: reference, Kind: "plan", Status: plan.Record.Status, PlanID: reference, Route: plan.Route, Plan: plan, Preview: concisePlanView(plan)}
+		view := &TaskView{Reference: reference, Kind: "plan", Status: plan.Record.Status, PlanID: reference, Route: plan.Route, TaskSource: plan.Record.TaskSource, Plan: plan, Preview: concisePlanView(plan)}
 		view.RunID = plan.Record.CurrentRunID
 		view.NeedsInput = plan.Record.Status == "draft" || plan.Record.Status == "waiting" || plan.Record.Status == "paused" || plan.Record.Status == "parked"
 		return view, nil
@@ -92,6 +103,40 @@ func (s *Service) TaskStatus(reference string) (*TaskView, error) {
 		return nil, err
 	}
 	return &TaskView{Reference: reference, Kind: "run", Status: summary.EffectiveStatus, RunID: reference, Run: summary, NeedsInput: summary.Attention.Required}, nil
+}
+
+func (s *Service) resolveTaskStart(ctx context.Context, request TaskStartRequest) (string, *tasksource.Task, error) {
+	goal := strings.TrimSpace(request.Goal)
+	sourceName := strings.TrimSpace(request.Source)
+	ref := strings.TrimSpace(request.SourceRef)
+	if sourceName == "" {
+		if ref != "" {
+			return "", nil, fmt.Errorf("source_ref requires source")
+		}
+		if goal == "" {
+			return "", nil, fmt.Errorf("goal or source is required")
+		}
+		return goal, nil, nil
+	}
+	if goal != "" {
+		return "", nil, fmt.Errorf("goal and source are mutually exclusive")
+	}
+	if ref == "" {
+		return "", nil, fmt.Errorf("source_ref is required with source")
+	}
+	cfg, err := cfgpkg.Load(s.ConfigPath)
+	if err != nil {
+		return "", nil, fmt.Errorf("load task source config: %w", err)
+	}
+	specification, ok := cfg.TaskSources[sourceName]
+	if !ok {
+		return "", nil, fmt.Errorf("task source %q is not configured", sourceName)
+	}
+	task, err := (sourceresolver.Resolver{Name: sourceName, Spec: specification}).Resolve(ctx, ref, s.Workspace)
+	if err != nil {
+		return "", nil, err
+	}
+	return tasksource.GoalText(*task), task, nil
 }
 
 func (s *Service) RespondTask(ctx context.Context, request TaskRespondRequest) (*TaskView, error) {

@@ -11,9 +11,10 @@ import (
 	"takt/internal/store"
 	"takt/internal/taskroute"
 	"takt/internal/workspacecatalog"
+	tasksource "takt/sdk/tasksource"
 )
 
-func (s *Service) routeTask(ctx context.Context, resolved *profile.Resolved, catalog *blockcatalog.Catalog, repositories *workspacecatalog.Catalog, goal string, workflows []WorkflowListEntry, adapterPreflight []AdapterPreflightStatus) (*taskroute.Decision, string, error) {
+func (s *Service) routeTask(ctx context.Context, resolved *profile.Resolved, catalog *blockcatalog.Catalog, repositories *workspacecatalog.Catalog, goal string, source *tasksource.Task, workflows []WorkflowListEntry, adapterPreflight []AdapterPreflightStatus) (*taskroute.Decision, string, error) {
 	if resolved == nil || strings.TrimSpace(resolved.RouterPath) == "" {
 		return nil, "", fmt.Errorf("semantic router is not configured")
 	}
@@ -28,6 +29,7 @@ func (s *Service) routeTask(ctx context.Context, resolved *profile.Resolved, cat
 	}
 	payload, err := json.Marshal(map[string]any{
 		"goal":                  goal,
+		"task_source":           source,
 		"deterministic_signals": taskroute.InferSignals(goal),
 		"existing_workflows":    routedWorkflows,
 		"trusted_catalog":       catalog.PlannerView(),

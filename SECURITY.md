@@ -109,3 +109,8 @@ The current version is not intended for:
 - a portable cross-platform sandbox stronger than the available local OS backend.
 
 A future untrusted/server mode needs a separate threat model and, at minimum, authenticated/authorized control, a hardened sandbox/container boundary, explicit filesystem and network egress policy, a secret broker, quotas, distributed locking and audited retention/recovery.
+
+
+## Structured Task Sources
+
+`task_sources.*.env` supports the same `secret://ENV_NAME` resolution and fail-closed missing-secret behavior as other process adapters. The resolved external task is treated as trusted input from a configured source adapter, normalized to a bounded public contract and persisted through the same plan redaction boundary. Source content does not grant tools, weaken policies or bypass Router/Plan validation.

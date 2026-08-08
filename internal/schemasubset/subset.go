@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -44,6 +47,12 @@ func Description() Contract {
 }
 
 func ValidateDefinition(format spec.OutputFormat, path string) error {
+	if err := rejectDuplicateStrings(format.Required, path+".required"); err != nil {
+		return err
+	}
+	if err := rejectDuplicateStrings(format.Enum, path+".enum"); err != nil {
+		return err
+	}
 	switch format.Type {
 	case "object":
 		if format.MinProperties < 0 || format.MaxProperties < 0 {
@@ -113,6 +122,17 @@ func ValidateDefinition(format spec.OutputFormat, path string) error {
 	return nil
 }
 
+func rejectDuplicateStrings(values []string, path string) error {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			return fmt.Errorf("%s contains duplicate %q", path, value)
+		}
+		seen[value] = struct{}{}
+	}
+	return nil
+}
+
 func ValidateAndNormalize(raw string, schema *spec.OutputFormat) (string, error) {
 	if schema == nil {
 		return raw, nil
@@ -139,6 +159,73 @@ func ValidateAndNormalize(raw string, schema *spec.OutputFormat) (string, error)
 		return "", err
 	}
 	return strings.TrimSpace(buf.String()), nil
+}
+
+func uniquenessKey(value any) (string, error) {
+	var b strings.Builder
+	if err := writeUniquenessKey(&b, value); err != nil {
+		return "", err
+	}
+	return b.String(), nil
+}
+
+func writeUniquenessKey(b *strings.Builder, value any) error {
+	switch v := value.(type) {
+	case nil:
+		b.WriteString("null;")
+	case bool:
+		b.WriteString("bool:")
+		b.WriteString(strconv.FormatBool(v))
+		b.WriteByte(';')
+	case string:
+		b.WriteString("str:")
+		encoded, _ := json.Marshal(v)
+		b.Write(encoded)
+		b.WriteByte(';')
+	case json.Number:
+		rat, ok := new(big.Rat).SetString(v.String())
+		if !ok {
+			return fmt.Errorf("invalid JSON number %q", v.String())
+		}
+		b.WriteString("num:")
+		b.WriteString(rat.RatString())
+		b.WriteByte(';')
+	case float64:
+		rat, ok := new(big.Rat).SetString(strconv.FormatFloat(v, 'g', -1, 64))
+		if !ok {
+			return fmt.Errorf("invalid number %v", v)
+		}
+		b.WriteString("num:")
+		b.WriteString(rat.RatString())
+		b.WriteByte(';')
+	case []any:
+		b.WriteString("array[")
+		for _, item := range v {
+			if err := writeUniquenessKey(b, item); err != nil {
+				return err
+			}
+		}
+		b.WriteString("];")
+	case map[string]any:
+		b.WriteString("object{")
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			encoded, _ := json.Marshal(key)
+			b.Write(encoded)
+			b.WriteByte(':')
+			if err := writeUniquenessKey(b, v[key]); err != nil {
+				return err
+			}
+		}
+		b.WriteString("};")
+	default:
+		return fmt.Errorf("unsupported JSON value type %T", value)
+	}
+	return nil
 }
 
 func ensureJSONEOF(dec *json.Decoder) error {
@@ -215,11 +302,10 @@ func validateValue(value any, schema spec.OutputFormat, path string, requireType
 		if schema.UniqueItems {
 			seen := map[string]int{}
 			for i, child := range array {
-				encoded, err := json.Marshal(child)
+				key, err := uniquenessKey(child)
 				if err != nil {
 					return fmt.Errorf("%s[%d] cannot be compared for uniqueness: %w", path, i, err)
 				}
-				key := string(encoded)
 				if previous, exists := seen[key]; exists {
 					return fmt.Errorf("%s[%d] duplicates %s[%d]", path, i, path, previous)
 				}

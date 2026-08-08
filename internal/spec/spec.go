@@ -281,6 +281,7 @@ type Config struct {
 	Models           map[string]ModelSpec         `json:"models,omitempty"`
 	Assistants       map[string]AssistantSpec     `json:"assistants,omitempty"`
 	Adapters         map[string]DomainAdapterSpec `json:"adapters,omitempty"`
+	TaskSources      map[string]TaskSourceSpec    `json:"task_sources,omitempty"`
 }
 
 type ModelSpec struct {
@@ -307,6 +308,14 @@ type AssistantSpec struct {
 // DomainAdapterSpec binds neutral SCM/tracker/CI operations to either a
 // process protocol implementation or an MCP stdio server. Operation maps are
 // transport details and never appear in workflows.
+type TaskSourceSpec struct {
+	Transport      string            `json:"transport"`
+	Argv           []string          `json:"argv"`
+	Env            map[string]string `json:"env,omitempty"`
+	Timeout        string            `json:"timeout,omitempty"`
+	MaxOutputBytes int               `json:"max_output_bytes,omitempty"`
+}
+
 type DomainAdapterSpec struct {
 	Domain              string            `json:"domain"`
 	Transport           string            `json:"transport"`

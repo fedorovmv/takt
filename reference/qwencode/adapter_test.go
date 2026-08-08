@@ -57,7 +57,7 @@ printf '{"type":"result","subtype":"success","session_id":"%s","result":"done","
 			}
 			args, _ := os.ReadFile(argsLog)
 			text := string(args)
-			for _, want := range []string{"--output-format\nstream-json", "--safe-mode", "--approval-mode\nyolo", "--model\nqwen3-coder", "--max-wall-time\n1234ms"} {
+			for _, want := range []string{"--output-format\nstream-json", "--safe-mode", "--approval-mode\nyolo", "--model\nqwen3-coder", "--max-wall-time\n2s"} {
 				if !strings.Contains(text, want) {
 					t.Fatalf("args missing %q:\n%s", want, text)
 				}
@@ -106,5 +106,69 @@ func writeExecutable(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestQwenWallTimeRoundsUpToDocumentedSeconds(t *testing.T) {
+	cases := map[int64]string{1: "1s", 999: "1s", 1000: "1s", 1001: "2s", 61000: "61s"}
+	for ms, want := range cases {
+		if got := qwenWallTime(ms); got != want {
+			t.Fatalf("%dms => %q, want %q", ms, got, want)
+		}
+	}
+}
+
+func TestAdapterMapsQwenBudgetExitToTimedOutFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	tmp := t.TempDir()
+	fake := filepath.Join(tmp, "qwen")
+	writeExecutable(t, fake, `#!/bin/sh
+printf '{"type":"system","subtype":"session_start","session_id":"s-timeout","model":"qwen-test"}\n'
+printf '{"type":"result","subtype":"error","is_error":true,"session_id":"s-timeout","result":"budget exceeded"}\n'
+exit 55
+`)
+	req := sdk.Request{ProtocolVersion: sdk.ProtocolV1Alpha2, Type: "request", RunID: "run-1", NodeID: "work", Attempt: 1, Prompt: "do it", Workspace: tmp, Model: sdk.Model{Provider: "qwen", ID: "qwen"}, Session: sdk.SessionRequest{Mode: "fresh"}}
+	var input, output, diag bytes.Buffer
+	_ = json.NewEncoder(&input).Encode(req)
+	code := (Adapter{Binary: fake}).Serve(context.Background(), &input, &output, &diag)
+	if code != 55 {
+		t.Fatalf("code=%d diag=%s output=%s", code, diag.String(), output.String())
+	}
+	dec := json.NewDecoder(bytes.NewReader(output.Bytes()))
+	var terminal sdk.Result
+	for dec.More() {
+		var rec sdk.TranscriptRecord
+		if err := dec.Decode(&rec); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Result != nil {
+			terminal = *rec.Result
+		}
+	}
+	if terminal.FailureKind != "timed_out" || terminal.ExitCode == nil || *terminal.ExitCode != 55 {
+		t.Fatalf("terminal=%+v", terminal)
+	}
+}
+
+func TestResumeMismatchDoesNotEmitSessionResumed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture")
+	}
+	tmp := t.TempDir()
+	fake := filepath.Join(tmp, "qwen")
+	writeExecutable(t, fake, `#!/bin/sh
+printf '{"type":"system","subtype":"session_start","session_id":"wrong","model":"qwen-test"}\n'
+sleep 1
+`)
+	req := sdk.Request{ProtocolVersion: sdk.ProtocolV1Alpha2, Type: "request", RunID: "run-1", NodeID: "work", Attempt: 1, Prompt: "do it", Workspace: tmp, Model: sdk.Model{Provider: "qwen", ID: "qwen"}, Session: sdk.SessionRequest{Mode: "resume", ID: "wanted"}}
+	var input, output, diag bytes.Buffer
+	_ = json.NewEncoder(&input).Encode(req)
+	if code := (Adapter{Binary: fake}).Serve(context.Background(), &input, &output, &diag); code == 0 {
+		t.Fatalf("mismatch accepted: %s", output.String())
+	}
+	if strings.Contains(output.String(), `"type":"session.resumed"`) {
+		t.Fatalf("resume event emitted before identity validation: %s", output.String())
 	}
 }

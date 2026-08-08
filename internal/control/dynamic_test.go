@@ -16,6 +16,7 @@ import (
 	"takt/internal/profile"
 	"takt/internal/rolecontract"
 	"takt/internal/workspacecatalog"
+	tasksource "takt/sdk/tasksource"
 )
 
 func candidateDynamicPlan() dynamicplan.Plan {
@@ -610,6 +611,7 @@ func TestReplannerPayloadContainsRepositoriesAndExecutions(t *testing.T) {
 	record := &dynamicplan.Record{
 		CompletedPhases: []string{"inventory"},
 		Results:         map[string]string{"inventory": `{"items":["api"]}`},
+		TaskSource:      &tasksource.Task{APIVersion: tasksource.ProtocolV1Alpha1, Kind: "Task", ID: "issue-1", Title: "Issue", Goal: "Fix", Source: tasksource.Source{Adapter: "github", Kind: "github.issue", Reference: "a/b#1", Revision: "sha256:1"}},
 		RepositoryExecutions: map[string]dynamicplan.RepositoryExecution{
 			"api": {Repository: "api", ExecutionWorkspace: "/tmp/api-worktree", Branch: "takt/api", BaseCommit: "abc123"},
 		},
@@ -619,6 +621,9 @@ func TestReplannerPayloadContainsRepositoriesAndExecutions(t *testing.T) {
 	payload := buildReplannerPayload(plan, record, remaining, catalog, repositories)
 	if payload["repositories"] == nil || payload["repository_executions"] == nil {
 		t.Fatalf("repository context missing from replanner payload: %#v", payload)
+	}
+	if source, ok := payload["task_source"].(*tasksource.Task); !ok || source.Source.Reference != "a/b#1" {
+		t.Fatalf("task source missing from replanner payload: %#v", payload["task_source"])
 	}
 	executions, ok := payload["repository_executions"].(map[string]dynamicplan.RepositoryExecution)
 	if !ok || executions["api"].ExecutionWorkspace != "/tmp/api-worktree" {

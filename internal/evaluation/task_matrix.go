@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -405,6 +406,11 @@ func runTaskCase(ctx context.Context, template, workspace string, strategy TaskM
 		record.Error = err.Error()
 		return record, err
 	}
+	if err := initializeTaskWorkspaceGit(template, workspace); err != nil {
+		record.Status = "infrastructure_error"
+		record.Error = err.Error()
+		return record, err
+	}
 	service, err := control.New(workspace, ".takt/config.yaml")
 	if err != nil {
 		record.Status = "infrastructure_error"
@@ -672,6 +678,34 @@ func copyTaskTree(src, dst string) error {
 	})
 }
 
+func initializeTaskWorkspaceGit(template, workspace string) error {
+	if _, err := os.Stat(filepath.Join(template, ".git")); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	commands := [][]string{
+		{"init", "-q"},
+		{"config", "user.email", "takt-eval@example.invalid"},
+		{"config", "user.name", "Takt Evaluation"},
+		{"add", "."},
+		{"commit", "-qm", "task evaluation baseline"},
+	}
+	for _, args := range commands {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = workspace
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		}
+	}
+	exclude := strings.Join([]string{".takt/plans/", ".takt/runs/", ".takt/locks/", ".takt/host-sessions/", ".takt/notifications/", ""}, "\n")
+	if err := os.WriteFile(filepath.Join(workspace, ".git", "info", "exclude"), []byte(exclude), 0o644); err != nil {
+		return fmt.Errorf("write task evaluation git excludes: %w", err)
+	}
+	return nil
+}
+
 func hashTaskWorkspaceTemplate(root string) (string, error) {
 	h := sha256.New()
 	var files []string
@@ -712,7 +746,7 @@ func hashTaskWorkspaceTemplate(root string) (string, error) {
 
 func taskWorkspaceRuntimeDir(slash string) bool {
 	switch slash {
-	case ".takt/runs", ".takt/plans", ".takt/locks", ".takt/host-sessions", ".takt/notifications":
+	case ".git", ".takt/runs", ".takt/plans", ".takt/locks", ".takt/host-sessions", ".takt/notifications":
 		return true
 	default:
 		return false

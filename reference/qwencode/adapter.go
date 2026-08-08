@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"sort"
-	"strconv"
 	"strings"
 
 	sdk "takt/sdk/agentadapter"
@@ -67,7 +66,7 @@ func (a Adapter) Serve(ctx context.Context, in io.Reader, out, diagnostic io.Wri
 	}
 	if reason := unsupportedRequest(req); reason != "" {
 		_ = emitEvent(enc, event{Type: "diagnostic", Message: reason, Provider: "qwen-code"})
-		return emitFailure(enc, req, "", nil, reason, 1, 0)
+		return emitFailure(enc, req, "", nil, reason, 1, 0, "exit")
 	}
 
 	binary := strings.TrimSpace(a.Binary)
@@ -85,7 +84,7 @@ func (a Adapter) Serve(ctx context.Context, in io.Reader, out, diagnostic io.Wri
 		args = append(args, "--resume", req.Session.ID)
 	}
 	if req.Limits.TimeoutMS > 0 {
-		args = append(args, "--max-wall-time", strconv.FormatInt(req.Limits.TimeoutMS, 10)+"ms")
+		args = append(args, "--max-wall-time", qwenWallTime(req.Limits.TimeoutMS))
 	}
 
 	cmd := exec.CommandContext(ctx, binary, args...)
@@ -101,14 +100,14 @@ func (a Adapter) Serve(ctx context.Context, in io.Reader, out, diagnostic io.Wri
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return emitFailure(enc, req, "", nil, err.Error(), 1, 0)
+		return emitFailure(enc, req, "", nil, err.Error(), 1, 0, "exit")
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return emitFailure(enc, req, "", nil, err.Error(), 1, 0)
+		return emitFailure(enc, req, "", nil, err.Error(), 1, 0, "exit")
 	}
 	if err := cmd.Start(); err != nil {
-		return emitFailure(enc, req, "", nil, err.Error(), 1, 0)
+		return emitFailure(enc, req, "", nil, err.Error(), 1, 0, "exit")
 	}
 	stderrDone := make(chan []byte, 1)
 	go func() { b, _ := io.ReadAll(stderr); stderrDone <- b }()
@@ -129,7 +128,7 @@ func (a Adapter) Serve(ctx context.Context, in io.Reader, out, diagnostic io.Wri
 			_ = cmd.Process.Kill()
 			<-stderrDone
 			_ = cmd.Wait()
-			return emitFailure(enc, req, sessionID, nil, "decode qwen stream-json: "+err.Error(), 1, 0)
+			return emitFailure(enc, req, sessionID, nil, "decode qwen stream-json: "+err.Error(), 1, 0, "exit")
 		}
 		if id := stringValue(msg["session_id"]); id != "" {
 			sessionID = id
@@ -141,8 +140,14 @@ func (a Adapter) Serve(ctx context.Context, in io.Reader, out, diagnostic io.Wri
 				if m := stringValue(msg["model"]); m != "" {
 					modelID = m
 				}
-				kind := "session.started"
 				resumed := req.Session.Mode == "resume"
+				if resumed && sessionID != req.Session.ID {
+					_ = cmd.Process.Kill()
+					<-stderrDone
+					_ = cmd.Wait()
+					return emitFailure(enc, req, sessionID, nil, fmt.Sprintf("qwen resumed session %q instead of %q", sessionID, req.Session.ID), 1, 0, "exit")
+				}
+				kind := "session.started"
 				if resumed {
 					kind = "session.resumed"
 				}
@@ -167,16 +172,16 @@ func (a Adapter) Serve(ctx context.Context, in io.Reader, out, diagnostic io.Wri
 		}
 	}
 	if ctx.Err() != nil {
-		return emitFailure(enc, req, sessionID, nil, ctx.Err().Error(), 1, exitCode(waitErr))
+		return emitFailure(enc, req, sessionID, nil, ctx.Err().Error(), 1, exitCode(waitErr), failureKindForContext(ctx))
 	}
 	if scanErr != nil {
-		return emitFailure(enc, req, sessionID, nil, scanErr.Error(), 1, exitCode(waitErr))
+		return emitFailure(enc, req, sessionID, nil, scanErr.Error(), 1, exitCode(waitErr), "exit")
 	}
 	if final == nil {
-		return emitFailure(enc, req, sessionID, nil, "qwen stream ended without result record", 1, exitCode(waitErr))
+		return emitFailure(enc, req, sessionID, nil, "qwen stream ended without result record", 1, exitCode(waitErr), "exit")
 	}
 	if req.Session.Mode == "resume" && sessionID != req.Session.ID {
-		return emitFailure(enc, req, sessionID, nil, fmt.Sprintf("qwen resumed session %q instead of %q", sessionID, req.Session.ID), 1, exitCode(waitErr))
+		return emitFailure(enc, req, sessionID, nil, fmt.Sprintf("qwen resumed session %q instead of %q", sessionID, req.Session.ID), 1, exitCode(waitErr), "exit")
 	}
 	output := stringValue(final["result"])
 	if output == "" {
@@ -190,15 +195,23 @@ func (a Adapter) Serve(ctx context.Context, in io.Reader, out, diagnostic io.Wri
 	failed := boolValue(final["is_error"]) || stringValue(final["subtype"]) != "success" || childExit != 0
 	code := 0
 	status := "completed"
+	failureKind := ""
 	terminalEvent := "completed"
 	if failed {
-		code, status, terminalEvent = 1, "failed", "failed"
+		code, status, terminalEvent = childExit, "failed", "failed"
+		if code == 0 {
+			code = 1
+		}
+		failureKind = "exit"
+		if childExit == 55 {
+			failureKind = "timed_out"
+		}
 	}
 	_ = emitEvent(enc, event{Type: terminalEvent, Provider: "qwen-code", SessionID: sessionID})
 	resumed := req.Session.Mode == "resume"
 	resolved := sdk.Model{Name: req.Model.Name, Provider: req.Model.Provider, ID: modelID, Params: req.Model.Params}
 	structured, _ := json.Marshal(map[string]any{"adapter": "qwen-code", "qwen_exit_code": childExit, "safe_mode": true, "tool_control": false})
-	result := sdk.Result{ProtocolVersion: sdk.ProtocolV1Alpha2, Type: "result", Status: status, Output: output, Structured: structured, Session: &sdk.SessionResult{ID: sessionID, Resumed: resumed}, ExitCode: &code, ResolvedModel: &resolved, Usage: usage}
+	result := sdk.Result{ProtocolVersion: sdk.ProtocolV1Alpha2, Type: "result", Status: status, Output: output, Structured: structured, Session: &sdk.SessionResult{ID: sessionID, Resumed: resumed}, ExitCode: &code, FailureKind: failureKind, ResolvedModel: &resolved, Usage: usage}
 	if err := sdk.ValidateResult(result, func() string {
 		if resumed {
 			return req.Session.ID
@@ -212,6 +225,24 @@ func (a Adapter) Serve(ctx context.Context, in io.Reader, out, diagnostic io.Wri
 		return 2
 	}
 	return code
+}
+
+func qwenWallTime(timeoutMS int64) string {
+	seconds := (timeoutMS + 999) / 1000
+	if seconds < 1 {
+		seconds = 1
+	}
+	return fmt.Sprintf("%ds", seconds)
+}
+
+func failureKindForContext(ctx context.Context) string {
+	if ctx.Err() == context.DeadlineExceeded {
+		return "timed_out"
+	}
+	if ctx.Err() == context.Canceled {
+		return "cancelled"
+	}
+	return "exit"
 }
 
 func unsupportedRequest(req sdk.Request) string {
@@ -248,11 +279,11 @@ func emitEvent(enc *json.Encoder, value event) error {
 	return enc.Encode(sdk.TranscriptRecord{ProtocolVersion: sdk.ProtocolV1Alpha2, Type: "event", Event: raw})
 }
 
-func emitFailure(enc *json.Encoder, req sdk.Request, sessionID string, usage *sdk.Usage, message string, code, childExit int) int {
+func emitFailure(enc *json.Encoder, req sdk.Request, sessionID string, usage *sdk.Usage, message string, code, childExit int, failureKind string) int {
 	_ = emitEvent(enc, event{Type: "failed", Message: message, Provider: "qwen-code", SessionID: sessionID})
 	structured, _ := json.Marshal(map[string]any{"adapter": "qwen-code", "qwen_exit_code": childExit, "error": message})
 	resumed := req.Session.Mode == "resume"
-	result := sdk.Result{ProtocolVersion: sdk.ProtocolV1Alpha2, Type: "result", Status: "failed", Output: message, Structured: structured, Session: &sdk.SessionResult{ID: sessionID, Resumed: resumed}, ExitCode: &code, Usage: usage}
+	result := sdk.Result{ProtocolVersion: sdk.ProtocolV1Alpha2, Type: "result", Status: "failed", Output: message, Structured: structured, Session: &sdk.SessionResult{ID: sessionID, Resumed: resumed}, ExitCode: &code, FailureKind: failureKind, Usage: usage}
 	_ = enc.Encode(sdk.TranscriptRecord{ProtocolVersion: sdk.ProtocolV1Alpha2, Type: "result", Result: &result})
 	return code
 }

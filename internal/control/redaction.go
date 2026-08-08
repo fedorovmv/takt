@@ -2,6 +2,8 @@ package control
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"takt/internal/config"
 	"takt/internal/dynamicplan"
@@ -9,19 +11,26 @@ import (
 	"takt/internal/store"
 )
 
-func (s *Service) persistenceRedactor(configPath string) *redact.Redactor {
+func (s *Service) persistenceRedactor(configPath string) (*redact.Redactor, error) {
+	configPath = strings.TrimSpace(configPath)
 	if configPath == "" {
-		configPath = s.ConfigPath
+		configPath = strings.TrimSpace(s.ConfigPath)
+	}
+	if configPath == "" {
+		return redact.NewFromEnvironment(), nil
 	}
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return redact.NewFromEnvironment()
+		return nil, fmt.Errorf("load persistence redaction config %s: %w", configPath, err)
 	}
-	return redact.NewFromConfig(cfg)
+	return redact.NewFromConfig(cfg), nil
 }
 
 func (s *Service) commitRedacted(st store.FS, state *store.RunState, event store.Event) error {
-	r := s.persistenceRedactor(state.ConfigPath)
+	r, err := s.persistenceRedactor(state.ConfigPath)
+	if err != nil {
+		return err
+	}
 	persisted, err := redact.CloneRunState(state)
 	if err != nil {
 		return err
@@ -40,7 +49,10 @@ func (s *Service) savePlanRecord(record *dynamicplan.Record) error {
 	if record == nil {
 		return nil
 	}
-	r := s.persistenceRedactor(record.ConfigPath)
+	r, err := s.persistenceRedactor(record.ConfigPath)
+	if err != nil {
+		return err
+	}
 	raw, err := json.Marshal(record)
 	if err != nil {
 		return err

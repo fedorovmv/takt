@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/v1alpha1/task-source.schema.json",
+  "title": "Normalized Takt Task Source",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "id", "title", "goal", "source"],
+  "properties": {
+    "apiVersion": {"const": "takt-task-source/v1alpha1"},
+    "kind": {"const": "Task"},
+    "id": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "goal": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "acceptance": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "labels": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "references": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["adapter", "kind", "reference", "revision"],
+      "properties": {
+        "adapter": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "reference": {"type": "string", "minLength": 1},
+        "revision": {"type": "string", "minLength": 1},
+        "url": {"type": "string"}
+      }
+    }
+  }
+}

@@ -14,13 +14,17 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	sdk "takt/sdk/domainadapter"
 )
 
 const DefaultGHBinary = "gh"
 
-type Adapter struct{ GHBinary string }
+type Adapter struct {
+	GHBinary string
+	Timeout  time.Duration
+}
 
 type envelope struct {
 	APIVersion string                `json:"apiVersion"`
@@ -162,6 +166,14 @@ func (a Adapter) invoke(ctx context.Context, req sdk.InvokeRequest) sdk.Result {
 		if strings.TrimSpace(input.Title) == "" || strings.TrimSpace(input.Head) == "" {
 			return failed("INVALID_INPUT", "change.create requires title and head")
 		}
+		if err := validateRef(input.Head); err != nil {
+			return failed("INVALID_INPUT", "invalid head: "+err.Error())
+		}
+		if input.Base != "" {
+			if err := validateRef(input.Base); err != nil {
+				return failed("INVALID_INPUT", "invalid base: "+err.Error())
+			}
+		}
 		body := withMarker(input.Body, marker)
 		args := []string{"pr", "create", "--title", input.Title, "--body", body, "--head", input.Head}
 		if input.Base != "" {
@@ -181,7 +193,7 @@ func (a Adapter) invoke(ctx context.Context, req sdk.InvokeRequest) sdk.Result {
 		}
 		return completed(view, prURL)
 	case sdk.SCMChangeComment:
-		id, err := changeIdentifier(input)
+		id, err := changeNumber(input)
 		if err != nil {
 			return failed("INVALID_INPUT", err.Error())
 		}
@@ -195,7 +207,7 @@ func (a Adapter) invoke(ctx context.Context, req sdk.InvokeRequest) sdk.Result {
 		}
 		return completed(raw, receiptFromObject("comment", raw))
 	case sdk.SCMChangeReview:
-		id, err := changeIdentifier(input)
+		id, err := changeNumber(input)
 		if err != nil {
 			return failed("INVALID_INPUT", err.Error())
 		}
@@ -264,7 +276,7 @@ func (a Adapter) reconcile(ctx context.Context, req sdk.ReconcileRequest) sdk.Re
 		}
 		return sdk.ReconcileResult{Outcome: "not_applied"}
 	case sdk.SCMChangeComment:
-		id, e := changeIdentifier(input)
+		id, e := changeNumber(input)
 		if e != nil || marker == "" {
 			return sdk.ReconcileResult{Outcome: "unknown", Error: "change.comment reconciliation needs change id and idempotency key"}
 		}
@@ -277,7 +289,7 @@ func (a Adapter) reconcile(ctx context.Context, req sdk.ReconcileRequest) sdk.Re
 		}
 		return sdk.ReconcileResult{Outcome: "not_applied"}
 	case sdk.SCMChangeReview:
-		id, e := changeIdentifier(input)
+		id, e := changeNumber(input)
 		if e != nil || marker == "" {
 			return sdk.ReconcileResult{Outcome: "unknown", Error: "change.review reconciliation needs change id and idempotency key"}
 		}
@@ -302,7 +314,13 @@ func (a Adapter) gh(ctx context.Context, dir, repo string, allowedNonZero int, a
 	if binary == "" {
 		binary = DefaultGHBinary
 	}
-	cmd := exec.CommandContext(ctx, binary, args...)
+	timeout := a.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(callCtx, binary, args...)
 	if dir != "" {
 		cmd.Dir = dir
 	}
@@ -314,9 +332,12 @@ func (a Adapter) gh(ctx context.Context, dir, repo string, allowedNonZero int, a
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
+	if callCtx.Err() != nil {
+		return nil, fmt.Errorf("gh %s: %w", ghOperation(args), callCtx.Err())
+	}
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != allowedNonZero {
-			return nil, fmt.Errorf("gh %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+			return nil, fmt.Errorf("gh %s failed: %w: %s", ghOperation(args), err, trimGHDiagnostic(stderr.String(), args))
 		}
 	}
 	raw := bytes.TrimSpace(stdout.Bytes())
@@ -405,10 +426,60 @@ func changeIdentifier(i changeInput) (string, error) {
 	}
 	for _, v := range []string{i.Ref, i.Head} {
 		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v), nil
+			v = strings.TrimSpace(v)
+			if err := validateRef(v); err != nil {
+				return "", err
+			}
+			return v, nil
 		}
 	}
 	return "", fmt.Errorf("change operation requires number, ref, or head")
+}
+func changeNumber(i changeInput) (string, error) {
+	if i.Number > 0 {
+		return strconv.Itoa(i.Number), nil
+	}
+	v := strings.TrimSpace(i.Ref)
+	n, err := strconv.Atoi(v)
+	if err == nil && n > 0 {
+		return strconv.Itoa(n), nil
+	}
+	return "", fmt.Errorf("operation requires a positive change number")
+}
+func validateRef(v string) error {
+	v = strings.TrimSpace(v)
+	if v == "" || strings.HasPrefix(v, "-") || strings.Contains(v, "..") || strings.Contains(v, "//") || strings.ContainsAny(v, "\\\r\n\t") {
+		return fmt.Errorf("unsafe ref %q", v)
+	}
+	return nil
+}
+func ghOperation(args []string) string {
+	if len(args) == 0 {
+		return "command"
+	}
+	if len(args) == 1 {
+		return args[0]
+	}
+	return args[0] + " " + args[1]
+}
+func trimGHDiagnostic(v string, args []string) string {
+	v = strings.TrimSpace(v)
+	for i, arg := range args {
+		if i > 0 && args[i-1] == "--body" {
+			v = strings.ReplaceAll(v, arg, "<redacted-body>")
+			continue
+		}
+		if strings.HasPrefix(arg, "body=") {
+			v = strings.ReplaceAll(v, arg, "body=<redacted-body>")
+			if body := strings.TrimPrefix(arg, "body="); body != "" {
+				v = strings.ReplaceAll(v, body, "<redacted-body>")
+			}
+		}
+	}
+	if len(v) > 2048 {
+		v = v[:2048] + "..."
+	}
+	return v
 }
 func reviewEvent(v string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(v)) {

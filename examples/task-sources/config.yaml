@@ -1,0 +1,25 @@
+apiVersion: takt/v1alpha1
+kind: Config
+
+default_assistant: coding-agent
+
+models:
+  routing:
+    provider: local
+    id: routing
+  implementation:
+    provider: local
+    id: implementation
+
+assistants:
+  coding-agent:
+    type: process
+    argv: [qwen-takt-adapter]
+
+task_sources:
+  github:
+    transport: process
+    argv: [takt-github-task-source]
+    env:
+      GH_TOKEN: secret://GH_TOKEN
+    timeout: 30s

@@ -338,14 +338,16 @@ func (s *Server) executeTool(ctx context.Context, name string, args map[string]a
 	switch name {
 	case "takt.task.start":
 		var in struct {
-			Goal    string `json:"goal"`
-			Profile string `json:"profile,omitempty"`
-			Go      bool   `json:"go,omitempty"`
+			Goal      string `json:"goal,omitempty"`
+			Source    string `json:"source,omitempty"`
+			SourceRef string `json:"source_ref,omitempty"`
+			Profile   string `json:"profile,omitempty"`
+			Go        bool   `json:"go,omitempty"`
 		}
 		if err := decodeArguments(args, &in); err != nil {
 			return nil, err
 		}
-		return s.control.StartTask(ctx, control.TaskStartRequest{Goal: in.Goal, Profile: in.Profile, Go: in.Go, Detached: true})
+		return s.control.StartTask(ctx, control.TaskStartRequest{Goal: in.Goal, Source: in.Source, SourceRef: in.SourceRef, Profile: in.Profile, Go: in.Go, Detached: true})
 	case "takt.task.status":
 		var in struct {
 			Reference string `json:"reference"`
@@ -920,7 +922,7 @@ func allTools() []tool {
 	readOnly := map[string]any{"readOnlyHint": true, "destructiveHint": false}
 	mutating := map[string]any{"readOnlyHint": false}
 	return []tool{
-		{Name: "takt.task.start", Title: "Start a managed Takt task", Description: "Route a natural-language task to a specialized workflow, the stable simple-reliable template, or bounded dynamic composition. By default returns a preview; go=true confirms and starts it.", InputSchema: object(map[string]any{"goal": stringProp("Natural-language task"), "profile": stringProp("Installed profile, defaults to code"), "go": boolProp("Confirm the preview and start immediately")}, "goal"), Annotations: mutating},
+		{Name: "takt.task.start", Title: "Start a managed Takt task", Description: "Route a natural-language task or a configured structured task source to a specialized workflow, the stable simple-reliable template, or bounded dynamic composition. Provide goal, or source + source_ref. By default returns a preview; go=true confirms and starts it.", InputSchema: object(map[string]any{"goal": stringProp("Natural-language task; mutually exclusive with source"), "source": stringProp("Configured structured task source"), "source_ref": stringProp("External reference for source"), "profile": stringProp("Installed profile, defaults to code"), "go": boolProp("Confirm the preview and start immediately")}), Annotations: mutating},
 		{Name: "takt.task.status", Title: "Get managed task status", Description: "Read a compact task view by plan_id or run_id, including whether user input is needed.", InputSchema: object(map[string]any{"reference": stringProp("Plan or Run ID")}, "reference"), Annotations: readOnly},
 		{Name: "takt.task.respond", Title: "Respond to a managed task", Description: "Approve, answer, steer, pause, resume, continue or retry a task without exposing the internal state machine.", InputSchema: object(map[string]any{"reference": stringProp("Plan or Run ID"), "action": map[string]any{"type": "string", "enum": []string{"go", "continue", "answer", "steer", "pause", "resume", "retry"}}, "message": stringProp("Answer or steering text when required"), "node_id": stringProp("Optional waiting or failed node")}, "reference", "action"), Annotations: mutating},
 		{Name: "takt.task.stop", Title: "Stop a managed task", Description: "Abandon a plan or Run while preserving its durable history.", InputSchema: object(map[string]any{"reference": stringProp("Plan or Run ID"), "reason": stringProp("Optional stop reason")}, "reference"), Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true}},

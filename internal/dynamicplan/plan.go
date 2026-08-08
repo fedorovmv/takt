@@ -12,6 +12,7 @@ import (
 	"takt/internal/evidence"
 	"takt/internal/rolecontract"
 	"takt/internal/workspacecatalog"
+	tasksource "takt/sdk/tasksource"
 )
 
 const (
@@ -111,6 +112,7 @@ type Record struct {
 	RouterRunID                  string                         `json:"router_run_id,omitempty"`
 	RouterError                  string                         `json:"router_error,omitempty"`
 	Route                        json.RawMessage                `json:"route,omitempty"`
+	TaskSource                   *tasksource.Task               `json:"task_source,omitempty"`
 	PlannerRunID                 string                         `json:"planner_run_id,omitempty"`
 	ReplannerRunIDs              []string                       `json:"replanner_run_ids,omitempty"`
 	ExecutionRunIDs              []string                       `json:"execution_run_ids,omitempty"`

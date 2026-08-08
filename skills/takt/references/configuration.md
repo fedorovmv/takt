@@ -225,3 +225,18 @@ adapters:
 ```
 
 `domain` — `scm|tracker|ci`, `transport` — `process|mcp`. Workflow использует только нейтральное `adapter.name` и `adapter.operation`. Для process transport действует `takt-domain-adapter/v1alpha1`; MCP transport получает capabilities через `tools/list`. Проверяй подключение через `takt adapter doctor <name>` до запуска mutating workflow.
+
+
+## Task Sources
+
+```yaml
+task_sources:
+  github:
+    transport: process
+    argv: [takt-github-task-source]
+    env:
+      GH_TOKEN: secret://GH_TOKEN
+    timeout: 30s
+```
+
+Source adapter разрешает внешний объект до Router и возвращает `takt-task-source/v1alpha1`. `secret://` разрешается непосредственно перед запуском процесса.

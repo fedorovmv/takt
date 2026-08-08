@@ -569,3 +569,19 @@ GitHub reference adapter выявил нейтральный недостающ�
 Runtime отклоняет configured capability, которой нет в stream declaration, event вне declared event_types и tool request без `tool_control=true`.
 
 **Причина.** Иначе узкий observational wrapper, например Qwen Code headless reference adapter, получал бы ложную security guarantee только из-за версии transport protocol.
+
+## ADR-082. Task Sources are an ingress boundary before Router, not workflow domain operations
+
+**Статус:** принято.
+
+Внешний issue/tracker/PRD/OpenSpec разрешается через `takt-task-source/v1alpha1` до вызова Task Router. Source adapter возвращает нормализованный Task; затем используется существующий `Plan → Router → Dynamic Plan → runtime`. Task Source не является `adapter`-узлом и не использует domain side-effect/reconcile lifecycle.
+
+**Причина.** Получение авторитетного входа задачи и внешние SCM/tracker/CI действия имеют разную семантику. Их объединение сделало бы ingestion частью DAG и вынудило бы workflow знать provider-specific источник задачи.
+
+## ADR-083. Resolved task provenance is immutable within one plan revision lineage
+
+**Статус:** принято.
+
+Нормализованный Task содержит `source.adapter/kind/reference/revision/url` и сохраняется в `dynamicplan.Record`. Router, Planner и Replanner получают тот же структурированный `task_source`; resume/replan не перечитывают источник автоматически. Для старых workflow дополнительно строится совместимый текстовый `GoalText`.
+
+**Причина.** План и evidence должны быть привязаны к определённой ревизии входа. Тихое перечитывание изменившегося issue во время resume/replan сделало бы fingerprint/решения невоспроизводимыми. Новая ревизия внешней задачи должна начинать новый plan/run lineage.

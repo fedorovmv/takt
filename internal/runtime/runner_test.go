@@ -126,6 +126,136 @@ func TestLoopGroup(t *testing.T) {
 	}
 }
 
+type failLoopStartStore struct {
+	store.Repository
+	crashed bool
+}
+
+func (s *failLoopStartStore) Commit(state *store.RunState, event store.Event) error {
+	if s.crashed {
+		return errors.New("simulated crash between iterations")
+	}
+	if event.Type == "loop.iteration.started" {
+		if iteration, ok := event.Data["iteration"].(int); ok && iteration == 2 {
+			s.crashed = true
+			return errors.New("simulated crash between iterations")
+		}
+	}
+	return s.Repository.Commit(state, event)
+}
+
+func TestLoopGroupCrashBetweenIterationsResumesAfterDurableHistory(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	parent := spec.Node{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 3, Nodes: []spec.Node{{ID: "inc", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`}, {ID: "check", DependsOn: []string{"inc"}, Bash: `test $(cat c) -ge 2`, AllowFailure: true}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-crash"}, Nodes: []spec.Node{parent}}
+	r := New(wf, &spec.Config{}, "wf", "cfg", dir)
+	base := r.Store
+	state := &store.RunState{ID: "run-loop-crash", Status: store.RunRunning, WorkflowPath: "wf", ConfigPath: "cfg", Workspace: dir, ExecutionWorkspace: dir, Nodes: map[string]*store.NodeState{"loop": {Status: store.NodeRunning, Path: "/loop"}}, Approvals: map[string]string{}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if err := base.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	r.Store = &failLoopStartStore{Repository: base}
+	if _, err := r.runLoopGroup(context.Background(), state, parent); err == nil || !strings.Contains(err.Error(), "simulated crash") {
+		t.Fatalf("expected simulated crash, got %v", err)
+	}
+	persisted, err := base.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loop := persisted.Nodes["loop"]
+	if loop.LoopIteration != 0 || len(loop.LoopIterations) != 1 || loop.LoopIterations[0].Iteration != 1 {
+		t.Fatalf("unexpected durable boundary state: %+v", loop)
+	}
+	if got := strings.TrimSpace(readFileForTest(t, filepath.Join(dir, "c"))); got != "1" {
+		t.Fatalf("first iteration side effect=%q", got)
+	}
+	r2 := New(wf, &spec.Config{}, "wf", "cfg", dir)
+	result, err := r2.runLoopGroup(context.Background(), persisted, parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("result=%+v", result)
+	}
+	if got := strings.TrimSpace(readFileForTest(t, filepath.Join(dir, "c"))); got != "2" {
+		t.Fatalf("iteration 1 was replayed after crash, counter=%q", got)
+	}
+	if len(persisted.Nodes["loop"].LoopIterations) != 2 || persisted.Nodes["loop"].LoopIterations[1].Iteration != 2 {
+		t.Fatalf("history was duplicated or misnumbered: %+v", persisted.Nodes["loop"].LoopIterations)
+	}
+}
+
+func TestLoopGroupRetryAfterExhaustionDoesNotAppendHistory(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-exhaust"}, Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 2, Nodes: []spec.Node{{ID: "inc", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`}, {ID: "check", DependsOn: []string{"inc"}, Bash: `exit 1`, AllowFailure: true}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
+	r := New(wf, &spec.Config{}, "wf", "cfg", dir)
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected exhausted loop")
+	}
+	if len(state.Nodes["loop"].LoopIterations) != 2 {
+		t.Fatalf("history=%+v", state.Nodes["loop"].LoopIterations)
+	}
+	before := strings.TrimSpace(readFileForTest(t, filepath.Join(dir, "c")))
+	state.Nodes["loop"].Status = store.NodePending
+	state.Nodes["loop"].Error = ""
+	state.Status = store.RunRunning
+	state.Error = ""
+	if err := r.Store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := r.Resume(context.Background(), state)
+	if err == nil {
+		t.Fatal("expected exhaustion to remain terminal for the loop node")
+	}
+	if len(resumed.Nodes["loop"].LoopIterations) != 2 {
+		t.Fatalf("retry appended history beyond max_iterations: %+v", resumed.Nodes["loop"].LoopIterations)
+	}
+	after := strings.TrimSpace(readFileForTest(t, filepath.Join(dir, "c")))
+	if after != before {
+		t.Fatalf("retry replayed loop side effects: before=%q after=%q", before, after)
+	}
+}
+
+func TestLoopHistoryBackwardCompatibleWithoutLoopIterations(t *testing.T) {
+	raw := `{"id":"run-old-loop","status":"running","nodes":{"loop":{"status":"pending","loop_previous":{"check":{"status":"completed","exit_code":1}}}}}`
+	var state store.RunState
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Nodes["loop"].LoopIterations) != 0 || state.Nodes["loop"].LoopPrevious["check"].ExitCode != 1 {
+		t.Fatalf("legacy state did not decode: %+v", state.Nodes["loop"])
+	}
+}
+
+func TestLoopPreviousDoesNotAliasHistorySnapshot(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-alias"}, Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{ID: "check", Bash: `echo ok`}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
+	state, err := New(wf, &spec.Config{}, "wf", "cfg", dir).Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loop := state.Nodes["loop"]
+	prev := loop.LoopPrevious["check"]
+	prev.Output = "mutated"
+	loop.LoopPrevious["check"] = prev
+	if loop.LoopIterations[0].Nodes["check"].Output == "mutated" {
+		t.Fatal("loop_previous aliases immutable history snapshot")
+	}
+}
+
+func readFileForTest(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func TestAllowFailureOnlyAllowsNonZeroExit(t *testing.T) {
 	t.Run("non-zero exit is data", func(t *testing.T) {
 		dir := t.TempDir()

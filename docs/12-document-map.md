@@ -9,7 +9,8 @@
 1. `docs/01-project.md`;
 1. `docs/05-implementation-status.md`;
 1. `skills/takt/SKILL.md`;
-1. `docs/63-reference-external-adapters-v0.1.49.md`;
+1. `docs/64-structured-task-sources-v0.1.50.md`;
+2. `docs/63-reference-external-adapters-v0.1.49.md`;
 1. `docs/62-contract-convergence-compatibility-v0.1.48.md`;
 1. `docs/61-v0.2-stabilization-iteration-history-v0.1.47.md`;
 1. `docs/60-task-level-dynamic-evaluation-v0.1.46.md`;
@@ -186,3 +187,5 @@
 - `51-autonomous-run-operations-v0.1.37.md` — реестр Run, attention, pause/resume/retry/fork/abandon, recovery, notifications и summary.
 
 - `58-runtime-reliability-local-security-v0.1.44.md` — durable backoff/diagnostics, fan-out early exit, SecretRef/redaction, локальный OS sandbox, NodePath и исправления ревью multi-repo.
+
+- Structured Task Sources / ingress protocol: `docs/64-structured-task-sources-v0.1.50.md`, `sdk/tasksource`, `schemas/task-source*.schema.json`.

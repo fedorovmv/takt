@@ -438,7 +438,11 @@ func mergeOpenCodeConfig(base, overlay map[string]any) {
 }
 
 func probeOpenCodeVersion(ctx context.Context, binary, workspace string, env []string) (string, error) {
-	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	return probeOpenCodeVersionWithTimeout(ctx, binary, workspace, env, 10*time.Second)
+}
+
+func probeOpenCodeVersionWithTimeout(ctx context.Context, binary, workspace string, env []string, timeout time.Duration) (string, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(probeCtx, binary, "--version")
 	execution.ConfigureCommand(cmd)
@@ -453,12 +457,12 @@ func probeOpenCodeVersion(ctx context.Context, binary, workspace string, env []s
 		return "", &execution.Error{Kind: kind, ExitCode: -1, Op: "opencode version", Err: ctx.Err()}
 	}
 	if probeCtx.Err() != nil {
-		return "", &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "opencode version", Err: probeCtx.Err()}
+		return "", &execution.Error{Kind: execution.KindTimedOut, ExitCode: -1, Op: "opencode version", Err: probeCtx.Err()}
 	}
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return "", &execution.Error{Kind: execution.KindExit, ExitCode: exitErr.ExitCode(), Op: "opencode version", Err: fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))}
+			return "", &execution.Error{Kind: execution.KindExit, ExitCode: exitErr.ExitCode(), Op: "opencode version", Err: fmt.Errorf("version probe exited with code %d", exitErr.ExitCode())}
 		}
 		return "", &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "opencode version", Err: err}
 	}

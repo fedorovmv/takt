@@ -194,6 +194,13 @@
         },
         "usage": {
           "$ref": "#/$defs/usage"
+        },
+        "failure_kind": {
+          "enum": [
+            "exit",
+            "timed_out",
+            "cancelled"
+          ]
         }
       },
       "allOf": [
@@ -227,6 +234,20 @@
                 "not": {
                   "const": 0
                 }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "failure_kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "failed"
               }
             }
           }

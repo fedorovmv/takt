@@ -1108,6 +1108,14 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 	startIteration := 1
 	if parentState.LoopIteration > 0 {
 		startIteration = parentState.LoopIteration
+	} else if len(parentState.LoopIterations) > 0 {
+		// loop.iteration.completed is durable before the next iteration starts.
+		// A crash in that boundary window must continue after the last durable
+		// iteration rather than replay iteration 1 and its side effects.
+		startIteration = len(parentState.LoopIterations) + 1
+	}
+	if startIteration > parent.LoopGroup.MaxIterations {
+		return execResult{}, &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "loop_group", Err: fmt.Errorf("loop_group %q exhausted %d iterations", parent.ID, parent.LoopGroup.MaxIterations)}
 	}
 	for iteration := startIteration; iteration <= parent.LoopGroup.MaxIterations; iteration++ {
 		resuming := parentState.LoopIteration == iteration
@@ -1138,10 +1146,14 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 		if !exists {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("until node %q missing", parent.LoopGroup.Until.Node)}
 		}
-		parentState.LoopPrevious = local
 		satisfied := untilSatisfied(parent.LoopGroup.Until, check)
+		historyNodes := cloneLoopNodes(local)
+		parentState.LoopPrevious = cloneLoopNodes(local)
+		if len(parentState.LoopIterations) >= spec.MaxLoopGroupIterations {
+			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("loop_group %q iteration history exceeds %d entries", parent.ID, spec.MaxLoopGroupIterations)}
+		}
 		parentState.LoopIterations = append(parentState.LoopIterations, store.LoopIterationState{
-			Iteration: iteration, Nodes: local, UntilNode: parent.LoopGroup.Until.Node,
+			Iteration: iteration, Nodes: historyNodes, UntilNode: parent.LoopGroup.Until.Node,
 			ExitCode: check.ExitCode, Status: check.Status, Satisfied: satisfied, CompletedAt: time.Now().UTC(),
 		})
 		parentState.LoopIteration = 0
@@ -1157,6 +1169,27 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 		previous = local
 	}
 	return execResult{}, &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "loop_group", Err: fmt.Errorf("loop_group %q exhausted %d iterations", parent.ID, parent.LoopGroup.MaxIterations)}
+}
+
+func cloneLoopNodes(in map[string]store.NodeState) map[string]store.NodeState {
+	if in == nil {
+		return nil
+	}
+	// Loop history is an immutable durable snapshot. Use a structural copy so
+	// LoopPrevious and LoopIterations[last].Nodes never share nested maps,
+	// slices, pointers, or execution state that a later resume/retry may mutate.
+	raw, err := json.Marshal(in)
+	if err == nil {
+		var out map[string]store.NodeState
+		if json.Unmarshal(raw, &out) == nil {
+			return out
+		}
+	}
+	out := make(map[string]store.NodeState, len(in))
+	for id, node := range in {
+		out[id] = node
+	}
+	return out
 }
 
 func (r *Runner) runHooks(ctx context.Context, state *store.RunState, node spec.Node, hooks []spec.HookSpec, local map[string]store.NodeState) (string, string, error) {

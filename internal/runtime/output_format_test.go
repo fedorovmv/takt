@@ -211,3 +211,25 @@ func TestWhenSupportsAndOrExpressions(t *testing.T) {
 		t.Fatalf("or expression: ok=%v err=%v", ok, err)
 	}
 }
+
+func TestValidateWorkflowInputUsesSchemaSubset(t *testing.T) {
+	closed := false
+	contract := &spec.InputContract{Format: "json", Schema: &spec.OutputFormat{
+		Type: "object",
+		Properties: map[string]spec.OutputFormat{
+			"name":  {Type: "string", MinLength: 2, Pattern: `^[a-z]+$`},
+			"count": {Type: "integer"},
+		},
+		Required: []string{"name", "count"}, AdditionalProperties: &closed,
+	}}
+	got, err := ValidateWorkflowInput(` { "name":"route", "count": 2 } `, contract)
+	if err != nil || got != `{"count":2,"name":"route"}` {
+		t.Fatalf("got=%q err=%v", got, err)
+	}
+	if _, err := ValidateWorkflowInput(`{"name":"R","count":2}`, contract); err == nil || !strings.Contains(err.Error(), "workflow input") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := ValidateWorkflowInput(`{"name":"route","count":2,"extra":true}`, contract); err == nil {
+		t.Fatal("expected additionalProperties failure")
+	}
+}

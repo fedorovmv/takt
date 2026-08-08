@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -122,5 +123,67 @@ assistants:
 	}
 	if loaded.LastError != "failed with <redacted>" || loaded.Steering[0].Message != "keep <redacted>" || !strings.Contains(loaded.Results["inspect"], "<redacted>") {
 		t.Fatalf("plan record was not redacted: %#v", loaded)
+	}
+}
+
+func TestCommitRedactedUsesRunSpecificConfig(t *testing.T) {
+	workspace := t.TempDir()
+	defaultConfig := filepath.Join(workspace, "default.yaml")
+	runConfig := filepath.Join(workspace, "run.yaml")
+	const envName = "TAKT_RUN_SPECIFIC_REDACTION_VALUE"
+	const secret = "run-specific-secret-50"
+	t.Setenv(envName, secret)
+	mustWriteControlTest(t, defaultConfig, `apiVersion: takt/v1alpha1
+kind: Config
+models: {}
+assistants: {}
+`)
+	mustWriteControlTest(t, runConfig, `apiVersion: takt/v1alpha1
+kind: Config
+models: {}
+assistants:
+  worker:
+    type: mock
+    env:
+      VALUE: secret://`+envName+`
+`)
+	service, err := New(workspace, defaultConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := &store.RunState{ID: "run-specific-config", Status: store.RunRunning, ConfigPath: runConfig, Workspace: workspace, ExecutionWorkspace: workspace, Output: secret, Nodes: map[string]*store.NodeState{"n": {Status: store.NodeCompleted, Output: secret}}, Approvals: map[string]string{}}
+	if err := service.commitRedacted(store.FS{Workspace: workspace}, state, store.Event{Type: "test", Data: map[string]any{"value": secret}}); err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := (store.FS{Workspace: workspace}).Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := (store.FS{Workspace: workspace}).ReadEvents(state.ID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := string(mustJSONTest(t, struct {
+		State  *store.RunState
+		Events []store.Event
+	}{persisted, events}))
+	if strings.Contains(raw, secret) {
+		t.Fatalf("run-specific config secret leaked: %s", raw)
+	}
+}
+
+func TestCommitRedactedFailsClosedWhenRunConfigCannotLoad(t *testing.T) {
+	workspace := t.TempDir()
+	service, err := New(workspace, filepath.Join(workspace, "default.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := &store.RunState{ID: "run-redact-missing-config", Status: store.RunRunning, ConfigPath: filepath.Join(workspace, "missing.yaml"), Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}
+	err = service.commitRedacted(store.FS{Workspace: workspace}, state, store.Event{Type: "test"})
+	if err == nil || !strings.Contains(err.Error(), "load persistence redaction config") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(workspace, ".takt", "runs", state.ID, "state.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("state persisted despite missing redaction config: %v", statErr)
 	}
 }

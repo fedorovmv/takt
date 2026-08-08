@@ -1054,7 +1054,10 @@ func (s *Service) DeclareExternalArtifact(request ExternalArtifactRequest) (*sto
 	if mime == "" {
 		mime = "application/octet-stream"
 	}
-	redactor := s.persistenceRedactor(state.ConfigPath)
+	redactor, err := s.persistenceRedactor(state.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
 	if redacted, found := redactor.Bytes(data); found {
 		if !redact.TextualMIME(mime) {
 			return nil, fmt.Errorf("external artifact %s contains a known secret and cannot be persisted as non-text content", request.Type)

@@ -3,6 +3,7 @@ package assistant
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -229,5 +230,24 @@ print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"tool.requ
 	_, err := p.Run(context.Background(), Request{Workspace: dir})
 	if execution.KindOf(err) != execution.KindProtocol || !strings.Contains(err.Error(), "without declared tool_control") {
 		t.Fatalf("expected tool-control protocol failure, got %v", err)
+	}
+}
+
+func TestProcessV1Alpha2MapsDeclaredTimedOutFailure(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "worker.py")
+	code := `import json, sys
+json.loads(sys.stdin.readline())
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","capabilities":[],"event_types":[]}}), flush=True)
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha2","type":"result","status":"failed","failure_kind":"timed_out","exit_code":55}}), flush=True)
+sys.exit(55)
+`
+	if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: []string{"python3", script}}}
+	_, err := p.Run(context.Background(), Request{Workspace: dir})
+	if execution.KindOf(err) != execution.KindTimedOut {
+		t.Fatalf("kind=%s err=%v", execution.KindOf(err), err)
 	}
 }

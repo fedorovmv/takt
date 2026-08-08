@@ -48,6 +48,11 @@ func NewFromConfig(cfg *spec.Config) *Redactor {
 			r.RegisterReferences(value)
 		}
 	}
+	for _, source := range cfg.TaskSources {
+		for _, value := range source.Env {
+			r.RegisterReferences(value)
+		}
+	}
 	return r
 }
 

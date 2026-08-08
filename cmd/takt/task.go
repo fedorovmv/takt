@@ -35,21 +35,32 @@ func taskStartCmd(args []string) error {
 	workspace := fs.String("workspace", ".", "control workspace")
 	profileName := fs.String("profile", "code", "routing profile")
 	goalFile := fs.String("file", "", "read the task goal from a file explicitly")
+	sourceName := fs.String("source", "", "configured structured task source")
+	sourceRef := fs.String("source-ref", "", "external task reference for --source")
 	goNow := fs.Bool("go", false, "confirm the preview and start immediately")
 	useDaemon := fs.Bool("daemon", false, "run through the local daemon")
 	socket := fs.String("socket", "", "daemon Unix socket path")
 	jsonOut := fs.Bool("json", true, "JSON output")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--profile": true, "--file": true, "--go": false, "--daemon": false, "--socket": true, "--json": false})); err != nil {
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--profile": true, "--file": true, "--source": true, "--source-ref": true, "--go": false, "--daemon": false, "--socket": true, "--json": false})); err != nil {
 		return err
 	}
 	goal, err := resolveTaskGoal(fs.Args(), *goalFile)
 	if err != nil {
 		return err
 	}
-	if goal == "" {
-		return fmt.Errorf("usage: takt task start <goal> [--file path] [--go] [--profile code] [--daemon]")
+	if strings.TrimSpace(*sourceName) != "" {
+		if goal != "" {
+			return fmt.Errorf("task goal/--file and --source are mutually exclusive")
+		}
+		if strings.TrimSpace(*sourceRef) == "" {
+			return fmt.Errorf("--source-ref is required with --source")
+		}
+	} else if strings.TrimSpace(*sourceRef) != "" {
+		return fmt.Errorf("--source-ref requires --source")
+	} else if goal == "" {
+		return fmt.Errorf("usage: takt task start <goal> [--file path] [--source name --source-ref ref] [--go] [--profile code] [--daemon]")
 	}
-	request := control.TaskStartRequest{Goal: goal, Profile: *profileName, Go: *goNow}
+	request := control.TaskStartRequest{Goal: goal, Source: *sourceName, SourceRef: *sourceRef, Profile: *profileName, Go: *goNow}
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {

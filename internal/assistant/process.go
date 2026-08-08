@@ -252,7 +252,7 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 			if err := ValidateEvent(*message.Event); err != nil {
 				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: err}
 			}
-			if len(streamDeclaration.EventTypes) > 0 && !containsString(streamDeclaration.EventTypes, message.Event.Type) {
+			if !containsString(streamDeclaration.EventTypes, message.Event.Type) {
 				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("event %q was not declared by wrapper", message.Event.Type)}
 			}
 			Emit(req, *message.Event)
@@ -338,7 +338,14 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 		result.SessionID, result.Resumed = final.Session.ID, final.Session.Resumed
 	}
 	if result.ExitCode != 0 {
-		return result, &execution.Error{Kind: execution.KindExit, ExitCode: result.ExitCode, Op: "assistant process v1alpha2", Err: waitErr}
+		kind := execution.KindExit
+		switch final.FailureKind {
+		case "timed_out":
+			kind = execution.KindTimedOut
+		case "cancelled":
+			kind = execution.KindCancelled
+		}
+		return result, &execution.Error{Kind: kind, ExitCode: result.ExitCode, Op: "assistant process v1alpha2", Err: waitErr}
 	}
 	return result, nil
 }

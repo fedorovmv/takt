@@ -377,3 +377,8 @@ assistants:
 ```
 
 Подробности и ограничения: `docs/63-reference-external-adapters-v0.1.49.md`.
+
+
+## v0.1.50: terminal failure kind
+
+`takt-assistant/v1alpha2` failed result may carry `failure_kind: exit|timed_out|cancelled`. It is authoritative for failures reported by a wrapper itself (for example Qwen budget exit 55); Takt's own context deadline/cancellation still takes precedence. Transport version never implies `tool_control`.

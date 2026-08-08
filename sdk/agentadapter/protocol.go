@@ -92,6 +92,7 @@ type Result struct {
 	Structured      json.RawMessage `json:"structured,omitempty"`
 	Session         *SessionResult  `json:"session,omitempty"`
 	ExitCode        *int            `json:"exit_code"`
+	FailureKind     string          `json:"failure_kind,omitempty"`
 	ResolvedModel   *Model          `json:"resolved_model,omitempty"`
 	Usage           *Usage          `json:"usage,omitempty"`
 }
@@ -207,6 +208,16 @@ func ValidateResult(v Result, requestedSessionID string) error {
 	}
 	if v.Status == "failed" && *v.ExitCode == 0 {
 		return fmt.Errorf("failed result has zero exit_code")
+	}
+	if v.FailureKind != "" {
+		if v.Status != "failed" {
+			return fmt.Errorf("failure_kind is valid only for failed result")
+		}
+		switch v.FailureKind {
+		case "exit", "timed_out", "cancelled":
+		default:
+			return fmt.Errorf("unsupported failure_kind %q", v.FailureKind)
+		}
 	}
 	if v.Usage != nil && (v.Usage.InputTokens < 0 || v.Usage.OutputTokens < 0 || v.Usage.Cost < 0) {
 		return fmt.Errorf("result contains negative usage")

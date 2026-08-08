@@ -6,13 +6,13 @@
 
 ## Область применения текущей версии
 
-`v0.1.49-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.50-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Локальный `takt daemon` поддерживает фоновые Run и несколько клиентов одного пользователя через Unix socket. Сетевой и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и distributed locking. Эти режимы не поддерживаются.
 
 ## Текущая точка развития
 
-К `v0.1.49-alpha` основные механизмы локального Takt уже собраны. Ближайшая цель — **доказать пользу существующих стратегий на реальных задачах и завершить стабилизацию v0.2**, а не продолжать наращивать runtime без измерений.
+К `v0.1.50-alpha` основные механизмы локального Takt уже собраны. Ближайшая цель — **доказать пользу существующих стратегий на реальных задачах и завершить стабилизацию v0.2**, а не продолжать наращивать runtime без измерений.
 
 Приоритеты:
 
@@ -20,7 +20,7 @@
 2. task-level benchmark `Router → Dynamic Plan → replan` — измерительный контур реализован в `v0.1.46`;
 3. production-like Go и Document evaluation;
 4. contract convergence продолжен в `v0.1.48`: `takt-schema-subset/v1`, field matrix и compatibility check; финальный `v1beta1` — только после production evidence;
-5. P2 External seams начат в `v0.1.49`: reference Qwen Code wrapper и GitHub SCM adapter реализованы поверх public SDK; далее — live host conformance и structured task source adapter;
+5. P2 External seams продолжен в `v0.1.50`: reference Qwen/GitHub SCM и Structured Task Sources реализованы поверх public SDK; из крупного P2 остаётся live host conformance;
 6. затем human-reviewed learning loop для skills/blocks.
 
 Актуальный план: [`docs/06-roadmap.md`](docs/06-roadmap.md), backlog: [`docs/14-backlog-v0.2.md`](docs/14-backlog-v0.2.md).
@@ -39,7 +39,7 @@
 - JSON-массив результатов всех итераций `foreach`;
 - публичное состояние Run без внутренних развёрнутых ID;
 - durable `loop_iterations[]` со всеми завершёнными итерациями и совместимым `loop_previous`; `max_iterations` ограничен 64;
-- вложенные `loop_group` явно запрещены в `v1alpha1`;
+- вложенные `loop_group` явно остаются запрещёнными в целевом `v0.2` (текущий `v1alpha1` их отклоняет);
 - повтор узла после внешней проверки;
 - переносимые hooks `before_node`, `after_node`, `before_complete`, `on_failure`;
 - разделение ненулевого exit code, ошибки запуска, timeout и cancellation;
@@ -88,6 +88,27 @@
 - validation envelope сохраняется при любом terminal status quality-node; успех требует `completed && valid=true`;
 - строгий контракт результата валидатора `takt-validation/v1alpha1`;
 - только стандартная библиотека Go.
+
+## Structured Task Sources v0.1.50
+
+Внешняя задача может поступать не только как свободный `goal`, но и через trusted source adapter:
+
+```yaml
+task_sources:
+  github:
+    transport: process
+    argv: [takt-github-task-source]
+    env:
+      GH_TOKEN: secret://GH_TOKEN
+    timeout: 30s
+```
+
+```bash
+takt task start --workspace . --profile code \
+  --source github --source-ref acme/service#42
+```
+
+Source adapter нормализует issue/tracker/PRD/OpenSpec в Task с immutable `source.revision`, после чего запускается тот же Router/Dynamic Takt. Reference GitHub Issue adapter: `cmd/takt-github-task-source`, публичный SDK: `sdk/tasksource`. Подробности: [`docs/64-structured-task-sources-v0.1.50.md`](docs/64-structured-task-sources-v0.1.50.md).
 
 ## Reference adapters v0.1.49
 
@@ -398,7 +419,7 @@ takt package sync
 
 Local/Git `BlockPackage` фиксируется lock-файлом и автоматически подключается к профилю. См. `examples/portable-package/` и `docs/56-portable-package-distribution-v0.1.42.md`.
 
-Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.16.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon, v0.1.34-alpha — Dynamic Takt и coding-agent flow, v0.1.35-alpha — доверенные корпоративные блоки и исправления бюджетов/исполнения, v0.1.36-alpha — host-control core и guarded Pi/OpenCode integrations, v0.1.37-alpha — автономные Run, attention, pause/recovery и уведомления, v0.1.38-alpha — нейтральный coding-agent, Task Router, simple-reliable template и role-based MCP surfaces, v0.1.39-alpha — Role Contract, bounded TaskBrief, required/preferred checks, deny/repair/warn и bounded automatic repair с исправлениями автономного control plane, v0.1.40-alpha — EvidenceManifest, baseline-aware failure classification, parking и reconciliation неизвестных external side effects, v0.1.41-alpha — нейтральную Adapter Platform для coding-agent, SCM, tracker и CI, v0.1.42-alpha — переносимую доставку пакетов с lock, dependency/capability preflight и source/signature policy, v0.1.43-alpha — multi-repo Dynamic Workflows с repository catalog, изолированными repo child Runs, per-repo evidence, neutral SCM publication и integration verification, v0.1.44-alpha — durable retry/backoff, diagnostic fingerprints, fan-out early termination, SecretRef/redaction, локальный OS sandbox для bash/script и NodePath, а v0.1.45-alpha — сравнительный Route DSL benchmark с matrix/repeat/compare/gates, true time-to-valid и стабильностью diagnostics. v0.1.46-alpha добавляет task-level Dynamic Takt benchmark и закрывает общий redaction-контракт external/control persistence, а v0.1.47-alpha начинает стабилизацию v0.2: first-class iteration history, bounded loop state, contract audit и draft migration policy к v1beta1, а v0.1.48-alpha фиксирует `takt-schema-subset/v1`, machine-readable field audit и adapter/host/domain compatibility matrix; v0.1.49-alpha впервые доказывает внешние seams реальными reference implementations `qwen-takt-adapter` и `takt-github-scm-adapter`, включая exact resume и reconcile неизвестного SCM side effect. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.16.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon, v0.1.34-alpha — Dynamic Takt и coding-agent flow, v0.1.35-alpha — доверенные корпоративные блоки и исправления бюджетов/исполнения, v0.1.36-alpha — host-control core и guarded Pi/OpenCode integrations, v0.1.37-alpha — автономные Run, attention, pause/recovery и уведомления, v0.1.38-alpha — нейтральный coding-agent, Task Router, simple-reliable template и role-based MCP surfaces, v0.1.39-alpha — Role Contract, bounded TaskBrief, required/preferred checks, deny/repair/warn и bounded automatic repair с исправлениями автономного control plane, v0.1.40-alpha — EvidenceManifest, baseline-aware failure classification, parking и reconciliation неизвестных external side effects, v0.1.41-alpha — нейтральную Adapter Platform для coding-agent, SCM, tracker и CI, v0.1.42-alpha — переносимую доставку пакетов с lock, dependency/capability preflight и source/signature policy, v0.1.43-alpha — multi-repo Dynamic Workflows с repository catalog, изолированными repo child Runs, per-repo evidence, neutral SCM publication и integration verification, v0.1.44-alpha — durable retry/backoff, diagnostic fingerprints, fan-out early termination, SecretRef/redaction, локальный OS sandbox для bash/script и NodePath, а v0.1.45-alpha — сравнительный Route DSL benchmark с matrix/repeat/compare/gates, true time-to-valid и стабильностью diagnostics. v0.1.46-alpha добавляет task-level Dynamic Takt benchmark и закрывает общий redaction-контракт external/control persistence, а v0.1.47-alpha начинает стабилизацию v0.2: first-class iteration history, bounded loop state, contract audit и draft migration policy к v1beta1, а v0.1.48-alpha фиксирует `takt-schema-subset/v1`, machine-readable field audit и adapter/host/domain compatibility matrix; v0.1.49-alpha впервые доказывает внешние seams реальными reference implementations `qwen-takt-adapter` и `takt-github-scm-adapter`, включая exact resume и reconcile неизвестного SCM side effect; v0.1.50-alpha добавляет Structured Task Sources: нормализованный внешний Task с immutable revision до Router/Dynamic Takt и reference GitHub Issue source. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
 
 Evaluation runner фиксирует идентичность стратегии, корпуса, workspace и валидатора, execution identity каждой попытки, true time-to-valid и diagnostic fingerprints. `examples/route-dsl-benchmark` содержит 25 размеченных regression/production-shaped synthetic cases и matrix для сравнения стратегий. Предметный следующий этап — прогнать ту же matrix со штатным Route DSL validator и отдельным реальным обезличенным corpus, когда он доступен. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 

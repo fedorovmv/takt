@@ -11,6 +11,7 @@ import (
 	"takt/internal/schemasubset"
 	"takt/internal/spec"
 	"takt/internal/version"
+	tasksource "takt/sdk/tasksource"
 )
 
 const MatrixVersion = "takt-compatibility/v1"
@@ -23,6 +24,7 @@ type Matrix struct {
 	Assistants     []AssistantPolicy     `json:"assistants"`
 	Hosts          []HostPolicy          `json:"hosts"`
 	DomainAdapters []DomainAdapterPolicy `json:"domain_adapters"`
+	TaskSources    []TaskSourcePolicy    `json:"task_sources"`
 	MCPSurfaces    []MCPSurfacePolicy    `json:"mcp_surfaces"`
 }
 
@@ -58,6 +60,14 @@ type DomainAdapterPolicy struct {
 	Notes        []string `json:"notes,omitempty"`
 }
 
+type TaskSourcePolicy struct {
+	Transport    string   `json:"transport"`
+	Protocol     string   `json:"protocol"`
+	Support      string   `json:"support"`
+	Verification string   `json:"verification"`
+	Notes        []string `json:"notes,omitempty"`
+}
+
 type MCPSurfacePolicy struct {
 	Surface string `json:"surface"`
 	Support string `json:"support"`
@@ -85,6 +95,9 @@ func CurrentMatrix() Matrix {
 			{Transport: "process", Protocol: domainadapter.ProtocolV1Alpha1, Support: "supported-alpha", Verification: "public-sdk+reference-scm-e2e", Domains: []string{domainadapter.DomainSCM, domainadapter.DomainTracker, domainadapter.DomainCI}, Notes: []string{"Bundled reference: cmd/takt-github-scm-adapter for the neutral SCM contract.", "Corporate providers should implement sdk/domainadapter without changing workflow definitions.", "Invoke/reconcile receive the execution workspace so adapters can resolve the correct repository/worktree."}},
 			{Transport: "mcp", Protocol: "MCP stdio", Support: "supported-alpha", Verification: "fake-e2e", Domains: []string{domainadapter.DomainSCM, domainadapter.DomainTracker, domainadapter.DomainCI}, Notes: []string{"Operation mapping remains adapter configuration; workflows use only neutral operations."}},
 		},
+		TaskSources: []TaskSourcePolicy{
+			{Transport: "process", Protocol: tasksource.ProtocolV1Alpha1, Support: "supported-alpha", Verification: "public-sdk+github-issue-reference-e2e", Notes: []string{"Task source resolution happens before Router/Dynamic Takt and is distinct from domain operations inside workflows."}},
+		},
 		MCPSurfaces: []MCPSurfacePolicy{
 			{Surface: "agent", Support: "stable-candidate", Notes: "Five public takt.task.* operations remain the compact coding-agent surface."},
 			{Surface: "host", Support: "supported-alpha", Notes: "Host-control integration surface; subject to host conformance."},
@@ -107,6 +120,7 @@ type CheckReport struct {
 	Schema      SchemaCheck      `json:"schema"`
 	Assistants  []ComponentCheck `json:"assistants,omitempty"`
 	Adapters    []ComponentCheck `json:"adapters,omitempty"`
+	TaskSources []ComponentCheck `json:"task_sources,omitempty"`
 	Hosts       []HostPolicy     `json:"bundled_hosts,omitempty"`
 	Problems    []string         `json:"problems,omitempty"`
 	Warnings    []string         `json:"warnings,omitempty"`
@@ -225,7 +239,21 @@ func Check(ctx context.Context, cfg *spec.Config, options CheckOptions) CheckRep
 		finalizeComponent(&check)
 		report.Adapters = append(report.Adapters, check)
 	}
-	for _, component := range append(append([]ComponentCheck{}, report.Assistants...), report.Adapters...) {
+	sourceNames := make([]string, 0, len(cfg.TaskSources))
+	for name := range cfg.TaskSources {
+		sourceNames = append(sourceNames, name)
+	}
+	sort.Strings(sourceNames)
+	for _, name := range sourceNames {
+		value := cfg.TaskSources[name]
+		check := ComponentCheck{Name: name, Kind: "task_source", Type: value.Transport, Protocol: tasksource.ProtocolV1Alpha1, Support: "supported-alpha", Status: "ready"}
+		if len(value.Argv) == 0 {
+			check.Problems = append(check.Problems, "argv is required")
+		}
+		finalizeComponent(&check)
+		report.TaskSources = append(report.TaskSources, check)
+	}
+	for _, component := range append(append(append([]ComponentCheck{}, report.Assistants...), report.Adapters...), report.TaskSources...) {
 		for _, problem := range component.Problems {
 			report.Problems = append(report.Problems, fmt.Sprintf("%s %s: %s", component.Kind, component.Name, problem))
 		}

@@ -34,6 +34,26 @@ func Load(path string) (*spec.Config, error) {
 			return nil, fmt.Errorf("model %q requires provider and id", name)
 		}
 	}
+	for name, source := range cfg.TaskSources {
+		if strings.TrimSpace(name) == "" {
+			return nil, fmt.Errorf("task source name cannot be empty")
+		}
+		if source.Transport != "process" {
+			return nil, fmt.Errorf("task source %q transport must be process", name)
+		}
+		if len(source.Argv) == 0 || strings.TrimSpace(source.Argv[0]) == "" {
+			return nil, fmt.Errorf("task source %q requires argv", name)
+		}
+		if source.Timeout != "" {
+			value, err := time.ParseDuration(source.Timeout)
+			if err != nil || value <= 0 {
+				return nil, fmt.Errorf("task source %q timeout must be a positive duration", name)
+			}
+		}
+		if source.MaxOutputBytes < 0 {
+			return nil, fmt.Errorf("task source %q max_output_bytes cannot be negative", name)
+		}
+	}
 	for name, adapter := range cfg.Adapters {
 		if strings.TrimSpace(name) == "" {
 			return nil, fmt.Errorf("adapter name cannot be empty")

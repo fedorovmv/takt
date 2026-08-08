@@ -43,6 +43,8 @@ go build -o bin/takt-fake-domain-adapter ./cmd/takt-fake-domain-adapter
 ./scripts/test-iteration-history.sh
 ./scripts/test-compatibility.sh
 ./scripts/test-reference-adapters.sh
+./scripts/test-task-sources.sh
+./scripts/test-schema-contracts.sh
 ./scripts/test-route-dsl-benchmark.sh
 ./scripts/test-task-evaluation.sh
 go test ./sdk/agentadapter -count=1
@@ -88,5 +90,7 @@ go test ./sdk/agentadapter -count=1
   --workspace examples/authoring-daemon \
   --warnings-as-errors \
   --json >/dev/null
+
+./scripts/verify-manifest.sh
 
 echo 'verification: PASS'

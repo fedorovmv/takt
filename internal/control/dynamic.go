@@ -23,12 +23,14 @@ import (
 	"takt/internal/taskroute"
 	"takt/internal/workflow"
 	"takt/internal/workspacecatalog"
+	tasksource "takt/sdk/tasksource"
 )
 
 type PlanRequest struct {
-	Goal      string            `json:"goal"`
-	Profile   string            `json:"profile,omitempty"`
-	Candidate *dynamicplan.Plan `json:"candidate,omitempty"`
+	Goal       string            `json:"goal"`
+	Profile    string            `json:"profile,omitempty"`
+	Candidate  *dynamicplan.Plan `json:"candidate,omitempty"`
+	TaskSource *tasksource.Task  `json:"task_source,omitempty"`
 }
 
 type PlanResult struct {
@@ -129,7 +131,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 			plan.Goal = goal
 		}
 	} else {
-		route, routerRunID, err = s.routeTask(ctx, resolved, catalog, repositories, goal, workflows, adapterPreflight)
+		route, routerRunID, err = s.routeTask(ctx, resolved, catalog, repositories, goal, request.TaskSource, workflows, adapterPreflight)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
@@ -166,7 +168,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 			}
 		default:
 			plannerPath := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "dynamic-plan.yaml")
-			plannerInput, encodeErr := json.Marshal(map[string]any{"goal": goal, "existing_workflows": workflows, "trusted_catalog": catalog.PlannerView(), "adapter_preflight": adapterPreflight, "repositories": repositories.PlannerView()})
+			plannerInput, encodeErr := json.Marshal(map[string]any{"goal": goal, "task_source": request.TaskSource, "existing_workflows": workflows, "trusted_catalog": catalog.PlannerView(), "adapter_preflight": adapterPreflight, "repositories": repositories.PlannerView()})
 			if encodeErr != nil {
 				return nil, fmt.Errorf("encode dynamic planner input: %w", encodeErr)
 			}
@@ -213,7 +215,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 	record := &dynamicplan.Record{
 		ID: id, Status: "draft", Profile: profileName, ConfigPath: resolved.ConfigPath,
 		CreatedAt: now, UpdatedAt: now, RequiresConfirmation: plan.Decision == "planned",
-		RouterRunID: routerRunID, RouterError: routerError, Route: routeRaw, PlannerRunID: plannerRunID, Results: map[string]string{},
+		RouterRunID: routerRunID, RouterError: routerError, Route: routeRaw, TaskSource: request.TaskSource, PlannerRunID: plannerRunID, Results: map[string]string{},
 		BlockPackagePaths: append([]string(nil), resolved.BlockPackagePaths...), BlockCatalogFingerprint: catalog.Fingerprint,
 		RepositoryCatalogFingerprint: repositories.Fingerprint, RepositoryExecutions: map[string]dynamicplan.RepositoryExecution{}, MergeOrder: dynamicplan.RepositoryMergeOrder(plan),
 		Revisions: []dynamicplan.Revision{{Number: 1, Reason: "initial plan", CreatedAt: now, Plan: plan}},
@@ -1107,6 +1109,7 @@ func appendUniqueString(values []string, value string) []string {
 func buildReplannerPayload(plan dynamicplan.Plan, record *dynamicplan.Record, remaining []dynamicplan.Phase, catalog *blockcatalog.Catalog, repositories *workspacecatalog.Catalog) map[string]any {
 	payload := map[string]any{
 		"goal":                  plan.Goal,
+		"task_source":           record.TaskSource,
 		"current_plan":          plan,
 		"completed_phases":      record.CompletedPhases,
 		"results":               record.Results,
@@ -1250,7 +1253,7 @@ func (s *Service) startDynamicSegment(ctx context.Context, record *dynamicplan.R
 	}
 	segmentName := fmt.Sprintf("execution-%03d-revision-%03d-segment-%03d.yaml", len(record.ExecutionRunIDs)+1, len(record.Revisions), record.CurrentSegment+1)
 	path := filepath.Join((dynamicplan.Store{Workspace: s.Workspace}).Dir(record.ID), segmentName)
-	contextRaw, _ := json.Marshal(map[string]any{"goal": plan.Goal, "results": record.Results, "steering": pendingSteering(record)})
+	contextRaw, _ := json.Marshal(map[string]any{"goal": plan.Goal, "task_source": record.TaskSource, "results": record.Results, "steering": pendingSteering(record)})
 	blocks := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "blocks")
 	segmentBudget := plan.Budget
 	usedRuns := s.dynamicRunCount(record)

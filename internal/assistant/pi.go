@@ -440,7 +440,13 @@ func piEnvironment(s spec.AssistantSpec, req Request) []string {
 }
 
 func probePiVersion(ctx context.Context, binary, workspace string, env []string) (string, error) {
-	cmd := exec.CommandContext(ctx, binary, "--version")
+	return probePiVersionWithTimeout(ctx, binary, workspace, env, 10*time.Second)
+}
+
+func probePiVersionWithTimeout(ctx context.Context, binary, workspace string, env []string, timeout time.Duration) (string, error) {
+	probeCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(probeCtx, binary, "--version")
 	execution.ConfigureCommand(cmd)
 	cmd.Dir = workspace
 	cmd.Env = env
@@ -452,10 +458,13 @@ func probePiVersion(ctx context.Context, binary, workspace string, env []string)
 		}
 		return "", &execution.Error{Kind: kind, ExitCode: -1, Op: "pi version", Err: ctx.Err()}
 	}
+	if probeCtx.Err() != nil {
+		return "", &execution.Error{Kind: execution.KindTimedOut, ExitCode: -1, Op: "pi version", Err: probeCtx.Err()}
+	}
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return "", &execution.Error{Kind: execution.KindProtocol, ExitCode: exitErr.ExitCode(), Op: "pi version", Err: fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))}
+			return "", &execution.Error{Kind: execution.KindProtocol, ExitCode: exitErr.ExitCode(), Op: "pi version", Err: fmt.Errorf("version probe exited with code %d", exitErr.ExitCode())}
 		}
 		return "", &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "pi version", Err: err}
 	}

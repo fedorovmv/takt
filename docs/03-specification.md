@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.49-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.50-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -825,3 +825,17 @@ State and artifacts remain in the control workspace. Node execution moves into t
 Process `takt-assistant/v1alpha2` является transport protocol, а не неявным набором security capabilities. Реальные capabilities задаются Config и подтверждаются первой stream declaration. Runtime отклоняет configured capability, отсутствующую в declaration, event вне declared `event_types` и `tool.request` без `tool_control`.
 
 Public `sdk/domainadapter.InvokeRequest`/`ReconcileRequest` включают необязательный `workspace` — execution workspace node. Process transport использует его как cwd. Provider-specific repository identity остаётся в adapter input/config; multi-repo `change.create` передаёт `repository_workspace` с точным child execution worktree.
+
+## Structured Task Sources — v0.1.50
+
+`Config.task_sources` declares trusted external ingress adapters. Process adapters use `takt-task-source/v1alpha1` and return a normalized Task with `source.adapter`, `kind`, `reference`, immutable `revision` and optional URL.
+
+`task start` / `takt.task.start` accept exactly one input mode:
+
+```text
+goal
+or
+source + source_ref
+```
+
+Source resolution happens before the existing Task Router. Router, Dynamic Planner and Replanner receive the same structured `task_source`; ordinary workflow input remains the compatible compiled GoalText. Resume/replan does not re-fetch the source. Task Sources are ingress and are distinct from `adapter` nodes / Domain Adapter side effects.

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"takt/internal/redact"
 	"takt/internal/spec"
 )
 
@@ -181,8 +182,14 @@ func (m *MCP) start(ctx context.Context, workspace string) (*mcpSession, error) 
 		cmd.Dir = workspace
 	}
 	cmd.Env = os.Environ()
+	secretResolver := redact.NewFromEnvironment()
 	for k, v := range m.Spec.Env {
-		cmd.Env = append(cmd.Env, k+"="+v)
+		resolved, resolveErr := secretResolver.Resolve(v)
+		if resolveErr != nil {
+			cancel()
+			return nil, fmt.Errorf("domain adapter secret %s: %w", k, resolveErr)
+		}
+		cmd.Env = append(cmd.Env, k+"="+resolved)
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
