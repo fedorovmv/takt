@@ -98,7 +98,7 @@ benchmark:
   id: task-dynamic-v1
   baseline_strategy: force-template
   cases: cases.yaml
-  repeat: 1
+  repeat: 2
   profile: code
 strategies:
   - id: force-template
@@ -117,13 +117,65 @@ YAML
 "$ROOT/bin/takt" eval task-benchmark "$TMP/matrix.yaml" --output "$TMP/out" --replace --json > "$TMP/result.json"
 "$ROOT/bin/takt" eval report "$TMP/out" --json > "$TMP/report.json"
 
-grep -q '"report_version": "takt-task-evaluation-matrix/v1alpha1"' "$TMP/result.json"
-grep -q '"passed": true' "$TMP/result.json"
-grep -q '"route_accuracy": 0.3333333333333333' "$TMP/result.json"
-grep -q '"route_accuracy": 1' "$TMP/result.json"
-grep -q '"candidate_only_route_correct": 2' "$TMP/result.json"
-grep -q '"candidate_plan_revisions": 2' "$TMP/result.json"
-grep -q '"replan_expectation_rate": 1' "$TMP/result.json"
-grep -q '"report_version": "takt-task-evaluation-matrix/v1alpha1"' "$TMP/report.json"
+cat > "$TMP/assert.go" <<'GO'
+package main
+
+import (
+  "encoding/json"
+  "fmt"
+  "os"
+)
+
+type summary struct {
+  Total int `json:"total"`
+  RouteAccuracy float64 `json:"route_accuracy"`
+  FinalSuccessRate float64 `json:"final_success_rate"`
+  ReplanExpectationRate float64 `json:"replan_expectation_rate"`
+}
+type run struct {
+  CaseID string `json:"case_id"`
+  Repeat int `json:"repeat"`
+  PlanRevisions int `json:"plan_revisions"`
+}
+type strategy struct {
+  ID string `json:"id"`
+  Summary summary `json:"summary"`
+  Runs []run `json:"runs"`
+}
+type comparison struct {
+  CandidateOnlyRouteCorrect int `json:"candidate_only_route_correct"`
+  BothRouteCorrect int `json:"both_route_correct"`
+}
+type report struct {
+  ReportVersion string `json:"report_version"`
+  Repeat int `json:"repeat"`
+  Passed bool `json:"passed"`
+  Strategies []strategy `json:"strategies"`
+  Comparisons []comparison `json:"comparisons"`
+}
+func fail(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...); os.Exit(1) }
+func main() {
+  raw, err := os.ReadFile(os.Args[1]); if err != nil { fail("read: %v", err) }
+  var r report; if err := json.Unmarshal(raw, &r); err != nil { fail("decode: %v", err) }
+  if r.ReportVersion == "" {
+    var envelope struct { Result json.RawMessage `json:"result"` }
+    if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Result) == 0 { fail("decode envelope: %v", err) }
+    if err := json.Unmarshal(envelope.Result, &r); err != nil { fail("decode result: %v", err) }
+  }
+  if r.ReportVersion != "takt-task-evaluation-matrix/v1alpha1" || !r.Passed || r.Repeat != 2 { fail("header=%+v", r) }
+  byID := map[string]strategy{}; for _, s := range r.Strategies { byID[s.ID] = s }
+  base, ok := byID["force-template"]; if !ok { fail("missing baseline") }
+  cand, ok := byID["semantic-router"]; if !ok { fail("missing candidate") }
+  if base.Summary.Total != 6 || base.Summary.RouteAccuracy < 0.3333333333 || base.Summary.RouteAccuracy > 0.3333333334 { fail("baseline summary=%+v", base.Summary) }
+  if cand.Summary.Total != 6 || cand.Summary.RouteAccuracy != 1 || cand.Summary.FinalSuccessRate != 1 || cand.Summary.ReplanExpectationRate != 1 { fail("candidate summary=%+v", cand.Summary) }
+  if len(r.Comparisons) != 1 || r.Comparisons[0].CandidateOnlyRouteCorrect != 4 || r.Comparisons[0].BothRouteCorrect != 2 { fail("comparison=%+v", r.Comparisons) }
+  replanRepeats := map[int]bool{}
+  for _, item := range cand.Runs { if item.CaseID == "replan" { if item.PlanRevisions != 2 { fail("replan run=%+v", item) }; replanRepeats[item.Repeat] = true } }
+  if !replanRepeats[1] || !replanRepeats[2] { fail("missing repeated replan runs: %+v", replanRepeats) }
+}
+GO
+
+(cd "$ROOT" && go run "$TMP/assert.go" "$TMP/result.json")
+(cd "$ROOT" && go run "$TMP/assert.go" "$TMP/report.json")
 
 echo 'task-level dynamic evaluation: PASS'

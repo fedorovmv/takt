@@ -517,3 +517,21 @@ True time-to-valid вычисляется от `Run.CreatedAt` до durable `nod
 Known-secret redaction применяется перед durable commit независимо от того, кто изменяет Run: scheduler/runtime, control API или external worker protocol. External text artifacts редактируются до записи, non-text artifacts с known secret отклоняются. Explicit SecretRef регистрируется и после template rendering adapter environment.
 
 **Причина.** Append-only event stream и artifacts нельзя исправить следующим commit. Защита только в `Runner.commit` оставляет внешние worker/control paths отдельным обходом и противоречит заявленному durable security contract.
+
+## ADR-076. Loop iteration history is durable and bounded; nested loop_group stays out of v0.2
+
+**Статус:** принято.
+
+Каждый завершённый проход `loop_group` сохраняется как immutable `LoopIterationState` в `NodeState.loop_iterations`. История содержит iteration number, child node states, `until` result, `satisfied` и completion time. `loop_previous` сохраняется как совместимое представление последней завершённой итерации и не удаляется в `v0.2`.
+
+Чтобы full history оставалась bounded частью Run state, `loop_group.max_iterations` ограничен 64. Public view применяет к каждому snapshot те же правила скрытия expanded/internal IDs, что и к обычному состоянию. Redaction рекурсивно покрывает iteration history.
+
+Nested `loop_group` остаётся запрещённым в `v0.2` и первом `v1beta1`. `subworkflow`, `foreach`, governed child Runs и approval внутри loop уже дают необходимую композицию; рекурсивная loop-семантика не замораживается без production use case и отдельной проверки resume/evidence.
+
+## ADR-077. v0.2 freezes only stable-candidate contracts, not every observable alpha format
+
+**Статус:** принято.
+
+Перед `v1beta1` контракты делятся на четыре категории: `stable-candidate`, `supported-alpha`, `deprecated`, `internal`. Workflow/Config/BlockPackage, durable Run lifecycle, typed artifacts, пять `takt.task.*` и neutral domain operations являются stable-candidate. Dynamic Plan/evaluation formats, Adapter SDK и advanced MCP host/worker/operator surfaces остаются supported-alpha до production evidence. `takt-assistant/v1alpha1` считается deprecated в пользу `v1alpha2`, но продолжает читаться ради совместимости. Store layout, expanded IDs, daemon socket и fake fixtures являются internal.
+
+`v0.2` продолжает принимать `takt/v1alpha1`; additive state changes не требуют новой authoring apiVersion. Финальная field-by-field migration в `v1beta1` выполняется только после live Route DSL, Go и Document evidence.

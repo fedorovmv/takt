@@ -269,7 +269,8 @@ func (r *Runner) runValidationCommands(ctx context.Context, state *store.RunStat
 		if mkdirErr := os.MkdirAll(filepath.Dir(resolved), 0o755); mkdirErr != nil {
 			return execResult{}, mkdirErr
 		}
-		if writeErr := os.WriteFile(resolved, append(rawReport, '\n'), 0o644); writeErr != nil {
+		persistedReport, _ := r.redactor.Bytes(rawReport)
+		if writeErr := os.WriteFile(resolved, append(persistedReport, '\n'), 0o644); writeErr != nil {
 			return execResult{}, writeErr
 		}
 	}

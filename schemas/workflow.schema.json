@@ -188,7 +188,8 @@
       "properties": {
         "max_iterations": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 64
         },
         "nodes": {
           "type": "array",

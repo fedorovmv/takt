@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"takt/internal/spec"
 	"takt/internal/store"
 	"takt/internal/validation"
 )
@@ -1161,5 +1162,95 @@ func TestTaskMatrixRejectsExplicitZeroRepeat(t *testing.T) {
 	matrix := TaskMatrix{APIVersion: MatrixAPIVersion, Kind: TaskMatrixKind, Metadata: MatrixMetadata{Name: "x"}, Benchmark: TaskMatrixBenchmark{ID: "x", BaselineStrategy: "a", Cases: "cases.yaml", Repeat: &zero}, Strategies: []TaskMatrixStrategy{{ID: "a", WorkspaceTemplate: "a"}, {ID: "b", WorkspaceTemplate: "b"}}}
 	if err := validateTaskMatrix(&matrix); err == nil || !strings.Contains(err.Error(), "repeat") {
 		t.Fatalf("expected repeat validation error, got %v", err)
+	}
+}
+
+func TestCommitEvaluationStateRedactsApprovalAndPriorOutputs(t *testing.T) {
+	workspace := t.TempDir()
+	const envName = "TAKT_EVAL_PLAIN_VALUE"
+	const secret = "evaluation-secret-47"
+	t.Setenv(envName, secret)
+	cfg := &spec.Config{Assistants: map[string]spec.AssistantSpec{
+		"worker": {Env: map[string]string{"TOKEN": "secret://" + envName}},
+	}}
+	state := &store.RunState{
+		ID: "run-eval-redaction", Status: store.RunRunning, ConfigPath: "override-config.yaml",
+		Nodes:     map[string]*store.NodeState{"approve": {Status: store.NodePending, Output: secret, Stdout: secret, Stderr: secret}},
+		Approvals: map[string]string{"approve": secret},
+	}
+	repo := store.FS{Workspace: workspace}
+	if err := commitEvaluationState(repo, state, store.Event{Type: "approval.answered", Data: map[string]any{"answer": secret}}, cfg); err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := repo.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := repo.ReadEvents(state.ID, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(struct {
+		State  *store.RunState
+		Events []store.Event
+	}{persisted, events})
+	if strings.Contains(string(raw), secret) {
+		t.Fatalf("evaluation approval commit leaked secret: %s", raw)
+	}
+}
+
+func TestTaskSummaryCountsRepeatPairsIndependently(t *testing.T) {
+	runs := []TaskRunRecord{
+		{CaseID: "same", Repeat: 1, RouteCorrect: true, FinalSuccess: true, PlanRevisions: 1},
+		{CaseID: "same", Repeat: 2, RouteCorrect: false, FinalSuccess: true, PlanRevisions: 1},
+	}
+	summary := summarizeTaskRuns(runs)
+	if summary.Total != 2 || math.Abs(summary.RouteAccuracy-0.5) > 1e-9 || summary.FinalSuccessRate != 1 {
+		t.Fatalf("repeat aggregation = %+v", summary)
+	}
+}
+
+func TestTaskWorkspaceFingerprintMatchesCopiedContentBoundary(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{".takt/runs/r1", ".takt/plans/p1", ".takt/locks", ".takt/host-sessions", ".takt/notifications"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, dir, "ignored.txt"), []byte(dir), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "kept.txt"), []byte("one"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := hashTaskWorkspaceTemplate(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".takt", "runs", "r1", "ignored.txt"), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	afterIgnored, err := hashTaskWorkspaceTemplate(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterIgnored != before {
+		t.Fatalf("runtime-only directory changed fingerprint: before=%s after=%s", before, afterIgnored)
+	}
+	if err := os.WriteFile(filepath.Join(root, "kept.txt"), []byte("two"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	afterKept, err := hashTaskWorkspaceTemplate(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterKept == before {
+		t.Fatal("copied workspace content did not change fingerprint")
+	}
+}
+
+func TestTaskReplanExpectationStartsAtSecondRevision(t *testing.T) {
+	if taskCaseExpectsReplan(0) || taskCaseExpectsReplan(1) || !taskCaseExpectsReplan(2) {
+		t.Fatal("replan expectation must start at min_plan_revisions=2")
 	}
 }

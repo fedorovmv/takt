@@ -104,6 +104,26 @@ func TestLoopGroup(t *testing.T) {
 	if state.Status != "completed" {
 		t.Fatalf("unexpected: %+v", state)
 	}
+	loop := state.Nodes["loop"]
+	if len(loop.LoopIterations) != 2 {
+		t.Fatalf("expected two durable iterations, got %+v", loop.LoopIterations)
+	}
+	if loop.LoopIterations[0].Iteration != 1 || loop.LoopIterations[0].Nodes["check"].ExitCode != 1 || loop.LoopIterations[0].Satisfied {
+		t.Fatalf("unexpected first iteration: %+v", loop.LoopIterations[0])
+	}
+	if loop.LoopIterations[1].Iteration != 2 || loop.LoopIterations[1].Nodes["check"].ExitCode != 0 || !loop.LoopIterations[1].Satisfied {
+		t.Fatalf("unexpected second iteration: %+v", loop.LoopIterations[1])
+	}
+	if loop.LoopPrevious["check"].ExitCode != loop.LoopIterations[1].Nodes["check"].ExitCode {
+		t.Fatalf("loop_previous no longer matches latest iteration: previous=%+v history=%+v", loop.LoopPrevious, loop.LoopIterations)
+	}
+	persisted, err := r.Store.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Nodes["loop"].LoopIterations) != 2 {
+		t.Fatalf("iteration history was not durable: %+v", persisted.Nodes["loop"])
+	}
 }
 
 func TestAllowFailureOnlyAllowsNonZeroExit(t *testing.T) {

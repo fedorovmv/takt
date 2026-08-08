@@ -7,7 +7,7 @@
 - `workflow.schema.json` — текущий `takt/v1alpha1 Workflow`, включая `timeout`, `idle_timeout`, `attempts.backoff`, `sandbox.enforcement`, `always_run`, расширенный `output_format`, `one_success`, approval в цикле, `foreach.parallel` и governed child `workflow`;
 - `profile.schema.json` — Profile с default workflow и картой именованных `workflows`;
 - `command-frontmatter.schema.json` — frontmatter Markdown-команд;
-- `run-state.schema.json` — состояние Run, parent/child links, pause/abandon/recovery/operator retry, canonical `NodePath`, diagnostics/retry/sandbox decisions, fingerprints, revisions, типизированные Node statuses, execution identity и aggregate usage;
+- `run-state.schema.json` — состояние Run, parent/child links, pause/abandon/recovery/operator retry, canonical `NodePath`, bounded `loop_iterations[]`, diagnostics/retry/sandbox decisions, fingerprints, revisions, типизированные Node statuses, execution identity и aggregate usage;
 - `event.schema.json` — JSONL-событие с revision;
 - `notification-config.schema.json` — локальные attention/terminal события и sinks `coding_agent_host|desktop|process`;
 - `assistant-protocol.schema.json` — реализованный JSON-протокол `takt-assistant/v1alpha1|v1alpha2` со строгими status/exit и неотрицательным usage;
@@ -16,7 +16,7 @@
 - `evaluation-case-manifest.schema.json` — labels `category|difficulty|source` и другие стабильные метаданные cases;
 - `evaluation-matrix.schema.json` — сравнительная matrix стратегий, baseline, repeat и regression gates;
 - `evaluation-compare.schema.json` — попарное baseline/candidate сравнение по case ID + repeat;
-- `evaluation-matrix-report.schema.json` — итог `takt-evaluation-matrix/v1alpha1` со стратегиями, comparisons и gate results.
+- `evaluation-matrix-report.schema.json` — итог `takt-evaluation-matrix/v1alpha1` со строго типизированными strategy summaries, usage breakdown, comparisons и gate results.
 - `task-case-manifest.schema.json` — task-level cases с ожидаемым route/status и минимальной ревизией плана;
 - `task-evaluation-matrix.schema.json` — matrix для полного `Task Router → Dynamic Plan → replan` контура;
 - `task-evaluation-report.schema.json` — task-level report с route accuracy, plan revisions, replanner runs, pairwise outcomes и gates.

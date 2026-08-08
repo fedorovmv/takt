@@ -78,13 +78,13 @@
             "type": "string"
           },
           "strategy": {
-            "type": "object"
+            "$ref": "#/$defs/strategyIdentity"
           },
           "benchmark": {
-            "type": "object"
+            "$ref": "#/$defs/benchmarkIdentity"
           },
           "summary": {
-            "type": "object"
+            "$ref": "#/$defs/summary"
           }
         }
       }
@@ -92,65 +92,13 @@
     "comparisons": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": [
-          "report_version",
-          "benchmark",
-          "baseline",
-          "candidate",
-          "metrics",
-          "paired_outcomes",
-          "cases"
-        ],
-        "properties": {
-          "report_version": {
-            "const": "takt-evaluation-compare/v1alpha1"
-          },
-          "benchmark": {
-            "type": "object"
-          },
-          "baseline": {
-            "type": "object"
-          },
-          "candidate": {
-            "type": "object"
-          },
-          "metrics": {
-            "type": "object"
-          },
-          "paired_outcomes": {
-            "type": "object"
-          },
-          "cases": {
-            "type": "array"
-          },
-          "by_category": {
-            "type": "array"
-          }
-        }
+        "$ref": "#/$defs/compareReport"
       }
     },
     "gates": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "strategy",
-          "passed",
-          "message"
-        ],
-        "properties": {
-          "strategy": {
-            "type": "string"
-          },
-          "passed": {
-            "type": "boolean"
-          },
-          "message": {
-            "type": "string"
-          }
-        }
+        "$ref": "#/$defs/gateResult"
       }
     },
     "passed": {
@@ -159,6 +107,607 @@
     "repeat": {
       "type": "integer",
       "minimum": 1
+    }
+  },
+  "$defs": {
+    "strategyIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "fingerprint",
+        "workflow_fingerprint",
+        "config_fingerprint",
+        "commands_fingerprint"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "workflow_fingerprint": {
+          "type": "string"
+        },
+        "config_fingerprint": {
+          "type": "string"
+        },
+        "commands_fingerprint": {
+          "type": "string"
+        }
+      }
+    },
+    "validatorIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "path",
+        "fingerprint"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        }
+      }
+    },
+    "benchmarkIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "fingerprint",
+        "dataset_fingerprint",
+        "workspace_fingerprint",
+        "case_count"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "dataset_fingerprint": {
+          "type": "string"
+        },
+        "workspace_fingerprint": {
+          "type": "string"
+        },
+        "case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quality_node": {
+          "type": "string"
+        },
+        "generation_node": {
+          "type": "string"
+        },
+        "validation_protocol": {
+          "type": "string"
+        },
+        "validator": {
+          "$ref": "#/$defs/validatorIdentity"
+        },
+        "case_manifest_fingerprint": {
+          "type": "string"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "attempts",
+        "input_tokens",
+        "output_tokens",
+        "duration_ms",
+        "answers",
+        "truncated_nodes",
+        "resumed_nodes",
+        "mixed_execution_identity_nodes",
+        "quality_runs",
+        "valid",
+        "invalid",
+        "valid_at_first_attempt",
+        "scored_runs",
+        "retry_scheduled",
+        "failed_executions",
+        "stable_valid_cases",
+        "stable_invalid_cases",
+        "unstable_cases",
+        "cost",
+        "failed_execution_cost",
+        "by_status",
+        "by_assistant",
+        "by_assistant_version",
+        "by_requested_model",
+        "by_resolved_model",
+        "diagnostics_by_severity",
+        "diagnostics_by_code",
+        "diagnostics_by_fingerprint",
+        "usage_by_execution_identity",
+        "success_at_1",
+        "final_success_rate",
+        "average_attempts_to_valid",
+        "average_score",
+        "cost_per_valid",
+        "amortized_end_to_end_ms_per_valid",
+        "average_time_to_valid_ms"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "answers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resumed_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mixed_execution_identity_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quality_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "valid_at_first_attempt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scored_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "retry_scheduled": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_executions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stable_valid_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stable_invalid_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unstable_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0
+        },
+        "failed_execution_cost": {
+          "type": "number",
+          "minimum": 0
+        },
+        "by_status": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_assistant": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_assistant_version": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_requested_model": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "by_resolved_model": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "diagnostics_by_severity": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "diagnostics_by_code": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "diagnostics_by_fingerprint": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "usage_by_execution_identity": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/usageBreakdown"
+          }
+        },
+        "success_at_1": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "final_success_rate": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "average_attempts_to_valid": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "average_score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cost_per_valid": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "amortized_end_to_end_ms_per_valid": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "average_time_to_valid_ms": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "metricComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline",
+        "candidate",
+        "delta",
+        "delta_percent"
+      ],
+      "properties": {
+        "baseline": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "candidate": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "delta": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "delta_percent": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "delta_percentage_points": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "pairedOutcomes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "both_valid",
+        "baseline_only_valid",
+        "candidate_only_valid",
+        "both_invalid"
+      ],
+      "properties": {
+        "both_valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseline_only_valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_only_valid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "both_invalid": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "caseComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "repeat",
+        "baseline_valid",
+        "candidate_valid",
+        "transition",
+        "baseline_time_to_valid_ms",
+        "candidate_time_to_valid_ms"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string"
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "baseline_valid": {
+          "type": "boolean"
+        },
+        "candidate_valid": {
+          "type": "boolean"
+        },
+        "transition": {
+          "enum": [
+            "both_valid",
+            "baseline_only_valid",
+            "candidate_only_valid",
+            "both_invalid"
+          ]
+        },
+        "baseline_time_to_valid_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "candidate_time_to_valid_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "categoryComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "total",
+        "outcomes"
+      ],
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outcomes": {
+          "$ref": "#/$defs/pairedOutcomes"
+        }
+      }
+    },
+    "compareReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "report_version",
+        "benchmark",
+        "baseline",
+        "candidate",
+        "metrics",
+        "paired_outcomes",
+        "cases"
+      ],
+      "properties": {
+        "report_version": {
+          "const": "takt-evaluation-compare/v1alpha1"
+        },
+        "benchmark": {
+          "$ref": "#/$defs/benchmarkIdentity"
+        },
+        "baseline": {
+          "$ref": "#/$defs/strategyIdentity"
+        },
+        "candidate": {
+          "$ref": "#/$defs/strategyIdentity"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "success_at_1",
+            "final_success_rate",
+            "average_attempts_to_valid",
+            "average_score",
+            "cost_per_valid",
+            "average_time_to_valid_ms"
+          ],
+          "properties": {
+            "success_at_1": {
+              "$ref": "#/$defs/metricComparison"
+            },
+            "final_success_rate": {
+              "$ref": "#/$defs/metricComparison"
+            },
+            "average_attempts_to_valid": {
+              "$ref": "#/$defs/metricComparison"
+            },
+            "average_score": {
+              "$ref": "#/$defs/metricComparison"
+            },
+            "cost_per_valid": {
+              "$ref": "#/$defs/metricComparison"
+            },
+            "average_time_to_valid_ms": {
+              "$ref": "#/$defs/metricComparison"
+            }
+          }
+        },
+        "paired_outcomes": {
+          "$ref": "#/$defs/pairedOutcomes"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/caseComparison"
+          }
+        },
+        "by_category": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/categoryComparison"
+          }
+        }
+      }
+    },
+    "gateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "passed",
+        "message"
+      ],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "usageBreakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executions",
+        "input_tokens",
+        "output_tokens",
+        "cost"
+      ],
+      "properties": {
+        "executions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
     }
   }
 }

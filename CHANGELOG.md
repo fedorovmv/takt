@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.47-alpha
+
+- Начат стабилизационный этап `v0.2`: опубликован contract audit `stable-candidate | supported-alpha | deprecated | internal` и draft migration policy `v1alpha1 → v1beta1`.
+- `loop_group` сохраняет first-class durable `loop_iterations[]` со snapshot всех завершённых итераций; `loop_previous` остаётся совместимым представлением последней итерации.
+- `loop_group.max_iterations` ограничен `1..64`; nested `loop_group` явно остаётся вне `v0.2`, остальные виды композиции внутри loop сохраняются.
+- Исправлен остаточный redaction gap: control строит redactor из `RunState.config_path`, включая profile-resolved/per-run config override; runtime и control используют единый config-secret constructor.
+- Evaluation approval path больше не коммитит live unredacted state; validation report `output_path` редактируется до записи; control operations используют общий redacted commit helper; `WorkflowPlan` persistence из control также редактируется по фактическому `record.config_path`.
+- Task-level evaluation выровняла `min_plan_revisions` (`1` = initial plan, replan начинается с `2`), durable needs-input, final-success/error semantics, repeat>1 E2E и workspace fingerprint/copy boundary.
+- Ужесточены task/evaluation matrix report schemas: основные nested summary/run/pairwise/compare records типизированы вместо свободных `object`.
+- Добавлен `scripts/test-iteration-history.sh` и релизный gate на iteration history/limit.
+- Takt skill обновлён до 0.29.0; профиль `code` остаётся 0.16.0.
+
 ## v0.1.46-alpha
 
 - закрыт общий persistence redaction для control/external worker paths, approval, external tool I/O/results/artifacts и domain receipts;

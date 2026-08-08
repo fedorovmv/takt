@@ -1,6 +1,6 @@
 # Актуальный backlog Takt v0.2
 
-Статус пересобран после `v0.1.46-alpha`. Этот документ содержит только незакрытые задачи и осознанно не повторяет историю релизов. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
+Статус пересобран после `v0.1.47-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
 
 ## P0. Доказать полезность текущего Takt
 
@@ -47,9 +47,9 @@ Task
 
 ## P1. v0.2 Stabilization
 
-### STABLE-001. Ревизия внешних контрактов
+### STABLE-001. Ревизия внешних контрактов — выполнено в v0.1.47
 
-Проверить и классифицировать как `keep | deprecate | internal`:
+Контракты классифицированы как `stable-candidate | supported-alpha | deprecated | internal` в `docs/61-v0.2-stabilization-iteration-history-v0.1.47.md`:
 
 - `takt/v1alpha1 Workflow`;
 - Config/Profile/BlockPackage;
@@ -60,17 +60,17 @@ Task
 - evaluation formats;
 - MCP agent/host/worker/operator surfaces.
 
-### STABLE-002. План `v1alpha1 → v1beta1`
+### STABLE-002. План `v1alpha1 → v1beta1` — draft в v0.1.47
 
-Подготовить migration guide и схемы совместимости. `v1beta1` вводится только после evidence из P0 и не должен фиксировать механизмы, которые не доказали пользу.
+Draft compatibility/migration policy подготовлен. Финальная field-by-field migration и, при необходимости, migrator выполняются только после evidence из P0 и не должны фиксировать механизмы, которые не доказали пользу.
 
-### STABLE-003. Полная история iteration state
+### STABLE-003. Полная история iteration state — выполнено в v0.1.47
 
-Заменить ограниченную модель `LoopPrevious` на first-class историю итераций там, где это требуется для диагностики/evidence/resume. Сохранить bounded storage и совместимость публичного результата.
+Добавлен `loop_iterations[]` со всеми завершёнными iteration snapshots. `loop_previous` сохранён как compatibility alias последней итерации; `max_iterations <= 64` ограничивает durable state.
 
-### STABLE-004. Решение по nested composition
+### STABLE-004. Решение по nested composition — выполнено в v0.1.47
 
-Определить, нужен ли nested `loop_group` в стабильном контракте. Реализовывать только вместе с path-based namespace и проверяемым resume, либо явно оставить запрет в `v1beta1`.
+Для `v0.2` и первого `v1beta1` nested `loop_group` явно остаётся запрещённым. Возврат этой возможности требует отдельного production use case и совместимого расширения контракта.
 
 ### STABLE-005. Граница structured output
 

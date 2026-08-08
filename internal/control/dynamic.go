@@ -221,7 +221,7 @@ func (s *Service) Plan(ctx context.Context, request PlanRequest) (*PlanResult, e
 	if plan.Decision == "planned" {
 		record.PendingSegments = dynamicplan.Segments(plan.Phases)
 	}
-	if err := (dynamicplan.Store{Workspace: s.Workspace}).Save(record); err != nil {
+	if err := s.savePlanRecord(record); err != nil {
 		return nil, err
 	}
 	return &PlanResult{PlanID: id, Decision: plan.Decision, ExistingWorkflow: plan.ExistingWorkflow, Preview: dynamicplan.PreviewWithCatalog(plan, catalog), RequiresConfirmation: record.RequiresConfirmation, Route: route, Record: record}, nil
@@ -327,11 +327,11 @@ func (s *Service) ExecutePlan(ctx context.Context, request ExecutePlanRequest) (
 		if startErr != nil {
 			record.Status = "failed"
 			record.LastError = startErr.Error()
-			return nil, saveDynamicFailure(st, record, startErr)
+			return nil, s.saveDynamicFailure(record, startErr)
 		}
 		record.CurrentRunID = started.RunID
 		record.ExecutionRunIDs = append(record.ExecutionRunIDs, started.RunID)
-		if err := st.Save(record); err != nil {
+		if err := s.savePlanRecord(record); err != nil {
 			return nil, err
 		}
 	} else {
@@ -341,9 +341,9 @@ func (s *Service) ExecutePlan(ctx context.Context, request ExecutePlanRequest) (
 		if err := s.startDynamicSegment(ctx, record); err != nil {
 			record.Status = "failed"
 			record.LastError = err.Error()
-			return nil, saveDynamicFailure(st, record, err)
+			return nil, s.saveDynamicFailure(record, err)
 		}
-		if err := st.Save(record); err != nil {
+		if err := s.savePlanRecord(record); err != nil {
 			return nil, err
 		}
 	}
@@ -394,7 +394,7 @@ func (s *Service) advanceForegroundPlan(ctx context.Context, record *dynamicplan
 			record.Status = "paused"
 			record.LastError = ""
 			record.UpdatedAt = time.Now().UTC()
-			if err := st.Save(record); err != nil {
+			if err := s.savePlanRecord(record); err != nil {
 				_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
 				return nil, err
 			}
@@ -407,7 +407,7 @@ func (s *Service) advanceForegroundPlan(ctx context.Context, record *dynamicplan
 			record.Status = "waiting"
 			record.LastError = fmt.Sprintf("segment run %s is waiting for input", run.ID)
 			record.UpdatedAt = time.Now().UTC()
-			if err := st.Save(record); err != nil {
+			if err := s.savePlanRecord(record); err != nil {
 				_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
 				return nil, err
 			}
@@ -420,7 +420,7 @@ func (s *Service) advanceForegroundPlan(ctx context.Context, record *dynamicplan
 			record.Status = "waiting"
 			record.LastError = err.Error()
 			record.UpdatedAt = time.Now().UTC()
-			if saveErr := st.Save(record); saveErr != nil {
+			if saveErr := s.savePlanRecord(record); saveErr != nil {
 				_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
 				return nil, fmt.Errorf("%v; persist plan failure: %w", err, saveErr)
 			}
@@ -435,8 +435,8 @@ func (s *Service) advanceForegroundPlan(ctx context.Context, record *dynamicplan
 	}
 }
 
-func saveDynamicFailure(st dynamicplan.Store, record *dynamicplan.Record, cause error) error {
-	if err := st.Save(record); err != nil {
+func (s *Service) saveDynamicFailure(record *dynamicplan.Record, cause error) error {
+	if err := s.savePlanRecord(record); err != nil {
 		return fmt.Errorf("%v; persist plan failure: %w", cause, err)
 	}
 	return cause
@@ -481,14 +481,14 @@ func (s *Service) Steer(ctx context.Context, request SteerRequest) (*dynamicplan
 			// reason, timestamp or safe continuation advice for the operator.
 			record.Status = previousStatus
 			record.LastError = err.Error()
-			if saveErr := st.Save(record); saveErr != nil {
+			if saveErr := s.savePlanRecord(record); saveErr != nil {
 				return nil, fmt.Errorf("%v; persist steering failure: %w", err, saveErr)
 			}
 			return nil, err
 		}
 		clearPlanFailure(record)
 	}
-	if err := st.Save(record); err != nil {
+	if err := s.savePlanRecord(record); err != nil {
 		return nil, err
 	}
 	if err := dynamicplan.ReleaseAdvanceLock(advanceLock); err != nil {
@@ -580,7 +580,7 @@ func (s *Service) PromotePlanWithOptions(planID, name string, options PromotePla
 	}
 	record.PromotedPath = output
 	record.UpdatedAt = time.Now().UTC()
-	if err := st.Save(record); err != nil {
+	if err := s.savePlanRecord(record); err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -611,7 +611,7 @@ func (s *Service) AdvanceDynamicPlans(ctx context.Context) error {
 			record.Status = "waiting"
 			record.LastError = err.Error()
 			record.UpdatedAt = time.Now().UTC()
-			if saveErr := st.Save(record); saveErr != nil {
+			if saveErr := s.savePlanRecord(record); saveErr != nil {
 				failures = append(failures, record.ID+": "+err.Error()+"; persist: "+saveErr.Error())
 				continue
 			}
@@ -636,27 +636,26 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 		record.Status = "paused"
 		record.LastError = ""
 		record.UpdatedAt = time.Now().UTC()
-		return (dynamicplan.Store{Workspace: s.Workspace}).Save(record)
+		return s.savePlanRecord(record)
 	}
 	if run.Status == store.RunAbandoned {
 		record.Status = "abandoned"
 		record.LastError = run.Error
 		record.UpdatedAt = time.Now().UTC()
-		return (dynamicplan.Store{Workspace: s.Workspace}).Save(record)
+		return s.savePlanRecord(record)
 	}
-	st := dynamicplan.Store{Workspace: s.Workspace}
 	if run.Status != store.RunCompleted {
 		record.Status = "failed"
 		record.LastError = fmt.Sprintf("segment run %s ended with %s: %s", run.ID, run.Status, run.Error)
 		record.UpdatedAt = time.Now().UTC()
-		return st.Save(record)
+		return s.savePlanRecord(record)
 	}
 	if latestPlan(record).Decision == "existing" {
 		record.Status = "completed"
 		record.CurrentRunID = ""
 		record.Results["workflow"] = run.Output
 		record.UpdatedAt = time.Now().UTC()
-		return st.Save(record)
+		return s.savePlanRecord(record)
 	}
 	if record.CurrentSegment >= len(record.PendingSegments) {
 		return fmt.Errorf("current segment %d is outside pending segments", record.CurrentSegment)
@@ -721,7 +720,7 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 		return err
 	}
 	if applyControlDeny(record, controlOutcome) {
-		return st.Save(record)
+		return s.savePlanRecord(record)
 	}
 	if len(controlOutcome.RepairFailures) > 0 {
 		handled, err := s.scheduleAutomaticRepair(ctx, record, segment, controlOutcome.RepairFailures, catalog)
@@ -730,12 +729,12 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 		}
 		if handled {
 			record.UpdatedAt = time.Now().UTC()
-			return st.Save(record)
+			return s.savePlanRecord(record)
 		}
 	}
 	if s.exceededTokenBudget(record, latestPlan(record).Budget.MaxTokens) {
 		parkPlan(record, evidence.FailureBudget, "dynamic plan token budget exceeded at phase boundary", "task-owner", "fork the task with an explicitly larger trusted budget or stop it", false)
-		return st.Save(record)
+		return s.savePlanRecord(record)
 	}
 	checkpoint := len(segment) > 0 && segment[len(segment)-1].Checkpoint
 	if checkpoint && len(record.Revisions) < latestPlan(record).Budget.MaxIterations {
@@ -743,9 +742,9 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 			return err
 		}
 		if record.Status != "running" {
-			return st.Save(record)
+			return s.savePlanRecord(record)
 		}
-		return st.Save(record)
+		return s.savePlanRecord(record)
 	}
 	record.CurrentSegment++
 	if record.CurrentSegment >= len(record.PendingSegments) {
@@ -758,19 +757,19 @@ func (s *Service) advanceDynamicRecord(ctx context.Context, record *dynamicplan.
 				return err
 			}
 			record.UpdatedAt = time.Now().UTC()
-			return st.Save(record)
+			return s.savePlanRecord(record)
 		}
 		record.Status = "completed"
 		record.CurrentRunID = ""
 		clearPlanFailure(record)
 		finalizeEvidence(record, candidateSHA)
 		record.UpdatedAt = time.Now().UTC()
-		return st.Save(record)
+		return s.savePlanRecord(record)
 	}
 	if err := s.startDynamicSegment(ctx, record); err != nil {
 		return err
 	}
-	return st.Save(record)
+	return s.savePlanRecord(record)
 }
 
 func repositoryEvidence(phase dynamicplan.Phase, output, candidateSHA string) *evidence.Manifest {

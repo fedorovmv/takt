@@ -237,7 +237,7 @@ func (s *Service) StopTask(request TaskStopRequest) (*TaskView, error) {
 			record.Status = "abandoned"
 			record.LastError = reason
 			record.UpdatedAt = time.Now().UTC()
-			if err := st.Save(record); err != nil {
+			if err := s.savePlanRecord(record); err != nil {
 				return nil, err
 			}
 		} else {
@@ -248,7 +248,7 @@ func (s *Service) StopTask(request TaskStopRequest) (*TaskView, error) {
 				record.Status = "abandoned"
 				record.LastError = reason
 				record.UpdatedAt = time.Now().UTC()
-				if err := st.Save(record); err != nil {
+				if err := s.savePlanRecord(record); err != nil {
 					return nil, err
 				}
 			}

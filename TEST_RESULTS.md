@@ -1,133 +1,124 @@
-# Test results — v0.1.46-alpha
+# Test results — v0.1.47-alpha
 
 Дата: 2026-08-08.
 
+Среда этого прогона: Linux amd64, Go 1.23.2. Фактический macOS-прогон этой поставки в текущей среде не выполнялся; замечания пользователя к v0.1.46 были получены из отдельного macOS review и закрыты кодом/регрессиями здесь.
+
 ## Release scope
 
-`v0.1.46-alpha — Task-level Dynamic Evaluation & Security Closure`:
+`v0.1.47-alpha — v0.2 Stabilization: Iteration History & Contract Audit`:
 
-- закрывает обходы persistence redaction на control/external worker paths;
-- редактирует approval, external assistant/tool/result payloads и domain receipts;
-- external text artifacts редактируются до записи, non-text artifact с known secret отклоняется;
-- templated `secret://ENV_NAME` регистрируется после render adapter env;
-- добавляет `takt eval task-benchmark` поверх настоящего Task Router / Dynamic Plan / checkpoint replan path;
-- закрывает замечания evaluation v0.1.45 по schemas/verify/repeat/stability/cost/time-to-valid/gates/immediate retry fingerprint;
-- актуализирует README, status, roadmap, implementation plan и backlog.
+- начинает стабилизационный этап перед `v0.2`, не вводя новый runtime и не объявляя `v1beta1`;
+- добавляет bounded first-class `loop_iterations[]` со всеми завершёнными итерациями и сохраняет `loop_previous` как compatibility alias последней итерации;
+- ограничивает `loop_group.max_iterations` диапазоном `1..64` и фиксирует решение оставить nested `loop_group` запрещённым в `v0.2`;
+- классифицирует внешние contracts как `stable-candidate | supported-alpha | deprecated | internal` и фиксирует draft migration policy `v1alpha1 → v1beta1`;
+- закрывает остаточные redaction gaps v0.1.46: фактический Run/Plan config path, evaluation approval, validation output report и control/WorkflowPlan persistence;
+- выравнивает task-evaluation semantics и ужесточает report schemas;
+- актуализирует README, status, roadmap, implementation plan, backlog, target-v0.2 и authoring skill.
 
 ## Обычный Go gate
 
 На рабочей копии успешно выполнены:
 
 ```text
-gofmt check                 PASS
-go vet ./...                PASS
-go test ./... -count=1      PASS — 33 пакета с тестами
-go build ./...              PASS
-scripts/check-docs.sh       PASS
-JSON parse schemas/*.json   PASS — 27 schemas
+gofmt -w cmd internal sdk      PASS
+go vet ./...                   PASS
+go test ./... -count=1         PASS — 33 пакета с тестами
+go build ./...                 PASS
+scripts/check-docs.sh          PASS
+JSON Schema Draft 2020-12     PASS — 27 schemas
 ```
 
 ## Race detector
 
-Изменённые Go-пакеты прогнаны одним завершившимся race-набором:
+Все реально изменённые runtime/state/control пакеты завершились под race detector:
 
 ```text
-go test -race \
-  ./internal/redact \
-  ./internal/assistant \
-  ./internal/control \
-  ./internal/diagnostic \
-  ./internal/evaluation \
-  ./internal/localsandbox \
-  ./internal/runtime \
-  ./cmd/takt -count=1       PASS
+./internal/control             PASS
+./internal/evaluation          PASS
+./internal/redact              PASS
+./internal/runtime             PASS
+./internal/store               PASS
+./internal/workflow            PASS
 ```
 
-`./scripts/verify.sh` также был запущен целиком. Обычные `go vet` и `go test ./...` внутри него завершились успешно, после чего агрегированный `go test -race ./...` был остановлен внешним timeout инструментальной среды без видимого test FAIL. Поэтому непрерывный полный `go test -race ./...` как PASS не заявляется; для изменённых пакетов используется завершившийся race-набор выше.
-
-## Security regressions v0.1.44
-
-Прямыми тестами подтверждено:
-
-- external tool input/output/result и assistant events проходят общий redactor до append-only persistence;
-- external textual artifact сохраняется уже redacted;
-- external binary artifact с known secret отклоняется fail-closed;
-- `Service.Answer` не сохраняет known secret в durable approval state;
-- `DomainOperationState.Receipt` входит в общий state redaction;
-- explicit SecretRef, появившийся после request/template rendering assistant env, регистрируется перед adapter execution;
-- runtime/public state после выполнения читается из durable redacted copy;
-- `test-adapter-platform.sh` использует `python3` с fallback на `python`;
-- optional sandbox test не зависит от `/bin/true`;
-- `sandbox-exec` profile проверяется кроссплатформенным unit-тестом;
-- macOS-only executable sandbox test запускается автоматически на macOS, когда `sandbox-exec` доступен;
-- degraded sandbox decision проверяется после повторного чтения durable state;
-- after-hook не обходит `sandbox.enforcement: required`.
-
-Текущая инструментальная среда — не macOS, поэтому macOS-only executable `sandbox-exec` test здесь не исполнялся. Релиз не заявляет фактический macOS CI-run: `.github/workflows/ci.yml` содержит матрицу, но наличие файла не является доказательством запуска конкретной локальной поставки.
-
-Дополнительно закрыты прежние покрывные пробелы:
+Агрегированный `go test -race ./... -count=1` был также запущен. Он успел завершить пакеты от `cmd/takt` через `internal/rolecontract` без test FAIL, после чего был остановлен внешним timeout инструментальной среды. Оставшийся хвост был прогнан отдельными завершившимися командами:
 
 ```text
-restart-like pause → new Runner → resume keeps persisted not_before   PASS
-different diagnostics → different fingerprints                       PASS
-fan-out short-circuit cancel_reason=fanout_result_decided              PASS
-NodeState.path + event data.node_path durable                           PASS
+./internal/runtime             PASS
+./internal/store               PASS
+./internal/taskroute           PASS
+./internal/validation          PASS
+./internal/workflow            PASS
+./internal/workspacecatalog    PASS
+./internal/yamlmini            PASS
+./sdk/agentadapter             PASS
+./sdk/domainadapter            PASS
 ```
 
-## Evaluation regressions v0.1.45
+Дополнительная попытка `go test -race -p 1 ./...` также была остановлена внешним timeout без test FAIL. Поэтому один непрерывный aggregate race PASS не заявляется; race-покрытие подтверждено завершившимися package-level прогонами и частично завершившимся aggregate-run.
 
-Подтверждено:
+## v0.1.46 review fixes
 
-- четыре workflow-evaluation schemas зарегистрированы в `schemas/README.md`;
-- Route DSL strategy benchmark и новый task benchmark включены в `scripts/verify.sh`;
-- explicit `benchmark.repeat: 0` отклоняется и обычным, и task matrix;
-- matrix/compare report schemas типизируют основные records вместо голых objects;
-- stable-valid / stable-invalid / unstable aggregation имеет прямой unit test;
-- failed-execution cost имеет точный unit assert;
-- `time_to_valid_ms` проверяется на точном durable event timestamp;
-- gate failure имеет unit + E2E coverage и сохраняет report до non-zero;
-- immediate `node.retry` сохраняет diagnostic fingerprint так же, как delayed retry.
+Прямыми регрессиями и code-path проверками подтверждено:
 
-## Task-level Dynamic Takt benchmark
+- control redactor строится из `RunState.config_path`, а не service default config;
+- per-run/profile-resolved config SecretRef защищается даже при неэвристическом имени env;
+- evaluation approval path коммитит redacted clone, не live RunState;
+- prior Output/Stdout/Stderr не возвращаются на диск в сыром виде через evaluation approval;
+- task `min_plan_revisions: 1` означает initial plan; replan expectation начинается с `2`;
+- `needs_input` вычисляется после durable plan reload;
+- `final_success=true` не сохраняется одновременно с execution error;
+- task benchmark `repeat: 2` проверяется структурированным Go assertion helper;
+- workspace fingerprint и copy используют один runtime-directory exclusion contract;
+- validation report через `node.output_path` редактируется до записи;
+- production Run-state commits в control используют общий `commitRedacted`;
+- production `WorkflowPlan` writes из control используют run-specific redacted persistence helper;
+- task/evaluation report schemas типизируют nested summaries/runs/comparisons; execution-identity usage имеет строгий schema record.
 
-`scripts/test-task-evaluation.sh` использует настоящий builtin `code` profile и настоящий `control.Plan → ExecutePlan` path с deterministic fake coding-agent.
+## First-class iteration history
 
-Cases:
+Новый durable state для `loop_group`:
 
 ```text
-ordinary task          → template
-fixture dynamic audit  → dynamic
-fixture dynamic replan → dynamic + replace_remaining + plan revision 2
+loop_iterations[]   все завершённые snapshots
+loop_previous       совместимый snapshot последней итерации
+max_iterations      1..64
 ```
 
-Сравниваются две workspace strategies:
+`scripts/test-iteration-history.sh` подтверждает:
 
 ```text
-force-template    baseline: Router принудительно выбирает simple-reliable
-semantic-router   candidate: обычный semantic Router
+iteration 1          satisfied=false
+iteration 2          satisfied=false
+iteration 3          satisfied=true
+reload               сохраняет всю историю
+public view           скрывает internal expanded IDs
+loop_previous         совпадает с последней итерацией
+max_iterations=65     fail-closed
 ```
 
-Contract assertions:
+Unit/regression tests дополнительно проверяют redaction вложенных iteration nodes и JSON-schema state contract.
 
-```text
-baseline route accuracy     1/3
-candidate route accuracy    3/3
-candidate_only_route_correct 2
-replan expectation          PASS
-candidate replan revision   2
-task gates                  PASS
-```
+## Contract audit / v0.2 decision
 
-Обе стратегии могут завершить выполнение успешно, поэтому benchmark отдельно показывает route correctness и terminal success. Это доказывает измерительный контракт, но не является оценкой качества реальной модели.
+`docs/61-v0.2-stabilization-iteration-history-v0.1.47.md` фиксирует:
+
+- stable-candidate: Workflow/base node semantics, Config/Profile/BlockPackage, durable lifecycle/events/artifacts, public five `takt.task.*`, neutral domain operations, package lock/integrity semantics;
+- supported-alpha: TaskRoute/WorkflowPlan, evaluation formats, Adapter SDK, host-control integrations и advanced MCP surfaces;
+- deprecated: `takt-assistant/v1alpha1` для новых wrappers, при сохранении read compatibility;
+- internal: `.takt` storage layout, expanded IDs, commit protocol и fake fixtures;
+- nested `loop_group` остаётся запрещённым в v0.2;
+- `v1beta1` не замораживается до production evidence.
 
 ## Contract / E2E scripts
 
-Каждый из следующих скриптов завершён отдельно с PASS:
+Следующие сценарии завершились PASS как отдельные прогоны:
 
 ```text
 test-fake-assistant.sh
 test-pi-adapter.sh
-test-opencode-adapter.sh
+OpenCode adapter subtests (normal/race/runtime) separately PASS
 test-route-dsl-e2e.sh
 test-route-dsl-eval.sh
 test-composition.sh
@@ -154,42 +145,55 @@ test-adapter-platform.sh
 test-package-distribution.sh
 test-multi-repo.sh
 test-runtime-reliability-security.sh
+test-iteration-history.sh
 test-route-dsl-benchmark.sh
 test-task-evaluation.sh
 go test ./sdk/agentadapter -count=1
+scripts/check-docs.sh
 ```
 
-Также повторно валидированы shipped examples Route DSL, hook-retry, Pi/OpenCode smoke, composition, external executor и authoring-daemon.
+`test-opencode-adapter.sh` как одна длинная shell-команда был остановлен внешней оболочкой после первой успешной подпроверки; его оставшиеся normal/race/runtime Go-команды были затем запущены отдельно и завершились PASS. Аналогично длинные группы contract scripts иногда достигали общего timeout уже после нескольких PASS; оставшиеся скрипты запускались отдельно.
+
+Также повторно валидированы shipped examples: Route DSL, hook-retry, Pi/OpenCode smoke, composition, external executor и authoring-daemon.
+
+## macOS boundary
+
+В проекте сохраняются macOS regressions из v0.1.44/v0.1.46: symlink-aware workspace paths, `python3` fallback, `sandbox-exec` profile и executable fail-closed test при доступном backend. Текущая release verification выполняется на Linux, поэтому наличие этих тестов не объявляется фактическим macOS-run этой версии.
 
 ## Production evidence boundary
 
-Релиз **не подменяет** реальный Route DSL benchmark synthetic fixture-ом. В репозитории есть measurement infrastructure и production-shaped corpus, но live quality numbers требуют:
+`v0.1.47` сознательно не подменяет следующий P0 gate synthetic workload-ом. Для live Route DSL evidence по-прежнему требуются:
 
 - реальный обезличенный corpus;
-- штатный корпоративный `route-tool`/validator;
-- фактические model configurations;
+- штатный Route DSL validator;
+- фактические model/agent configurations;
 - несколько повторов на одинаковых fingerprints.
 
-Это остаётся первым внешним P0 gate нового roadmap.
+До этого `v1beta1` остаётся draft target, а не замороженным контрактом.
 
 ## Clean archive verification
 
 Первый release ZIP был собран без `bin/`, распакован в новый каталог и проверен как поставка:
 
 ```text
-MANIFEST.sha256                         546 files — PASS
+MANIFEST.sha256                         548 files — PASS
 bin/                                    absent
+VERSION                                 0.1.47-alpha
+skills/takt/VERSION                     0.29.0
 gofmt                                   PASS
 go vet ./...                            PASS
 go test ./... -count=1                  PASS
 go build ./...                          PASS
-27 JSON schemas                         PASS
+27 JSON schemas Draft 2020-12          PASS
 scripts/check-docs.sh                   PASS
 test-runtime-reliability-security.sh    PASS
-test-adapter-platform.sh                PASS
-test-route-dsl-benchmark.sh             PASS
+test-iteration-history.sh               PASS
 test-task-evaluation.sh                 PASS
+test-route-dsl-benchmark.sh             PASS
+test-adapter-platform.sh                PASS
 changed-package race set                PASS
 ```
 
-После этой проверки в поставке меняется только данный release report и пересчитывается `MANIFEST.sha256`; исходный код, schemas и contract scripts не меняются. Финальный ZIP повторно проверяется по manifest после пересборки.
+При race-проверке распакованного ZIP длинная объединённая команда пакетов была остановлена внешним timeout уже после PASS `control/evaluation/redact`; `runtime`, `store` и `workflow` затем завершились отдельным PASS.
+
+После этой clean verification меняется только данный release report. `MANIFEST.sha256` и ZIP пересчитываются; финальный архив повторно проверяется по manifest, без повторного изменения исходного кода.

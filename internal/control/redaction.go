@@ -1,32 +1,27 @@
 package control
 
 import (
+	"encoding/json"
+
 	"takt/internal/config"
+	"takt/internal/dynamicplan"
 	"takt/internal/redact"
 	"takt/internal/store"
 )
 
-func (s *Service) persistenceRedactor() *redact.Redactor {
-	r := redact.NewFromEnvironment()
-	cfg, err := config.Load(s.ConfigPath)
-	if err != nil || cfg == nil {
-		return r
+func (s *Service) persistenceRedactor(configPath string) *redact.Redactor {
+	if configPath == "" {
+		configPath = s.ConfigPath
 	}
-	for _, assistant := range cfg.Assistants {
-		for _, value := range assistant.Env {
-			r.RegisterReferences(value)
-		}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return redact.NewFromEnvironment()
 	}
-	for _, adapter := range cfg.Adapters {
-		for _, value := range adapter.Env {
-			r.RegisterReferences(value)
-		}
-	}
-	return r
+	return redact.NewFromConfig(cfg)
 }
 
 func (s *Service) commitRedacted(st store.FS, state *store.RunState, event store.Event) error {
-	r := s.persistenceRedactor()
+	r := s.persistenceRedactor(state.ConfigPath)
 	persisted, err := redact.CloneRunState(state)
 	if err != nil {
 		return err
@@ -39,4 +34,29 @@ func (s *Service) commitRedacted(st store.FS, state *store.RunState, event store
 	state.Revision = persisted.Revision
 	state.UpdatedAt = persisted.UpdatedAt
 	return nil
+}
+
+func (s *Service) savePlanRecord(record *dynamicplan.Record) error {
+	if record == nil {
+		return nil
+	}
+	r := s.persistenceRedactor(record.ConfigPath)
+	raw, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	redacted := r.Any(decoded)
+	raw, err = json.Marshal(redacted)
+	if err != nil {
+		return err
+	}
+	var persisted dynamicplan.Record
+	if err := json.Unmarshal(raw, &persisted); err != nil {
+		return err
+	}
+	return (dynamicplan.Store{Workspace: s.Workspace}).Save(&persisted)
 }

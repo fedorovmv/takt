@@ -18,6 +18,7 @@ import (
 
 	cfgpkg "takt/internal/config"
 	"takt/internal/definition"
+	"takt/internal/redact"
 	"takt/internal/runtime"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -551,7 +552,7 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 		}
 		state.Status = store.RunRunning
 		state.Waiting = nil
-		if err := runner.Store.Commit(state, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true, "source": "evaluation"}}); err != nil {
+		if err := commitEvaluationState(runner.Store, state, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true, "source": "evaluation"}}, cfg); err != nil {
 			return record, err
 		}
 		state, runErr = runner.Resume(ctx, state)
@@ -576,6 +577,22 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 		return record, runErr
 	}
 	return record, nil
+}
+
+func commitEvaluationState(repo store.Repository, state *store.RunState, event store.Event, cfg *spec.Config) error {
+	r := redact.NewFromConfig(cfg)
+	persisted, err := redact.CloneRunState(state)
+	if err != nil {
+		return err
+	}
+	redact.RedactRunState(r, persisted)
+	event.Data = redact.EventData(r, event.Data)
+	if err := repo.Commit(persisted, event); err != nil {
+		return err
+	}
+	state.Revision = persisted.Revision
+	state.UpdatedAt = persisted.UpdatedAt
+	return nil
 }
 
 func applyQuality(record *RunRecord, state *store.RunState, qualityNode, generationNode string) error {

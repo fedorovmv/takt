@@ -83,22 +83,7 @@ func New(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspac
 }
 
 func runtimeRedactor(cfg *spec.Config) *redact.Redactor {
-	r := redact.NewFromEnvironment()
-	if cfg == nil {
-		return r
-	}
-	register := func(values map[string]string) {
-		for _, value := range values {
-			r.RegisterReferences(value)
-		}
-	}
-	for _, assistantSpec := range cfg.Assistants {
-		register(assistantSpec.Env)
-	}
-	for _, adapterSpec := range cfg.Adapters {
-		register(adapterSpec.Env)
-	}
-	return r
+	return redact.NewFromConfig(cfg)
 }
 
 func buildCommandResolver(workflowPath, executionWorkspace, controlWorkspace string) command.Resolver {
@@ -1154,14 +1139,19 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("until node %q missing", parent.LoopGroup.Until.Node)}
 		}
 		parentState.LoopPrevious = local
+		satisfied := untilSatisfied(parent.LoopGroup.Until, check)
+		parentState.LoopIterations = append(parentState.LoopIterations, store.LoopIterationState{
+			Iteration: iteration, Nodes: local, UntilNode: parent.LoopGroup.Until.Node,
+			ExitCode: check.ExitCode, Status: check.Status, Satisfied: satisfied, CompletedAt: time.Now().UTC(),
+		})
 		parentState.LoopIteration = 0
 		if err := r.commit(state, "loop.iteration.completed", parent.ID, map[string]any{
 			"iteration": iteration, "until_node": parent.LoopGroup.Until.Node,
-			"exit_code": check.ExitCode, "status": check.Status,
+			"exit_code": check.ExitCode, "status": check.Status, "satisfied": satisfied,
 		}); err != nil {
 			return execResult{}, err
 		}
-		if untilSatisfied(parent.LoopGroup.Until, check) {
+		if satisfied {
 			return execResult{Output: check.Output, Stdout: check.Stdout, Stderr: check.Stderr, ExitCode: check.ExitCode, SessionID: check.SessionID, Truncated: check.OutputTruncated}, nil
 		}
 		previous = local

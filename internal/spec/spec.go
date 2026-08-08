@@ -2,6 +2,8 @@ package spec
 
 import "encoding/json"
 
+const MaxLoopGroupIterations = 64
+
 type Metadata struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description,omitempty"`

@@ -3,8 +3,12 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"takt/internal/redact"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
@@ -33,6 +37,26 @@ func TestValidationCommandsExecuteInOrderAndReturnStructuredReport(t *testing.T)
 	}
 	if result.Stdout != "firstsecond" {
 		t.Fatalf("stdout=%q", result.Stdout)
+	}
+}
+
+func TestValidationReportOutputPathIsRedactedBeforeWrite(t *testing.T) {
+	dir := t.TempDir()
+	const secret = "validation-secret-47"
+	r := &redact.Redactor{}
+	r.AddSecret(secret)
+	runner := &Runner{Workspace: dir, ControlWorkspace: dir, Store: store.FS{Workspace: dir}, redactor: r}
+	state := &store.RunState{ID: "run-redacted-validation", Input: `{"validation_commands":["printf validation-secret-47"]}`, Nodes: map[string]*store.NodeState{"validate": {Attempts: 1}}}
+	node := spec.Node{ID: "validate", Script: &spec.ScriptSpec{Runtime: "validation"}, OutputPath: "report.json"}
+	if _, err := runner.runValidationCommands(context.Background(), state, node, nil, "", runner.Store.ArtifactsDir(state.ID), dir); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), secret) || !strings.Contains(string(data), "<redacted>") {
+		t.Fatalf("validation report leaked secret: %s", data)
 	}
 }
 

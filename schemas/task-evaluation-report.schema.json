@@ -66,145 +66,388 @@
       "type": "array",
       "minItems": 2,
       "items": {
-        "type": "object",
-        "required": [
-          "id",
-          "fingerprint",
-          "output_dir",
-          "summary",
-          "runs"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "fingerprint": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{64}$"
-          },
-          "output_dir": {
-            "type": "string"
-          },
-          "summary": {
-            "type": "object"
-          },
-          "runs": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "case_id",
-                "repeat",
-                "status",
-                "route_correct",
-                "final_success",
-                "plan_revisions",
-                "replanner_runs"
-              ],
-              "properties": {
-                "case_id": {
-                  "type": "string"
-                },
-                "repeat": {
-                  "type": "integer",
-                  "minimum": 1
-                },
-                "status": {
-                  "type": "string"
-                },
-                "route": {
-                  "type": "string"
-                },
-                "route_correct": {
-                  "type": "boolean"
-                },
-                "final_success": {
-                  "type": "boolean"
-                },
-                "plan_revisions": {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                "replanner_runs": {
-                  "type": "integer",
-                  "minimum": 0
-                }
-              }
-            }
-          }
-        }
+        "$ref": "#/$defs/taskStrategy"
       }
     },
     "comparisons": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": [
-          "baseline_strategy",
-          "candidate_strategy",
-          "outcomes"
-        ],
-        "properties": {
-          "baseline_strategy": {
-            "type": "string"
-          },
-          "candidate_strategy": {
-            "type": "string"
-          },
-          "outcomes": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "case_id",
-                "repeat",
-                "baseline_route_correct",
-                "candidate_route_correct"
-              ],
-              "properties": {
-                "case_id": {
-                  "type": "string"
-                },
-                "repeat": {
-                  "type": "integer",
-                  "minimum": 1
-                },
-                "baseline_route_correct": {
-                  "type": "boolean"
-                },
-                "candidate_route_correct": {
-                  "type": "boolean"
-                }
-              }
-            }
-          }
-        }
+        "$ref": "#/$defs/taskComparison"
       }
     },
     "gates": {
       "type": "array",
       "items": {
-        "type": "object",
-        "required": [
-          "strategy",
-          "passed",
-          "message"
-        ],
-        "properties": {
-          "strategy": {
-            "type": "string"
-          },
-          "passed": {
-            "type": "boolean"
-          },
-          "message": {
-            "type": "string"
-          }
-        }
+        "$ref": "#/$defs/gateResult"
       }
     },
     "passed": {
       "type": "boolean"
+    }
+  },
+  "$defs": {
+    "taskSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "route_correct",
+        "route_accuracy",
+        "final_success",
+        "final_success_rate",
+        "expected_replan_cases",
+        "replan_expectations_met",
+        "replan_expectation_rate",
+        "unexpected_needs_input",
+        "router_fallbacks",
+        "average_plan_revisions",
+        "average_replanner_runs",
+        "input_tokens",
+        "output_tokens",
+        "cost",
+        "duration_ms"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "route_correct": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "route_accuracy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "final_success": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "final_success_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "expected_replan_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "replan_expectations_met": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "replan_expectation_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "unexpected_needs_input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "router_fallbacks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "average_plan_revisions": {
+          "type": "number",
+          "minimum": 0
+        },
+        "average_replanner_runs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "taskRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "repeat",
+        "status",
+        "route_correct",
+        "final_success",
+        "needs_input",
+        "plan_revisions",
+        "replanner_runs",
+        "execution_runs",
+        "router_fallback",
+        "input_tokens",
+        "output_tokens",
+        "cost",
+        "duration_ms",
+        "replan_expected",
+        "replan_expectation_met"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "plan_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route": {
+          "type": "string"
+        },
+        "template": {
+          "type": "string"
+        },
+        "workflow": {
+          "type": "string"
+        },
+        "route_correct": {
+          "type": "boolean"
+        },
+        "final_success": {
+          "type": "boolean"
+        },
+        "needs_input": {
+          "type": "boolean"
+        },
+        "needs_input_allowed": {
+          "type": "boolean"
+        },
+        "plan_revisions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "replanner_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "execution_runs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "router_fallback": {
+          "type": "boolean"
+        },
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": "string"
+        },
+        "replan_expected": {
+          "type": "boolean"
+        },
+        "replan_expectation_met": {
+          "type": "boolean"
+        }
+      }
+    },
+    "taskStrategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "fingerprint",
+        "output_dir",
+        "summary",
+        "runs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "output_dir": {
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/taskSummary"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/taskRun"
+          }
+        }
+      }
+    },
+    "taskPairwiseOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "repeat",
+        "baseline_route_correct",
+        "candidate_route_correct",
+        "baseline_final_success",
+        "candidate_final_success",
+        "baseline_plan_revisions",
+        "candidate_plan_revisions"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "baseline_route_correct": {
+          "type": "boolean"
+        },
+        "candidate_route_correct": {
+          "type": "boolean"
+        },
+        "baseline_final_success": {
+          "type": "boolean"
+        },
+        "candidate_final_success": {
+          "type": "boolean"
+        },
+        "baseline_plan_revisions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_plan_revisions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "taskComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_strategy",
+        "candidate_strategy",
+        "baseline_only_route_correct",
+        "candidate_only_route_correct",
+        "both_route_correct",
+        "both_route_wrong",
+        "baseline_only_success",
+        "candidate_only_success",
+        "both_success",
+        "both_failed",
+        "outcomes"
+      ],
+      "properties": {
+        "baseline_strategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_strategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseline_only_route_correct": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_only_route_correct": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "both_route_correct": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "both_route_wrong": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseline_only_success": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_only_success": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "both_success": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "both_failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/taskPairwiseOutcome"
+          }
+        }
+      }
+    },
+    "gateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "passed",
+        "message"
+      ],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
     }
   }
 }

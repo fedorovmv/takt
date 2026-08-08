@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"takt/internal/spec"
 )
 
 const SecretPrefix = "secret://"
@@ -23,6 +25,28 @@ func NewFromEnvironment() *Redactor {
 			continue
 		}
 		r.Add(value)
+	}
+	return r
+}
+
+// NewFromConfig builds the persistence redactor for the exact config used by
+// a Run. Environment heuristics remain a safety net, while explicit
+// secret:// references in assistant/adapter env are authoritative even when
+// the referenced environment variable name itself does not look sensitive.
+func NewFromConfig(cfg *spec.Config) *Redactor {
+	r := NewFromEnvironment()
+	if cfg == nil {
+		return r
+	}
+	for _, assistant := range cfg.Assistants {
+		for _, value := range assistant.Env {
+			r.RegisterReferences(value)
+		}
+	}
+	for _, adapter := range cfg.Adapters {
+		for _, value := range adapter.Env {
+			r.RegisterReferences(value)
+		}
 	}
 	return r
 }

@@ -1,12 +1,13 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.46-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.47-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
 ## Ядро runtime — реализовано
 
 - один DAG scheduler для root/composition/dynamic compiled workflows;
 - dependencies, `when`, trigger rules, `always_run`, retries/backoff, hooks, timeout/cancel;
 - sequential/parallel `foreach`, `loop_group`, `subworkflow`, governed child `workflow`;
+- first-class durable `loop_iterations[]` для всех завершённых итераций `loop_group`, совместимый `loop_previous`, bounded `max_iterations <= 64`;
 - parallel waves и governed fan-out с `all_done|all_success|one_success` short-circuit;
 - durable Run state/events/revisions, resume, pause, abandon, recovery и child lifecycle;
 - canonical `NodeState.path`, diagnostic fingerprints и durable retry deadline;
@@ -110,8 +111,8 @@ Deterministic fixture доказывает measurement correctness. Production q
 
 1. Live Route DSL production evidence.
 2. Go + Document production evaluation.
-3. v0.2/v1beta1 contract stabilization и migration.
-4. Full iteration history / решение по nested `loop_group`.
+3. Финальная v0.2/v1beta1 migration после production evidence; первичный contract audit выполнен в v0.1.47.
+4. Решение по границе `output_format` и adapter/host compatibility matrix.
 5. Live strict host conformance Pi/OpenCode.
 6. Один реальный external coding-agent wrapper и один production-like Domain Adapter.
 7. Structured task source adapter.

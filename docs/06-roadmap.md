@@ -1,6 +1,6 @@
 # План развития Takt
 
-Актуальный план после `v0.1.46-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/60-*.md`.
+Актуальный план после `v0.1.47-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/61-*.md`.
 
 ## Текущая позиция
 
@@ -30,14 +30,21 @@ Benchmark отдельно измеряет route accuracy, terminal success, pl
 
 ## P1. v0.2 Stabilization
 
-После первого production evidence:
+Stabilization начат в `v0.1.47`, но `v1beta1` не замораживается до production evidence.
 
-- ревизия внешних contracts/schemas;
-- решение по iteration history и nested composition;
+В `v0.1.47` уже выполнены:
+
+- первичный audit внешних contracts (`stable-candidate | supported-alpha | deprecated | internal`);
+- first-class bounded iteration history;
+- решение оставить nested `loop_group` запрещённым в `v0.2`;
+- draft migration policy `v1alpha1 → v1beta1`.
+
+Остаётся после первого production evidence:
+
 - решение по границе `output_format`;
 - adapter/host compatibility matrix;
 - deprecation policy;
-- migration `v1alpha1 → v1beta1`;
+- финальная field-by-field migration `v1alpha1 → v1beta1`;
 - очистка исторических полей и документации, которые больше не являются частью целевого API.
 
 Цель v0.2 — не максимальное число функций, а небольшой набор доказанных стабильных контрактов.

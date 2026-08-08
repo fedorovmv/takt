@@ -393,7 +393,7 @@ func RunTaskMatrix(ctx context.Context, opts TaskMatrixRunOptions) (*TaskMatrixR
 }
 
 func runTaskCase(ctx context.Context, template, workspace string, strategy TaskMatrixStrategy, defaultProfile, caseID string, item TaskCase, repeat int) (TaskRunRecord, error) {
-	record := TaskRunRecord{CaseID: caseID, Repeat: repeat, Labels: item.Labels, Status: "not_started", ReplanExpected: item.MinPlanRevisions > 1}
+	record := TaskRunRecord{CaseID: caseID, Repeat: repeat, Labels: item.Labels, Status: "not_started", ReplanExpected: taskCaseExpectsReplan(item.MinPlanRevisions)}
 	started := time.Now()
 	if err := os.RemoveAll(workspace); err != nil {
 		record.Status = "infrastructure_error"
@@ -445,6 +445,8 @@ func runTaskCase(ctx context.Context, template, workspace string, strategy TaskM
 		if loadErr == nil {
 			record.Status = plan.Status
 			record.RunID = plan.CurrentRunID
+			record.NeedsInput = plan.Status == "waiting" || plan.Status == "paused" || plan.Status == "parked"
+			record.NeedsInputAllowed = item.AllowNeedsInput
 			record.PlanRevisions = len(plan.Revisions)
 			record.ReplannerRuns = len(plan.ReplannerRunIDs)
 			record.ExecutionRuns = len(plan.ExecutionRunIDs)
@@ -453,19 +455,25 @@ func runTaskCase(ctx context.Context, template, workspace string, strategy TaskM
 		}
 	}
 	record.RouteCorrect = record.Route == item.ExpectedRoute && (item.ExpectedTemplate == "" || record.Template == item.ExpectedTemplate) && (item.ExpectedWorkflow == "" || record.Workflow == item.ExpectedWorkflow)
-	record.FinalSuccess = record.Status == item.ExpectedStatus
-	if item.MinPlanRevisions > 0 {
+	record.FinalSuccess = record.Status == item.ExpectedStatus && (!record.NeedsInput || record.NeedsInputAllowed)
+	if record.ReplanExpected {
 		record.ReplanExpectation = record.PlanRevisions >= item.MinPlanRevisions
 	} else {
 		record.ReplanExpectation = true
 	}
-	if runErr != nil {
+	if runErr != nil && !record.FinalSuccess {
 		record.Error = runErr.Error()
 		if record.Status == "not_started" {
 			record.Status = "failed"
 		}
 	}
 	return record, runErr
+}
+
+func taskCaseExpectsReplan(minPlanRevisions int) bool {
+	// Revision 1 is the initial plan. Replanning is observable only when a case
+	// requires at least revision 2.
+	return minPlanRevisions > 1
 }
 
 func routeHasSignal(raw json.RawMessage, signal string) bool {
@@ -642,7 +650,7 @@ func copyTaskTree(src, dst string) error {
 			return err
 		}
 		slash := filepath.ToSlash(rel)
-		if entry.IsDir() && (slash == ".takt/runs" || slash == ".takt/plans" || slash == ".takt/locks" || slash == ".takt/host-sessions" || slash == ".takt/notifications") {
+		if entry.IsDir() && taskWorkspaceRuntimeDir(slash) {
 			return filepath.SkipDir
 		}
 		target := filepath.Join(dst, rel)
@@ -676,7 +684,7 @@ func hashTaskWorkspaceTemplate(root string) (string, error) {
 			return e
 		}
 		slash := filepath.ToSlash(rel)
-		if entry.IsDir() && (slash == ".git" || strings.HasPrefix(slash, ".takt/runs") || strings.HasPrefix(slash, ".takt/plans")) {
+		if entry.IsDir() && taskWorkspaceRuntimeDir(slash) {
 			return filepath.SkipDir
 		}
 		if !entry.IsDir() {
@@ -700,6 +708,15 @@ func hashTaskWorkspaceTemplate(root string) (string, error) {
 		_, _ = h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func taskWorkspaceRuntimeDir(slash string) bool {
+	switch slash {
+	case ".takt/runs", ".takt/plans", ".takt/locks", ".takt/host-sessions", ".takt/notifications":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeTaskStrategyReport(dir string, report *TaskStrategyResult) error {

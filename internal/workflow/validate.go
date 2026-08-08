@@ -372,6 +372,9 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			if n.LoopGroup.MaxIterations <= 0 {
 				return fmt.Errorf("loop_group node %q requires max_iterations > 0", n.ID)
 			}
+			if n.LoopGroup.MaxIterations > spec.MaxLoopGroupIterations {
+				return fmt.Errorf("loop_group node %q max_iterations must be <= %d", n.ID, spec.MaxLoopGroupIterations)
+			}
 			if err := validateNodes(n.LoopGroup.Nodes, scope+"."+n.ID+".loop_group.nodes", true); err != nil {
 				return err
 			}

@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.46-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.47-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -464,7 +464,7 @@ Stdout/stderr сохраняются раздельно. `output_format` нор�
 
 ### `loop_group`
 
-Повторяет вложенный DAG до выполнения условия или достижения `max_iterations`. Дочерний DAG использует те же `depends_on`, `when`, `trigger_rule`, hooks и классификацию ошибок, что и корневой workflow.
+Повторяет вложенный DAG до выполнения условия или достижения `max_iterations`. Значение `max_iterations` должно находиться в диапазоне `1..64`. Дочерний DAG использует те же `depends_on`, `when`, `trigger_rule`, hooks и классификацию ошибок, что и корневой workflow.
 
 ```yaml
 until:
@@ -476,7 +476,9 @@ until:
 
 Если timeout или cancellation родительской попытки наступают во время выполнения дочернего узла, родительский `loop_group` и Run сохраняют `timed_out` или `cancelled`. Производная ошибка `loop_group exhausted` не переопределяет причину завершения контекста.
 
-`subworkflow`, `foreach` и `approval` разрешены внутри `loop_group` и используют тот же дочерний DAG. При остановке на approval сохраняется активная итерация; `takt answer` продолжает её, а следующая итерация создаёт новый запрос approval. Поле `until.node` ссылается на публичный ID контейнера. Вложенные `loop_group` остаются запрещены в `v1alpha1`.
+После каждой завершённой итерации runtime сохраняет immutable snapshot в `NodeState.loop_iterations[]`. `loop_previous` остаётся совместимым представлением последней завершённой итерации. История доступна через обычный Run state/MCP `run.get`; внутренние expanded IDs скрываются из public view.
+
+`subworkflow`, `foreach` и `approval` разрешены внутри `loop_group` и используют тот же дочерний DAG. При остановке на approval сохраняется активная итерация; `takt answer` продолжает её, а следующая итерация создаёт новый запрос approval. Поле `until.node` ссылается на публичный ID контейнера. Вложенные `loop_group` остаются запрещены в `v1alpha1` и в целевом контракте `v0.2`.
 
 ### `subworkflow`
 

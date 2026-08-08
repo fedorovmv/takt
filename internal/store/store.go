@@ -244,6 +244,7 @@ type NodeState struct {
 	Sandbox                 *SandboxState           `json:"sandbox,omitempty"`
 	Executions              []ExecutionState        `json:"executions,omitempty"`
 	LoopPrevious            map[string]NodeState    `json:"loop_previous,omitempty"`
+	LoopIterations          []LoopIterationState    `json:"loop_iterations,omitempty"`
 	LoopIteration           int                     `json:"loop_iteration,omitempty"`
 	Hidden                  bool                    `json:"internal,omitempty"`
 	PublicParent            string                  `json:"public_parent,omitempty"`
@@ -260,6 +261,19 @@ type NodeState struct {
 	Artifacts               []ArtifactRef           `json:"artifacts,omitempty"`
 	External                *ExternalExecutionState `json:"external,omitempty"`
 	DomainOperation         *DomainOperationState   `json:"domain_operation,omitempty"`
+}
+
+// LoopIterationState is the durable, immutable snapshot of one completed
+// loop_group iteration. LoopPrevious remains the compatibility view of the
+// latest item while LoopIterations preserves the full bounded history.
+type LoopIterationState struct {
+	Iteration   int                  `json:"iteration"`
+	Nodes       map[string]NodeState `json:"nodes"`
+	UntilNode   string               `json:"until_node"`
+	ExitCode    int                  `json:"exit_code"`
+	Status      string               `json:"status"`
+	Satisfied   bool                 `json:"satisfied"`
+	CompletedAt time.Time            `json:"completed_at"`
 }
 
 func (n NodeState) Terminal() bool {
@@ -383,6 +397,7 @@ func (s *RunState) PublicView() *RunState {
 		clone.Hidden = false
 		clone.PublicParent = ""
 		clone.LoopPrevious = publicLoopPrevious(id, node.LoopPrevious)
+		clone.LoopIterations = publicLoopIterations(id, node.LoopIterations)
 		if node.External != nil {
 			external := *node.External
 			external.ClaimToken = ""
@@ -423,6 +438,19 @@ func (s *RunState) PublicView() *RunState {
 		out.Approvals[publicID] = value
 	}
 	return &out
+}
+
+func publicLoopIterations(parentID string, values []LoopIterationState) []LoopIterationState {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]LoopIterationState, 0, len(values))
+	for _, iteration := range values {
+		clone := iteration
+		clone.Nodes = publicLoopPrevious(parentID, iteration.Nodes)
+		out = append(out, clone)
+	}
+	return out
 }
 
 func publicLoopPrevious(parentID string, values map[string]NodeState) map[string]NodeState {

@@ -364,6 +364,13 @@
         },
         "sandbox": {
           "$ref": "#/$defs/sandboxState"
+        },
+        "loop_iterations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/loopIterationState"
+          },
+          "maxItems": 64
         }
       }
     },
@@ -1020,6 +1027,50 @@
         },
         "reason": {
           "type": "string"
+        }
+      }
+    },
+    "loopIterationState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "iteration",
+        "nodes",
+        "until_node",
+        "exit_code",
+        "status",
+        "satisfied",
+        "completed_at"
+      ],
+      "properties": {
+        "iteration": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "nodes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/nodeState"
+          }
+        },
+        "until_node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "satisfied": {
+          "type": "boolean"
+        },
+        "completed_at": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     }

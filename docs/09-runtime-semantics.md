@@ -34,7 +34,7 @@ Control workspace хранит определения, state/events, locks и ar
 
 ### Iteration
 
-Один проход `loop_group` с отдельными состояниями дочерних узлов.
+Один проход `loop_group` с отдельными состояниями дочерних узлов. Завершённая итерация сохраняется в `NodeState.loop_iterations[]`; `loop_previous` остаётся compatibility view последней итерации. `max_iterations` ограничен 64, поэтому полная история остаётся bounded частью durable state.
 
 ## 2. Состояния Run
 
@@ -131,7 +131,7 @@ Scheduler собирает все готовые узлы текущего то�
 - классификация ошибок;
 - `allow_failure`.
 
-Различается только область состояния: после итерации child states копируются в `LoopPrevious` родительского узла и удаляются из активной карты. В `v1alpha1` вложенные `loop_group` запрещены; namespace состояния для произвольной вложенности отложен до отдельной версии контракта.
+Различается только область состояния: после итерации child states добавляются в `LoopIterations`, последняя итерация также копируется в совместимое `LoopPrevious`, после чего активные child states удаляются из карты. В `v0.2` вложенные `loop_group` остаются запрещены: path namespace уже поддерживает другие виды композиции, а рекурсивную loop-семантику решено не замораживать без production evidence.
 
 ## 6. Попытки узла
 
@@ -219,9 +219,10 @@ Hooks выполняются последовательно:
 1. создаёт свежие child states;
 2. сохраняет `loop.iteration.started`;
 3. выполняет дочерний DAG общим scheduler;
-4. копирует child states в `LoopPrevious`;
-5. сохраняет `loop.iteration.completed`;
-6. вычисляет `until`.
+4. вычисляет `until` для завершённой итерации;
+5. сохраняет immutable snapshot child states в `LoopIterations`;
+6. обновляет совместимый `LoopPrevious` последней итерацией;
+7. сохраняет `loop.iteration.completed` с результатом `satisfied`.
 
 `until` вычисляется только для child node со статусом `completed`. `skipped`, `failed`, `errored`, `timed_out`, `cancelled` и `blocked` не удовлетворяют условию независимо от значения `exit_code`.
 

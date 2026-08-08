@@ -148,6 +148,8 @@ worktree:
 
 Approval, `subworkflow`, `foreach` и governed `workflow` разрешены внутри `loop_group`; `until.node` использует публичный ID контейнера. Approval сохраняет активную итерацию и после ответа продолжает её. Вложенный `loop_group` остаётся запрещён.
 
+`max_iterations` должен быть в диапазоне `1..64`. Runtime сохраняет все завершённые итерации в `loop_iterations[]`; `loop_previous` остаётся совместимым snapshot последней итерации.
+
 ## Проверяемый JSON output
 
 Шаблоны fail-closed: `${path}` обязателен, `${path?}` возвращает пустую строку при отсутствии, `${path:-default}` задаёт fallback. `takt validate` заранее проверяет upstream output/artifact references, когда producer schema это позволяет.

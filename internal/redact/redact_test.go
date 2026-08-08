@@ -48,11 +48,11 @@ func TestRunStateRedactionCoversDomainReceiptAndApproval(t *testing.T) {
 	r := NewFromEnvironment()
 	r.RegisterReferences("secret://TAKT_RECEIPT_SECRET")
 	state := &store.RunState{Approvals: map[string]string{"approve": secret}, Nodes: map[string]*store.NodeState{
-		"domain": {DomainOperation: &store.DomainOperationState{Receipt: "receipt=" + secret}},
+		"domain": {DomainOperation: &store.DomainOperationState{Receipt: "receipt=" + secret}, LoopIterations: []store.LoopIterationState{{Iteration: 1, Nodes: map[string]store.NodeState{"child": {Output: secret}}, UntilNode: "child", Status: store.NodeCompleted, Satisfied: true}}},
 	}}
 	RedactRunState(r, state)
 	raw, _ := json.Marshal(state)
-	if strings.Contains(string(raw), secret) || state.Approvals["approve"] != "<redacted>" || state.Nodes["domain"].DomainOperation.Receipt != "receipt=<redacted>" {
+	if strings.Contains(string(raw), secret) || state.Approvals["approve"] != "<redacted>" || state.Nodes["domain"].DomainOperation.Receipt != "receipt=<redacted>" || state.Nodes["domain"].LoopIterations[0].Nodes["child"].Output != "<redacted>" {
 		t.Fatalf("secret remained in state: %s", raw)
 	}
 }

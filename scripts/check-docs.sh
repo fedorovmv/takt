@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.28.0" \
-  "VERSION|0.1.46-alpha" \
-  "internal/version/version.go|0.1.46-alpha" \
+  "skills/takt/VERSION|0.29.0" \
+  "VERSION|0.1.47-alpha" \
+  "internal/version/version.go|0.1.47-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -128,6 +128,11 @@ for check in \
   "docs/60-task-level-dynamic-evaluation-v0.1.46.md|Task-level Dynamic Evaluation" \
   "ARCHITECTURE_DECISIONS.md|ADR-074" \
   "ARCHITECTURE_DECISIONS.md|ADR-075" \
+  "ARCHITECTURE_DECISIONS.md|ADR-076" \
+  "ARCHITECTURE_DECISIONS.md|ADR-077" \
+  "docs/61-v0.2-stabilization-iteration-history-v0.1.47.md|Iteration History & Contract Audit" \
+  "schemas/run-state.schema.json|loop_iterations" \
+  "scripts/test-iteration-history.sh|iteration history contract: PASS" \
   "schemas/task-case-manifest.schema.json|TaskCaseManifest" \
   "schemas/task-evaluation-matrix.schema.json|TaskEvaluationMatrix" \
   "schemas/task-evaluation-report.schema.json|takt-task-evaluation-matrix/v1alpha1" \

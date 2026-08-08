@@ -371,11 +371,17 @@ nodes:
 
 func TestExternalPersistenceRedactsToolResultAndArtifacts(t *testing.T) {
 	workspace := t.TempDir()
+	defaultConfigPath := filepath.Join(workspace, "default-config.yaml")
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	const envName = "TAKT_EXTERNAL_REDACTION_VALUE"
 	const secret = "ext-secret-42"
 	t.Setenv(envName, secret)
+	mustWriteControlTest(t, defaultConfigPath, `apiVersion: takt/v1alpha1
+kind: Config
+models: {}
+assistants: {}
+`)
 	mustWriteControlTest(t, configPath, `apiVersion: takt/v1alpha1
 kind: Config
 models:
@@ -401,11 +407,11 @@ nodes:
     executor: external
     allowed_tools: [read]
 `)
-	service, err := New(workspace, configPath)
+	service, err := New(workspace, defaultConfigPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath})
+	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath})
 	if err != nil {
 		t.Fatal(err)
 	}

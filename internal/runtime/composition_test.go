@@ -311,6 +311,15 @@ nodes:
 			t.Fatalf("public loop state exposes expanded ID %q", id)
 		}
 	}
+	history := public.Nodes["retry"].LoopIterations
+	if len(history) != 1 {
+		t.Fatalf("public iteration history missing: %+v", history)
+	}
+	for id := range history[0].Nodes {
+		if strings.Contains(id, "__") {
+			t.Fatalf("public iteration history exposes expanded ID %q", id)
+		}
+	}
 }
 
 func TestForeachParallelRunsIterationsConcurrentlyAndCollectsInInputOrder(t *testing.T) {

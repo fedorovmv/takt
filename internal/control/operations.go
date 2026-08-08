@@ -416,7 +416,7 @@ func (s *Service) Pause(runID string) (*PauseResult, error) {
 				state.Status = store.RunPaused
 				state.PausedAt = &now
 				state.PauseRequested = false
-				loadErr = st.Commit(state, store.Event{Type: "run.paused", Data: map[string]any{"from": store.RunWaiting}})
+				loadErr = s.commitRedacted(st, state, store.Event{Type: "run.paused", Data: map[string]any{"from": store.RunWaiting}})
 			}
 			_ = release()
 			if loadErr != nil {
@@ -470,7 +470,7 @@ func (s *Service) ResumePaused(ctx context.Context, runID string, detached bool)
 			state.Status = store.RunWaiting
 			state.PausedAt = nil
 			state.PausedFrom = ""
-			err = st.Commit(state, store.Event{Type: "run.resumed", Data: map[string]any{"to": store.RunWaiting}})
+			err = s.commitRedacted(st, state, store.Event{Type: "run.resumed", Data: map[string]any{"to": store.RunWaiting}})
 		}
 		_ = release()
 		if err != nil {
@@ -650,7 +650,7 @@ func (s *Service) Retry(ctx context.Context, request RetryRequest) (*store.RunSt
 	if err := st.ClearAbandon(state.ID); err != nil {
 		return nil, err
 	}
-	if err := st.Commit(state, store.Event{Type: "run.retry_requested", NodeID: target, Data: map[string]any{"reset_nodes": sortedKeys(reset)}}); err != nil {
+	if err := s.commitRedacted(st, state, store.Event{Type: "run.retry_requested", NodeID: target, Data: map[string]any{"reset_nodes": sortedKeys(reset)}}); err != nil {
 		return nil, err
 	}
 	if err := s.setOwningPlanStatus(state.ID, "running", ""); err != nil {
@@ -761,7 +761,7 @@ func (s *Service) Fork(ctx context.Context, request ForkRequest) (*ForkResult, e
 		}
 		result.Record.ForkedFromPlanID = record.ID
 		result.Record.ForkSourceFingerprint = planForkFingerprint(record)
-		if err := (dynamicplan.Store{Workspace: s.Workspace}).Save(result.Record); err != nil {
+		if err := s.savePlanRecord(result.Record); err != nil {
 			return nil, err
 		}
 		return &ForkResult{SourceRunID: request.RunID, Plan: result}, nil
@@ -785,7 +785,7 @@ func (s *Service) Fork(ctx context.Context, request ForkRequest) (*ForkResult, e
 	}
 	forked.ForkedFromRunID = state.ID
 	forked.ForkSourceFingerprint = runForkFingerprint(state)
-	if err := st.Commit(forked, store.Event{Type: "run.forked", Data: map[string]any{"source_run_id": state.ID, "source_fingerprint": forked.ForkSourceFingerprint}}); err != nil {
+	if err := s.commitRedacted(st, forked, store.Event{Type: "run.forked", Data: map[string]any{"source_run_id": state.ID, "source_fingerprint": forked.ForkSourceFingerprint}}); err != nil {
 		return nil, err
 	}
 	started.State = forked.PublicView()
@@ -880,7 +880,7 @@ func (s *Service) recoverInterruptedRuns(ctx context.Context, detached bool) (*R
 		current, loadErr := st.Load(state.ID)
 		recovered := false
 		if loadErr == nil && (current.Status == store.RunRunning || current.Status == store.RunPausing) && !processAlive(current.ExecutorPID) {
-			loadErr = recoverRunState(st, current)
+			loadErr = s.recoverRunState(st, current)
 			if loadErr == nil {
 				loadErr = s.setOwningPlanStatus(current.ID, "running", "")
 			}
@@ -908,7 +908,7 @@ func (s *Service) recoverInterruptedRuns(ctx context.Context, detached bool) (*R
 	return result, nil
 }
 
-func recoverRunState(st store.FS, state *store.RunState) error {
+func (s *Service) recoverRunState(st store.FS, state *store.RunState) error {
 	now := time.Now().UTC()
 	for _, nodeID := range append(append([]string(nil), state.CurrentNodes...), state.CurrentNode) {
 		if nodeID == "" {
@@ -936,7 +936,7 @@ func recoverRunState(st store.FS, state *store.RunState) error {
 	state.LastRecoveredAt = &now
 	state.ExecutorPID = os.Getpid()
 	state.HeartbeatAt = &now
-	return st.Commit(state, store.Event{Type: "run.recovered", Data: map[string]any{"recovery_count": state.RecoveryCount, "reason": "executor_lost"}})
+	return s.commitRedacted(st, state, store.Event{Type: "run.recovered", Data: map[string]any{"recovery_count": state.RecoveryCount, "reason": "executor_lost"}})
 }
 
 func (s *Service) continueRecoveredRun(runID string) {
@@ -986,7 +986,7 @@ func (s *Service) setOwningPlanStatus(runID, status, lastError string) error {
 		record.Status = status
 		record.LastError = lastError
 		record.UpdatedAt = time.Now().UTC()
-		return planStore.Save(record)
+		return s.savePlanRecord(record)
 	}
 	return nil
 }

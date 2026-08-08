@@ -65,6 +65,13 @@ func RedactNodeState(r *Redactor, node *store.NodeState) {
 		RedactNodeState(r, &copy)
 		node.LoopPrevious[key] = copy
 	}
+	for i := range node.LoopIterations {
+		for key, previous := range node.LoopIterations[i].Nodes {
+			copy := previous
+			RedactNodeState(r, &copy)
+			node.LoopIterations[i].Nodes[key] = copy
+		}
+	}
 	for i := range node.ChildRuns {
 		node.ChildRuns[i].Output = r.String(node.ChildRuns[i].Output)
 		node.ChildRuns[i].Error = r.String(node.ChildRuns[i].Error)

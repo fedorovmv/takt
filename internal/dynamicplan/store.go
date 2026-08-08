@@ -74,6 +74,9 @@ func ReleaseAdvanceLock(file *os.File) error {
 	return closeErr
 }
 
+// Save is the low-level plan storage primitive. Control-plane callers must
+// persist through control.Service.savePlanRecord so run-specific secret
+// references are redacted before the record reaches disk.
 func (s Store) Save(record *Record) error {
 	if record == nil {
 		return fmt.Errorf("plan record is required")

@@ -34,6 +34,16 @@ func TestValidateRejectsNestedLoopGroups(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnboundedLoopHistory(t *testing.T) {
+	zero := 0
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "bounded-loop"}, Nodes: []spec.Node{{
+		ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 65, Nodes: []spec.Node{{ID: "check", Bash: "true"}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}},
+	}}}
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "max_iterations must be <= 64") {
+		t.Fatalf("expected bounded loop history validation error, got %v", err)
+	}
+}
+
 func TestValidateAcceptsGovernedWorkflowNode(t *testing.T) {
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "parent"}, Nodes: []spec.Node{{
 		ID: "child", WorkflowRun: &spec.WorkflowRunSpec{Path: "child.yaml", Input: "${input}", Isolation: "inherit"},

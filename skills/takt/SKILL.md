@@ -184,7 +184,8 @@ takt block validate path/to/package.yaml
 - `${feedback}` содержит вывод неуспешных hooks предыдущей попытки.
 - Текст агента и наличие файла сами по себе не подтверждают успех; нужен bash-валидатор или другой детерминированный gate.
 - Approval оформляй отдельным узлом. Внутри `loop_group` он сохраняет активную итерацию и после `takt answer` продолжает её.
-- Вложенные `loop_group` в `takt/v1alpha1` не поддерживаются. `subworkflow`, `foreach`, governed `workflow` и approval внутри `loop_group` разрешены.
+- `loop_group.max_iterations` задавай в диапазоне `1..64`. Все завершённые итерации сохраняются в `loop_iterations[]`, а `loop_previous` остаётся snapshot последней итерации.
+- Вложенные `loop_group` в `takt/v1alpha1` и целевом `v0.2` не поддерживаются. `subworkflow`, `foreach`, governed `workflow` и approval внутри `loop_group` разрешены.
 - `allow_failure: true` разрешает только штатный ненулевой exit code, но не timeout, cancellation или ошибку запуска.
 - Bash stdout/stderr сохраняются отдельно, а `${nodes.<id>.output}` содержит объединённый вывод. Script stdout/stderr также сохраняются раздельно; `output_format` меняет только нормализованный Output.
 - Validation envelope `takt-validation/v1alpha1` выводится только в stdout; логи валидатора идут в stderr.
