@@ -20,10 +20,13 @@ type ValidationResult struct {
 
 // AuthoringService owns validation semantics for workflow definitions. Transports
 // should not assemble a Runner just to reproduce reference/capability checks.
-type AuthoringService struct{ *Context }
+type AuthoringService struct {
+	workspace     string
+	runnerFactory RunnerFactory
+}
 
 func (s *AuthoringService) ValidateWorkflow(selector, configOverride string, warningsAsErrors bool) (*ValidationResult, error) {
-	wfPath, cfgPath, _, err := s.Context.resolveWorkflow(selector, configOverride)
+	wfPath, cfgPath, _, err := resolveWorkflow(s.workspace, "", selector, configOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +38,7 @@ func (s *AuthoringService) ValidateWorkflow(selector, configOverride string, war
 	if err != nil {
 		return nil, err
 	}
-	runner := s.runnerFactory(runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: wfPath, ConfigPath: cfgPath, ControlWorkspace: s.Workspace}, RunnerOptions{})
+	runner := s.runnerFactory(runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: wfPath, ConfigPath: cfgPath, ControlWorkspace: s.workspace}, RunnerOptions{})
 	if err := workflow.ValidateReferences(wf, cfg, runner.CommandResolver()); err != nil {
 		return nil, err
 	}
@@ -58,5 +61,5 @@ func (s *AuthoringService) ValidateWorkflow(selector, configOverride string, war
 }
 
 func (s *AuthoringService) InitProfile(name string, force bool) (string, error) {
-	return profile.Init(name, s.Workspace, force)
+	return profile.Init(name, s.workspace, force)
 }

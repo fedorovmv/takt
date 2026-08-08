@@ -85,8 +85,6 @@ type SteerRequest struct {
 }
 
 func (s *PlanService) Plan(ctx context.Context, request PlanRequest) (*PlanResult, error) {
-	s.dynamicMu.Lock()
-	defer s.dynamicMu.Unlock()
 	goal := strings.TrimSpace(request.Goal)
 	if goal == "" {
 		return nil, fmt.Errorf("goal is required")
@@ -95,7 +93,7 @@ func (s *PlanService) Plan(ctx context.Context, request PlanRequest) (*PlanResul
 	if profileName == "" {
 		profileName = "code"
 	}
-	resolved, err := profile.Resolve(profileName, s.Workspace)
+	resolved, err := profile.Resolve(profileName, s.workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +101,7 @@ func (s *PlanService) Plan(ctx context.Context, request PlanRequest) (*PlanResul
 	if err != nil {
 		return nil, err
 	}
-	repositories, err := workspacecatalog.Load(ctx, s.Workspace)
+	repositories, err := workspacecatalog.Load(ctx, s.workspace)
 	if err != nil {
 		return nil, fmt.Errorf("resolve workspace repositories: %w", err)
 	}
@@ -111,11 +109,11 @@ func (s *PlanService) Plan(ctx context.Context, request PlanRequest) (*PlanResul
 	if err != nil {
 		return nil, err
 	}
-	adapterPreflight, err := preflightCatalogAdapters(ctx, catalog, preflightConfig)
+	adapterPreflight, err := preflightCatalogAdapters(ctx, catalog, preflightConfig, s.adapterFactory(preflightConfig))
 	if err != nil {
 		return nil, err
 	}
-	workflows, err := s.Catalogs.ListWorkflows(profileName)
+	workflows, err := s.catalogs.ListWorkflows(profileName)
 	if err != nil {
 		return nil, fmt.Errorf("list workflows for task router: %w", err)
 	}
@@ -172,7 +170,7 @@ func (s *PlanService) Plan(ctx context.Context, request PlanRequest) (*PlanResul
 			if encodeErr != nil {
 				return nil, fmt.Errorf("encode dynamic planner input: %w", encodeErr)
 			}
-			started, startErr := s.Runs.Start(ctx, StartRequest{Selector: plannerPath, Input: string(plannerInput), ConfigPath: resolved.ConfigPath})
+			started, startErr := s.runs.Start(ctx, StartRequest{Selector: plannerPath, Input: string(plannerInput), ConfigPath: resolved.ConfigPath})
 			if startErr != nil {
 				return nil, fmt.Errorf("dynamic planner: %w", startErr)
 			}
@@ -196,7 +194,7 @@ func (s *PlanService) Plan(ctx context.Context, request PlanRequest) (*PlanResul
 		return nil, err
 	}
 	if plan.Decision == "existing" {
-		if _, err := s.Catalogs.DescribeWorkflow(plan.ExistingWorkflow); err != nil {
+		if _, err := s.catalogs.DescribeWorkflow(plan.ExistingWorkflow); err != nil {
 			return nil, fmt.Errorf("planned existing workflow: %w", err)
 		}
 	}
@@ -230,7 +228,7 @@ func (s *PlanService) Plan(ctx context.Context, request PlanRequest) (*PlanResul
 }
 
 func (s *PlanService) GetPlan(planID string) (*PlanView, error) {
-	record, err := (dynamicplan.Store{Workspace: s.Workspace}).Load(planID)
+	record, err := s.store.Load(planID)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +264,7 @@ func (s *PlanService) GetPlan(planID string) (*PlanView, error) {
 		view.Phases = append(view.Phases, PlanPhaseView{ID: phase.ID, Uses: phase.Uses, Objective: phase.Objective, Status: status, Checkpoint: phase.Checkpoint, Output: record.Results[phase.ID]})
 	}
 	for _, runID := range record.ExecutionRunIDs {
-		run, runErr := s.Runs.GetRun(runID)
+		run, runErr := s.runs.GetRun(runID)
 		if runErr != nil {
 			view.Runs = append(view.Runs, PlanRunView{RunID: runID, Status: "unavailable", Error: runErr.Error()})
 			continue
@@ -278,16 +276,14 @@ func (s *PlanService) GetPlan(planID string) (*PlanView, error) {
 }
 
 func (s *PlanService) ExecutePlan(ctx context.Context, request ExecutePlanRequest) (*dynamicplan.Record, error) {
-	s.dynamicMu.Lock()
-	defer s.dynamicMu.Unlock()
-	st := dynamicplan.Store{Workspace: s.Workspace}
+	st := s.store
 	advanceLock, err := st.AcquireAdvanceLock(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
 		if advanceLock != nil {
-			_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
+			_ = advanceLock.Release()
 		}
 	}()
 	record, err := st.Load(request.PlanID)
@@ -325,7 +321,7 @@ func (s *PlanService) ExecutePlan(ctx context.Context, request ExecutePlanReques
 		// The underlying Run is always launched asynchronously. Foreground mode
 		// keeps this process alive in advanceForegroundPlan; daemon mode returns
 		// after the durable plan-to-Run link has been persisted.
-		started, startErr := s.Runs.Start(ctx, StartRequest{Selector: plan.ExistingWorkflow, Input: plan.Goal, Detached: true})
+		started, startErr := s.runs.Start(ctx, StartRequest{Selector: plan.ExistingWorkflow, Input: plan.Goal, Detached: true})
 		if startErr != nil {
 			record.Status = "failed"
 			record.LastError = startErr.Error()
@@ -349,7 +345,7 @@ func (s *PlanService) ExecutePlan(ctx context.Context, request ExecutePlanReques
 			return nil, err
 		}
 	}
-	if err := dynamicplan.ReleaseAdvanceLock(advanceLock); err != nil {
+	if err := advanceLock.Release(); err != nil {
 		return nil, err
 	}
 	advanceLock = nil
@@ -359,7 +355,7 @@ func (s *PlanService) ExecutePlan(ctx context.Context, request ExecutePlanReques
 	return record, nil
 }
 
-func (s *PlanService) advanceForegroundPlan(ctx context.Context, record *dynamicplan.Record, st dynamicplan.Store) (*dynamicplan.Record, error) {
+func (s *PlanService) advanceForegroundPlan(ctx context.Context, record *dynamicplan.Record, st PlanStore) (*dynamicplan.Record, error) {
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -370,23 +366,23 @@ func (s *PlanService) advanceForegroundPlan(ctx context.Context, record *dynamic
 		}
 		current, err := st.Load(record.ID)
 		if err != nil {
-			_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
+			_ = advanceLock.Release()
 			return nil, err
 		}
 		record = current
 		if (record.Status != "running" && record.Status != "pausing") || record.CurrentRunID == "" {
-			if releaseErr := dynamicplan.ReleaseAdvanceLock(advanceLock); releaseErr != nil {
+			if releaseErr := advanceLock.Release(); releaseErr != nil {
 				return nil, releaseErr
 			}
 			return record, nil
 		}
-		run, err := s.Runs.GetRun(record.CurrentRunID)
+		run, err := s.runs.GetRun(record.CurrentRunID)
 		if err != nil {
-			_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
+			_ = advanceLock.Release()
 			return nil, err
 		}
 		if run.Status == store.RunRunning || run.Status == store.RunPausing {
-			if releaseErr := dynamicplan.ReleaseAdvanceLock(advanceLock); releaseErr != nil {
+			if releaseErr := advanceLock.Release(); releaseErr != nil {
 				return nil, releaseErr
 			}
 			time.Sleep(20 * time.Millisecond)
@@ -397,10 +393,10 @@ func (s *PlanService) advanceForegroundPlan(ctx context.Context, record *dynamic
 			record.LastError = ""
 			record.UpdatedAt = time.Now().UTC()
 			if err := s.savePlanRecord(record); err != nil {
-				_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
+				_ = advanceLock.Release()
 				return nil, err
 			}
-			if releaseErr := dynamicplan.ReleaseAdvanceLock(advanceLock); releaseErr != nil {
+			if releaseErr := advanceLock.Release(); releaseErr != nil {
 				return nil, releaseErr
 			}
 			return record, nil
@@ -410,10 +406,10 @@ func (s *PlanService) advanceForegroundPlan(ctx context.Context, record *dynamic
 			record.LastError = fmt.Sprintf("segment run %s is waiting for input", run.ID)
 			record.UpdatedAt = time.Now().UTC()
 			if err := s.savePlanRecord(record); err != nil {
-				_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
+				_ = advanceLock.Release()
 				return nil, err
 			}
-			if releaseErr := dynamicplan.ReleaseAdvanceLock(advanceLock); releaseErr != nil {
+			if releaseErr := advanceLock.Release(); releaseErr != nil {
 				return nil, releaseErr
 			}
 			return record, nil
@@ -423,15 +419,15 @@ func (s *PlanService) advanceForegroundPlan(ctx context.Context, record *dynamic
 			record.LastError = err.Error()
 			record.UpdatedAt = time.Now().UTC()
 			if saveErr := s.savePlanRecord(record); saveErr != nil {
-				_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
+				_ = advanceLock.Release()
 				return nil, fmt.Errorf("%v; persist plan failure: %w", err, saveErr)
 			}
-			if releaseErr := dynamicplan.ReleaseAdvanceLock(advanceLock); releaseErr != nil {
+			if releaseErr := advanceLock.Release(); releaseErr != nil {
 				return nil, fmt.Errorf("%v; release plan lock: %w", err, releaseErr)
 			}
 			return nil, err
 		}
-		if releaseErr := dynamicplan.ReleaseAdvanceLock(advanceLock); releaseErr != nil {
+		if releaseErr := advanceLock.Release(); releaseErr != nil {
 			return nil, releaseErr
 		}
 	}
@@ -445,19 +441,17 @@ func (s *PlanService) saveDynamicFailure(record *dynamicplan.Record, cause error
 }
 
 func (s *PlanService) Steer(ctx context.Context, request SteerRequest) (*dynamicplan.Record, error) {
-	s.dynamicMu.Lock()
-	defer s.dynamicMu.Unlock()
 	if strings.TrimSpace(request.Message) == "" {
 		return nil, fmt.Errorf("steering message is required")
 	}
-	st := dynamicplan.Store{Workspace: s.Workspace}
+	st := s.store
 	advanceLock, err := st.AcquireAdvanceLock(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
 		if advanceLock != nil {
-			_ = dynamicplan.ReleaseAdvanceLock(advanceLock)
+			_ = advanceLock.Release()
 		}
 	}()
 	record, err := s.resolvePlanRecord(request.PlanID, request.RunID)
@@ -493,7 +487,7 @@ func (s *PlanService) Steer(ctx context.Context, request SteerRequest) (*dynamic
 	if err := s.savePlanRecord(record); err != nil {
 		return nil, err
 	}
-	if err := dynamicplan.ReleaseAdvanceLock(advanceLock); err != nil {
+	if err := advanceLock.Release(); err != nil {
 		return nil, err
 	}
 	advanceLock = nil
@@ -507,14 +501,12 @@ type PromotePlanOptions struct {
 	Force bool
 }
 
-func (s *PlanService) PromotePlan(planID, name string) (*dynamicplan.Record, error) {
-	return s.PromotePlanWithOptions(planID, name, PromotePlanOptions{})
+func (s *PlanService) PromotePlan(ctx context.Context, planID, name string) (*dynamicplan.Record, error) {
+	return s.PromotePlanWithOptions(ctx, planID, name, PromotePlanOptions{})
 }
 
-func (s *PlanService) PromotePlanWithOptions(planID, name string, options PromotePlanOptions) (*dynamicplan.Record, error) {
-	s.dynamicMu.Lock()
-	defer s.dynamicMu.Unlock()
-	st := dynamicplan.Store{Workspace: s.Workspace}
+func (s *PlanService) PromotePlanWithOptions(ctx context.Context, planID, name string, options PromotePlanOptions) (*dynamicplan.Record, error) {
+	st := s.store
 	record, err := st.Load(planID)
 	if err != nil {
 		return nil, err
@@ -526,7 +518,7 @@ func (s *PlanService) PromotePlanWithOptions(planID, name string, options Promot
 	if plan.Decision != "planned" {
 		return nil, fmt.Errorf("an existing workflow plan does not need promotion")
 	}
-	resolved, err := profile.Resolve(record.Profile, s.Workspace)
+	resolved, err := profile.Resolve(record.Profile, s.workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -534,12 +526,12 @@ func (s *PlanService) PromotePlanWithOptions(planID, name string, options Promot
 	if err != nil {
 		return nil, err
 	}
-	repositories, err := s.repositoriesForRecord(context.Background(), record)
+	repositories, err := s.repositoriesForRecord(ctx, record)
 	if err != nil {
 		return nil, err
 	}
 	name = dynamicplan.SafeWorkflowName(name)
-	output := filepath.Join(s.Workspace, ".takt", "workflows", "generated", name+".yaml")
+	output := filepath.Join(s.workspace, ".takt", "workflows", "generated", name+".yaml")
 	if !options.Force {
 		if _, err := os.Stat(output); err == nil {
 			return nil, fmt.Errorf("promoted workflow already exists: %s; use force to replace it", output)
@@ -589,9 +581,7 @@ func (s *PlanService) PromotePlanWithOptions(planID, name string, options Promot
 }
 
 func (s *PlanService) AdvanceDynamicPlans(ctx context.Context) error {
-	s.dynamicMu.Lock()
-	defer s.dynamicMu.Unlock()
-	st := dynamicplan.Store{Workspace: s.Workspace}
+	st := s.store
 	lock, acquired, err := st.TryAdvanceLock()
 	if err != nil {
 		return err
@@ -599,7 +589,7 @@ func (s *PlanService) AdvanceDynamicPlans(ctx context.Context) error {
 	if !acquired {
 		return nil
 	}
-	defer dynamicplan.ReleaseAdvanceLock(lock)
+	defer lock.Release()
 	records, err := st.List()
 	if err != nil {
 		return err
@@ -627,42 +617,60 @@ func (s *PlanService) AdvanceDynamicPlans(ctx context.Context) error {
 }
 
 func (s *PlanService) advanceDynamicRecord(ctx context.Context, record *dynamicplan.Record) error {
-	run, err := s.Runs.GetRun(record.CurrentRunID)
+	run, err := s.runs.GetRun(record.CurrentRunID)
 	if err != nil {
 		return err
 	}
-	if run.Status == store.RunRunning || run.Status == store.RunPausing || run.Status == store.RunWaiting {
-		return nil
-	}
-	if run.Status == store.RunPaused {
-		record.Status = "paused"
-		record.LastError = ""
-		record.UpdatedAt = time.Now().UTC()
-		return s.savePlanRecord(record)
-	}
-	if run.Status == store.RunAbandoned {
-		record.Status = "abandoned"
-		record.LastError = run.Error
-		record.UpdatedAt = time.Now().UTC()
-		return s.savePlanRecord(record)
-	}
-	if run.Status != store.RunCompleted {
-		record.Status = "failed"
-		record.LastError = fmt.Sprintf("segment run %s ended with %s: %s", run.ID, run.Status, run.Error)
-		record.UpdatedAt = time.Now().UTC()
-		return s.savePlanRecord(record)
-	}
-	if latestPlan(record).Decision == "existing" {
-		record.Status = "completed"
-		record.CurrentRunID = ""
-		record.Results["workflow"] = run.Output
-		record.UpdatedAt = time.Now().UTC()
-		return s.savePlanRecord(record)
+	if handled, err := s.reconcileSegmentRunStatus(record, run); handled || err != nil {
+		return err
 	}
 	if record.CurrentSegment >= len(record.PendingSegments) {
 		return fmt.Errorf("current segment %d is outside pending segments", record.CurrentSegment)
 	}
 	segment := record.PendingSegments[record.CurrentSegment]
+	if err := s.captureSegmentResults(ctx, record, run, segment); err != nil {
+		return err
+	}
+	candidateSHA, handled, err := s.applySegmentBoundary(ctx, record, segment)
+	if err != nil || handled {
+		return err
+	}
+	return s.advanceToNextSegment(ctx, record, candidateSHA)
+}
+
+// reconcileSegmentRunStatus handles states that do not require segment output
+// processing. A false result means the completed Run can be reconciled at the
+// current dynamic-plan phase boundary.
+func (s *PlanService) reconcileSegmentRunStatus(record *dynamicplan.Record, run *store.RunState) (bool, error) {
+	switch run.Status {
+	case store.RunRunning, store.RunPausing, store.RunWaiting:
+		return true, nil
+	case store.RunPaused:
+		record.Status, record.LastError = "paused", ""
+		record.UpdatedAt = time.Now().UTC()
+		return true, s.savePlanRecord(record)
+	case store.RunAbandoned:
+		record.Status, record.LastError = "abandoned", run.Error
+		record.UpdatedAt = time.Now().UTC()
+		return true, s.savePlanRecord(record)
+	case store.RunCompleted:
+		if latestPlan(record).Decision != "existing" {
+			return false, nil
+		}
+		record.Status = "completed"
+		record.CurrentRunID = ""
+		record.Results["workflow"] = run.Output
+		record.UpdatedAt = time.Now().UTC()
+		return true, s.savePlanRecord(record)
+	default:
+		record.Status = "failed"
+		record.LastError = fmt.Sprintf("segment run %s ended with %s: %s", run.ID, run.Status, run.Error)
+		record.UpdatedAt = time.Now().UTC()
+		return true, s.savePlanRecord(record)
+	}
+}
+
+func (s *PlanService) captureSegmentResults(ctx context.Context, record *dynamicplan.Record, run *store.RunState, segment []dynamicplan.Phase) error {
 	if run.Worktree != nil && run.Worktree.Enabled && strings.TrimSpace(run.ExecutionWorkspace) != "" {
 		if record.ExecutionWorkspace == "" {
 			record.ExecutionWorkspace = run.ExecutionWorkspace
@@ -673,104 +681,120 @@ func (s *PlanService) advanceDynamicRecord(ctx context.Context, record *dynamicp
 		}
 	}
 	for _, phase := range segment {
-		if node := run.Nodes[phase.ID]; node != nil {
+		node := run.Nodes[phase.ID]
+		if node != nil {
 			record.Results[phase.ID] = node.Output
 			if phase.Repository != "" {
-				execution := record.RepositoryExecutions[phase.Repository]
-				execution.Repository = phase.Repository
-				execution.RunID = node.ChildRunID
-				execution.ControlWorkspace = node.ChildControlWorkspace
-				execution.ExecutionWorkspace = node.ChildExecutionWorkspace
-				execution.Branch = node.ChildBranch
-				execution.BaseCommit = node.ChildBaseCommit
-				execution.Status = "completed"
-				if execution.ExecutionWorkspace != "" && execution.BaseCommit != "" {
-					sha, shaErr := candidateSHAForWorkspace(ctx, execution.ExecutionWorkspace, execution.BaseCommit)
-					if shaErr != nil {
-						return shaErr
-					}
-					execution.CandidateSHA = sha
-					execution.Evidence = repositoryEvidence(phase, node.Output, sha)
+				if err := s.captureRepositoryExecution(ctx, record, run, phase, node); err != nil {
+					return err
 				}
-				if publish := run.Nodes[phase.ID+"-publish"]; publish != nil {
-					execution.ChangeOutput = publish.Output
-				}
-				record.RepositoryExecutions[phase.Repository] = execution
 			}
 		}
 		if !containsString(record.CompletedPhases, phase.ID) {
 			record.CompletedPhases = append(record.CompletedPhases, phase.ID)
 		}
 	}
+	return nil
+}
+
+func (s *PlanService) captureRepositoryExecution(ctx context.Context, record *dynamicplan.Record, run *store.RunState, phase dynamicplan.Phase, node *store.NodeState) error {
+	execution := record.RepositoryExecutions[phase.Repository]
+	execution.Repository = phase.Repository
+	execution.RunID = node.ChildRunID
+	execution.ControlWorkspace = node.ChildControlWorkspace
+	execution.ExecutionWorkspace = node.ChildExecutionWorkspace
+	execution.Branch = node.ChildBranch
+	execution.BaseCommit = node.ChildBaseCommit
+	execution.Status = "completed"
+	if execution.ExecutionWorkspace != "" && execution.BaseCommit != "" {
+		sha, err := candidateSHAForWorkspace(ctx, execution.ExecutionWorkspace, execution.BaseCommit)
+		if err != nil {
+			return err
+		}
+		execution.CandidateSHA = sha
+		execution.Evidence = repositoryEvidence(phase, node.Output, sha)
+	}
+	if publish := run.Nodes[phase.ID+"-publish"]; publish != nil {
+		execution.ChangeOutput = publish.Output
+	}
+	record.RepositoryExecutions[phase.Repository] = execution
+	return nil
+}
+
+// applySegmentBoundary applies policy, repair, budget and checkpoint controls.
+// handled=true means the record has already been persisted or execution was
+// deliberately parked/replanned and no normal segment advance should occur.
+func (s *PlanService) applySegmentBoundary(ctx context.Context, record *dynamicplan.Record, segment []dynamicplan.Phase) (candidateSHA string, handled bool, err error) {
 	catalog, err := s.catalogForRecord(record)
 	if err != nil {
-		return err
+		return "", false, err
 	}
 	actualChanges, err := s.dynamicActualChanges(ctx, record)
 	if err != nil {
-		return err
+		return "", false, err
 	}
-	candidateSHA, err := s.dynamicCandidateSHA(ctx, record)
+	candidateSHA, err = s.dynamicCandidateSHA(ctx, record)
 	if err != nil {
-		return err
+		return "", false, err
 	}
 	if record.Evidence != nil {
 		evidence.MarkStale(record.Evidence, candidateSHA)
 	}
 	controlOutcome, err := evaluateSegmentControls(record, segment, catalog, actualChanges, candidateSHA)
 	if err != nil {
-		return err
+		return "", false, err
 	}
 	if applyControlDeny(record, controlOutcome) {
-		return s.savePlanRecord(record)
+		return candidateSHA, true, s.savePlanRecord(record)
 	}
 	if len(controlOutcome.RepairFailures) > 0 {
-		handled, err := s.scheduleAutomaticRepair(ctx, record, segment, controlOutcome.RepairFailures, catalog)
+		repaired, err := s.scheduleAutomaticRepair(ctx, record, segment, controlOutcome.RepairFailures, catalog)
 		if err != nil {
-			return err
+			return "", false, err
 		}
-		if handled {
+		if repaired {
 			record.UpdatedAt = time.Now().UTC()
-			return s.savePlanRecord(record)
+			return candidateSHA, true, s.savePlanRecord(record)
 		}
 	}
 	if s.exceededTokenBudget(record, latestPlan(record).Budget.MaxTokens) {
 		parkPlan(record, evidence.FailureBudget, "dynamic plan token budget exceeded at phase boundary", "task-owner", "fork the task with an explicitly larger trusted budget or stop it", false)
-		return s.savePlanRecord(record)
+		return candidateSHA, true, s.savePlanRecord(record)
 	}
 	checkpoint := len(segment) > 0 && segment[len(segment)-1].Checkpoint
 	if checkpoint && len(record.Revisions) < latestPlan(record).Budget.MaxIterations {
 		if err := s.replanAtCheckpoint(ctx, record); err != nil {
-			return err
+			return "", false, err
 		}
-		if record.Status != "running" {
-			return s.savePlanRecord(record)
+		return candidateSHA, true, s.savePlanRecord(record)
+	}
+	return candidateSHA, false, nil
+}
+
+func (s *PlanService) advanceToNextSegment(ctx context.Context, record *dynamicplan.Record, candidateSHA string) error {
+	record.CurrentSegment++
+	if record.CurrentSegment < len(record.PendingSegments) {
+		if err := s.startDynamicSegment(ctx, record); err != nil {
+			return err
 		}
 		return s.savePlanRecord(record)
 	}
-	record.CurrentSegment++
-	if record.CurrentSegment >= len(record.PendingSegments) {
-		if len(record.DeferredSegments) > 0 {
-			record.PendingSegments = record.DeferredSegments
-			record.DeferredSegments = nil
-			record.CurrentSegment = 0
-			record.CurrentRunID = ""
-			if err := s.startDynamicSegment(ctx, record); err != nil {
-				return err
-			}
-			record.UpdatedAt = time.Now().UTC()
-			return s.savePlanRecord(record)
-		}
-		record.Status = "completed"
+	if len(record.DeferredSegments) > 0 {
+		record.PendingSegments = record.DeferredSegments
+		record.DeferredSegments = nil
+		record.CurrentSegment = 0
 		record.CurrentRunID = ""
-		clearPlanFailure(record)
-		finalizeEvidence(record, candidateSHA)
+		if err := s.startDynamicSegment(ctx, record); err != nil {
+			return err
+		}
 		record.UpdatedAt = time.Now().UTC()
 		return s.savePlanRecord(record)
 	}
-	if err := s.startDynamicSegment(ctx, record); err != nil {
-		return err
-	}
+	record.Status = "completed"
+	record.CurrentRunID = ""
+	clearPlanFailure(record)
+	finalizeEvidence(record, candidateSHA)
+	record.UpdatedAt = time.Now().UTC()
 	return s.savePlanRecord(record)
 }
 
@@ -1145,12 +1169,12 @@ func (s *PlanService) replanAtCheckpoint(ctx context.Context, record *dynamicpla
 	if err != nil {
 		return fmt.Errorf("encode dynamic replanner input: %w", err)
 	}
-	resolved, err := profile.Resolve(record.Profile, s.Workspace)
+	resolved, err := profile.Resolve(record.Profile, s.workspace)
 	if err != nil {
 		return err
 	}
 	replanPath := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "dynamic-replan.yaml")
-	started, err := s.Runs.Start(ctx, StartRequest{Selector: replanPath, Input: string(raw), ConfigPath: resolved.ConfigPath})
+	started, err := s.runs.Start(ctx, StartRequest{Selector: replanPath, Input: string(raw), ConfigPath: resolved.ConfigPath})
 	if err != nil {
 		return fmt.Errorf("dynamic replanner: %w", err)
 	}
@@ -1239,7 +1263,7 @@ func (s *PlanService) startDynamicSegment(ctx context.Context, record *dynamicpl
 		return fmt.Errorf("no dynamic segment %d", record.CurrentSegment)
 	}
 	plan := latestPlan(record)
-	resolved, err := profile.Resolve(record.Profile, s.Workspace)
+	resolved, err := profile.Resolve(record.Profile, s.workspace)
 	if err != nil {
 		return err
 	}
@@ -1252,7 +1276,7 @@ func (s *PlanService) startDynamicSegment(ctx context.Context, record *dynamicpl
 		return err
 	}
 	segmentName := fmt.Sprintf("execution-%03d-revision-%03d-segment-%03d.yaml", len(record.ExecutionRunIDs)+1, len(record.Revisions), record.CurrentSegment+1)
-	path := filepath.Join((dynamicplan.Store{Workspace: s.Workspace}).Dir(record.ID), segmentName)
+	path := filepath.Join(s.store.Dir(record.ID), segmentName)
 	contextRaw, _ := json.Marshal(map[string]any{"goal": plan.Goal, "task_source": record.TaskSource, "results": record.Results, "steering": pendingSteering(record)})
 	blocks := filepath.Join(filepath.Dir(resolved.ManifestPath), "workflows", "blocks")
 	segmentBudget := plan.Budget
@@ -1279,7 +1303,7 @@ func (s *PlanService) startDynamicSegment(ctx context.Context, record *dynamicpl
 		startRequest.Worktree = &worktree
 		startRequest.ExecutionWorkspace = record.ExecutionWorkspace
 	}
-	started, err := s.Runs.Start(ctx, startRequest)
+	started, err := s.runs.Start(ctx, startRequest)
 	if err != nil {
 		return err
 	}
@@ -1290,7 +1314,7 @@ func (s *PlanService) startDynamicSegment(ctx context.Context, record *dynamicpl
 }
 
 func (s *PlanService) repositoriesForRecord(ctx context.Context, record *dynamicplan.Record) (*workspacecatalog.Catalog, error) {
-	repositories, err := workspacecatalog.Load(ctx, s.Workspace)
+	repositories, err := workspacecatalog.Load(ctx, s.workspace)
 	if err != nil {
 		return nil, fmt.Errorf("resolve workspace repositories: %w", err)
 	}
@@ -1301,7 +1325,7 @@ func (s *PlanService) repositoriesForRecord(ctx context.Context, record *dynamic
 }
 
 func (s *PlanService) resolvePlanRecord(planID, runID string) (*dynamicplan.Record, error) {
-	st := dynamicplan.Store{Workspace: s.Workspace}
+	st := s.store
 	if strings.TrimSpace(planID) != "" {
 		return st.Load(planID)
 	}
@@ -1382,7 +1406,7 @@ func (s *PlanService) dynamicRunIDs(record *dynamicplan.Record) []string {
 		}
 		seen[runID] = true
 		ordered = append(ordered, runID)
-		state, err := s.Runs.GetRun(runID)
+		state, err := s.runs.GetRun(runID)
 		if err != nil {
 			return
 		}
@@ -1410,7 +1434,7 @@ func (s *PlanService) exceededTokenBudget(record *dynamicplan.Record, limit int)
 	}
 	total := 0
 	for _, runID := range s.dynamicRunIDs(record) {
-		state, err := s.Runs.GetRun(runID)
+		state, err := s.runs.GetRun(runID)
 		if err != nil || state.Usage == nil {
 			continue
 		}
@@ -1429,7 +1453,7 @@ func catalogForResolved(resolved *profile.Resolved) (*blockcatalog.Catalog, erro
 func (s *PlanService) catalogForRecord(record *dynamicplan.Record) (*blockcatalog.Catalog, error) {
 	paths := append([]string(nil), record.BlockPackagePaths...)
 	if len(paths) == 0 {
-		resolved, err := profile.Resolve(record.Profile, s.Workspace)
+		resolved, err := profile.Resolve(record.Profile, s.workspace)
 		if err != nil {
 			return nil, err
 		}

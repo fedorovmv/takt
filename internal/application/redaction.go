@@ -11,10 +11,10 @@ import (
 	"takt/internal/store"
 )
 
-func (s *Context) persistenceRedactor(configPath string) (*redact.Redactor, error) {
+func persistenceRedactor(defaultConfigPath, configPath string) (*redact.Redactor, error) {
 	configPath = strings.TrimSpace(configPath)
 	if configPath == "" {
-		configPath = strings.TrimSpace(s.ConfigPath)
+		configPath = strings.TrimSpace(defaultConfigPath)
 	}
 	if configPath == "" {
 		return redact.NewFromEnvironment(), nil
@@ -26,8 +26,8 @@ func (s *Context) persistenceRedactor(configPath string) (*redact.Redactor, erro
 	return redact.NewFromConfig(cfg), nil
 }
 
-func (s *Context) commitRedacted(st RunStore, state *store.RunState, event store.Event) error {
-	r, err := s.persistenceRedactor(state.ConfigPath)
+func commitRedacted(defaultConfigPath string, st RunStateStore, state *store.RunState, event store.Event) error {
+	r, err := persistenceRedactor(defaultConfigPath, state.ConfigPath)
 	if err != nil {
 		return err
 	}
@@ -45,11 +45,11 @@ func (s *Context) commitRedacted(st RunStore, state *store.RunState, event store
 	return nil
 }
 
-func (s *Context) savePlanRecord(record *dynamicplan.Record) error {
+func savePlanRecord(defaultConfigPath string, planStore PlanStore, record *dynamicplan.Record) error {
 	if record == nil {
 		return nil
 	}
-	r, err := s.persistenceRedactor(record.ConfigPath)
+	r, err := persistenceRedactor(defaultConfigPath, record.ConfigPath)
 	if err != nil {
 		return err
 	}
@@ -70,5 +70,9 @@ func (s *Context) savePlanRecord(record *dynamicplan.Record) error {
 	if err := json.Unmarshal(raw, &persisted); err != nil {
 		return err
 	}
-	return (dynamicplan.Store{Workspace: s.Workspace}).Save(&persisted)
+	return planStore.Save(&persisted)
+}
+
+func (s *PlanService) savePlanRecord(record *dynamicplan.Record) error {
+	return savePlanRecord(s.configPath, s.store, record)
 }

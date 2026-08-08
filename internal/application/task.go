@@ -56,7 +56,7 @@ func (s *TaskService) StartTask(ctx context.Context, request TaskStartRequest) (
 	if err != nil {
 		return nil, err
 	}
-	plan, err := s.Plans.Plan(ctx, PlanRequest{Goal: goal, Profile: request.Profile, TaskSource: source})
+	plan, err := s.plans.Plan(ctx, PlanRequest{Goal: goal, Profile: request.Profile, TaskSource: source})
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (s *TaskService) StartTask(ctx context.Context, request TaskStartRequest) (
 	if !request.Go {
 		return view, nil
 	}
-	record, err := s.Plans.ExecutePlan(ctx, ExecutePlanRequest{PlanID: plan.PlanID, Confirm: true, Detached: request.Detached})
+	record, err := s.plans.ExecutePlan(ctx, ExecutePlanRequest{PlanID: plan.PlanID, Confirm: true, Detached: request.Detached})
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (s *TaskService) TaskStatus(reference string) (*TaskView, error) {
 		return nil, fmt.Errorf("task reference is required")
 	}
 	if strings.HasPrefix(reference, "plan-") {
-		plan, err := s.Plans.GetPlan(reference)
+		plan, err := s.plans.GetPlan(reference)
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +98,7 @@ func (s *TaskService) TaskStatus(reference string) (*TaskView, error) {
 		view.NeedsInput = plan.Record.Status == "draft" || plan.Record.Status == "waiting" || plan.Record.Status == "paused" || plan.Record.Status == "parked"
 		return view, nil
 	}
-	summary, err := s.Runs.Summary(reference, true)
+	summary, err := s.runs.Summary(reference, true)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func (s *TaskService) resolveTaskStart(ctx context.Context, request TaskStartReq
 	if ref == "" {
 		return "", nil, fmt.Errorf("source_ref is required with source")
 	}
-	cfg, err := cfgpkg.Load(s.ConfigPath)
+	cfg, err := cfgpkg.Load(s.configPath)
 	if err != nil {
 		return "", nil, fmt.Errorf("load task source config: %w", err)
 	}
@@ -132,7 +132,7 @@ func (s *TaskService) resolveTaskStart(ctx context.Context, request TaskStartReq
 	if !ok {
 		return "", nil, fmt.Errorf("task source %q is not configured", sourceName)
 	}
-	task, err := (sourceresolver.Resolver{Name: sourceName, Spec: specification}).Resolve(ctx, ref, s.Workspace)
+	task, err := (sourceresolver.Resolver{Name: sourceName, Spec: specification}).Resolve(ctx, ref, s.workspace)
 	if err != nil {
 		return "", nil, err
 	}
@@ -145,131 +145,163 @@ func (s *TaskService) RespondTask(ctx context.Context, request TaskRespondReques
 	if reference == "" || action == "" {
 		return nil, fmt.Errorf("reference and action are required")
 	}
+	request.Reference = reference
+	request.Action = action
 	if strings.HasPrefix(reference, "plan-") {
-		switch action {
-		case "go", "continue":
-			current, loadErr := (dynamicplan.Store{Workspace: s.Workspace}).Load(reference)
-			if loadErr != nil {
-				return nil, loadErr
-			}
-			if current.Status == "parked" {
-				return nil, fmt.Errorf("plan %s is parked: provide steering with a safe alternative or stop the task", reference)
-			}
-			record, err := s.Plans.ExecutePlan(ctx, ExecutePlanRequest{PlanID: reference, Confirm: true, Detached: request.Detached})
-			if err != nil {
-				return nil, err
-			}
-			return &TaskView{Reference: reference, Kind: "plan", Status: record.Status, PlanID: reference, RunID: record.CurrentRunID, NeedsInput: record.Status == "waiting" || record.Status == "paused" || record.Status == "parked"}, nil
-		case "steer":
-			if strings.TrimSpace(request.Message) == "" {
-				return nil, fmt.Errorf("message is required for %s", action)
-			}
-			if _, err := s.Plans.Steer(ctx, SteerRequest{PlanID: reference, Message: request.Message}); err != nil {
-				return nil, err
-			}
-			return s.TaskStatus(reference)
-		case "answer":
-			if strings.TrimSpace(request.Message) == "" {
-				return nil, fmt.Errorf("message is required for answer")
-			}
-			record, err := (dynamicplan.Store{Workspace: s.Workspace}).Load(reference)
-			if err != nil {
-				return nil, err
-			}
-			if record.CurrentRunID != "" {
-				run, runErr := s.Runs.GetRun(record.CurrentRunID)
-				if runErr != nil {
-					return nil, runErr
-				}
-				if run.Waiting != nil || run.Status == "paused" {
-					nodeID := strings.TrimSpace(request.NodeID)
-					if nodeID == "" && run.Waiting != nil {
-						nodeID = run.Waiting.NodeID
-					}
-					if nodeID == "" {
-						return nil, fmt.Errorf("run %s is not waiting for a user response", record.CurrentRunID)
-					}
-					if _, err := s.Runs.Answer(ctx, record.CurrentRunID, nodeID, request.Message); err != nil {
-						return nil, err
-					}
-					// In foreground mode there is no daemon monitor to reconcile the
-					// plan record after the waiting Run continues or completes.
-					if err := s.Plans.AdvanceDynamicPlans(ctx); err != nil {
-						return nil, err
-					}
-					return s.TaskStatus(reference)
-				}
-			}
-			// A plan-level ask_user checkpoint has no waiting Run. Treat the
-			// answer as steering for the replanner, but do not confuse this path
-			// with an approval/question waiting inside a Run.
-			if _, err := s.Plans.Steer(ctx, SteerRequest{PlanID: reference, Message: request.Message}); err != nil {
-				return nil, err
-			}
-			return s.TaskStatus(reference)
-		default:
-			return nil, fmt.Errorf("action %q is not valid for a plan", action)
-		}
+		return s.respondPlanTask(ctx, request)
 	}
+	return s.respondRunTask(ctx, request)
+}
 
-	switch action {
-	case "pause":
-		if _, err := s.Runs.Pause(reference); err != nil {
-			return nil, err
-		}
-	case "resume", "continue":
-		if _, err := s.Runs.ResumePaused(ctx, reference, request.Detached); err != nil {
-			return nil, err
-		}
-	case "retry":
-		if _, err := s.Runs.Retry(ctx, RetryRequest{RunID: reference, NodeID: request.NodeID, Detached: request.Detached}); err != nil {
-			return nil, err
-		}
-	case "steer":
-		if strings.TrimSpace(request.Message) == "" {
-			return nil, fmt.Errorf("message is required for steer")
-		}
-		if _, err := s.Plans.Steer(ctx, SteerRequest{RunID: reference, Message: request.Message}); err != nil {
-			return nil, err
-		}
-	case "answer", "go":
-		if strings.TrimSpace(request.Message) == "" {
-			return nil, fmt.Errorf("message is required for %s", action)
-		}
-		state, err := s.Runs.GetRun(reference)
+func (s *TaskService) respondPlanTask(ctx context.Context, request TaskRespondRequest) (*TaskView, error) {
+	reference := request.Reference
+	switch request.Action {
+	case "go", "continue":
+		current, err := s.planStore.Load(reference)
 		if err != nil {
 			return nil, err
 		}
-		nodeID := strings.TrimSpace(request.NodeID)
-		if nodeID == "" && state.Waiting != nil {
-			nodeID = state.Waiting.NodeID
+		if current.Status == "parked" {
+			return nil, fmt.Errorf("plan %s is parked: provide steering with a safe alternative or stop the task", reference)
 		}
-		if nodeID == "" {
-			return nil, fmt.Errorf("run %s is not waiting for a user response", reference)
+		record, err := s.plans.ExecutePlan(ctx, ExecutePlanRequest{PlanID: reference, Confirm: true, Detached: request.Detached})
+		if err != nil {
+			return nil, err
 		}
-		if _, err := s.Runs.Answer(ctx, reference, nodeID, request.Message); err != nil {
+		return taskViewForPlan(record), nil
+	case "steer":
+		if err := requireTaskMessage(request); err != nil {
+			return nil, err
+		}
+		if _, err := s.plans.Steer(ctx, SteerRequest{PlanID: reference, Message: request.Message}); err != nil {
+			return nil, err
+		}
+		return s.TaskStatus(reference)
+	case "answer":
+		return s.answerPlanTask(ctx, request)
+	default:
+		return nil, fmt.Errorf("action %q is not valid for a plan", request.Action)
+	}
+}
+
+func (s *TaskService) answerPlanTask(ctx context.Context, request TaskRespondRequest) (*TaskView, error) {
+	if err := requireTaskMessage(request); err != nil {
+		return nil, err
+	}
+	record, err := s.planStore.Load(request.Reference)
+	if err != nil {
+		return nil, err
+	}
+	if record.CurrentRunID != "" {
+		run, err := s.runs.GetRun(record.CurrentRunID)
+		if err != nil {
+			return nil, err
+		}
+		if run.Waiting != nil || run.Status == "paused" {
+			nodeID := strings.TrimSpace(request.NodeID)
+			if nodeID == "" && run.Waiting != nil {
+				nodeID = run.Waiting.NodeID
+			}
+			if nodeID == "" {
+				return nil, fmt.Errorf("run %s is not waiting for a user response", record.CurrentRunID)
+			}
+			if _, err := s.runs.Answer(ctx, record.CurrentRunID, nodeID, request.Message); err != nil {
+				return nil, err
+			}
+			// Foreground execution has no daemon monitor, so reconcile the plan
+			// explicitly after its waiting child Run continues.
+			if err := s.plans.AdvanceDynamicPlans(ctx); err != nil {
+				return nil, err
+			}
+			return s.TaskStatus(request.Reference)
+		}
+	}
+	// A plan-level ask_user checkpoint has no waiting Run; the answer is
+	// steering input for the replanner rather than a Run-level response.
+	if _, err := s.plans.Steer(ctx, SteerRequest{PlanID: request.Reference, Message: request.Message}); err != nil {
+		return nil, err
+	}
+	return s.TaskStatus(request.Reference)
+}
+
+func (s *TaskService) respondRunTask(ctx context.Context, request TaskRespondRequest) (*TaskView, error) {
+	switch request.Action {
+	case "pause":
+		if _, err := s.runs.Pause(ctx, request.Reference); err != nil {
+			return nil, err
+		}
+	case "resume", "continue":
+		if _, err := s.runs.ResumePaused(ctx, request.Reference, request.Detached); err != nil {
+			return nil, err
+		}
+	case "retry":
+		if _, err := s.runs.Retry(ctx, RetryRequest{RunID: request.Reference, NodeID: request.NodeID, Detached: request.Detached}); err != nil {
+			return nil, err
+		}
+	case "steer":
+		if err := requireTaskMessage(request); err != nil {
+			return nil, err
+		}
+		if _, err := s.plans.Steer(ctx, SteerRequest{RunID: request.Reference, Message: request.Message}); err != nil {
+			return nil, err
+		}
+	case "answer", "go":
+		if err := s.answerRunTask(ctx, request); err != nil {
 			return nil, err
 		}
 	default:
-		return nil, fmt.Errorf("unsupported task action %q", action)
+		return nil, fmt.Errorf("unsupported task action %q", request.Action)
 	}
-	return s.TaskStatus(reference)
+	return s.TaskStatus(request.Reference)
 }
 
-func (s *TaskService) StopTask(request TaskStopRequest) (*TaskView, error) {
+func (s *TaskService) answerRunTask(ctx context.Context, request TaskRespondRequest) error {
+	if err := requireTaskMessage(request); err != nil {
+		return err
+	}
+	state, err := s.runs.GetRun(request.Reference)
+	if err != nil {
+		return err
+	}
+	nodeID := strings.TrimSpace(request.NodeID)
+	if nodeID == "" && state.Waiting != nil {
+		nodeID = state.Waiting.NodeID
+	}
+	if nodeID == "" {
+		return fmt.Errorf("run %s is not waiting for a user response", request.Reference)
+	}
+	_, err = s.runs.Answer(ctx, request.Reference, nodeID, request.Message)
+	return err
+}
+
+func requireTaskMessage(request TaskRespondRequest) error {
+	if strings.TrimSpace(request.Message) == "" {
+		return fmt.Errorf("message is required for %s", request.Action)
+	}
+	return nil
+}
+
+func taskViewForPlan(record *dynamicplan.Record) *TaskView {
+	return &TaskView{
+		Reference: record.ID, Kind: "plan", Status: record.Status, PlanID: record.ID,
+		RunID: record.CurrentRunID, NeedsInput: record.Status == "waiting" || record.Status == "paused" || record.Status == "parked",
+	}
+}
+
+func (s *TaskService) StopTask(ctx context.Context, request TaskStopRequest) (*TaskView, error) {
 	reference := strings.TrimSpace(request.Reference)
 	reason := strings.TrimSpace(request.Reason)
 	if reason == "" {
 		reason = "stopped by user"
 	}
 	if strings.HasPrefix(reference, "plan-") {
-		st := dynamicplan.Store{Workspace: s.Workspace}
+		st := s.planStore
 		record, err := st.Load(reference)
 		if err != nil {
 			return nil, err
 		}
 		if record.CurrentRunID != "" {
-			if _, err := s.Runs.Abandon(record.CurrentRunID, reason); err != nil {
+			if _, err := s.runs.Abandon(ctx, record.CurrentRunID, reason); err != nil {
 				return nil, err
 			}
 			// Reconcile explicitly. This path must also work without a daemon
@@ -282,7 +314,7 @@ func (s *TaskService) StopTask(request TaskStopRequest) (*TaskView, error) {
 			record.Status = "abandoned"
 			record.LastError = reason
 			record.UpdatedAt = time.Now().UTC()
-			if err := s.savePlanRecord(record); err != nil {
+			if err := savePlanRecord(s.configPath, s.planStore, record); err != nil {
 				return nil, err
 			}
 		} else {
@@ -293,14 +325,14 @@ func (s *TaskService) StopTask(request TaskStopRequest) (*TaskView, error) {
 				record.Status = "abandoned"
 				record.LastError = reason
 				record.UpdatedAt = time.Now().UTC()
-				if err := s.savePlanRecord(record); err != nil {
+				if err := savePlanRecord(s.configPath, s.planStore, record); err != nil {
 					return nil, err
 				}
 			}
 		}
 		return s.TaskStatus(reference)
 	}
-	if _, err := s.Runs.Abandon(reference, reason); err != nil {
+	if _, err := s.runs.Abandon(ctx, reference, reason); err != nil {
 		return nil, err
 	}
 	return s.TaskStatus(reference)

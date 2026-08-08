@@ -625,10 +625,10 @@ func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
 	// detached Run reaches a stable plan boundary before TempDir cleanup.
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if err := service.AdvanceDynamicPlans(context.Background()); err != nil {
+		if err := service.PlanService.AdvanceDynamicPlans(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		planView, err := service.GetPlan(begun.Session.PlanID)
+		planView, err := service.PlanService.GetPlan(begun.Session.PlanID)
 		if err != nil {
 			t.Fatal(err)
 		}

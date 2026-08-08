@@ -10,7 +10,7 @@ import (
 	"takt/internal/application"
 )
 
-func eventsCmd(args []string) error {
+func eventsCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("events")
 	workspace := fs.String("workspace", ".", "workspace")
 	useDaemon := fs.Bool("daemon", false, "subscribe through the local daemon")
@@ -43,7 +43,7 @@ func eventsCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		return client.Subscribe(context.Background(), runID, *after, *limit, printEvent)
+		return client.Subscribe(ctx, runID, *after, *limit, printEvent)
 	}
 	service, err := controlService(*workspace)
 	if err != nil {
@@ -55,7 +55,7 @@ func eventsCmd(args []string) error {
 		if *follow {
 			wait = 30 * time.Second
 		}
-		result, err := service.Events(context.Background(), runID, cursor, *limit, wait)
+		result, err := service.RunService.Events(ctx, runID, cursor, *limit, wait)
 		if err != nil {
 			return err
 		}

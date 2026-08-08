@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -110,7 +111,9 @@ func binary(t *testing.T, name string) string {
 		return path
 	}
 	path := filepath.Join(buildDir, name)
-	cmd := exec.Command("go", "build", "-o", path, "./cmd/"+name)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "build", "-o", path, "./cmd/"+name)
 	cmd.Dir = repoRoot
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -132,7 +135,9 @@ func taktInput(t *testing.T, env []string, input string, args ...string) Result 
 
 func run(t *testing.T, dir string, env []string, stdin io.Reader, name string, args ...string) Result {
 	t.Helper()
-	cmd := exec.Command(name, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Stdin = stdin
@@ -140,6 +145,9 @@ func run(t *testing.T, dir string, env []string, stdin io.Reader, name string, a
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		err = fmt.Errorf("command timed out after 90s: %s %s: %w", name, strings.Join(args, " "), ctx.Err())
+	}
 	return Result{Stdout: stdout.String(), Stderr: stderr.String(), Err: err}
 }
 

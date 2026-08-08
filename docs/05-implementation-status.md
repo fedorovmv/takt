@@ -1,6 +1,6 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.53-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.54-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
 ## Ядро runtime — реализовано
 
@@ -123,7 +123,7 @@ Deterministic fixture доказывает measurement correctness. Production q
 - `cmd/takt-github-scm-adapter` использует только `sdk/domainadapter`, реализует neutral SCM operations и reconcile через hashed marker;
 - domain Invoke/Reconcile request содержит execution `workspace`, process transport использует его как cwd;
 - multi-repo `publish_change` передаёт точный `repository_workspace` candidate worktree;
-- `scripts/test-reference-adapters.sh` доказывает оба seams без сетевых credentials;
+- `tests/e2e` / `TestReferenceAdaptersBoundary` доказывает оба seams без сетевых credentials;
 - `v0.1.50` добавляет `takt-task-source/v1alpha1`, public `sdk/tasksource`, `source + source_ref` в Task API и reference GitHub Issue source до Router.
 
 ## P3 Human-reviewed learning — v0.1.51
@@ -161,6 +161,19 @@ Deterministic fixture доказывает measurement correctness. Production q
 - historical Makefile contract targets сохранены, но Go-доступная семантика запускается напрямую через `go test`.
 
 Внешние product contracts не менялись. Детали — `docs/67-go-native-test-architecture-v0.1.53.md`, ADR-086.
+
+## Architecture hardening — v0.1.54
+
+- shared `application.Context` удалён; каждый service хранит private dependencies своего use case;
+- Run↔Plan dependency cycle разорван отдельным `ForkService`; service graph проверяется AST-gate;
+- concrete stores/backends/factories собираются bootstrap-слоем; evaluation/runtime не имеют второго production composition root;
+- CLI создаёт signal-aware root context; foreground lifecycle проходит до runtime, durable detach обозначен явно;
+- Dynamic Plan/Host Control используют durable store locks вместо process-global mutex;
+- Task response, Dynamic Plan advance и child fan-out разложены по фазам без plugin framework;
+- appapi/MCP используют единую canonical operation identity;
+- shell `test-*.sh` сокращён до одного TypeScript compiler smoke, остальные внешние boundaries проверяются bounded Go E2E.
+
+Внешние product contracts не менялись. Детали — `docs/68-architecture-hardening-v0.1.54.md`, ADR-087.
 
 ## Фактические незакрытые gaps
 

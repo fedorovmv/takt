@@ -69,7 +69,7 @@ type EventsResult struct {
 }
 
 func (s *CatalogService) ListWorkflows(profileName string) ([]WorkflowListEntry, error) {
-	resolved, err := profile.Resolve(profileName, s.Workspace)
+	resolved, err := profile.Resolve(profileName, s.workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func (s *CatalogService) ListWorkflows(profileName string) ([]WorkflowListEntry,
 }
 
 func (s *CatalogService) DescribeWorkflow(selector string) (*WorkflowDescription, error) {
-	resolved, err := profile.Resolve(selector, s.Workspace)
+	resolved, err := profile.Resolve(selector, s.workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func nodeKind(node spec.Node) string {
 }
 
 func (s *RunService) Start(ctx context.Context, request StartRequest) (*StartResult, error) {
-	prepared, err := s.prepareStart(request)
+	prepared, err := s.prepareStart(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ func (s *RunService) Start(ctx context.Context, request StartRequest) (*StartRes
 		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 			return nil, runErr
 		}
-		public, err := durablePublicRun(s.runStore, state)
+		public, err := durablePublicRun(s.store, state)
 		if err != nil {
 			return nil, err
 		}
@@ -170,14 +170,14 @@ func (s *RunService) Start(ctx context.Context, request StartRequest) (*StartRes
 	runID := prepared.options.RunID
 	result := make(chan startOutcome, 1)
 	go func() {
-		state, runErr := prepared.runner.StartWithOptions(context.Background(), prepared.input, prepared.options)
+		state, runErr := prepared.runner.StartWithOptions(detachedContext(ctx), prepared.input, prepared.options)
 		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 			s.setLaunchError(runID, runErr)
 		}
 		result <- startOutcome{state: state, err: runErr}
 	}()
 
-	runStore := s.runStore
+	runStore := s.store
 	deadline := time.NewTimer(2 * time.Second)
 	defer deadline.Stop()
 	ticker := time.NewTicker(20 * time.Millisecond)
@@ -226,12 +226,12 @@ type startOutcome struct {
 	err   error
 }
 
-func (s *RunService) prepareStart(request StartRequest) (*preparedStart, error) {
+func (s *RunService) prepareStart(ctx context.Context, request StartRequest) (*preparedStart, error) {
 	selector := strings.TrimSpace(request.Selector)
 	if selector == "" {
 		return nil, fmt.Errorf("selector is required")
 	}
-	wfPath, cfgPath, resolved, err := s.Context.resolveWorkflow(selector, request.ConfigPath)
+	wfPath, cfgPath, resolved, err := resolveWorkflow(s.workspace, s.configPath, selector, request.ConfigPath)
 	if err != nil {
 		return nil, err
 	}
@@ -248,11 +248,11 @@ func (s *RunService) prepareStart(request StartRequest) (*preparedStart, error) 
 		if catalogErr != nil {
 			return nil, catalogErr
 		}
-		if _, preflightErr := preflightCatalogAdapters(context.Background(), catalog, cfg); preflightErr != nil {
+		if _, preflightErr := preflightCatalogAdapters(ctx, catalog, cfg, s.adapterFactory(cfg)); preflightErr != nil {
 			return nil, preflightErr
 		}
 	}
-	runner := s.runnerFactory(runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: wfPath, ConfigPath: cfgPath, ControlWorkspace: s.Workspace}, RunnerOptions{})
+	runner := s.runnerFactory(runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: wfPath, ConfigPath: cfgPath, ControlWorkspace: s.workspace}, RunnerOptions{})
 	if err := workflow.ValidateReferences(wf, cfg, runner.CommandResolver()); err != nil {
 		return nil, err
 	}
@@ -266,7 +266,7 @@ func (s *RunService) prepareStart(request StartRequest) (*preparedStart, error) 
 	input := request.Input
 	inputCandidate := request.Input
 	if request.Input != "" && !filepath.IsAbs(inputCandidate) {
-		inputCandidate = filepath.Join(s.Workspace, inputCandidate)
+		inputCandidate = filepath.Join(s.workspace, inputCandidate)
 	}
 	if resolved != nil {
 		input, err = profile.PrepareInput(resolved.EffectiveInput(), inputCandidate)
@@ -290,29 +290,29 @@ func (s *RunService) prepareStart(request StartRequest) (*preparedStart, error) 
 	}}, nil
 }
 
-func (s *Context) resolveWorkflow(value, configOverride string) (string, string, *profile.Resolved, error) {
+func resolveWorkflow(workspace, defaultConfigPath, value, configOverride string) (string, string, *profile.Resolved, error) {
 	candidate := value
 	if !filepath.IsAbs(candidate) {
-		candidate = filepath.Join(s.Workspace, candidate)
+		candidate = filepath.Join(workspace, candidate)
 	}
 	if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 		wfPath, err := filepath.Abs(candidate)
 		if err != nil {
 			return "", "", nil, err
 		}
-		cfgPath := s.ConfigPath
+		cfgPath := defaultConfigPath
 		if configOverride != "" {
-			cfgPath, err = s.absoluteFromWorkspace(configOverride)
+			cfgPath, err = absoluteFromWorkspace(workspace, configOverride)
 		}
 		return wfPath, cfgPath, nil, err
 	}
-	resolved, err := profile.Resolve(value, s.Workspace)
+	resolved, err := profile.Resolve(value, workspace)
 	if err != nil {
 		return "", "", nil, err
 	}
 	cfgPath := resolved.ConfigPath
 	if configOverride != "" {
-		cfgPath, err = s.absoluteFromWorkspace(configOverride)
+		cfgPath, err = absoluteFromWorkspace(workspace, configOverride)
 		if err != nil {
 			return "", "", nil, err
 		}
@@ -320,9 +320,9 @@ func (s *Context) resolveWorkflow(value, configOverride string) (string, string,
 	return resolved.WorkflowPath, cfgPath, resolved, nil
 }
 
-func (s *Context) absoluteFromWorkspace(value string) (string, error) {
+func absoluteFromWorkspace(workspace, value string) (string, error) {
 	if !filepath.IsAbs(value) {
-		value = filepath.Join(s.Workspace, value)
+		value = filepath.Join(workspace, value)
 	}
 	return filepath.Abs(value)
 }
@@ -335,7 +335,9 @@ func newRunID() (string, error) {
 	return "run-" + hex.EncodeToString(raw[:]), nil
 }
 
-func durablePublicRun(st RunStore, state *store.RunState) (*store.RunState, error) {
+func durablePublicRun(st interface {
+	Load(string) (*store.RunState, error)
+}, state *store.RunState) (*store.RunState, error) {
 	if state == nil {
 		return nil, nil
 	}
@@ -347,7 +349,7 @@ func durablePublicRun(st RunStore, state *store.RunState) (*store.RunState, erro
 }
 
 func (s *RunService) GetRun(runID string) (*store.RunState, error) {
-	state, err := (s.runStore).Load(runID)
+	state, err := (s.store).Load(runID)
 	if err != nil {
 		if launchErr := s.launchError(runID); launchErr != nil {
 			return nil, launchErr
@@ -358,7 +360,7 @@ func (s *RunService) GetRun(runID string) (*store.RunState, error) {
 }
 
 func (s *RunService) Resume(ctx context.Context, runID string) (*store.RunState, error) {
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, runID)
 	if err != nil {
 		return nil, err
@@ -380,7 +382,7 @@ func (s *RunService) Resume(ctx context.Context, runID string) (*store.RunState,
 }
 
 func (s *RunService) Answer(ctx context.Context, runID, requestedNodeID, value string) (*store.RunState, error) {
-	st := s.runStore
+	st := s.store
 	target, nodeID, err := resolveApprovalTarget(st, runID, requestedNodeID)
 	if err != nil {
 		return nil, err
@@ -416,7 +418,7 @@ func (s *RunService) Answer(ctx context.Context, runID, requestedNodeID, value s
 	}
 	target.Status = store.RunRunning
 	target.Waiting = nil
-	if err := s.commitRedacted(st, target, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true}}); err != nil {
+	if err := commitRedacted(s.configPath, st, target, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true}}); err != nil {
 		_ = release()
 		return nil, err
 	}
@@ -469,7 +471,7 @@ func resolveApprovalTarget(st RunStore, runID, requestedNodeID string) (*store.R
 	return state, nodeID, nil
 }
 
-func (s *Context) resumeParentChain(ctx context.Context, st RunStore, child *store.RunState) (*store.RunState, error) {
+func (s *RunService) resumeParentChain(ctx context.Context, st RunStore, child *store.RunState) (*store.RunState, error) {
 	current := child
 	for current != nil && current.ParentRunID != "" {
 		release, err := acquireRunLock(st, current.ParentRunID)
@@ -503,7 +505,7 @@ func (s *Context) resumeParentChain(ctx context.Context, st RunStore, child *sto
 	return current, nil
 }
 
-func (s *Context) runnerForState(state *store.RunState) (*runtime.Runner, error) {
+func (s *RunService) runnerForState(state *store.RunState) (*runtime.Runner, error) {
 	wf, err := workflow.Load(state.WorkflowPath)
 	if err != nil {
 		return nil, err
@@ -528,11 +530,11 @@ func (s *Context) runnerForState(state *store.RunState) (*runtime.Runner, error)
 	return runner, nil
 }
 
-func (s *RunService) Cancel(runID, reason string) (any, error) {
+func (s *RunService) Cancel(ctx context.Context, runID, reason string) (any, error) {
 	if strings.TrimSpace(reason) == "" {
 		reason = "cancelled by MCP client"
 	}
-	st := s.runStore
+	st := s.store
 	state, err := st.Load(runID)
 	if err != nil {
 		return nil, err
@@ -564,7 +566,7 @@ func (s *RunService) Cancel(runID, reason string) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		root, cascadeErr := s.resumeParentChain(context.Background(), st, state)
+		root, cascadeErr := s.resumeParentChain(ctx, st, state)
 		if cascadeErr == nil || errors.Is(cascadeErr, runtime.ErrWaiting) {
 			return durablePublicRun(st, root)
 		}
@@ -577,7 +579,7 @@ func terminalRun(status string) bool {
 	return status == store.RunCompleted || status == store.RunFailed || status == store.RunCancelled || status == store.RunAbandoned
 }
 
-func (s *Context) cancelRunTree(st RunStore, state *store.RunState, reason string, includeSelf bool) error {
+func (s *RunService) cancelRunTree(st RunStore, state *store.RunState, reason string, includeSelf bool) error {
 	for _, childID := range state.ChildRunIDs {
 		child, err := st.Load(childID)
 		if err != nil {
@@ -620,7 +622,7 @@ func (s *Context) cancelRunTree(st RunStore, state *store.RunState, reason strin
 }
 
 func (s *RunService) Children(runID string) (map[string]any, error) {
-	st := s.runStore
+	st := s.store
 	parent, err := st.Load(runID)
 	if err != nil {
 		return nil, err
@@ -656,7 +658,7 @@ func (s *RunService) Children(runID string) (map[string]any, error) {
 }
 
 func (s *RunService) Artifacts(runID string, query ArtifactQuery) (map[string]any, error) {
-	st := s.runStore
+	st := s.store
 	root, err := st.Load(runID)
 	if err != nil {
 		return nil, err
@@ -720,7 +722,7 @@ func (s *RunService) Events(ctx context.Context, runID string, afterRevision uin
 	if wait > 30*time.Second {
 		wait = 30 * time.Second
 	}
-	st := s.runStore
+	st := s.store
 	deadline := time.Now().Add(wait)
 	for {
 		events, err := st.ReadEvents(runID, afterRevision, limit)
@@ -746,13 +748,13 @@ func (s *RunService) Events(ctx context.Context, runID string, afterRevision uin
 }
 
 func (s *RunService) setLaunchError(runID string, err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.launchMu.Lock()
+	defer s.launchMu.Unlock()
 	s.launchErrors[runID] = err
 }
 
 func (s *RunService) launchError(runID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.launchMu.Lock()
+	defer s.launchMu.Unlock()
 	return s.launchErrors[runID]
 }

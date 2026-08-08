@@ -23,16 +23,21 @@ type CommandRunRequest struct {
 
 // CommandService runs a named Takt command through the same durable runtime as
 // workflows. CLI parsing stays outside; command resolution and runtime setup do not.
-type CommandService struct{ *Context }
+type CommandService struct {
+	workspace     string
+	configPath    string
+	runnerFactory RunnerFactory
+	stateStore    RunStateStore
+}
 
 func (s *CommandService) Run(ctx context.Context, request CommandRunRequest) (*store.RunState, error) {
 	if request.Name == "" {
 		return nil, fmt.Errorf("command name is required")
 	}
-	cfgPath := s.ConfigPath
+	cfgPath := s.configPath
 	if request.ConfigPath != "" {
 		var err error
-		cfgPath, err = s.absoluteFromWorkspace(request.ConfigPath)
+		cfgPath, err = absoluteFromWorkspace(s.workspace, request.ConfigPath)
 		if err != nil {
 			return nil, err
 		}
@@ -42,7 +47,7 @@ func (s *CommandService) Run(ctx context.Context, request CommandRunRequest) (*s
 		return nil, err
 	}
 
-	dirs := []string{filepath.Join(s.Workspace, ".takt", "commands"), filepath.Join(s.Workspace, "commands")}
+	dirs := []string{filepath.Join(s.workspace, ".takt", "commands"), filepath.Join(s.workspace, "commands")}
 	if home, homeErr := os.UserHomeDir(); homeErr == nil && home != "" {
 		dirs = append(dirs, filepath.Join(home, ".takt", "commands"))
 	}
@@ -66,7 +71,7 @@ func (s *CommandService) Run(ctx context.Context, request CommandRunRequest) (*s
 	if input != "" {
 		candidate := input
 		if !filepath.IsAbs(candidate) {
-			candidate = filepath.Join(s.Workspace, candidate)
+			candidate = filepath.Join(s.workspace, candidate)
 		}
 		if raw, readErr := os.ReadFile(candidate); readErr == nil {
 			input = string(raw)
@@ -77,10 +82,10 @@ func (s *CommandService) Run(ctx context.Context, request CommandRunRequest) (*s
 		Defaults: spec.Defaults{Assistant: assistantName, Model: modelName},
 		Nodes:    []spec.Node{{ID: "command", Command: request.Name}},
 	}
-	runner := s.runnerFactory(runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: "<command>", ConfigPath: cfgPath, ControlWorkspace: s.Workspace}, RunnerOptions{Commands: &resolver})
+	runner := s.runnerFactory(runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: "<command>", ConfigPath: cfgPath, ControlWorkspace: s.workspace}, RunnerOptions{Commands: &resolver})
 	state, runErr := runner.Start(ctx, input)
 	if runErr != nil {
 		return nil, runErr
 	}
-	return durablePublicRun(s.runStore, state)
+	return durablePublicRun(s.stateStore, state)
 }

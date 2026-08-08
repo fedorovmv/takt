@@ -19,18 +19,21 @@ type CompatibilityMatrix = compatibility.Matrix
 type CompatibilityFieldMatrix = compatibility.FieldMatrix
 type CompatibilityReport = compatibility.CheckReport
 
-type CompatibilityService struct{ *Context }
+type CompatibilityService struct {
+	workspace  string
+	configPath string
+}
 
 func (s *CompatibilityService) Matrix() CompatibilityMatrix { return compatibility.CurrentMatrix() }
 func (s *CompatibilityService) Fields() CompatibilityFieldMatrix {
 	return compatibility.CurrentFieldMatrix()
 }
 func (s *CompatibilityService) Check(ctx context.Context, live bool) (CompatibilityReport, error) {
-	cfg, err := cfgpkg.Load(s.ConfigPath)
+	cfg, err := cfgpkg.Load(s.configPath)
 	if err != nil {
 		return CompatibilityReport{}, err
 	}
-	return compatibility.Check(ctx, cfg, compatibility.CheckOptions{Workspace: s.Workspace, Live: live}), nil
+	return compatibility.Check(ctx, cfg, compatibility.CheckOptions{Workspace: s.workspace, Live: live}), nil
 }
 
 type AdapterSummary struct {
@@ -48,9 +51,12 @@ type AdapterDoctorReport struct {
 	Problems              []string                  `json:"problems"`
 }
 
-type AdapterService struct{ *Context }
+type AdapterService struct {
+	configPath     string
+	adapterFactory AdapterFactory
+}
 
-func (s *AdapterService) config() (*spec.Config, error) { return cfgpkg.Load(s.ConfigPath) }
+func (s *AdapterService) config() (*spec.Config, error) { return cfgpkg.Load(s.configPath) }
 
 func (s *AdapterService) List() ([]AdapterSummary, error) {
 	cfg, err := s.config()
@@ -70,7 +76,7 @@ func (s *AdapterService) Describe(ctx context.Context, name string) (domainadapt
 	if err != nil {
 		return domainadapter.Declaration{}, err
 	}
-	adapter, err := (domainadapter.Factory{Config: cfg}).Resolve(name)
+	adapter, err := s.adapterFactory(cfg).Resolve(name)
 	if err != nil {
 		return domainadapter.Declaration{}, err
 	}
@@ -139,9 +145,14 @@ type PackageDoctorResult struct {
 	AdapterPreflight []AdapterPreflightStatus `json:"adapter_preflight"`
 }
 
-type PackageService struct{ *Context }
+type PackageService struct {
+	workspace      string
+	configPath     string
+	backend        PackageBackend
+	adapterFactory AdapterFactory
+}
 
-func (s *PackageService) manager() (*packagedist.Manager, error) { return packagedist.New(s.Workspace) }
+func (s *PackageService) manager() (PackageManager, error) { return s.backend.Manager() }
 func (s *PackageService) Install(ctx context.Context, source string, opts PackageInstallOptions) (*LockedPackage, error) {
 	m, err := s.manager()
 	if err != nil {
@@ -178,7 +189,7 @@ func (s *PackageService) Sync(ctx context.Context) (*PackageDoctorReport, error)
 	return m.Sync(ctx)
 }
 func (s *PackageService) Sign(path, keyID, keyFile string) error {
-	return packagedist.SignPackage(path, keyID, keyFile)
+	return s.backend.Sign(path, keyID, keyFile)
 }
 func (s *PackageService) Doctor(ctx context.Context) (PackageDoctorResult, error) {
 	m, err := s.manager()
@@ -193,7 +204,7 @@ func (s *PackageService) Doctor(ctx context.Context) (PackageDoctorResult, error
 	if report.Status != "ready" {
 		return result, fmt.Errorf("package doctor found problems: %+v", report.Packages)
 	}
-	paths, err := packagedist.InstalledManifestPaths(s.Workspace)
+	paths, err := s.backend.InstalledManifestPaths()
 	if err != nil {
 		return result, err
 	}
@@ -208,15 +219,15 @@ func (s *PackageService) Doctor(ctx context.Context) (PackageDoctorResult, error
 		return result, nil
 	}
 	var cfg *spec.Config
-	if _, statErr := os.Stat(s.ConfigPath); os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(s.configPath); os.IsNotExist(statErr) {
 		cfg = &spec.Config{APIVersion: "takt/v1alpha1", Kind: "Config", Adapters: map[string]spec.DomainAdapterSpec{}}
 	} else {
-		cfg, err = cfgpkg.Load(s.ConfigPath)
+		cfg, err = cfgpkg.Load(s.configPath)
 		if err != nil {
 			return result, fmt.Errorf("package doctor adapter config: %w", err)
 		}
 	}
-	result.AdapterPreflight, err = PreflightCatalogAdapters(ctx, catalog, cfg)
+	result.AdapterPreflight, err = preflightCatalogAdapters(ctx, catalog, cfg, s.adapterFactory(cfg))
 	if err != nil {
 		return result, fmt.Errorf("package doctor adapter preflight: %w", err)
 	}

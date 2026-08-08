@@ -10,11 +10,7 @@ go test -p "$GO_TEST_P" ./... -count=1
 go test -race -p "$GO_TEST_P" ./... -count=1
 go build -o bin/takt ./cmd/takt
 
-# Explicit external smoke boundaries.
-./scripts/test-package-distribution.sh
-./scripts/test-reference-adapters.sh
-./scripts/test-deep-code-workflows.sh
-./scripts/test-host-control.sh
+# The only shell smoke is the cross-language TypeScript compiler boundary.
 ./scripts/test-host-integrations-typescript.sh
 
 ./scripts/check-docs.sh

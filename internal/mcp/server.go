@@ -176,7 +176,7 @@ func (s *Server) ServeStdio(ctx context.Context) error {
 			case <-monitorCtx.Done():
 				return
 			case <-ticker.C:
-				if _, err := s.maintenance.Tick(context.Background(), time.Now().UTC()); err != nil {
+				if _, err := s.maintenance.Tick(monitorCtx, time.Now().UTC()); err != nil {
 					fmt.Fprintln(s.errOut, "MCP maintenance:", err)
 				}
 			}
@@ -354,53 +354,8 @@ func (s *Server) callTool(ctx context.Context, params callParams) map[string]any
 	return toolSuccess(value)
 }
 
-var canonicalOperations = map[string]string{
-	"takt.task.start":            "task.start",
-	"takt.task.status":           "task.status",
-	"takt.task.respond":          "task.respond",
-	"takt.task.stop":             "task.stop",
-	"takt.task.explain":          "task.explain",
-	"takt.workflow.list":         "workflow.list",
-	"takt.workflow.describe":     "workflow.describe",
-	"takt.block.list":            "block.list",
-	"takt.block.describe":        "block.describe",
-	"takt.host.begin":            "host.begin",
-	"takt.host.confirm":          "host.confirm",
-	"takt.host.get":              "host.get",
-	"takt.host.find":             "host.find",
-	"takt.host.guard_tool":       "host.guard_tool",
-	"takt.host.guard_completion": "host.guard_completion",
-	"takt.host.release":          "host.release",
-	"takt.plan":                  "plan.create",
-	"takt.plan.get":              "plan.get",
-	"takt.execute":               "plan.execute",
-	"takt.run.steer":             "plan.steer",
-	"takt.plan.promote":          "plan.promote",
-	"takt.run.start":             "run.start",
-	"takt.run.get":               "run.get",
-	"takt.run.list":              "run.list",
-	"takt.run.attention":         "run.attention",
-	"takt.run.summary":           "run.summary",
-	"takt.run.pause":             "run.pause",
-	"takt.run.resume_paused":     "run.resume_paused",
-	"takt.run.retry":             "run.retry",
-	"takt.run.fork":              "run.fork",
-	"takt.run.abandon":           "run.abandon",
-	"takt.run.recover":           "run.recover",
-	"takt.notify.list":           "notify.list",
-	"takt.notify.ack":            "notify.ack",
-	"takt.notify.test":           "notify.test",
-	"takt.run.resume":            "run.resume",
-	"takt.run.answer":            "run.answer",
-	"takt.run.cancel":            "run.cancel",
-	"takt.run.children":          "run.children",
-	"takt.run.artifacts":         "run.artifacts",
-	"takt.run.events":            "run.events",
-}
-
 func canonicalOperation(name string) (string, bool) {
-	operation, ok := canonicalOperations[name]
-	return operation, ok
+	return appapi.CanonicalOperationForMCP(name)
 }
 
 func (s *Server) executeTool(ctx context.Context, name string, args map[string]any) (any, error) {

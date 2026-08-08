@@ -16,6 +16,15 @@ import (
 	"takt/internal/workflow"
 )
 
+func (r *Runner) childRunner(workflowDef *spec.Workflow, workflowPath, controlWorkspace string) *Runner {
+	def := Definition{Workflow: workflowDef, Config: r.config, WorkflowPath: workflowPath, ConfigPath: r.configPath, ControlWorkspace: controlWorkspace}
+	deps := Dependencies{
+		Commands: NewCommandResolver(workflowPath, controlWorkspace, controlWorkspace),
+		Store:    r.store, Assistants: r.assistants, Adapters: r.adapters, Redactor: r.redactor,
+	}
+	return NewWithDependencies(def, deps)
+}
+
 func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, node spec.Node, local map[string]store.NodeState, feedback, artifacts string) (execResult, error) {
 	definition := node.WorkflowRun
 	if definition == nil {
@@ -87,9 +96,7 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 	if err != nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child repository", Err: err}
 	}
-	childRunner := New(childWorkflow, r.config, childPath, r.configPath, childControlWorkspace)
-	childRunner.store = r.store
-	childRunner.assistants = r.assistants
+	childRunner := r.childRunner(childWorkflow, childPath, childControlWorkspace)
 	if childState == nil {
 		input, renderErr := renderTemplate(definition.Input, state, local, feedback, artifacts)
 		if renderErr != nil {

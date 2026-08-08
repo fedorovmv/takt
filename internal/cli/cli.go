@@ -15,69 +15,71 @@ import (
 	"takt/internal/version"
 )
 
-func Run(args []string) error {
+func Run(args []string) error { return RunContext(context.Background(), args) }
+
+func RunContext(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return usage()
 	}
 	switch args[0] {
 	case "init":
-		return initCmd(args[1:])
+		return initCmd(ctx, args[1:])
 	case "validate":
-		return validateCmd(args[1:])
+		return validateCmd(ctx, args[1:])
 	case "run":
-		return runDispatchCmd(args[1:])
+		return runDispatchCmd(ctx, args[1:])
 	case "task":
-		return taskCmd(args[1:])
+		return taskCmd(ctx, args[1:])
 	case "learn":
-		return learnCmd(args[1:])
+		return learnCmd(ctx, args[1:])
 	case "runs":
-		return runsCmd(args[1:])
+		return runsCmd(ctx, args[1:])
 	case "attention":
-		return attentionCmd(args[1:])
+		return attentionCmd(ctx, args[1:])
 	case "notify":
-		return notifyCmd(args[1:])
+		return notifyCmd(ctx, args[1:])
 	case "plan":
-		return planCmd(args[1:])
+		return planCmd(ctx, args[1:])
 	case "execute":
-		return executeCmd(args[1:])
+		return executeCmd(ctx, args[1:])
 	case "steer":
-		return steerCmd(args[1:])
+		return steerCmd(ctx, args[1:])
 	case "host":
-		return hostCmd(args[1:])
+		return hostCmd(ctx, args[1:])
 	case "workflow":
-		return workflowCmd(args[1:])
+		return workflowCmd(ctx, args[1:])
 	case "block":
-		return blockCmd(args[1:])
+		return blockCmd(ctx, args[1:])
 	case "adapter":
-		return adapterCmd(args[1:])
+		return adapterCmd(ctx, args[1:])
 	case "compatibility":
-		return compatibilityCmd(args[1:])
+		return compatibilityCmd(ctx, args[1:])
 	case "package":
-		return packageCmd(args[1:])
+		return packageCmd(ctx, args[1:])
 	case "answer":
-		return answerCmd(args[1:])
+		return answerCmd(ctx, args[1:])
 	case "resume":
-		return resumeCmd(args[1:])
+		return resumeCmd(ctx, args[1:])
 	case "status":
-		return statusCmd(args[1:])
+		return statusCmd(ctx, args[1:])
 	case "children":
-		return childrenCmd(args[1:])
+		return childrenCmd(ctx, args[1:])
 	case "artifacts":
-		return artifactsCmd(args[1:])
+		return artifactsCmd(ctx, args[1:])
 	case "cancel":
-		return cancelCmd(args[1:])
+		return cancelCmd(ctx, args[1:])
 	case "worktree":
-		return worktreeCmd(args[1:])
+		return worktreeCmd(ctx, args[1:])
 	case "command":
-		return commandCmd(args[1:])
+		return commandCmd(ctx, args[1:])
 	case "eval":
-		return evalCmd(args[1:])
+		return evalCmd(ctx, args[1:])
 	case "mcp":
-		return mcpCmd(args[1:])
+		return mcpCmd(ctx, args[1:])
 	case "daemon":
-		return daemonCmd(args[1:])
+		return daemonCmd(ctx, args[1:])
 	case "events":
-		return eventsCmd(args[1:])
+		return eventsCmd(ctx, args[1:])
 	case "version":
 		fmt.Println("takt v" + version.Value)
 		return nil
@@ -113,7 +115,7 @@ func controlService(workspace string) (*application.Services, error) {
 	return localServices(abs, "")
 }
 
-func answerCmd(args []string) error {
+func answerCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("answer")
 	workspace := fs.String("workspace", ".", "workspace")
 	value := fs.String("value", "", "answer value")
@@ -128,14 +130,14 @@ func answerCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	state, err := service.Answer(context.Background(), fs.Arg(0), fs.Arg(1), *value)
+	state, err := service.RunService.Answer(ctx, fs.Arg(0), fs.Arg(1), *value)
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, state)
 }
 
-func resumeCmd(args []string) error {
+func resumeCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("resume")
 	workspace := fs.String("workspace", ".", "workspace")
 	jsonOut := fs.Bool("json", true, "JSON output")
@@ -149,14 +151,14 @@ func resumeCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	state, err := service.RunService.Resume(context.Background(), fs.Arg(0))
+	state, err := service.RunService.Resume(ctx, fs.Arg(0))
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, state)
 }
 
-func statusCmd(args []string) error {
+func statusCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("status")
 	workspace := fs.String("workspace", ".", "workspace")
 	jsonOut := fs.Bool("json", true, "JSON output")
@@ -177,7 +179,7 @@ func statusCmd(args []string) error {
 	return printResult(*jsonOut, state)
 }
 
-func childrenCmd(args []string) error {
+func childrenCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("children")
 	workspace := fs.String("workspace", ".", "workspace")
 	jsonOut := fs.Bool("json", true, "JSON output")
@@ -191,14 +193,14 @@ func childrenCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	children, err := service.Children(fs.Arg(0))
+	children, err := service.RunService.Children(fs.Arg(0))
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, children)
 }
 
-func artifactsCmd(args []string) error {
+func artifactsCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("artifacts")
 	workspace := fs.String("workspace", ".", "workspace")
 	nodeID := fs.String("node", "", "filter by producer node id")
@@ -215,14 +217,14 @@ func artifactsCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := service.Artifacts(fs.Arg(0), application.ArtifactQuery{NodeID: *nodeID, Type: *artifactType, Recursive: *recursive})
+	result, err := service.RunService.Artifacts(fs.Arg(0), application.ArtifactQuery{NodeID: *nodeID, Type: *artifactType, Recursive: *recursive})
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, result)
 }
 
-func cancelCmd(args []string) error {
+func cancelCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("cancel")
 	workspace := fs.String("workspace", ".", "workspace")
 	reason := fs.String("reason", "cancelled by user", "cancellation reason")
@@ -237,7 +239,7 @@ func cancelCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := service.RunService.Cancel(fs.Arg(0), *reason)
+	result, err := service.RunService.Cancel(ctx, fs.Arg(0), *reason)
 	if err != nil {
 		return err
 	}

@@ -76,7 +76,7 @@ type ExternalSubmission struct {
 }
 
 func (s *ExternalService) PendingExternal(runID string, recursive bool) ([]ExternalTask, error) {
-	st := s.runStore
+	st := s.store
 	ids, err := externalRunIDs(st, runID, recursive)
 	if err != nil {
 		return nil, err
@@ -164,7 +164,7 @@ func (s *ExternalService) ClaimExternal(request ExternalClaimRequest) (*External
 	if request.Lease > time.Hour {
 		request.Lease = time.Hour
 	}
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, request.RunID)
 	if err != nil {
 		return nil, err
@@ -184,7 +184,7 @@ func (s *ExternalService) ClaimExternal(request ExternalClaimRequest) (*External
 		node.Status = store.NodeWaiting
 		state.Status = store.RunWaiting
 		state.Waiting = &store.WaitingState{NodeID: request.NodeID, Message: "external side effect must be reconciled before retry", Kind: "external_reconcile"}
-		if err := s.commitRedacted(st, state, store.Event{Type: "external_node.reconciliation_required", NodeID: request.NodeID, Data: map[string]any{"idempotency_key": external.IdempotencyKey}}); err != nil {
+		if err := commitRedacted("", st, state, store.Event{Type: "external_node.reconciliation_required", NodeID: request.NodeID, Data: map[string]any{"idempotency_key": external.IdempotencyKey}}); err != nil {
 			return nil, err
 		}
 		return nil, fmt.Errorf("external node %s/%s requires side-effect reconciliation before retry", state.ID, request.NodeID)
@@ -219,7 +219,7 @@ func (s *ExternalService) ClaimExternal(request ExternalClaimRequest) (*External
 	external.LeaseExpiresAt = now.Add(request.Lease)
 	external.LastActivityAt = now
 	node.Status = store.NodeWaiting
-	if err := s.commitRedacted(st, state, store.Event{Type: "external_node.claimed", NodeID: request.NodeID, Data: map[string]any{
+	if err := commitRedacted("", st, state, store.Event{Type: "external_node.claimed", NodeID: request.NodeID, Data: map[string]any{
 		"worker_id": request.WorkerID, "lease_expires_at": external.LeaseExpiresAt, "capability_declaration": declaration,
 	}}); err != nil {
 		return nil, err
@@ -286,7 +286,7 @@ func (s *ExternalService) ReconcileExternal(ctx context.Context, request Externa
 	if outcome != "applied" && outcome != "not_applied" && outcome != "unknown" {
 		return nil, fmt.Errorf("reconcile outcome must be applied, not_applied, or unknown")
 	}
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, request.RunID)
 	if err != nil {
 		return nil, err
@@ -317,7 +317,7 @@ func (s *ExternalService) ReconcileExternal(ctx context.Context, request Externa
 		state.Status = store.RunWaiting
 		node.Status = store.NodeWaiting
 		state.Waiting = &store.WaitingState{NodeID: request.NodeID, Message: "external side effect state remains unknown; operator decision required", Kind: "external_reconcile"}
-		err = s.commitRedacted(st, state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
+		err = commitRedacted("", st, state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
 		_ = release()
 		if err != nil {
 			return nil, err
@@ -331,7 +331,7 @@ func (s *ExternalService) ReconcileExternal(ctx context.Context, request Externa
 		state.Status = store.RunWaiting
 		node.Status = store.NodeWaiting
 		state.Waiting = &store.WaitingState{NodeID: request.NodeID, Message: "external executor must claim and complete this node", Kind: "external_node"}
-		err = s.commitRedacted(st, state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
+		err = commitRedacted("", st, state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
 		_ = release()
 		if err != nil {
 			return nil, err
@@ -351,7 +351,7 @@ func (s *ExternalService) ReconcileExternal(ctx context.Context, request Externa
 		external.ClaimToken = token
 		external.ClaimedBy = "reconciler"
 		external.LeaseExpiresAt = now.Add(time.Minute)
-		err = s.commitRedacted(st, state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
+		err = commitRedacted("", st, state, store.Event{Type: "external_node.reconciled", NodeID: request.NodeID, Data: map[string]any{"outcome": outcome, "receipt": external.Receipt}})
 		_ = release()
 		if err != nil {
 			return nil, err
@@ -374,7 +374,7 @@ func (s *ExternalService) AppendExternalEvent(runID, nodeID, claimToken string, 
 	if err := assistant.ValidateEvent(event); err != nil {
 		return 0, err
 	}
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, runID)
 	if err != nil {
 		return 0, err
@@ -411,7 +411,7 @@ func (s *ExternalService) FailExternal(ctx context.Context, submission ExternalS
 // produced any normalized activity within the configured idle timeout. The
 // durable state is rechecked under the Run lock before any transition.
 func (s *ExternalService) ExpireIdleExternal(ctx context.Context, now time.Time) ([]string, error) {
-	st := s.runStore
+	st := s.store
 	runIDs, err := st.ListRunIDs()
 	if err != nil {
 		return nil, err
@@ -470,7 +470,7 @@ func externalAwaitingApproval(external *store.ExternalExecutionState) bool {
 }
 
 func (s *ExternalService) timeoutExternalIdle(ctx context.Context, runID, nodeID string, now time.Time) (*store.RunState, error) {
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, runID)
 	if err != nil {
 		return nil, err
@@ -531,13 +531,13 @@ func (s *ExternalService) timeoutExternalIdle(ctx context.Context, runID, nodeID
 	node.Status = store.NodePending
 	state.Status = store.RunRunning
 	state.Waiting = nil
-	if err := s.commitRedacted(st, state, store.Event{Time: now, Type: "external_node.idle_timeout", NodeID: nodeID, Data: map[string]any{
+	if err := commitRedacted("", st, state, store.Event{Time: now, Type: "external_node.idle_timeout", NodeID: nodeID, Data: map[string]any{
 		"idle_timeout": external.IdleTimeout, "last_activity_at": external.LastActivityAt,
 	}}); err != nil {
 		_ = release()
 		return nil, err
 	}
-	runner, err := s.runnerForState(state)
+	runner, err := s.runs.runnerForState(state)
 	if err != nil {
 		_ = release()
 		return nil, err
@@ -548,7 +548,7 @@ func (s *ExternalService) timeoutExternalIdle(ctx context.Context, runID, nodeID
 	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.As(runErr, &failedRun) {
 		return nil, runErr
 	}
-	root, cascadeErr := s.resumeParentChain(ctx, st, state)
+	root, cascadeErr := s.runs.resumeParentChain(ctx, st, state)
 	failedRun = nil
 	if cascadeErr != nil && !errors.Is(cascadeErr, runtime.ErrWaiting) && !errors.As(cascadeErr, &failedRun) {
 		return nil, cascadeErr
@@ -557,7 +557,7 @@ func (s *ExternalService) timeoutExternalIdle(ctx context.Context, runID, nodeID
 }
 
 func (s *ExternalService) submitExternal(ctx context.Context, submission ExternalSubmission, failed bool) (*store.RunState, error) {
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, submission.RunID)
 	if err != nil {
 		return nil, err
@@ -623,13 +623,13 @@ func (s *ExternalService) submitExternal(ctx context.Context, submission Externa
 	node.Status = store.NodePending
 	state.Status = store.RunRunning
 	state.Waiting = nil
-	if err := s.commitRedacted(st, state, store.Event{Type: "external_node.result.submitted", NodeID: submission.NodeID, Data: map[string]any{
+	if err := commitRedacted("", st, state, store.Event{Type: "external_node.result.submitted", NodeID: submission.NodeID, Data: map[string]any{
 		"status": status, "exit_code": submission.ExitCode, "worker_id": external.ClaimedBy,
 	}}); err != nil {
 		_ = release()
 		return nil, err
 	}
-	runner, err := s.runnerForState(state)
+	runner, err := s.runs.runnerForState(state)
 	if err != nil {
 		_ = release()
 		return nil, err
@@ -639,7 +639,7 @@ func (s *ExternalService) submitExternal(ctx context.Context, submission Externa
 	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) {
 		return nil, runErr
 	}
-	root, cascadeErr := s.resumeParentChain(ctx, st, state)
+	root, cascadeErr := s.runs.resumeParentChain(ctx, st, state)
 	if cascadeErr != nil && !errors.Is(cascadeErr, runtime.ErrWaiting) {
 		return nil, cascadeErr
 	}
@@ -749,7 +749,7 @@ func (s *ExternalService) RequestExternalTool(ctx context.Context, request Exter
 	if request.Wait < 0 || request.Wait > 30*time.Second {
 		return nil, fmt.Errorf("wait must be between 0 and 30s")
 	}
-	st := s.runStore
+	st := s.store
 	state, err := s.createOrReadToolRequest(st, request)
 	if err != nil {
 		return nil, err
@@ -831,7 +831,7 @@ func (s *ExternalService) createOrReadToolRequest(st RunStore, request ExternalT
 	call.ApprovalNeeded = toolApprovalRequired(external.ToolApproval, request.Tool)
 	if call.ApprovalNeeded {
 		call.Status = "waiting_approval"
-		if err := s.commitRedacted(st, state, store.Event{Type: "tool.approval.requested", NodeID: request.NodeID, Data: map[string]any{
+		if err := commitRedacted("", st, state, store.Event{Type: "tool.approval.requested", NodeID: request.NodeID, Data: map[string]any{
 			"call_id": request.CallID, "tool": request.Tool, "message": toolApprovalMessage(external.ToolApproval, request.Tool),
 		}}); err != nil {
 			return nil, err
@@ -852,7 +852,7 @@ func (s *ExternalService) DecideExternalTool(request ExternalToolDecisionRequest
 	if request.Decision != "allow" && request.Decision != "deny" {
 		return nil, fmt.Errorf("decision must be allow or deny")
 	}
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, request.RunID)
 	if err != nil {
 		return nil, err
@@ -898,7 +898,7 @@ func (s *ExternalService) CompleteExternalTool(request ExternalToolUpdate) (*sto
 }
 
 func (s *ExternalService) updateExternalTool(request ExternalToolUpdate, action string) (*store.ToolCallState, error) {
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, request.RunID)
 	if err != nil {
 		return nil, err
@@ -953,7 +953,7 @@ func (s *ExternalService) updateExternalTool(request ExternalToolUpdate, action 
 }
 
 func (s *ExternalService) CancelExternalTool(runID, nodeID, callID, reason string) (*store.ToolCallState, error) {
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, runID)
 	if err != nil {
 		return nil, err
@@ -994,7 +994,7 @@ func (s *ExternalService) CancelExternalTool(runID, nodeID, callID, reason strin
 }
 
 func (s *ExternalService) GetExternalTool(runID, nodeID, callID string) (*store.ToolCallState, error) {
-	st := s.runStore
+	st := s.store
 	_, _, external, err := loadExternalNode(st, runID, nodeID)
 	if err != nil {
 		return nil, err
@@ -1010,7 +1010,7 @@ func (s *ExternalService) DeclareExternalArtifact(request ExternalArtifactReques
 	if strings.TrimSpace(request.Type) == "" || strings.TrimSpace(request.Path) == "" || strings.TrimSpace(request.CallID) == "" {
 		return nil, fmt.Errorf("call_id, type and path are required")
 	}
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, request.RunID)
 	if err != nil {
 		return nil, err
@@ -1054,7 +1054,7 @@ func (s *ExternalService) DeclareExternalArtifact(request ExternalArtifactReques
 	if mime == "" {
 		mime = "application/octet-stream"
 	}
-	redactor, err := s.persistenceRedactor(state.ConfigPath)
+	redactor, err := persistenceRedactor("", state.ConfigPath)
 	if err != nil {
 		return nil, err
 	}
@@ -1097,7 +1097,7 @@ func (s *ExternalService) appendExternalAssistantEvent(st RunStore, state *store
 	data := assistant.EventData(event)
 	data["sequence"] = external.LastEventSequence
 	data["source"] = "external"
-	if err := s.commitRedacted(st, state, store.Event{Time: event.Time, Type: "assistant." + event.Type, NodeID: nodeID, Data: data}); err != nil {
+	if err := commitRedacted("", st, state, store.Event{Time: event.Time, Type: "assistant." + event.Type, NodeID: nodeID, Data: data}); err != nil {
 		return 0, err
 	}
 	return external.LastEventSequence, nil

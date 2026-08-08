@@ -92,13 +92,6 @@ type StartOptions struct {
 	InheritedPolicy    *assistant.Policy
 }
 
-// New keeps the historical in-process constructor for tests and compatibility.
-// Production composition should prefer NewWithDependencies.
-func New(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspace string) *Runner {
-	def := Definition{Workflow: wf, Config: cfg, WorkflowPath: workflowPath, ConfigPath: configPath, ControlWorkspace: workspace}
-	return NewWithDependencies(def, DefaultDependencies(def))
-}
-
 func NewWithDependencies(def Definition, deps Dependencies) *Runner {
 	return &Runner{
 		workflow: def.Workflow, config: def.Config, workflowPath: def.WorkflowPath, configPath: def.ConfigPath,
@@ -111,20 +104,6 @@ func NewWithDependencies(def Definition, deps Dependencies) *Runner {
 // CommandResolver exposes the immutable command lookup configured for this runner.
 // Callers may inspect it for preflight validation but cannot replace runtime dependencies.
 func (r *Runner) CommandResolver() command.Resolver { return r.commands }
-
-func DefaultDependencies(def Definition) Dependencies {
-	return Dependencies{
-		Commands:   NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
-		Store:      store.FS{Workspace: def.ControlWorkspace},
-		Assistants: assistant.Factory{Config: def.Config},
-		Adapters:   domainadapter.Factory{Config: def.Config},
-		Redactor:   runtimeRedactor(def.Config),
-	}
-}
-
-func runtimeRedactor(cfg *spec.Config) *redact.Redactor {
-	return redact.NewFromConfig(cfg)
-}
 
 func NewCommandResolver(workflowPath, executionWorkspace, controlWorkspace string) command.Resolver {
 	workflowDir := filepath.Dir(workflowPath)
@@ -1142,7 +1121,7 @@ func (r *Runner) commit(state *store.RunState, eventType, nodeID string, data ma
 		}
 	}
 	if r.redactor == nil {
-		r.redactor = redact.NewFromEnvironment()
+		return fmt.Errorf("runtime redactor dependency is required")
 	}
 	persisted, err := cloneRunStateForPersistence(state)
 	if err != nil {

@@ -121,20 +121,19 @@ schema-contract:
 agent-adapter-conformance:
 	go test ./sdk/agentadapter -count=1
 
-# A deliberately small set of shell smoke tests remains where the boundary
-# being tested is process/language/package integration rather than Go logic.
-package-distribution-contract: build
-	./scripts/test-package-distribution.sh
+# Go black-box contracts own process/package/runtime behavior. Shell is reserved
+# for the one cross-language compiler smoke below.
+package-distribution-contract:
+	go test ./tests/e2e -run '^TestPackageDistributionBoundary$$' -count=1
 
-reference-adapters-contract: build
-	./scripts/test-reference-adapters.sh
+reference-adapters-contract:
+	go test ./tests/e2e -run '^TestReferenceAdaptersBoundary$$' -count=1
 
-deep-workflow-contract: build
-	go build -o bin/takt-fake-code-agent ./cmd/takt-fake-code-agent
-	./scripts/test-deep-code-workflows.sh
+deep-workflow-contract:
+	go test ./tests/e2e -run '^TestDeepCodeWorkflowBoundary$$' -count=1
 
-host-control-contract: build
-	./scripts/test-host-control.sh
+host-control-contract:
+	go test ./tests/e2e -run '^TestHost(ControlBoundary|IntegrationSourceContract)$$' -count=1
 
 host-integration-typescript:
 	./scripts/test-host-integrations-typescript.sh
@@ -142,7 +141,7 @@ host-integration-typescript:
 e2e:
 	go test ./tests/e2e -count=1
 
-smoke: build package-distribution-contract reference-adapters-contract deep-workflow-contract host-control-contract host-integration-typescript
+smoke: host-integration-typescript
 
 check: fmt vet test race build smoke docs manifest
 

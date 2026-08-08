@@ -48,7 +48,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ nodes:
 		Capabilities: []string{"tool_policy", assistant.CapabilityToolControl, assistant.CapabilityAgentEventsV2, assistant.CapabilityToolEvents},
 		EventTypes:   assistant.EventTypes(), SessionEvents: true, ToolEvents: true, ToolControl: true, ArtifactEvents: true, UsageEvents: true,
 	}
-	claim, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: declaration})
+	claim, err := service.ExternalService.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: declaration})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ nodes:
 	result := make(chan *store.ToolCallState, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		call, callErr := service.RequestExternalTool(context.Background(), ExternalToolRequest{
+		call, callErr := service.ExternalService.RequestExternalTool(context.Background(), ExternalToolRequest{
 			RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken,
 			CallID: "call-1", Tool: "read", Input: json.RawMessage(`{"path":"evidence.txt"}`), Wait: 3 * time.Second,
 		})
@@ -74,7 +74,7 @@ nodes:
 	}()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		call, getErr := service.GetExternalTool(started.RunID, "delegated", "call-1")
+		call, getErr := service.ExternalService.GetExternalTool(started.RunID, "delegated", "call-1")
 		if getErr == nil && call.Status == "waiting_approval" {
 			break
 		}
@@ -83,7 +83,7 @@ nodes:
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if _, err := service.DecideExternalTool(ExternalToolDecisionRequest{RunID: started.RunID, NodeID: "delegated", CallID: "call-1", Decision: "allow", Reason: "reviewed"}); err != nil {
+	if _, err := service.ExternalService.DecideExternalTool(ExternalToolDecisionRequest{RunID: started.RunID, NodeID: "delegated", CallID: "call-1", Decision: "allow", Reason: "reviewed"}); err != nil {
 		t.Fatal(err)
 	}
 	call := <-result
@@ -93,21 +93,21 @@ nodes:
 	if call.Status != "allowed" {
 		t.Fatalf("tool decision = %#v", call)
 	}
-	if _, err := service.StartExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "call-1"}); err != nil {
+	if _, err := service.ExternalService.StartExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "call-1"}); err != nil {
 		t.Fatal(err)
 	}
 	artifactPath := filepath.Join(claim.Workspace, "evidence.txt")
 	if err := os.WriteFile(artifactPath, []byte("evidence"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	artifact, err := service.DeclareExternalArtifact(ExternalArtifactRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "call-1", Type: "evidence", MIME: "text/plain", Path: artifactPath})
+	artifact, err := service.ExternalService.DeclareExternalArtifact(ExternalArtifactRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "call-1", Type: "evidence", MIME: "text/plain", Path: artifactPath})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if artifact.CallID != "call-1" {
 		t.Fatalf("artifact call_id = %q", artifact.CallID)
 	}
-	if _, err := service.CompleteExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "call-1", Output: json.RawMessage(`{"ok":true}`)}); err != nil {
+	if _, err := service.ExternalService.CompleteExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "call-1", Output: json.RawMessage(`{"ok":true}`)}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -140,53 +140,53 @@ nodes:
     allowed_tools: [read]
 `)
 	service, _ := New(workspace, configPath)
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath})
 	if err != nil {
 		t.Fatal(err)
 	}
 	declaration := assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2, Capabilities: []string{"tool_policy"}, ToolEvents: true, ToolControl: true}
-	claim, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: declaration})
+	claim, err := service.ExternalService.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: declaration})
 	if err != nil {
 		t.Fatal(err)
 	}
-	denied, err := service.RequestExternalTool(context.Background(), ExternalToolRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "write-1", Tool: "write"})
+	denied, err := service.ExternalService.RequestExternalTool(context.Background(), ExternalToolRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "write-1", Tool: "write"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if denied.Status != "denied" {
 		t.Fatalf("denied = %#v", denied)
 	}
-	if _, err := service.StartExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "write-1"}); err == nil {
+	if _, err := service.ExternalService.StartExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "write-1"}); err == nil {
 		t.Fatal("denied tool started")
 	}
-	allowed, err := service.RequestExternalTool(context.Background(), ExternalToolRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Tool: "read"})
+	allowed, err := service.ExternalService.RequestExternalTool(context.Background(), ExternalToolRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Tool: "read"})
 	if err != nil || allowed.Status != "allowed" {
 		t.Fatalf("allowed=%#v err=%v", allowed, err)
 	}
-	if _, err := service.StartExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1"}); err != nil {
+	if _, err := service.ExternalService.StartExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.CompleteExternal(context.Background(), ExternalSubmission{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, Output: "premature"}); err == nil {
+	if _, err := service.ExternalService.CompleteExternal(context.Background(), ExternalSubmission{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, Output: "premature"}); err == nil {
 		t.Fatal("external node completed with a running tool call")
 	}
-	cancelled, err := service.CancelExternalTool(started.RunID, "delegated", "read-1", "unsafe result")
+	cancelled, err := service.ExternalService.CancelExternalTool(started.RunID, "delegated", "read-1", "unsafe result")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cancelled.Status != "cancel_requested" || !cancelled.CancelRequested {
 		t.Fatalf("cancelled = %#v", cancelled)
 	}
-	if _, err := service.CompleteExternal(context.Background(), ExternalSubmission{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, Output: "premature"}); err == nil {
+	if _, err := service.ExternalService.CompleteExternal(context.Background(), ExternalSubmission{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, Output: "premature"}); err == nil {
 		t.Fatal("external node completed with a cancellation still pending")
 	}
-	finished, err := service.CompleteExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1"})
+	finished, err := service.ExternalService.CompleteExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if finished.Status != "cancelled" {
 		t.Fatalf("finished = %#v", finished)
 	}
-	state, err := service.CompleteExternal(context.Background(), ExternalSubmission{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, Output: "done"})
+	state, err := service.ExternalService.CompleteExternal(context.Background(), ExternalSubmission{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, Output: "done"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,25 +234,25 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath})
 	if err != nil {
 		t.Fatal(err)
 	}
-	claim, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}})
+	claim, err := service.ExternalService.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if claim.ClaimToken == "" {
 		t.Fatal("claim token is empty")
 	}
-	expired, err := service.ExpireIdleExternal(context.Background(), time.Now().Add(time.Second))
+	expired, err := service.ExternalService.ExpireIdleExternal(context.Background(), time.Now().Add(time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(expired) != 1 {
 		t.Fatalf("expired = %#v", expired)
 	}
-	state, err := service.GetRun(started.RunID)
+	state, err := service.RunService.GetRun(started.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,11 +293,11 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath})
 	if err != nil {
 		t.Fatal(err)
 	}
-	claim, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}, Lease: time.Minute})
+	claim, err := service.ExternalService.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}, Lease: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,14 +313,14 @@ nodes:
 	if err := fs.Save(state); err != nil {
 		t.Fatal(err)
 	}
-	pending, err := service.PendingExternal(started.RunID, false)
+	pending, err := service.ExternalService.PendingExternal(started.RunID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(pending) != 1 || pending[0].Status != "reconcile_required" {
 		t.Fatalf("pending=%#v", pending)
 	}
-	if _, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-2", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}}); err == nil {
+	if _, err := service.ExternalService.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-2", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}}); err == nil {
 		t.Fatal("expired non-idempotent claim replayed without reconciliation")
 	}
 	state, err = fs.Load(started.RunID)
@@ -330,16 +330,16 @@ nodes:
 	if state.Nodes["publish"].External.Status != "reconcile_required" || state.Waiting == nil || state.Waiting.Kind != "external_reconcile" {
 		t.Fatalf("state=%#v", state.Nodes["publish"].External)
 	}
-	if _, err := service.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "unknown"}); err != nil {
+	if _, err := service.ExternalService.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "unknown"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-after-unknown", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}}); err == nil {
+	if _, err := service.ExternalService.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-after-unknown", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}}); err == nil {
 		t.Fatal("claim was accepted while reconcile outcome remained unknown")
 	}
-	if _, err := service.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "not_applied", Receipt: "lookup:no-record"}); err != nil {
+	if _, err := service.ExternalService.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "not_applied", Receipt: "lookup:no-record"}); err != nil {
 		t.Fatal(err)
 	}
-	claim2, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-3", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}})
+	claim2, err := service.ExternalService.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-3", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}})
 	if err != nil {
 		t.Fatalf("claim after not_applied reconcile: %v", err)
 	}
@@ -351,13 +351,13 @@ nodes:
 	if err := fs.Save(state); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-4", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}}); err == nil {
+	if _, err := service.ExternalService.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "publish", WorkerID: "worker-4", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2}}); err == nil {
 		t.Fatal("second expired claim replayed without reconciliation")
 	}
-	if _, err := service.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "applied"}); err == nil {
+	if _, err := service.ExternalService.ReconcileExternal(context.Background(), ExternalReconcileRequest{RunID: started.RunID, NodeID: "publish", Outcome: "applied"}); err == nil {
 		t.Fatal("applied reconciliation without receipt was accepted")
 	}
-	final, err := service.ReconcileExternal(context.Background(), ExternalReconcileRequest{
+	final, err := service.ExternalService.ReconcileExternal(context.Background(), ExternalReconcileRequest{
 		RunID: started.RunID, NodeID: "publish", Outcome: "applied", Receipt: "remote:42",
 		Submission: ExternalSubmission{Output: "published", Structured: json.RawMessage(`{"published":true}`)},
 	})
@@ -411,29 +411,29 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath})
 	if err != nil {
 		t.Fatal(err)
 	}
-	claim, err := service.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2, Capabilities: []string{"tool_policy"}, ToolEvents: true}})
+	claim, err := service.ExternalService.ClaimExternal(ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2, Capabilities: []string{"tool_policy"}, ToolEvents: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	call, err := service.RequestExternalTool(context.Background(), ExternalToolRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Tool: "read", Input: json.RawMessage(`{"token":"` + secret + `"}`)})
+	call, err := service.ExternalService.RequestExternalTool(context.Background(), ExternalToolRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Tool: "read", Input: json.RawMessage(`{"token":"` + secret + `"}`)})
 	if err != nil || call.Status != "allowed" {
 		t.Fatalf("request call=%#v err=%v", call, err)
 	}
-	if _, err := service.StartExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1"}); err != nil {
+	if _, err := service.ExternalService.StartExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.CompleteExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Output: json.RawMessage(`{"value":"` + secret + `"}`)}); err != nil {
+	if _, err := service.ExternalService.CompleteExternalTool(ExternalToolUpdate{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Output: json.RawMessage(`{"value":"` + secret + `"}`)}); err != nil {
 		t.Fatal(err)
 	}
 	textPath := filepath.Join(claim.Workspace, "evidence.txt")
 	if err := os.WriteFile(textPath, []byte("before "+secret+" after"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	artifact, err := service.DeclareExternalArtifact(ExternalArtifactRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Type: "evidence", MIME: "text/plain", Path: textPath})
+	artifact, err := service.ExternalService.DeclareExternalArtifact(ExternalArtifactRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Type: "evidence", MIME: "text/plain", Path: textPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,10 +448,10 @@ nodes:
 	if err := os.WriteFile(binaryPath, append([]byte{0, 1}, []byte(secret)...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.DeclareExternalArtifact(ExternalArtifactRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Type: "binary-evidence", MIME: "application/octet-stream", Path: binaryPath}); err == nil {
+	if _, err := service.ExternalService.DeclareExternalArtifact(ExternalArtifactRequest{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "read-1", Type: "binary-evidence", MIME: "application/octet-stream", Path: binaryPath}); err == nil {
 		t.Fatal("external binary artifact containing known secret was persisted")
 	}
-	final, err := service.CompleteExternal(context.Background(), ExternalSubmission{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, Output: secret, Structured: json.RawMessage(`{"secret":"` + secret + `"}`), Stdout: secret, Stderr: secret})
+	final, err := service.ExternalService.CompleteExternal(context.Background(), ExternalSubmission{RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, Output: secret, Structured: json.RawMessage(`{"secret":"` + secret + `"}`), Stdout: secret, Stderr: secret})
 	if err != nil {
 		t.Fatal(err)
 	}

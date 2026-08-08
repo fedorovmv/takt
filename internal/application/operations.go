@@ -124,7 +124,7 @@ type RecoverResult struct {
 }
 
 func (s *RunService) ListRuns(request RunListRequest) ([]RunListEntry, error) {
-	st := s.runStore
+	st := s.store
 	ids, err := st.ListRunIDs()
 	if err != nil {
 		return nil, err
@@ -245,7 +245,7 @@ func (s *RunService) Attention() ([]AttentionItem, error) {
 		run := runs[i]
 		items = append(items, AttentionItem{Kind: "run", Run: &run, Status: run.EffectiveState, Reason: run.Attention.Reason, Message: run.Attention.Message, UpdatedAt: run.UpdatedAt})
 	}
-	plans, err := (dynamicplan.Store{Workspace: s.Workspace}).List()
+	plans, err := s.planStore.List()
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +267,7 @@ func (s *RunService) Attention() ([]AttentionItem, error) {
 }
 
 func (s *RunService) Summary(runID string, recursive bool) (*RunSummary, error) {
-	st := s.runStore
+	st := s.store
 	root, err := st.Load(runID)
 	if err != nil {
 		return nil, err
@@ -374,8 +374,8 @@ func appendUniqueArtifacts(summary *RunSummary, values []store.ArtifactRef) {
 	}
 }
 
-func (s *RunService) Pause(runID string) (*PauseResult, error) {
-	st := s.runStore
+func (s *RunService) Pause(ctx context.Context, runID string) (*PauseResult, error) {
+	st := s.store
 	root, err := st.Load(runID)
 	if err != nil {
 		return nil, err
@@ -416,7 +416,7 @@ func (s *RunService) Pause(runID string) (*PauseResult, error) {
 				state.Status = store.RunPaused
 				state.PausedAt = &now
 				state.PauseRequested = false
-				loadErr = s.commitRedacted(st, state, store.Event{Type: "run.paused", Data: map[string]any{"from": store.RunWaiting}})
+				loadErr = commitRedacted(s.configPath, st, state, store.Event{Type: "run.paused", Data: map[string]any{"from": store.RunWaiting}})
 			}
 			_ = release()
 			if loadErr != nil {
@@ -434,14 +434,14 @@ func (s *RunService) Pause(runID string) (*PauseResult, error) {
 		status = store.RunPausing
 		planStatus = "pausing"
 	}
-	if err := s.setOwningPlanStatus(runID, planStatus, ""); err != nil {
+	if err := s.setOwningPlanStatus(ctx, runID, planStatus, ""); err != nil {
 		return nil, err
 	}
 	return &PauseResult{RunID: runID, Status: status, Requested: true, AffectedRunIDs: ids, SafeBoundary: true}, nil
 }
 
 func (s *RunService) ResumePaused(ctx context.Context, runID string, detached bool) (*store.RunState, error) {
-	st := s.runStore
+	st := s.store
 	state, err := st.Load(runID)
 	if err != nil {
 		return nil, err
@@ -470,29 +470,30 @@ func (s *RunService) ResumePaused(ctx context.Context, runID string, detached bo
 			state.Status = store.RunWaiting
 			state.PausedAt = nil
 			state.PausedFrom = ""
-			err = s.commitRedacted(st, state, store.Event{Type: "run.resumed", Data: map[string]any{"to": store.RunWaiting}})
+			err = commitRedacted(s.configPath, st, state, store.Event{Type: "run.resumed", Data: map[string]any{"to": store.RunWaiting}})
 		}
 		_ = release()
 		if err != nil {
 			return nil, err
 		}
-		if err := s.setOwningPlanStatus(runID, "waiting", ""); err != nil {
+		if err := s.setOwningPlanStatus(ctx, runID, "waiting", ""); err != nil {
 			return nil, err
 		}
 		return durablePublicRun(st, state)
 	}
-	if err := s.setOwningPlanStatus(runID, "running", ""); err != nil {
+	if err := s.setOwningPlanStatus(ctx, runID, "running", ""); err != nil {
 		return nil, err
 	}
 	if detached {
-		go func() { _, _ = s.Resume(context.Background(), runID) }()
+		detached := detachedContext(ctx)
+		go func() { _, _ = s.Resume(detached, runID) }()
 		return durablePublicRun(st, state)
 	}
 	return s.Resume(ctx, runID)
 }
 
-func (s *RunService) Abandon(runID, reason string) (any, error) {
-	st := s.runStore
+func (s *RunService) Abandon(ctx context.Context, runID, reason string) (any, error) {
+	st := s.store
 	root, err := st.Load(runID)
 	if err != nil {
 		return nil, err
@@ -530,7 +531,7 @@ func (s *RunService) Abandon(runID, reason string) (any, error) {
 			if loadErr == nil {
 				runner, runnerErr := s.runnerForState(state)
 				if runnerErr == nil {
-					_, loadErr = runner.Resume(context.Background(), state)
+					_, loadErr = runner.Resume(ctx, state)
 				}
 			}
 			_ = release()
@@ -539,7 +540,7 @@ func (s *RunService) Abandon(runID, reason string) (any, error) {
 			}
 		}
 	}
-	if err := s.setOwningPlanStatus(runID, "abandoned", strings.TrimSpace(reason)); err != nil {
+	if err := s.setOwningPlanStatus(ctx, runID, "abandoned", strings.TrimSpace(reason)); err != nil {
 		return nil, err
 	}
 	return map[string]any{"run_id": runID, "status": "abandoning", "affected_run_ids": ids}, nil
@@ -572,7 +573,7 @@ func runTreeIDs(st RunStore, root *store.RunState) ([]string, error) {
 }
 
 func (s *RunService) Retry(ctx context.Context, request RetryRequest) (*store.RunState, error) {
-	st := s.runStore
+	st := s.store
 	release, err := acquireRunLock(st, request.RunID)
 	if err != nil {
 		return nil, err
@@ -650,10 +651,10 @@ func (s *RunService) Retry(ctx context.Context, request RetryRequest) (*store.Ru
 	if err := st.ClearAbandon(state.ID); err != nil {
 		return nil, err
 	}
-	if err := s.commitRedacted(st, state, store.Event{Type: "run.retry_requested", NodeID: target, Data: map[string]any{"reset_nodes": sortedKeys(reset)}}); err != nil {
+	if err := commitRedacted(s.configPath, st, state, store.Event{Type: "run.retry_requested", NodeID: target, Data: map[string]any{"reset_nodes": sortedKeys(reset)}}); err != nil {
 		return nil, err
 	}
-	if err := s.setOwningPlanStatus(state.ID, "running", ""); err != nil {
+	if err := s.setOwningPlanStatus(ctx, state.ID, "running", ""); err != nil {
 		return nil, err
 	}
 	runner, err := s.runnerForState(state)
@@ -661,10 +662,11 @@ func (s *RunService) Retry(ctx context.Context, request RetryRequest) (*store.Ru
 		return nil, err
 	}
 	if request.Detached {
+		detached := detachedContext(ctx)
 		go func() {
-			result, runErr := runner.Resume(context.Background(), state)
+			result, runErr := runner.Resume(detached, state)
 			if runErr == nil || errors.Is(runErr, runtime.ErrWaiting) || errors.Is(runErr, runtime.ErrPaused) {
-				_, _ = s.resumeParentChain(context.Background(), st, result)
+				_, _ = s.resumeParentChain(detached, st, result)
 			}
 		}()
 		return durablePublicRun(st, state)
@@ -744,24 +746,24 @@ func sortedKeys(values map[string]bool) []string {
 	return out
 }
 
-func (s *RunService) Fork(ctx context.Context, request ForkRequest) (*ForkResult, error) {
-	st := s.runStore
+func (s *ForkService) Fork(ctx context.Context, request ForkRequest) (*ForkResult, error) {
+	st := s.runs.store
 	state, err := st.Load(request.RunID)
 	if err != nil {
 		return nil, err
 	}
-	if record, planErr := s.Plans.resolvePlanRecord("", request.RunID); planErr == nil {
+	if record, planErr := s.plans.resolvePlanRecord("", request.RunID); planErr == nil {
 		candidate := latestPlan(record)
 		if strings.TrimSpace(request.Input) != "" {
 			candidate.Goal = strings.TrimSpace(request.Input)
 		}
-		result, err := s.Plans.Plan(ctx, PlanRequest{Goal: candidate.Goal, Profile: record.Profile, Candidate: &candidate, TaskSource: record.TaskSource})
+		result, err := s.plans.Plan(ctx, PlanRequest{Goal: candidate.Goal, Profile: record.Profile, Candidate: &candidate, TaskSource: record.TaskSource})
 		if err != nil {
 			return nil, err
 		}
 		result.Record.ForkedFromPlanID = record.ID
 		result.Record.ForkSourceFingerprint = planForkFingerprint(record)
-		if err := s.Plans.savePlanRecord(result.Record); err != nil {
+		if err := s.plans.savePlanRecord(result.Record); err != nil {
 			return nil, err
 		}
 		return &ForkResult{SourceRunID: request.RunID, Plan: result}, nil
@@ -775,7 +777,7 @@ func (s *RunService) Fork(ctx context.Context, request ForkRequest) (*ForkResult
 	if state.RunOptions.WorktreeMode != "auto" {
 		worktreePtr = &worktree
 	}
-	started, err := s.Start(ctx, StartRequest{Selector: state.WorkflowPath, ConfigPath: state.ConfigPath, Input: input, Detached: request.Detached, Worktree: worktreePtr, WorktreeBase: state.RunOptions.WorktreeBase, KeepWorktree: state.RunOptions.KeepWorktree, AllowDirty: state.RunOptions.AllowDirty})
+	started, err := s.runs.Start(ctx, StartRequest{Selector: state.WorkflowPath, ConfigPath: state.ConfigPath, Input: input, Detached: request.Detached, Worktree: worktreePtr, WorktreeBase: state.RunOptions.WorktreeBase, KeepWorktree: state.RunOptions.KeepWorktree, AllowDirty: state.RunOptions.AllowDirty})
 	if err != nil {
 		return nil, err
 	}
@@ -785,7 +787,7 @@ func (s *RunService) Fork(ctx context.Context, request ForkRequest) (*ForkResult
 	}
 	forked.ForkedFromRunID = state.ID
 	forked.ForkSourceFingerprint = runForkFingerprint(state)
-	if err := s.commitRedacted(st, forked, store.Event{Type: "run.forked", Data: map[string]any{"source_run_id": state.ID, "source_fingerprint": forked.ForkSourceFingerprint}}); err != nil {
+	if err := commitRedacted("", st, forked, store.Event{Type: "run.forked", Data: map[string]any{"source_run_id": state.ID, "source_fingerprint": forked.ForkSourceFingerprint}}); err != nil {
 		return nil, err
 	}
 	started.State = forked.PublicView()
@@ -831,7 +833,7 @@ func (s *RunService) RecoverInterruptedRunsForeground(ctx context.Context) (*Rec
 }
 
 func (s *RunService) recoverInterruptedRuns(ctx context.Context, detached bool) (*RecoverResult, error) {
-	st := s.runStore
+	st := s.store
 	ids, err := st.ListRunIDs()
 	if err != nil {
 		return nil, err
@@ -882,7 +884,7 @@ func (s *RunService) recoverInterruptedRuns(ctx context.Context, detached bool) 
 		if loadErr == nil && (current.Status == store.RunRunning || current.Status == store.RunPausing) && !processAlive(current.ExecutorPID) {
 			loadErr = s.recoverRunState(st, current)
 			if loadErr == nil {
-				loadErr = s.setOwningPlanStatus(current.ID, "running", "")
+				loadErr = s.setOwningPlanStatus(ctx, current.ID, "running", "")
 			}
 			if loadErr == nil {
 				result.Recovered = append(result.Recovered, current.ID)
@@ -936,11 +938,11 @@ func (s *RunService) recoverRunState(st RunStore, state *store.RunState) error {
 	state.LastRecoveredAt = &now
 	state.ExecutorPID = os.Getpid()
 	state.HeartbeatAt = &now
-	return s.commitRedacted(st, state, store.Event{Type: "run.recovered", Data: map[string]any{"recovery_count": state.RecoveryCount, "reason": "executor_lost"}})
+	return commitRedacted(s.configPath, st, state, store.Event{Type: "run.recovered", Data: map[string]any{"recovery_count": state.RecoveryCount, "reason": "executor_lost"}})
 }
 
 func (s *RunService) continueRecoveredRun(runID string) {
-	_ = s.continueRecoveredRunContext(context.Background(), runID)
+	_ = s.continueRecoveredRunContext(durableContext(), runID)
 }
 
 func (s *RunService) continueRecoveredRunContext(ctx context.Context, runID string) error {
@@ -949,7 +951,7 @@ func (s *RunService) continueRecoveredRunContext(ctx context.Context, runID stri
 		return err
 	}
 	if state != nil {
-		_, parentErr := s.resumeParentChain(ctx, s.runStore, state)
+		_, parentErr := s.resumeParentChain(ctx, s.store, state)
 		if parentErr != nil && !errors.Is(parentErr, runtime.ErrWaiting) && !errors.Is(parentErr, runtime.ErrPaused) {
 			return parentErr
 		}
@@ -968,13 +970,13 @@ func processAlive(pid int) bool {
 	return process.Signal(syscall.Signal(0)) == nil
 }
 
-func (s *RunService) setOwningPlanStatus(runID, status, lastError string) error {
-	planStore := dynamicplan.Store{Workspace: s.Workspace}
-	lock, err := planStore.AcquireAdvanceLock(context.Background())
+func (s *RunService) setOwningPlanStatus(ctx context.Context, runID, status, lastError string) error {
+	planStore := s.planStore
+	lock, err := planStore.AcquireAdvanceLock(ctx)
 	if err != nil {
 		return err
 	}
-	defer dynamicplan.ReleaseAdvanceLock(lock)
+	defer lock.Release()
 	records, err := planStore.List()
 	if err != nil {
 		return err
@@ -986,7 +988,7 @@ func (s *RunService) setOwningPlanStatus(runID, status, lastError string) error 
 		record.Status = status
 		record.LastError = lastError
 		record.UpdatedAt = time.Now().UTC()
-		return s.savePlanRecord(record)
+		return savePlanRecord(s.configPath, s.planStore, record)
 	}
 	return nil
 }

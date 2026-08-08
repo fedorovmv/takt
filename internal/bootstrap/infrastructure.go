@@ -1,9 +1,8 @@
-package appfixture
+package bootstrap
 
 import (
 	"context"
 	"os"
-	"path/filepath"
 
 	"takt/internal/application"
 	"takt/internal/domainadapter"
@@ -12,10 +11,7 @@ import (
 	"takt/internal/learning"
 	"takt/internal/notification"
 	"takt/internal/packagedist"
-	"takt/internal/runtime"
 	"takt/internal/spec"
-	"takt/internal/store"
-	"takt/internal/testsupport/runtimefixture"
 )
 
 type advanceLock struct{ file *os.File }
@@ -29,18 +25,18 @@ func (s planStore) Save(record *dynamicplan.Record) error       { return s.inner
 func (s planStore) List() ([]*dynamicplan.Record, error)        { return s.inner.List() }
 func (s planStore) Dir(id string) string                        { return s.inner.Dir(id) }
 func (s planStore) AcquireAdvanceLock(ctx context.Context) (application.AdvanceLock, error) {
-	f, err := s.inner.AcquireAdvanceLock(ctx)
+	file, err := s.inner.AcquireAdvanceLock(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return advanceLock{f}, nil
+	return advanceLock{file: file}, nil
 }
 func (s planStore) TryAdvanceLock() (application.AdvanceLock, bool, error) {
-	f, ok, err := s.inner.TryAdvanceLock()
+	file, ok, err := s.inner.TryAdvanceLock()
 	if err != nil || !ok {
 		return nil, ok, err
 	}
-	return advanceLock{f}, true, nil
+	return advanceLock{file: file}, true, nil
 }
 
 type packageBackend struct{ workspace string }
@@ -59,21 +55,13 @@ func adapterFactory(cfg *spec.Config) domainadapter.Resolver {
 	return domainadapter.Factory{Config: cfg}
 }
 
-func New(workspace, configPath string) (*application.Services, error) {
-	abs, err := filepath.Abs(workspace)
-	if err != nil {
-		return nil, err
-	}
-	return application.NewWithDependencies(abs, configPath, application.Dependencies{
-		RunStore:       store.FS{Workspace: abs},
-		PlanStore:      planStore{inner: dynamicplan.Store{Workspace: abs}},
-		HostStore:      hostcontrol.Store{Workspace: abs},
-		Notifications:  notification.Dispatcher{Workspace: abs},
-		Learning:       learning.Manager{Workspace: abs},
-		Packages:       packageBackend{workspace: abs},
+func applicationDependencies(workspace string) application.Dependencies {
+	return application.Dependencies{
+		PlanStore:      planStore{inner: dynamicplan.Store{Workspace: workspace}},
+		HostStore:      hostcontrol.Store{Workspace: workspace},
+		Notifications:  notification.Dispatcher{Workspace: workspace},
+		Learning:       learning.Manager{Workspace: workspace},
+		Packages:       packageBackend{workspace: workspace},
 		AdapterFactory: adapterFactory,
-		RunnerFactory: func(def runtime.Definition, options application.RunnerOptions) *runtime.Runner {
-			return runtimefixture.Runner(def, options.Commands)
-		},
-	})
+	}
 }

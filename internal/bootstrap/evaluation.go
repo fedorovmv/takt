@@ -5,14 +5,21 @@ import (
 	"fmt"
 
 	"takt/internal/application"
+	"takt/internal/assistant"
+	"takt/internal/domainadapter"
 	"takt/internal/evaluation"
+	"takt/internal/redact"
+	"takt/internal/runtime"
+	"takt/internal/spec"
+	"takt/internal/store"
 )
 
 type evaluationEngine struct{}
 
 func (evaluationEngine) Run(ctx context.Context, req application.EvaluationRunRequest) (any, error) {
 	return evaluation.Run(ctx, evaluation.RunOptions{
-		WorkflowPath: req.WorkflowPath, ConfigPath: req.ConfigPath, CasesDir: req.CasesDir,
+		ExecutionFactory: evaluationExecutionFactory,
+		WorkflowPath:     req.WorkflowPath, ConfigPath: req.ConfigPath, CasesDir: req.CasesDir,
 		CaseManifestPath: req.CaseManifestPath, WorkspaceTemplate: req.WorkspaceTemplate,
 		OutputDir: req.OutputDir, Repeat: req.Repeat, ApprovalAnswer: req.ApprovalAnswer, Replace: req.Replace,
 		StrategyID: req.StrategyID, BenchmarkID: req.BenchmarkID, QualityNode: req.QualityNode,
@@ -22,7 +29,7 @@ func (evaluationEngine) Run(ctx context.Context, req application.EvaluationRunRe
 }
 
 func (evaluationEngine) Benchmark(ctx context.Context, req application.EvaluationBenchmarkRequest) (any, error) {
-	return evaluation.RunMatrix(ctx, evaluation.MatrixRunOptions{MatrixPath: req.MatrixPath, OutputDir: req.OutputDir, Repeat: req.Repeat, Replace: req.Replace})
+	return evaluation.RunMatrix(ctx, evaluation.MatrixRunOptions{ExecutionFactory: evaluationExecutionFactory, MatrixPath: req.MatrixPath, OutputDir: req.OutputDir, Repeat: req.Repeat, Replace: req.Replace})
 }
 
 func (evaluationEngine) TaskBenchmark(ctx context.Context, req application.EvaluationBenchmarkRequest) (any, error) {
@@ -67,4 +74,16 @@ func (evaluationEngine) Report(_ context.Context, outputDir string) (any, error)
 	} else {
 		return nil, fmt.Errorf("load evaluation report: suite=%v; matrix=%v; task_matrix=%v", err, matrixErr, taskErr)
 	}
+}
+
+func evaluationExecutionFactory(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspace string) (evaluation.Execution, error) {
+	def := runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: workflowPath, ConfigPath: configPath, ControlWorkspace: workspace}
+	deps := runtime.Dependencies{
+		Commands:   runtime.NewCommandResolver(workflowPath, workspace, workspace),
+		Store:      store.FS{Workspace: workspace},
+		Assistants: assistant.Factory{Config: cfg},
+		Adapters:   domainadapter.Factory{Config: cfg},
+		Redactor:   redact.NewFromConfig(cfg),
+	}
+	return evaluation.Execution{Runner: runtime.NewWithDependencies(def, deps), Store: store.FS{Workspace: workspace}}, nil
 }

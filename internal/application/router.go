@@ -39,7 +39,7 @@ func (s *PlanService) routeTask(ctx context.Context, resolved *profile.Resolved,
 	if err != nil {
 		return nil, "", fmt.Errorf("encode task router input: %w", err)
 	}
-	started, err := s.Runs.Start(ctx, StartRequest{Selector: resolved.RouterPath, Input: string(payload), ConfigPath: resolved.ConfigPath})
+	started, err := s.runs.Start(ctx, StartRequest{Selector: resolved.RouterPath, Input: string(payload), ConfigPath: resolved.ConfigPath})
 	if err != nil {
 		return nil, "", fmt.Errorf("task router: %w", err)
 	}

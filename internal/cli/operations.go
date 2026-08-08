@@ -12,46 +12,46 @@ import (
 	"takt/internal/daemon"
 )
 
-func runDispatchCmd(args []string) error {
+func runDispatchCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return runCmd(args)
+		return runCmd(ctx, args)
 	}
 	switch args[0] {
 	case "list", "attention", "summary", "watch", "pause", "resume", "retry", "fork", "abandon", "recover":
-		return runOperationsCmd(args[0], args[1:])
+		return runOperationsCmd(ctx, args[0], args[1:])
 	default:
-		return runCmd(args)
+		return runCmd(ctx, args)
 	}
 }
 
-func runOperationsCmd(operation string, args []string) error {
+func runOperationsCmd(ctx context.Context, operation string, args []string) error {
 	switch operation {
 	case "list":
-		return runsCmd(args)
+		return runsCmd(ctx, args)
 	case "attention":
-		return attentionCmd(args)
+		return attentionCmd(ctx, args)
 	case "summary":
-		return runSummaryCmd(args)
+		return runSummaryCmd(ctx, args)
 	case "watch":
-		return runWatchCmd(args)
+		return runWatchCmd(ctx, args)
 	case "pause":
-		return runPauseCmd(args)
+		return runPauseCmd(ctx, args)
 	case "resume":
-		return runResumePausedCmd(args)
+		return runResumePausedCmd(ctx, args)
 	case "retry":
-		return runRetryCmd(args)
+		return runRetryCmd(ctx, args)
 	case "fork":
-		return runForkCmd(args)
+		return runForkCmd(ctx, args)
 	case "abandon":
-		return runAbandonCmd(args)
+		return runAbandonCmd(ctx, args)
 	case "recover":
-		return runRecoverCmd(args)
+		return runRecoverCmd(ctx, args)
 	default:
 		return fmt.Errorf("unknown run operation %q", operation)
 	}
 }
 
-func runsCmd(args []string) error {
+func runsCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run list")
 	workspace := fs.String("workspace", ".", "control workspace")
 	status := fs.String("status", "", "status filter")
@@ -75,7 +75,7 @@ func runsCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "run.list", request, &result); err != nil {
+		if err := client.Call(ctx, "run.list", request, &result); err != nil {
 			return err
 		}
 	} else {
@@ -91,7 +91,7 @@ func runsCmd(args []string) error {
 	return printResult(*jsonOut, map[string]any{"runs": result})
 }
 
-func attentionCmd(args []string) error {
+func attentionCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run attention")
 	workspace := fs.String("workspace", ".", "control workspace")
 	useDaemon := fs.Bool("daemon", false, "use local daemon")
@@ -109,7 +109,7 @@ func attentionCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "run.attention", map[string]any{}, &result); err != nil {
+		if err := client.Call(ctx, "run.attention", map[string]any{}, &result); err != nil {
 			return err
 		}
 	} else {
@@ -117,7 +117,7 @@ func attentionCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		result, err = service.Attention()
+		result, err = service.RunService.Attention()
 		if err != nil {
 			return err
 		}
@@ -125,7 +125,7 @@ func attentionCmd(args []string) error {
 	return printResult(*jsonOut, map[string]any{"attention": result})
 }
 
-func runSummaryCmd(args []string) error {
+func runSummaryCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run summary")
 	workspace := fs.String("workspace", ".", "control workspace")
 	recursive := fs.Bool("recursive", true, "aggregate descendant Runs")
@@ -144,7 +144,7 @@ func runSummaryCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "run.summary", map[string]any{"run_id": fs.Arg(0), "recursive": *recursive}, &result); err != nil {
+		if err := client.Call(ctx, "run.summary", map[string]any{"run_id": fs.Arg(0), "recursive": *recursive}, &result); err != nil {
 			return err
 		}
 	} else {
@@ -152,7 +152,7 @@ func runSummaryCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		value, err := service.Summary(fs.Arg(0), *recursive)
+		value, err := service.RunService.Summary(fs.Arg(0), *recursive)
 		if err != nil {
 			return err
 		}
@@ -161,7 +161,7 @@ func runSummaryCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func runPauseCmd(args []string) error {
+func runPauseCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run pause")
 	workspace := fs.String("workspace", ".", "control workspace")
 	useDaemon := fs.Bool("daemon", false, "use local daemon")
@@ -179,7 +179,7 @@ func runPauseCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "run.pause", map[string]string{"run_id": fs.Arg(0)}, &result); err != nil {
+		if err := client.Call(ctx, "run.pause", map[string]string{"run_id": fs.Arg(0)}, &result); err != nil {
 			return err
 		}
 	} else {
@@ -187,7 +187,7 @@ func runPauseCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		value, err := service.Pause(fs.Arg(0))
+		value, err := service.RunService.Pause(ctx, fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -196,7 +196,7 @@ func runPauseCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func runResumePausedCmd(args []string) error {
+func runResumePausedCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run resume")
 	workspace := fs.String("workspace", ".", "control workspace")
 	useDaemon := fs.Bool("daemon", false, "use local daemon")
@@ -214,7 +214,7 @@ func runResumePausedCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "run.resume_paused", map[string]string{"run_id": fs.Arg(0)}, &result); err != nil {
+		if err := client.Call(ctx, "run.resume_paused", map[string]string{"run_id": fs.Arg(0)}, &result); err != nil {
 			return err
 		}
 	} else {
@@ -222,7 +222,7 @@ func runResumePausedCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		value, err := service.RunService.ResumePaused(context.Background(), fs.Arg(0), false)
+		value, err := service.RunService.ResumePaused(ctx, fs.Arg(0), false)
 		if err != nil {
 			return err
 		}
@@ -231,7 +231,7 @@ func runResumePausedCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func runRetryCmd(args []string) error {
+func runRetryCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run retry")
 	workspace := fs.String("workspace", ".", "control workspace")
 	node := fs.String("node", "", "failed node ID")
@@ -251,7 +251,7 @@ func runRetryCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "run.retry", request, &result); err != nil {
+		if err := client.Call(ctx, "run.retry", request, &result); err != nil {
 			return err
 		}
 	} else {
@@ -259,7 +259,7 @@ func runRetryCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		value, err := service.RunService.Retry(context.Background(), request)
+		value, err := service.RunService.Retry(ctx, request)
 		if err != nil {
 			return err
 		}
@@ -268,7 +268,7 @@ func runRetryCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func runForkCmd(args []string) error {
+func runForkCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run fork")
 	workspace := fs.String("workspace", ".", "control workspace")
 	input := fs.String("input", "", "replacement input or Dynamic Plan goal")
@@ -288,7 +288,7 @@ func runForkCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "run.fork", request, &result); err != nil {
+		if err := client.Call(ctx, "run.fork", request, &result); err != nil {
 			return err
 		}
 	} else {
@@ -296,7 +296,7 @@ func runForkCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		value, err := service.RunService.Fork(context.Background(), request)
+		value, err := service.ForkService.Fork(ctx, request)
 		if err != nil {
 			return err
 		}
@@ -305,7 +305,7 @@ func runForkCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func runAbandonCmd(args []string) error {
+func runAbandonCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run abandon")
 	workspace := fs.String("workspace", ".", "control workspace")
 	reason := fs.String("reason", "", "operator reason")
@@ -325,7 +325,7 @@ func runAbandonCmd(args []string) error {
 			return err
 		}
 		var value map[string]any
-		if err := client.Call(context.Background(), "run.abandon", map[string]any{"run_id": fs.Arg(0), "reason": *reason}, &value); err != nil {
+		if err := client.Call(ctx, "run.abandon", map[string]any{"run_id": fs.Arg(0), "reason": *reason}, &value); err != nil {
 			return err
 		}
 		result = value
@@ -334,7 +334,7 @@ func runAbandonCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		result, err = service.Abandon(fs.Arg(0), *reason)
+		result, err = service.RunService.Abandon(ctx, fs.Arg(0), *reason)
 		if err != nil {
 			return err
 		}
@@ -342,7 +342,7 @@ func runAbandonCmd(args []string) error {
 	return printResult(*jsonOut, result)
 }
 
-func runRecoverCmd(args []string) error {
+func runRecoverCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run recover")
 	workspace := fs.String("workspace", ".", "control workspace")
 	useDaemon := fs.Bool("daemon", false, "use local daemon")
@@ -360,7 +360,7 @@ func runRecoverCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "run.recover", map[string]any{}, &result); err != nil {
+		if err := client.Call(ctx, "run.recover", map[string]any{}, &result); err != nil {
 			return err
 		}
 	} else {
@@ -368,7 +368,7 @@ func runRecoverCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		value, err := service.RunService.RecoverInterruptedRunsForeground(context.Background())
+		value, err := service.RunService.RecoverInterruptedRunsForeground(ctx)
 		if err != nil {
 			return err
 		}
@@ -377,7 +377,7 @@ func runRecoverCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func runWatchCmd(args []string) error {
+func runWatchCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run watch")
 	workspace := fs.String("workspace", ".", "control workspace")
 	useDaemon := fs.Bool("daemon", true, "use local daemon")
@@ -400,10 +400,10 @@ func runWatchCmd(args []string) error {
 			if err != nil {
 				return err
 			}
-			if err := client.Call(context.Background(), "run.events", map[string]any{"run_id": runID, "after_revision": revision, "limit": 200, "wait_ms": int(interval.Milliseconds())}, &events); err != nil {
+			if err := client.Call(ctx, "run.events", map[string]any{"run_id": runID, "after_revision": revision, "limit": 200, "wait_ms": int(interval.Milliseconds())}, &events); err != nil {
 				return err
 			}
-			if err := client.Call(context.Background(), "run.get", map[string]string{"run_id": runID}, &state); err != nil {
+			if err := client.Call(ctx, "run.get", map[string]string{"run_id": runID}, &state); err != nil {
 				return err
 			}
 		} else {
@@ -411,7 +411,7 @@ func runWatchCmd(args []string) error {
 			if err != nil {
 				return err
 			}
-			value, err := service.Events(context.Background(), runID, revision, 200, *interval)
+			value, err := service.RunService.Events(ctx, runID, revision, 200, *interval)
 			if err != nil {
 				return err
 			}

@@ -27,23 +27,23 @@ func New(workspace, configPath string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	services, err := application.NewWithDependencies(absWorkspace, configPath, application.Dependencies{
-		RunStore:         store.FS{Workspace: absWorkspace},
-		EvaluationEngine: evaluationEngine{},
-		RunnerFactory: func(def runtime.Definition, options application.RunnerOptions) *runtime.Runner {
-			deps := runtime.Dependencies{
-				Commands:   runtime.NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
-				Store:      store.FS{Workspace: def.ControlWorkspace},
-				Assistants: assistant.Factory{Config: def.Config},
-				Adapters:   domainadapter.Factory{Config: def.Config},
-				Redactor:   redact.NewFromConfig(def.Config),
-			}
-			if options.Commands != nil {
-				deps.Commands = *options.Commands
-			}
-			return runtime.NewWithDependencies(def, deps)
-		},
-	})
+	deps := applicationDependencies(absWorkspace)
+	deps.RunStore = store.FS{Workspace: absWorkspace}
+	deps.EvaluationEngine = evaluationEngine{}
+	deps.RunnerFactory = func(def runtime.Definition, options application.RunnerOptions) *runtime.Runner {
+		deps := runtime.Dependencies{
+			Commands:   runtime.NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
+			Store:      store.FS{Workspace: def.ControlWorkspace},
+			Assistants: assistant.Factory{Config: def.Config},
+			Adapters:   domainadapter.Factory{Config: def.Config},
+			Redactor:   redact.NewFromConfig(def.Config),
+		}
+		if options.Commands != nil {
+			deps.Commands = *options.Commands
+		}
+		return runtime.NewWithDependencies(def, deps)
+	}
+	services, err := application.NewWithDependencies(absWorkspace, configPath, deps)
 	if err != nil {
 		return nil, err
 	}

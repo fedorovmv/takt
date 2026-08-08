@@ -8,7 +8,7 @@ import (
 	"takt/internal/daemon"
 )
 
-func planCmd(args []string) error {
+func planCmd(ctx context.Context, args []string) error {
 	if len(args) > 0 && args[0] == "get" {
 		fs := newFlagSet("plan get")
 		workspace := fs.String("workspace", ".", "control workspace")
@@ -45,7 +45,7 @@ func planCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		record, err := service.PlanService.PromotePlanWithOptions(fs.Arg(0), *name, application.PromotePlanOptions{Force: *force})
+		record, err := service.PlanService.PromotePlanWithOptions(ctx, fs.Arg(0), *name, application.PromotePlanOptions{Force: *force})
 		if err != nil {
 			return err
 		}
@@ -73,14 +73,14 @@ func planCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := service.PlanService.Plan(context.Background(), application.PlanRequest{Goal: goal, Profile: *profileName})
+	result, err := service.PlanService.Plan(ctx, application.PlanRequest{Goal: goal, Profile: *profileName})
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, result)
 }
 
-func executeCmd(args []string) error {
+func executeCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("execute")
 	workspace := fs.String("workspace", ".", "control workspace")
 	confirm := fs.Bool("confirm", false, "confirm the preview and hard limits")
@@ -100,7 +100,7 @@ func executeCmd(args []string) error {
 			return err
 		}
 		var record application.PlanRecord
-		if err := client.Call(context.Background(), "plan.execute", request, &record); err != nil {
+		if err := client.Call(ctx, "plan.execute", request, &record); err != nil {
 			return err
 		}
 		return printResult(*jsonOut, &record)
@@ -109,14 +109,14 @@ func executeCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	record, err := service.PlanService.ExecutePlan(context.Background(), request)
+	record, err := service.PlanService.ExecutePlan(ctx, request)
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, record)
 }
 
-func steerCmd(args []string) error {
+func steerCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("steer")
 	workspace := fs.String("workspace", ".", "control workspace")
 	runID := fs.String("run", "", "execution Run ID instead of plan ID")
@@ -142,7 +142,7 @@ func steerCmd(args []string) error {
 			return err
 		}
 		var record application.PlanRecord
-		if err := client.Call(context.Background(), "plan.steer", request, &record); err != nil {
+		if err := client.Call(ctx, "plan.steer", request, &record); err != nil {
 			return err
 		}
 		return printResult(*jsonOut, &record)
@@ -151,7 +151,7 @@ func steerCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	record, err := service.PlanService.Steer(context.Background(), request)
+	record, err := service.PlanService.Steer(ctx, request)
 	if err != nil {
 		return err
 	}

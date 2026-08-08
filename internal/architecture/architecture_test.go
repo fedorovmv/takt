@@ -159,6 +159,147 @@ func requireRunnerFieldsPrivate(t *testing.T, root string) {
 	t.Fatal("runtime.Runner declaration not found")
 }
 
+func requireServiceFieldsPrivate(t *testing.T, root string) {
+	t.Helper()
+	fset := token.NewFileSet()
+	dir := filepath.Join(root, "internal", "application")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, filepath.Join(dir, entry.Name()), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.TYPE {
+				continue
+			}
+			for _, item := range gen.Specs {
+				typeSpec, ok := item.(*ast.TypeSpec)
+				if !ok || !strings.HasSuffix(typeSpec.Name.Name, "Service") || typeSpec.Name.Name == "Services" {
+					continue
+				}
+				st, ok := typeSpec.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+				for _, field := range st.Fields.List {
+					for _, name := range field.Names {
+						if ast.IsExported(name.Name) {
+							t.Errorf("%s.%s must keep injected dependencies private", typeSpec.Name.Name, name.Name)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func requireAcyclicApplicationServices(t *testing.T, root string) {
+	t.Helper()
+	fset := token.NewFileSet()
+	dir := filepath.Join(root, "internal", "application")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph := map[string][]string{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, filepath.Join(dir, entry.Name()), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.TYPE {
+				continue
+			}
+			for _, item := range gen.Specs {
+				typeSpec, ok := item.(*ast.TypeSpec)
+				if !ok || !strings.HasSuffix(typeSpec.Name.Name, "Service") || typeSpec.Name.Name == "Services" {
+					continue
+				}
+				st, ok := typeSpec.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+				for _, field := range st.Fields.List {
+					star, ok := field.Type.(*ast.StarExpr)
+					if !ok {
+						continue
+					}
+					ident, ok := star.X.(*ast.Ident)
+					if ok && strings.HasSuffix(ident.Name, "Service") {
+						graph[typeSpec.Name.Name] = append(graph[typeSpec.Name.Name], ident.Name)
+					}
+				}
+			}
+		}
+	}
+	state := map[string]int{}
+	stack := []string{}
+	var visit func(string)
+	visit = func(node string) {
+		if state[node] == 2 {
+			return
+		}
+		if state[node] == 1 {
+			cycle := append(append([]string(nil), stack...), node)
+			t.Errorf("application service dependency cycle: %s", strings.Join(cycle, " -> "))
+			return
+		}
+		state[node] = 1
+		stack = append(stack, node)
+		for _, next := range graph[node] {
+			visit(next)
+		}
+		stack = stack[:len(stack)-1]
+		state[node] = 2
+	}
+	for node := range graph {
+		visit(node)
+	}
+}
+
+func requireExplicitApplicationBackground(t *testing.T, root string) {
+	t.Helper()
+	dir := filepath.Join(root, "internal", "application")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := strings.Count(string(data), "context.Background()")
+		if n == 0 {
+			continue
+		}
+		count += n
+		if entry.Name() != "contexts.go" {
+			t.Errorf("application foreground code must propagate caller context; %s creates context.Background directly", entry.Name())
+		}
+	}
+	if count != 1 {
+		t.Errorf("application must centralize request-independent durable context in contexts.go (Background count=%d)", count)
+	}
+}
+
 func TestArchitectureBoundaries(t *testing.T) {
 	root := repoRoot(t)
 
@@ -167,7 +308,7 @@ func TestArchitectureBoundaries(t *testing.T) {
 	}
 
 	cmdImports := packageImports(t, root, "cmd/takt")
-	allowed := map[string]bool{"fmt": true, "os": true, "takt/internal/cli": true}
+	allowed := map[string]bool{"context": true, "fmt": true, "os": true, "os/signal": true, "syscall": true, "takt/internal/cli": true}
 	for imported := range cmdImports {
 		if !allowed[imported] {
 			t.Errorf("cmd/takt is a launcher only; unexpected import %s", imported)
@@ -180,10 +321,32 @@ func TestArchitectureBoundaries(t *testing.T) {
 	requireOnlyInternalImports(t, root, "internal/cli",
 		"takt/internal/apperror", "takt/internal/application", "takt/internal/bootstrap",
 		"takt/internal/daemon", "takt/internal/mcp", "takt/internal/version")
-	if strings.Contains(productionSource(t, root, "internal/application"), "store.FS{") {
-		t.Errorf("application must depend on RunStore ports; concrete store.FS belongs in bootstrap/infrastructure")
+	applicationSource := productionSource(t, root, "internal/application")
+	for _, forbidden := range []string{"store.FS{", "dynamicplan.Store{", "hostcontrol.Store{", "notification.Dispatcher{", "learning.Manager{", "packagedist.New(", "type Context struct", "dynamicMu", "hostMu"} {
+		if strings.Contains(applicationSource, forbidden) {
+			t.Errorf("application must receive infrastructure through narrow ports; found %q", forbidden)
+		}
+	}
+	evaluationSource := productionSource(t, root, "internal/evaluation")
+	for _, forbidden := range []string{"runtime.New(", "store.FS{"} {
+		if strings.Contains(evaluationSource, forbidden) {
+			t.Errorf("evaluation must receive execution infrastructure from bootstrap; found %q", forbidden)
+		}
+	}
+	runtimeSource := productionSource(t, root, "internal/runtime")
+	for _, forbidden := range []string{"func New(wf *spec.Workflow", "func DefaultDependencies("} {
+		if strings.Contains(runtimeSource, forbidden) {
+			t.Errorf("runtime must not expose a hidden default composition path; found %q", forbidden)
+		}
+	}
+	cliSource := productionSource(t, root, "internal/cli")
+	if count := strings.Count(cliSource, "context.Background()"); count != 1 || !strings.Contains(cliSource, "func Run(args []string) error { return RunContext(context.Background(), args) }") {
+		t.Errorf("CLI must propagate caller context; only the compatibility Run wrapper may create Background (count=%d)", count)
 	}
 	requireRunnerFieldsPrivate(t, root)
+	requireServiceFieldsPrivate(t, root)
+	requireAcyclicApplicationServices(t, root)
+	requireExplicitApplicationBackground(t, root)
 
 	forbidImports(t, root, "internal/application",
 		"takt/internal/cli", "takt/internal/mcp", "takt/internal/daemon", "takt/internal/appapi", "takt/internal/bootstrap")
@@ -201,21 +364,14 @@ func TestShellSmokeBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allowed := map[string]bool{
-		"test-package-distribution.sh":         true,
-		"test-reference-adapters.sh":           true,
-		"test-deep-code-workflows.sh":          true,
-		"test-host-control.sh":                 true,
-		"test-host-integrations-typescript.sh": true,
+	if len(matches) != 1 || filepath.Base(matches[0]) != "test-host-integrations-typescript.sh" {
+		t.Fatalf("shell is reserved for the cross-language TypeScript compiler smoke; got %v", matches)
 	}
-	for _, path := range matches {
-		name := filepath.Base(path)
-		if !allowed[name] {
-			t.Errorf("Go-native contract expected; unexpected shell test %s", name)
-		}
-		delete(allowed, name)
+	source, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
 	}
-	for name := range allowed {
-		t.Errorf("declared shell smoke test is missing: %s", name)
+	if strings.Contains(string(source), "python") || strings.Contains(string(source), "grep ") {
+		t.Fatal("shell smoke must not grow its own assertion framework; product assertions belong in Go tests")
 	}
 }

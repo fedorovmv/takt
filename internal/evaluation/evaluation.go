@@ -29,7 +29,20 @@ import (
 
 const ReportVersion = "takt-evaluation/v1alpha1"
 
+type EvaluationRunner interface {
+	Start(context.Context, string) (*store.RunState, error)
+	Resume(context.Context, *store.RunState) (*store.RunState, error)
+}
+
+type Execution struct {
+	Runner EvaluationRunner
+	Store  store.Repository
+}
+
+type ExecutionFactory func(*spec.Workflow, *spec.Config, string, string, string) (Execution, error)
+
 type RunOptions struct {
+	ExecutionFactory  ExecutionFactory
 	WorkflowPath      string
 	ConfigPath        string
 	CasesDir          string
@@ -539,8 +552,21 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 		record.Status, record.Error = "infrastructure_error", err.Error()
 		return record, err
 	}
-	runner := runtime.New(wf, cfg, paths.WorkflowPath, paths.ConfigPath, workspacePath)
-	repo := store.FS{Workspace: workspacePath}
+	if opts.ExecutionFactory == nil {
+		record.Status, record.Error = "infrastructure_error", "evaluation execution factory is required"
+		return record, fmt.Errorf("evaluation execution factory is required")
+	}
+	execution, err := opts.ExecutionFactory(wf, cfg, paths.WorkflowPath, paths.ConfigPath, workspacePath)
+	if err != nil {
+		record.Status, record.Error = "infrastructure_error", err.Error()
+		return record, err
+	}
+	runner := execution.Runner
+	repo := execution.Store
+	if runner == nil || repo == nil {
+		record.Status, record.Error = "infrastructure_error", "evaluation execution factory returned incomplete dependencies"
+		return record, fmt.Errorf("evaluation execution factory returned incomplete dependencies")
+	}
 	state, runErr := runner.Start(ctx, string(input))
 	for errors.Is(runErr, runtime.ErrWaiting) && opts.ApprovalAnswer != "" {
 		if state.Waiting == nil {

@@ -8,23 +8,23 @@ import (
 	"takt/internal/bootstrap"
 )
 
-func worktreeCmd(args []string) error {
+func worktreeCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: takt worktree <list|remove|prune> ...")
 	}
 	switch args[0] {
 	case "list":
-		return worktreeListCmd(args[1:])
+		return worktreeListCmd(ctx, args[1:])
 	case "remove":
-		return worktreeRemoveCmd(args[1:])
+		return worktreeRemoveCmd(ctx, args[1:])
 	case "prune":
-		return worktreePruneCmd(args[1:])
+		return worktreePruneCmd(ctx, args[1:])
 	default:
 		return fmt.Errorf("usage: takt worktree <list|remove|prune> ...")
 	}
 }
 
-func worktreeListCmd(args []string) error {
+func worktreeListCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("worktree list")
 	workspace := fs.String("workspace", ".", "control workspace")
 	jsonOut := fs.Bool("json", true, "JSON output")
@@ -42,14 +42,14 @@ func worktreeListCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := app.Services.WorktreeService.List(context.Background())
+	result, err := app.Services.WorktreeService.List(ctx)
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, map[string]any{"worktrees": result})
 }
 
-func worktreeRemoveCmd(args []string) error {
+func worktreeRemoveCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("worktree remove")
 	workspace := fs.String("workspace", ".", "control workspace")
 	force := fs.Bool("force", false, "remove a dirty worktree")
@@ -68,14 +68,14 @@ func worktreeRemoveCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := app.Services.WorktreeService.Remove(context.Background(), fs.Arg(0), *force)
+	result, err := app.Services.WorktreeService.Remove(ctx, fs.Arg(0), *force)
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, result)
 }
 
-func worktreePruneCmd(args []string) error {
+func worktreePruneCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("worktree prune")
 	workspace := fs.String("workspace", ".", "workspace inside the Git repository")
 	jsonOut := fs.Bool("json", true, "JSON output")
@@ -93,7 +93,7 @@ func worktreePruneCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := app.Services.WorktreeService.Prune(context.Background()); err != nil {
+	if err := app.Services.WorktreeService.Prune(ctx); err != nil {
 		return err
 	}
 	return printResult(*jsonOut, map[string]any{"pruned": true})

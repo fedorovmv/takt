@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.35.0" \
-  "VERSION|0.1.53-alpha" \
-  "internal/version/version.go|0.1.53-alpha" \
+  "skills/takt/VERSION|0.36.0" \
+  "VERSION|0.1.54-alpha" \
+  "internal/version/version.go|0.1.54-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/SKILL.md|Human-reviewed Learning Loop" \
@@ -138,6 +138,8 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-084" \
   "ARCHITECTURE_DECISIONS.md|ADR-085" \
   "ARCHITECTURE_DECISIONS.md|ADR-086" \
+  "ARCHITECTURE_DECISIONS.md|ADR-087" \
+  "docs/68-architecture-hardening-v0.1.54.md|Architecture Hardening" \
   "docs/67-go-native-test-architecture-v0.1.53.md|Go-native Test Architecture" \
   "tests/e2e/harness_test.go|func TestMain" \
   "internal/schemacontract/schema_registry_test.go|TestSchemaRegistryIsOfflineAndDocumented" \
@@ -154,7 +156,7 @@ for check in \
   "examples/task-sources/README.md|Structured Task Source example" \
   "sdk/tasksource/protocol.go|takt-task-source/v1alpha1" \
   "docs/63-reference-external-adapters-v0.1.49.md|Reference External Adapters" \
-  "scripts/test-reference-adapters.sh|reference external adapters contract: PASS" \
+  "tests/e2e/external_boundaries_test.go|func TestReferenceAdaptersBoundary" \
   "examples/reference-adapters/config.yaml|qwen-takt-adapter" \
   "examples/reference-adapters/config.yaml|takt-github-scm-adapter" \
   "reference/qwencode/adapter.go|takt/sdk/agentadapter" \
@@ -191,7 +193,7 @@ for check in \
   "schemas/package-lock.schema.json|PackageLock" \
   "schemas/package-policy.schema.json|PackagePolicy" \
   "schemas/package-signature.schema.json|PackageSignature" \
-  "scripts/test-package-distribution.sh|portable package distribution contract: PASS" \
+  "tests/e2e/external_boundaries_test.go|func TestPackageDistributionBoundary" \
   "examples/portable-package/package.yaml|portable-review" \
   "sdk/agentadapter/testdata/v1alpha2/success.ndjson|takt-assistant/v1alpha2" \
   "docs/55-adapter-platform-v0.1.41.md|Adapter Platform" \
@@ -244,11 +246,11 @@ for check in \
   "skills/takt/SKILL.md|--warnings-as-errors" \
   "SECURITY.md|Local MCP and daemon" \
   "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|assistant.tool.requested" \
-  "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|scripts/test-deep-code-workflows.sh" \
+  "docs/46-controlled-agent-events-deep-workflows-v0.1.32.md|TestDeepCodeWorkflowBoundary" \
   "docs/53-role-brief-controls-v0.1.39.md|Ограниченный automatic repair" \
   "schemas/task-brief.schema.json|Takt compiled task brief" \
   "schemas/block-package.schema.json|reaction" \
-  "scripts/test-deep-code-workflows.sh|deep code workflows: PASS" \
+  "tests/e2e/external_boundaries_test.go|func TestDeepCodeWorkflowBoundary" \
   "schemas/assistant-protocol.schema.json|takt-assistant/v1alpha2" \
   "schemas/workflow.schema.json|tool_approval" \
   "schemas/workflow.schema.json|uniqueItems" \
@@ -392,7 +394,7 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-054" \
   "integrations/coding-agent-host-control/pi/index.ts|pi.registerCommand" \
   "integrations/coding-agent-host-control/opencode/index.ts|ctx.session.hook" \
-  "scripts/test-host-control.sh|coding-agent host control contract: PASS"
+  "tests/e2e/external_boundaries_test.go|func TestHostControlBoundary"
 do
   file="${check%%|*}"
   text="${check#*|}"

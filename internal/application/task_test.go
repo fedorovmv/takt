@@ -35,7 +35,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,14 +48,14 @@ nodes:
 	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
 		t.Fatal(err)
 	}
-	view, err := service.RespondTask(context.Background(), TaskRespondRequest{Reference: record.ID, Action: "answer", Message: "staging"})
+	view, err := service.TaskService.RespondTask(context.Background(), TaskRespondRequest{Reference: record.ID, Action: "answer", Message: "staging"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if view.Status != "completed" || view.NeedsInput {
 		t.Fatalf("view = %#v", view)
 	}
-	run, err := service.GetRun(started.RunID)
+	run, err := service.RunService.GetRun(started.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestStopTaskReconcilesActivePlanWithoutDaemon(t *testing.T) {
 	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
 		t.Fatal(err)
 	}
-	view, err := service.StopTask(TaskStopRequest{Reference: record.ID, Reason: "stop test"})
+	view, err := service.TaskService.StopTask(context.Background(), TaskStopRequest{Reference: record.ID, Reason: "stop test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestStopTaskReconcilesActivePlanWithoutDaemon(t *testing.T) {
 }
 
 func TestRespondTaskNeverFabricatesApprovalMessage(t *testing.T) {
-	service := &TaskService{Context: &Context{Workspace: t.TempDir()}}
+	service := &TaskService{}
 	_, err := service.RespondTask(context.Background(), TaskRespondRequest{Reference: "run-missing", Action: "answer"})
 	if err == nil || !strings.Contains(err.Error(), "message is required") {
 		t.Fatalf("error = %v", err)
@@ -127,14 +127,14 @@ func TestTaskStatusProjectsParkedPlanAsNeedsInput(t *testing.T) {
 	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
 		t.Fatal(err)
 	}
-	view, err := service.TaskStatus(record.ID)
+	view, err := service.TaskService.TaskStatus(record.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if view.Status != "parked" || !view.NeedsInput || view.Plan == nil || view.Plan.Record.LastError != "choose a safe path" {
 		t.Fatalf("view = %#v", view)
 	}
-	if _, err := service.RespondTask(context.Background(), TaskRespondRequest{Reference: record.ID, Action: "continue"}); err == nil || !strings.Contains(err.Error(), "parked") {
+	if _, err := service.TaskService.RespondTask(context.Background(), TaskRespondRequest{Reference: record.ID, Action: "continue"}); err == nil || !strings.Contains(err.Error(), "parked") {
 		t.Fatalf("continue on parked plan error = %v", err)
 	}
 }
@@ -160,7 +160,7 @@ printf '%s\n' '{"apiVersion":"takt-task-source/v1alpha1","kind":"ResolveResponse
 	if err != nil {
 		t.Fatal(err)
 	}
-	goal, task, err := service.resolveTaskStart(context.Background(), TaskStartRequest{Source: "fixture", SourceRef: "ACME-42"})
+	goal, task, err := service.TaskService.resolveTaskStart(context.Background(), TaskStartRequest{Source: "fixture", SourceRef: "ACME-42"})
 	if err != nil {
 		t.Fatal(err)
 	}

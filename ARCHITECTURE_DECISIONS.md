@@ -616,8 +616,22 @@ Application зависит от filesystem persistence через consumer-owned
 
 Product correctness Takt проверяется стандартными Go `*_test.go`. Package-level semantics живут рядом с production code, а black-box CLI/daemon/MCP/evaluation scenarios — в `tests/e2e` с общим Go harness. Harness может запускать настоящие binaries через `os/exec`, но не делегирует assertions shell/Python-скриптам.
 
-`scripts/test-*.sh` разрешены только для явно внешних process/language/package smoke boundaries, которые неудобно или бессмысленно моделировать как Go business test. Текущий allowlist ограничен пятью сценариями: deep code workflows, host control, TypeScript host integrations, portable package distribution и reference external adapters. `internal/architecture` проверяет allowlist и блокирует появление нового shell test framework по умолчанию.
+`scripts/test-*.sh` разрешены только для явно внешних process/language/package smoke boundaries, которые неудобно или бессмысленно моделировать как Go business test. После hardening `v0.1.54` allowlist ограничен одним `test-host-integrations-typescript.sh`: shell проверяет только TypeScript compiler/toolchain boundary. Остальные process/package/host assertions перенесены в bounded Go E2E. `internal/architecture` проверяет allowlist и блокирует появление нового shell test framework по умолчанию.
 
 Schema registry/JSON assertions реализуются на Go; отдельная Python-семантика contract validation запрещена. Makefile contract targets могут сохранять исторические имена, но должны вызывать Go tests, если проверяемая семантика доступна внутри Go module.
 
 **Причина.** К `v0.1.52` 38 shell suites образовали второй тестовый framework поверх Go: повторяли build/temp setup, использовали `grep` как structural assertion, Python для JSON и отдельные assertion binaries. Это нарушало DRY, ухудшало diagnostics и делало тестовую архитектуру менее переиспользуемой, чем production architecture после ADR-085. Стандартный Go test stack покрывает те же границы проще; shell остаётся только там, где сама внешняя среда является частью предмета проверки.
+
+## ADR-087. Application services use private acyclic dependencies and explicit execution lifetime
+
+**Статус:** принято.
+
+Application layer не использует общий dependency/state bag. Каждый `*Service` хранит только private dependencies своего use case; production concrete stores/backends/factories собираются в `internal/bootstrap`. Межсервисный граф обязан оставаться ацикличным и проверяется AST-тестом. Операции, связывающие две области, например fork Run + Dynamic Plan lineage, оформляются отдельным coordinator service вместо обратных ссылок между сервисами.
+
+Production runtime и evaluation не имеют hidden/default composition paths: runtime создаётся только с явными dependencies, child Runs наследуют уже собранный graph, evaluation получает execution factory снаружи. Consumer-owned persistence ports остаются конкретными по потребителю; generic repository/DB abstraction не вводится без реального второго backend.
+
+Foreground lifetime передаётся одним `context.Context` от `cmd/takt` через transport/application до runtime. Durable detached работа должна быть обозначена явно и отвязывает только cancellation/deadline caller-а, сохраняя context values. Request-independent recovery/reconciliation может использовать отдельный документированный durable context. Process-local mutex не является источником координации durable Plan/Host state — эту роль выполняет store lock.
+
+Shell `test-*.sh` после миграции Go E2E разрешён только для TypeScript compiler smoke, где внешняя toolchain является самим предметом проверки. Остальные product assertions, включая process boundaries, принадлежат Go tests с bounded subprocess context.
+
+**Причина.** ADR-085 убрал transport/control god objects, но повторный аудит `v0.1.53` показал остатки той же связности внутри application: shared Context, циклический Run↔Plan graph, concrete backend construction, неполную cancellation chain и process-wide mutexes. Простое дальнейшее дробление файлов или package-per-use-case увеличило бы церемонию, не устраняя причины. Private acyclic dependencies, один composition root и явная execution lifetime дают проверяемые SOLID/DIP/ISP границы, сохраняя KISS/YAGNI.

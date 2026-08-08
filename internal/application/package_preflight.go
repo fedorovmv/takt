@@ -20,7 +20,7 @@ type AdapterPreflightStatus struct {
 	Error             string   `json:"error,omitempty"`
 }
 
-func preflightCatalogAdapters(ctx context.Context, catalog *blockcatalog.Catalog, cfg *spec.Config) ([]AdapterPreflightStatus, error) {
+func preflightCatalogAdapters(ctx context.Context, catalog *blockcatalog.Catalog, cfg *spec.Config, resolver domainadapter.Resolver) ([]AdapterPreflightStatus, error) {
 	if catalog == nil || len(catalog.Requirements.Adapters) == 0 {
 		return nil, nil
 	}
@@ -37,7 +37,7 @@ func preflightCatalogAdapters(ctx context.Context, catalog *blockcatalog.Catalog
 		} else if specValue.Domain != req.Domain {
 			st.Error = fmt.Sprintf("configured domain %s differs from required %s", specValue.Domain, req.Domain)
 		} else {
-			adapter, err := (domainadapter.Factory{Config: cfg}).Resolve(req.Name)
+			adapter, err := resolver.Resolve(req.Name)
 			if err != nil {
 				st.Error = err.Error()
 			} else {
@@ -81,6 +81,6 @@ func preflightCatalogAdapters(ctx context.Context, catalog *blockcatalog.Catalog
 // PreflightCatalogAdapters exposes package adapter capability checks to local
 // operator commands such as `takt package doctor`. Runtime planning uses the
 // same implementation, so diagnostics and execution cannot drift.
-func PreflightCatalogAdapters(ctx context.Context, catalog *blockcatalog.Catalog, cfg *spec.Config) ([]AdapterPreflightStatus, error) {
-	return preflightCatalogAdapters(ctx, catalog, cfg)
+func PreflightCatalogAdapters(ctx context.Context, catalog *blockcatalog.Catalog, cfg *spec.Config, resolver domainadapter.Resolver) ([]AdapterPreflightStatus, error) {
+	return preflightCatalogAdapters(ctx, catalog, cfg, resolver)
 }

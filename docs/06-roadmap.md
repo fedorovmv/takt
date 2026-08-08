@@ -1,14 +1,14 @@
 # План развития Takt
 
-Актуальный план после `v0.1.53-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/67-*.md`.
+Актуальный план после `v0.1.54-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/68-*.md`.
 
 ## Текущая позиция
 
-Takt уже закрывает основной локальный control plane и в `v0.1.52` прошёл отдельную архитектурную стабилизацию application/transport/runtime границ: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
+Takt уже закрывает основной локальный control plane и в `v0.1.52–v0.1.54` прошёл application, test и architecture-hardening стабилизацию: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
 
 Главный риск теперь — продолжать добавлять механизмы быстрее, чем появляется evidence их пользы. Поэтому ближайший порядок меняется с feature-driven на evidence-driven.
 
-## P-1. Architecture quality — выполнено в v0.1.52
+## P-1. Architecture quality — выполнено в v0.1.52 и hardened в v0.1.54
 
 Перед продолжением feature work проведён feature-freeze refactor:
 
@@ -23,9 +23,9 @@ Takt уже закрывает основной локальный control plane
 
 Новые core-функции снова допускаются только через эти границы; architecture gate является обязательной частью `make check`.
 
-## P-0.5. Test architecture — выполнено в v0.1.53
+## P-0.5. Test architecture — выполнено в v0.1.53 и hardened в v0.1.54
 
-После production refactor тестовый контур также переведён на те же принципы DRY/KISS: product correctness принадлежит Go tests, black-box проверки живут в `tests/e2e`, shell ограничен пятью внешними smoke boundaries. Architecture gate контролирует shell allowlist. Детали — `docs/67-go-native-test-architecture-v0.1.53.md`, ADR-086.
+После production refactor product correctness принадлежит Go tests, black-box проверки живут в `tests/e2e`, subprocesses bounded. В `v0.1.54` shell ограничен единственным TypeScript compiler smoke. Architecture gate контролирует эту границу. Детали — `docs/67-go-native-test-architecture-v0.1.53.md`, `docs/68-architecture-hardening-v0.1.54.md`, ADR-086/087.
 
 ## P0. Evidence
 

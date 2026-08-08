@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-func mcpCmd(args []string) error {
+func mcpCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("mcp")
 	workspace := fs.String("workspace", ".", "control workspace")
 	configPath := fs.String("config", ".takt/config.yaml", "default config path for direct workflow files")
@@ -40,7 +40,7 @@ func mcpCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		return proxyMCPThroughDaemon(context.Background(), client, string(surface), os.Stdin, os.Stdout, os.Stderr)
+		return proxyMCPThroughDaemon(ctx, client, string(surface), os.Stdin, os.Stdout, os.Stderr)
 	}
 	app, err := bootstrap.New(*workspace, *configPath)
 	if err != nil {
@@ -48,7 +48,7 @@ func mcpCmd(args []string) error {
 	}
 	services := app.Services
 	deps := mcp.Dependencies{API: app.API, Plans: services.PlanService, External: services.ExternalService, Maintenance: services.Maintenance}
-	return mcp.NewWithDependencies(deps, os.Stdin, os.Stdout, os.Stderr, surface).ServeStdio(context.Background())
+	return mcp.NewWithDependencies(deps, os.Stdin, os.Stdout, os.Stderr, surface).ServeStdio(ctx)
 }
 
 func proxyMCPThroughDaemon(ctx context.Context, client *daemon.Client, surface string, in io.Reader, out, errOut io.Writer) error {
@@ -84,7 +84,7 @@ func proxyMCPThroughDaemon(ctx context.Context, client *daemon.Client, surface s
 	return scanner.Err()
 }
 
-func daemonCmd(args []string) error {
+func daemonCmd(ctx context.Context, args []string) error {
 	subcommand := "serve"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		subcommand = args[0]
@@ -107,7 +107,7 @@ func daemonCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		return server.Serve(ctx)
 	case "start":
@@ -115,12 +115,12 @@ func daemonCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
-		if metadata, healthErr := client.Health(ctx); healthErr == nil {
-			cancel()
+		probeCtx, probeCancel := context.WithTimeout(ctx, 250*time.Millisecond)
+		if metadata, healthErr := client.Health(probeCtx); healthErr == nil {
+			probeCancel()
 			return printResult(*jsonOut, map[string]any{"started": false, "already_running": true, "daemon": metadata})
 		}
-		cancel()
+		probeCancel()
 		paths := client.Paths()
 		if err := os.MkdirAll(filepath.Dir(paths.Log), 0o700); err != nil {
 			return err
@@ -149,7 +149,7 @@ func daemonCmd(args []string) error {
 		}
 		_ = command.Process.Release()
 		_ = logFile.Close()
-		waitCtx, waitCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Second)
 		defer waitCancel()
 		metadata, err := daemon.WaitForHealth(waitCtx, client, 50*time.Millisecond)
 		if err != nil {
@@ -161,7 +161,7 @@ func daemonCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
 		metadata, err := client.Health(ctx)
 		if err != nil {
@@ -173,7 +173,7 @@ func daemonCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		if err := client.Shutdown(ctx); err != nil {
 			return err
@@ -183,7 +183,7 @@ func daemonCmd(args []string) error {
 		ticker := time.NewTicker(50 * time.Millisecond)
 		defer ticker.Stop()
 		for {
-			probeCtx, probeCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			probeCtx, probeCancel := context.WithTimeout(ctx, 100*time.Millisecond)
 			_, healthErr := client.Health(probeCtx)
 			probeCancel()
 			if healthErr != nil {

@@ -66,11 +66,7 @@ Schema registry contract перенесён в `internal/schemacontract`; Python
 
 Shell оставлен только там, где предмет проверки действительно находится на process/language/package boundary:
 
-- `test-deep-code-workflows.sh` — один representative Git/fake-gh/process-agent путь; полный каталог и runtime semantics проверяются Go-тестами;
-- `test-host-control.sh`;
-- `test-host-integrations-typescript.sh`;
-- `test-package-distribution.sh`;
-- `test-reference-adapters.sh`.
+- `test-host-integrations-typescript.sh` — только проверка компиляции native host integrations реальным TypeScript compiler. Все product/process/package assertions выполняются Go-тестами.
 
 Архитектурный тест содержит явный allowlist этих пяти файлов. Новый `scripts/test-*.sh` без изменения architecture contract приводит к падению `go test ./internal/architecture`.
 
@@ -100,3 +96,7 @@ make check       # fmt + vet + test + race + build + smoke + docs + manifest
 ## Ограничения
 
 Рефакторинг намеренно не вводит BDD framework, generic scenario DSL или стороннюю test library. Fixtures и assertions остаются обычным Go-кодом. Это соответствует KISS/YAGNI и сохраняет возможность использовать стандартные `go test`, `-run`, `-race`, coverage и IDE tooling.
+
+## Follow-up v0.1.54
+
+Architecture hardening завершил миграцию внешних smoke boundaries: package distribution, reference adapters, host control и representative deep workflow теперь Go E2E с bounded subprocess context. В `scripts/test-*.sh` остаётся только TypeScript compiler smoke. Исторические результаты `v0.1.53` выше описывают состояние именно того релиза.

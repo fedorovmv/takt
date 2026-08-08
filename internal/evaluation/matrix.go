@@ -68,10 +68,11 @@ type MatrixGate struct {
 }
 
 type MatrixRunOptions struct {
-	MatrixPath string
-	OutputDir  string
-	Repeat     int
-	Replace    bool
+	ExecutionFactory ExecutionFactory
+	MatrixPath       string
+	OutputDir        string
+	Repeat           int
+	Replace          bool
 }
 
 type MatrixStrategyResult struct {
@@ -243,7 +244,8 @@ func RunMatrix(ctx context.Context, opts MatrixRunOptions) (*MatrixReport, error
 	for _, strategy := range matrix.Strategies {
 		strategyOutput := filepath.Join(output, "strategies", sanitizeCaseID(strategy.ID))
 		suite, runErr := Run(ctx, RunOptions{
-			WorkflowPath: resolveMatrixPath(baseDir, strategy.Workflow), ConfigPath: resolveMatrixPath(baseDir, strategy.Config),
+			ExecutionFactory: opts.ExecutionFactory,
+			WorkflowPath:     resolveMatrixPath(baseDir, strategy.Workflow), ConfigPath: resolveMatrixPath(baseDir, strategy.Config),
 			CasesDir: cases, WorkspaceTemplate: template, OutputDir: strategyOutput, Repeat: repeat,
 			ApprovalAnswer: matrix.Benchmark.ApprovalAnswer, Replace: true, StrategyID: strategy.ID, BenchmarkID: matrix.Benchmark.ID,
 			QualityNode: matrix.Benchmark.QualityNode, GenerationNode: matrix.Benchmark.GenerationNode,

@@ -63,7 +63,7 @@ Adapter Platform не содержит готовых production credentials/pro
 
 Публичные `InvokeRequest` и `ReconcileRequest` получили `workspace`. Это execution workspace конкретного Run/node, а не provider-specific поле. Process transport устанавливает тот же каталог как cwd. Multi-repo publication дополнительно передаёт `repository_workspace` с точным child worktree.
 
-Reference adapter поддерживает reconcile для `change.create`, `change.comment`, `change.review`; наружу публикуется SHA-256 marker idempotency key, а не raw Run/Node identity. Контракт проверяется `scripts/test-reference-adapters.sh`.
+Reference adapter поддерживает reconcile для `change.create`, `change.comment`, `change.review`; наружу публикуется SHA-256 marker idempotency key, а не raw Run/Node identity. Контракт проверяется `tests/e2e` / `TestReferenceAdaptersBoundary`.
 
 ### Public request validation и execution workspace — v0.1.49
 

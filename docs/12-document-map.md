@@ -9,6 +9,7 @@
 1. `docs/01-project.md`;
 1. `docs/05-implementation-status.md`;
 1. `skills/takt/SKILL.md`;
+1. `docs/68-architecture-hardening-v0.1.54.md`;
 1. `docs/67-go-native-test-architecture-v0.1.53.md`;
 1. `docs/66-application-boundary-architecture-refactor-v0.1.52.md`;
 1. `docs/65-human-reviewed-learning-loop-v0.1.51.md`;
@@ -100,7 +101,7 @@
 | Script-узлы и типизированные артефакты | `43-script-nodes-typed-artifacts-v0.1.29.md` | фактический |
 | Динамический fan-out governed children | `42-governed-child-fanout-v0.1.28.md` | фактический |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
-| Тестовая архитектура | `67-go-native-test-architecture-v0.1.53.md`, `../tests/e2e/`, `../internal/architecture/` | Go-native contracts + bounded external smoke |
+| Архитектурные и тестовые границы | `68-architecture-hardening-v0.1.54.md`, `67-go-native-test-architecture-v0.1.53.md`, `../tests/e2e/`, `../internal/architecture/` | private acyclic application graph + Go-native contracts + TypeScript-only shell smoke |
 | v0.2 contract convergence и compatibility | `62-contract-convergence-compatibility-v0.1.48.md`, `61-v0.2-stabilization-iteration-history-v0.1.47.md`, `09-runtime-semantics.md`, `../schemas/schema-subset-v1.schema.json`, `../schemas/v1beta1-field-matrix.schema.json` | schema subset/field audit/matrix фактические; v1beta1 ещё не выпущен |
 | Multi-repo Dynamic Workflows | `57-multi-repo-dynamic-workflows-v0.1.43.md`, `../schemas/workspace.schema.json` | фактический |
 | Runtime reliability, SecretRef и локальный OS sandbox | `58-runtime-reliability-local-security-v0.1.44.md`, `../schemas/workflow.schema.json`, `../schemas/run-state.schema.json` | фактический |
@@ -194,6 +195,6 @@
 
 - Structured Task Sources / ingress protocol: `docs/64-structured-task-sources-v0.1.50.md`, `sdk/tasksource`, `schemas/task-source*.schema.json`.
 
-- Application boundary / architecture refactor: `docs/66-application-boundary-architecture-refactor-v0.1.52.md`, `internal/application`, `internal/bootstrap`, `internal/appapi`, `internal/architecture`, `go test ./internal/architecture`.
+- Application boundary / architecture refactor: `docs/66-application-boundary-architecture-refactor-v0.1.52.md`, hardening `docs/68-architecture-hardening-v0.1.54.md`, `internal/application`, `internal/bootstrap`, `internal/appapi`, `internal/architecture`, `go test ./internal/architecture`.
 
-- Human-reviewed Skill/Block Learning Loop: `docs/65-human-reviewed-learning-loop-v0.1.51.md`, `internal/learning`, `schemas/learning-proposal.schema.json`, `scripts/test-learning-loop.sh`.
+- Human-reviewed Skill/Block Learning Loop: `docs/65-human-reviewed-learning-loop-v0.1.51.md`, `internal/learning`, `schemas/learning-proposal.schema.json`, Go regression/E2E tests.

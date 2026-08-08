@@ -44,17 +44,17 @@ func TestPlanCandidateProducesPreviewAndRequiresConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	candidate := candidateDynamicPlan()
-	result, err := service.Plan(context.Background(), PlanRequest{Goal: candidate.Goal, Profile: "code", Candidate: &candidate})
+	result, err := service.PlanService.Plan(context.Background(), PlanRequest{Goal: candidate.Goal, Profile: "code", Candidate: &candidate})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Decision != "planned" || !result.RequiresConfirmation || result.PlanID == "" || result.Preview == "" {
 		t.Fatalf("unexpected result: %#v", result)
 	}
-	if _, err := service.ExecutePlan(context.Background(), ExecutePlanRequest{PlanID: result.PlanID}); err == nil {
+	if _, err := service.PlanService.ExecutePlan(context.Background(), ExecutePlanRequest{PlanID: result.PlanID}); err == nil {
 		t.Fatal("expected confirmation error")
 	}
-	view, err := service.GetPlan(result.PlanID)
+	view, err := service.PlanService.GetPlan(result.PlanID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestPromoteCompletedPlanCreatesProjectWorkflow(t *testing.T) {
 	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
 		t.Fatal(err)
 	}
-	promoted, err := service.PromotePlan(record.ID, "Audit Handler Auth")
+	promoted, err := service.PlanService.PromotePlan(context.Background(), record.ID, "Audit Handler Auth")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestSteerRejectsPlanAtRevisionLimit(t *testing.T) {
 			if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := service.Steer(context.Background(), SteerRequest{PlanID: record.ID, Message: "continue"}); err == nil {
+			if _, err := service.PlanService.Steer(context.Background(), SteerRequest{PlanID: record.ID, Message: "continue"}); err == nil {
 				t.Fatal("expected revision limit error")
 			}
 			loaded, err := (dynamicplan.Store{Workspace: workspace}).Load(record.ID)
@@ -145,13 +145,13 @@ func TestPromoteRefusesSilentOverwrite(t *testing.T) {
 	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.PromotePlan(record.ID, "same-name"); err != nil {
+	if _, err := service.PlanService.PromotePlan(context.Background(), record.ID, "same-name"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.PromotePlan(record.ID, "same-name"); err == nil {
+	if _, err := service.PlanService.PromotePlan(context.Background(), record.ID, "same-name"); err == nil {
 		t.Fatal("expected overwrite refusal")
 	}
-	if _, err := service.PromotePlanWithOptions(record.ID, "same-name", PromotePlanOptions{Force: true}); err != nil {
+	if _, err := service.PlanService.PromotePlanWithOptions(context.Background(), record.ID, "same-name", PromotePlanOptions{Force: true}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -170,7 +170,7 @@ func TestPlanRejectsMapSourceOutsideTrustedBlockOutputs(t *testing.T) {
 		{ID: "inventory", Uses: "discover", Objective: "find", Strategy: "task"},
 		{ID: "inspect", Uses: "investigate", Objective: "inspect", Strategy: "map", Source: "phases.inventory.output.not_declared", DependsOn: []string{"inventory"}, MaxParallel: 2},
 	}
-	if _, err := service.Plan(context.Background(), PlanRequest{Goal: plan.Goal, Profile: "code", Candidate: &plan}); err == nil {
+	if _, err := service.PlanService.Plan(context.Background(), PlanRequest{Goal: plan.Goal, Profile: "code", Candidate: &plan}); err == nil {
 		t.Fatal("expected trusted output path error")
 	}
 }
@@ -185,7 +185,7 @@ func TestExecuteRejectsChangedTrustedBlockPackage(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := candidateDynamicPlan()
-	result, err := service.Plan(context.Background(), PlanRequest{Goal: plan.Goal, Profile: "code", Candidate: &plan})
+	result, err := service.PlanService.Plan(context.Background(), PlanRequest{Goal: plan.Goal, Profile: "code", Candidate: &plan})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestExecuteRejectsChangedTrustedBlockPackage(t *testing.T) {
 	if err := os.WriteFile(path, append(raw, []byte("\n# changed after planning\n")...), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ExecutePlan(context.Background(), ExecutePlanRequest{PlanID: result.PlanID, Confirm: true}); err == nil {
+	if _, err := service.PlanService.ExecutePlan(context.Background(), ExecutePlanRequest{PlanID: result.PlanID, Confirm: true}); err == nil {
 		t.Fatal("expected trusted catalog fingerprint mismatch")
 	}
 }
@@ -235,7 +235,7 @@ assistants:
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.Plan(context.Background(), PlanRequest{Goal: "Исправить неясный дефект", Profile: "code"})
+	result, err := service.PlanService.Plan(context.Background(), PlanRequest{Goal: "Исправить неясный дефект", Profile: "code"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestDynamicActualChangesUsesOriginalWorktreeBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	record := &dynamicplan.Record{ExecutionWorkspace: workspace, ExecutionBaseCommit: base}
-	changes, err := (&PlanService{Context: &Context{Workspace: workspace}}).dynamicActualChanges(context.Background(), record)
+	changes, err := (&PlanService{workspace: workspace}).dynamicActualChanges(context.Background(), record)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestSegmentControlsTreatUnchangedBaselineFailureAsEvidenceNotRegression(t *
 func TestScheduleAutomaticRepairParksAfterExactlyOneRepair(t *testing.T) {
 	record := &dynamicplan.Record{RepairAttempts: map[string]int{"validate:deterministic": 1}}
 	catalog := &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{"implement": {Name: "implement"}}}
-	handled, err := (&PlanService{Context: &Context{}}).scheduleAutomaticRepair(context.Background(), record, nil, []controlFailure{{Block: "validate", Check: "deterministic", Detail: "still red"}}, catalog)
+	handled, err := (&PlanService{}).scheduleAutomaticRepair(context.Background(), record, nil, []controlFailure{{Block: "validate", Check: "deterministic", Detail: "still red"}}, catalog)
 	if err != nil || !handled {
 		t.Fatalf("handled=%v err=%v", handled, err)
 	}
@@ -396,7 +396,7 @@ func TestScheduleAutomaticRepairParksAfterExactlyOneRepair(t *testing.T) {
 func TestScheduleAutomaticRepairParksWhenNoCheckBearingBlockExists(t *testing.T) {
 	record := &dynamicplan.Record{}
 	catalog := &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{"implement": {Name: "implement"}}}
-	handled, err := (&PlanService{Context: &Context{}}).scheduleAutomaticRepair(context.Background(), record, nil, []controlFailure{{Block: "validate", Check: "deterministic", Detail: "red"}}, catalog)
+	handled, err := (&PlanService{}).scheduleAutomaticRepair(context.Background(), record, nil, []controlFailure{{Block: "validate", Check: "deterministic", Detail: "red"}}, catalog)
 	if err != nil || !handled {
 		t.Fatalf("handled=%v err=%v", handled, err)
 	}
@@ -435,7 +435,7 @@ assistants:
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.Plan(context.Background(), PlanRequest{Goal: "Investigate fallback persistence", Profile: "code"})
+	result, err := service.PlanService.Plan(context.Background(), PlanRequest{Goal: "Investigate fallback persistence", Profile: "code"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,7 +452,7 @@ assistants:
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := service.Plan(cancelled, PlanRequest{Goal: "do not swallow cancellation", Profile: "code"}); !errors.Is(err, context.Canceled) {
+	if _, err := service.PlanService.Plan(cancelled, PlanRequest{Goal: "do not swallow cancellation", Profile: "code"}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled Plan error = %v, want context.Canceled", err)
 	}
 }
@@ -478,7 +478,7 @@ func TestDynamicCandidateSHAChangesWithWorkspaceContent(t *testing.T) {
 	runGit("commit", "-m", "base")
 	base := runGit("rev-parse", "HEAD")
 	record := &dynamicplan.Record{ExecutionWorkspace: workspace, ExecutionBaseCommit: base}
-	service := &PlanService{Context: &Context{Workspace: workspace}}
+	service := &PlanService{workspace: workspace}
 	first, err := service.dynamicCandidateSHA(context.Background(), record)
 	if err != nil {
 		t.Fatal(err)
@@ -524,7 +524,7 @@ func TestSteerFailedReplanPreservesParkingRecord(t *testing.T) {
 	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Steer(context.Background(), SteerRequest{PlanID: record.ID, Message: "try a different path"}); err == nil {
+	if _, err := service.PlanService.Steer(context.Background(), SteerRequest{PlanID: record.ID, Message: "try a different path"}); err == nil {
 		t.Fatal("expected replanner failure")
 	}
 	loaded, err := (dynamicplan.Store{Workspace: workspace}).Load(record.ID)
@@ -637,7 +637,7 @@ func TestRepositoriesForRecordRejectsFingerprintDrift(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	service := &PlanService{Context: &Context{Workspace: workspace}}
+	service := &PlanService{workspace: workspace}
 	record := &dynamicplan.Record{RepositoryCatalogFingerprint: "sha256:definitely-stale"}
 	if _, err := service.repositoriesForRecord(context.Background(), record); err == nil || !strings.Contains(err.Error(), "repository catalog changed") {
 		t.Fatalf("expected repository fingerprint mismatch, got %v", err)

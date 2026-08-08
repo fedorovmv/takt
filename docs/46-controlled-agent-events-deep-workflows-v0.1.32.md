@@ -191,7 +191,7 @@ Review block также создаёт отдельные perspective reports, s
 
 ## 11. Сквозной Git/GitHub стенд
 
-`scripts/test-deep-code-workflows.sh` создаёт:
+`tests/e2e` / `TestDeepCodeWorkflowBoundary` создаёт:
 
 - временный настоящий Git-репозиторий;
 - bare remote;

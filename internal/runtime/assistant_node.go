@@ -60,7 +60,7 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 	if node.Executor != "external" {
 		resolver := r.assistants
 		if resolver == nil {
-			resolver = assistant.Factory{Config: r.config}
+			return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: fmt.Errorf("assistant resolver dependency is required")}
 		}
 		adapter, err := resolver.Resolve(assistantName)
 		if err != nil {

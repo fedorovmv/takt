@@ -9,7 +9,7 @@ import (
 	"takt/internal/daemon"
 )
 
-func initCmd(args []string) error {
+func initCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("init")
 	dir := fs.String("dir", ".", "destination project directory")
 	force := fs.Bool("force", false, "replace an existing profile")
@@ -35,7 +35,7 @@ func initCmd(args []string) error {
 	return printResult(*jsonOut, map[string]any{"profile": fs.Arg(0), "path": root})
 }
 
-func validateCmd(args []string) error {
+func validateCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("validate")
 	configPath := fs.String("config", ".takt/config.yaml", "config path")
 	workspace := fs.String("workspace", ".", "workspace")
@@ -73,7 +73,7 @@ func validateCmd(args []string) error {
 	return printResult(*jsonOut, result)
 }
 
-func runCmd(args []string) error {
+func runCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("run")
 	configPath := fs.String("config", ".takt/config.yaml", "config path")
 	workspace := fs.String("workspace", ".", "workspace")
@@ -133,7 +133,7 @@ func runCmd(args []string) error {
 			return err
 		}
 		var result application.StartResult
-		if err := client.Call(context.Background(), "run.start", request, &result); err != nil {
+		if err := client.Call(ctx, "run.start", request, &result); err != nil {
 			return err
 		}
 		return printResult(*jsonOut, result)
@@ -142,28 +142,28 @@ func runCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := app.Services.RunService.Start(context.Background(), request)
+	result, err := app.Services.RunService.Start(ctx, request)
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, result.State)
 }
 
-func workflowCmd(args []string) error {
+func workflowCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: takt workflow <list|describe> ...")
 	}
 	switch args[0] {
 	case "list":
-		return workflowListCmd(args[1:])
+		return workflowListCmd(ctx, args[1:])
 	case "describe":
-		return workflowDescribeCmd(args[1:])
+		return workflowDescribeCmd(ctx, args[1:])
 	default:
 		return fmt.Errorf("usage: takt workflow <list|describe> ...")
 	}
 }
 
-func workflowListCmd(args []string) error {
+func workflowListCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("workflow list")
 	workspace := fs.String("workspace", ".", "workspace")
 	jsonOut := fs.Bool("json", false, "JSON output")
@@ -188,7 +188,7 @@ func workflowListCmd(args []string) error {
 	return printResult(*jsonOut, map[string]any{"profile": fs.Arg(0), "workflows": entries})
 }
 
-func workflowDescribeCmd(args []string) error {
+func workflowDescribeCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("workflow describe")
 	workspace := fs.String("workspace", ".", "workspace")
 	jsonOut := fs.Bool("json", false, "JSON output")

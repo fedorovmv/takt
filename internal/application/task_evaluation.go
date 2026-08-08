@@ -54,7 +54,7 @@ func (s *Services) observeTaskEvaluation(result TaskEvaluationSnapshot) TaskEval
 	if result.PlanID == "" {
 		return result
 	}
-	plan, err := (dynamicplan.Store{Workspace: s.Workspace}).Load(result.PlanID)
+	plan, err := s.PlanService.store.Load(result.PlanID)
 	if err != nil {
 		return result
 	}

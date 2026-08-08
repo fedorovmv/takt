@@ -12,7 +12,6 @@ import (
 
 	"takt/internal/execution"
 	"takt/internal/localsandbox"
-	"takt/internal/redact"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
@@ -149,8 +148,8 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		"TAKT_WORKSPACE="+r.workspace,
 		"TAKT_ARTIFACTS_DIR="+artifactsDir,
 	)
-	if r.redactor == nil {
-		r.redactor = redact.NewFromEnvironment()
+	if r.redactor == nil && len(definition.Env) > 0 {
+		return execResult{Sandbox: sandboxState}, &execution.Error{Kind: execution.KindInternal, Op: "resolve script environment", Err: fmt.Errorf("redactor dependency is required")}
 	}
 	for key, value := range definition.Env {
 		rendered, err := renderTemplate(value, state, local, feedback, artifactsDir)

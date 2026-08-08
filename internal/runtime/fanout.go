@@ -24,185 +24,244 @@ type fanOutRunResult struct {
 	err      error
 }
 
-func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunState, node spec.Node, local map[string]store.NodeState, feedback, artifacts string) (execResult, error) {
-	definition := node.WorkflowRun
-	fanOut := definition.FanOut
-	if fanOut == nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "child fan-out", Err: fmt.Errorf("node %q has no fan_out definition", node.ID)}
-	}
+type fanOutExecution struct {
+	definition    *spec.WorkflowRunSpec
+	fanOut        *spec.WorkflowFanOutSpec
+	childPath     string
+	childWorkflow *spec.Workflow
+	items         []any
+	nodeState     *store.NodeState
+	attempt       int
+	pending       []int
+	maxParallel   int
+	join          string
+}
 
+func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunState, node spec.Node, local map[string]store.NodeState, feedback, artifacts string) (execResult, error) {
+	executionState, err := r.prepareFanOutExecution(state, node)
+	if err != nil {
+		return execResult{}, err
+	}
+	if err := r.runFanOutBatches(ctx, state, node, executionState, local, feedback, artifacts); err != nil {
+		return execResult{}, err
+	}
+	return r.finishFanOut(state, node, executionState)
+}
+
+func (r *Runner) prepareFanOutExecution(state *store.RunState, node spec.Node) (*fanOutExecution, error) {
+	definition := node.WorkflowRun
+	if definition == nil || definition.FanOut == nil {
+		return nil, &execution.Error{Kind: execution.KindInternal, Op: "child fan-out", Err: fmt.Errorf("node %q has no fan_out definition", node.ID)}
+	}
+	fanOut := definition.FanOut
 	childPath := definition.Path
 	if !filepath.IsAbs(childPath) {
 		childPath = filepath.Join(filepath.Dir(r.workflowPath), childPath)
 	}
 	childPath, err := filepath.Abs(childPath)
 	if err != nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out child workflow", Err: err}
+		return nil, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out child workflow", Err: err}
 	}
 	childWorkflow, err := workflow.Load(childPath)
 	if err != nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "load fan-out child workflow", Err: err}
+		return nil, &execution.Error{Kind: execution.KindInternal, Op: "load fan-out child workflow", Err: err}
 	}
 	if err := validateChildOutputSelection(childWorkflow, childPath, definition.OutputNode); err != nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out child output", Err: err}
+		return nil, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out child output", Err: err}
 	}
-
 	items, encodedItems, fingerprint, err := resolveFanOutItems(fanOut.ItemsFrom, state)
 	if err != nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out items", Err: err}
+		return nil, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out items", Err: err}
 	}
-	if fanOut.MaxItems > 0 && len(items) > fanOut.MaxItems {
-		return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "resolve fan-out items", Err: fmt.Errorf("fan-out source for node %q has %d items, exceeding max_items %d", node.ID, len(items), fanOut.MaxItems)}
-	}
-	if len(items) == 0 && !fanOut.AllowEmpty {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out items", Err: fmt.Errorf("fan-out source for node %q is empty; set allow_empty: true to accept it", node.ID)}
-	}
-	if !fanOut.AllowDuplicates {
-		seen := map[string]int{}
-		for index, raw := range encodedItems {
-			key := string(raw)
-			if previous, exists := seen[key]; exists {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out items", Err: fmt.Errorf("fan-out source for node %q contains duplicate items at indexes %d and %d; set allow_duplicates: true to run both", node.ID, previous, index)}
-			}
-			seen[key] = index
-		}
+	if err := validateFanOutItems(node.ID, fanOut, items, encodedItems); err != nil {
+		return nil, err
 	}
 	nodeState := state.Nodes[node.ID]
 	attempt := nodeState.Attempts
-	if nodeState.FanOutAttempt != attempt {
-		for index, raw := range encodedItems {
-			childID, idErr := newID()
-			if idErr != nil {
-				return execResult{}, idErr
-			}
-			itemHash := sha256.Sum256(raw)
-			record := store.ChildRunItemState{
-				Attempt: attempt, Index: index, Item: append(json.RawMessage(nil), raw...),
-				ItemFingerprint: hex.EncodeToString(itemHash[:]), RunID: childID, Status: store.NodePending,
-			}
-			nodeState.ChildRuns = append(nodeState.ChildRuns, record)
-			nodeState.ChildRunIDs = appendUniqueString(nodeState.ChildRunIDs, childID)
-			state.ChildRunIDs = appendUniqueString(state.ChildRunIDs, childID)
-		}
-		nodeState.FanOutAttempt = attempt
-		nodeState.FanOutFingerprint = fingerprint
-		if err := r.commit(state, "child_run.fan_out.linked", node.ID, map[string]any{
-			"attempt": attempt, "items": len(items), "items_fingerprint": fingerprint,
-			"max_parallel": normalizedMaxParallel(fanOut.MaxParallel), "join": normalizedFanOutJoin(fanOut.Join),
-		}); err != nil {
-			return execResult{}, err
-		}
-	} else if nodeState.FanOutFingerprint != fingerprint {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resume child fan-out", Err: fmt.Errorf("fan-out items changed for node %q: stored=%s actual=%s", node.ID, nodeState.FanOutFingerprint, fingerprint)}
+	if err := r.ensureFanOutLinks(state, node.ID, nodeState, attempt, fanOut, encodedItems, fingerprint); err != nil {
+		return nil, err
 	}
-
 	positions := currentFanOutPositions(nodeState.ChildRuns, attempt)
 	if len(positions) != len(items) {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resume child fan-out", Err: fmt.Errorf("fan-out state has %d items for attempt %d, expected %d", len(positions), attempt, len(items))}
+		return nil, &execution.Error{Kind: execution.KindInternal, Op: "resume child fan-out", Err: fmt.Errorf("fan-out state has %d items for attempt %d, expected %d", len(positions), attempt, len(items))}
 	}
+	pending, err := r.pendingFanOutPositions(nodeState, positions, childWorkflow, definition.OutputNode)
+	if err != nil {
+		return nil, err
+	}
+	join := normalizedFanOutJoin(fanOut.Join)
+	if decided, _ := fanOutJoinDecision(nodeState.ChildRuns, attempt, len(items), join); decided {
+		if err := r.cancelPendingFanOut(state, node.ID, nodeState, pending, attempt, join); err != nil {
+			return nil, err
+		}
+		pending = nil
+	}
+	return &fanOutExecution{
+		definition: definition, fanOut: fanOut, childPath: childPath, childWorkflow: childWorkflow,
+		items: items, nodeState: nodeState, attempt: attempt, pending: pending,
+		maxParallel: normalizedMaxParallel(fanOut.MaxParallel), join: join,
+	}, nil
+}
 
+func validateFanOutItems(nodeID string, fanOut *spec.WorkflowFanOutSpec, items []any, encodedItems []json.RawMessage) error {
+	if fanOut.MaxItems > 0 && len(items) > fanOut.MaxItems {
+		return &execution.Error{Kind: execution.KindProtocol, Op: "resolve fan-out items", Err: fmt.Errorf("fan-out source for node %q has %d items, exceeding max_items %d", nodeID, len(items), fanOut.MaxItems)}
+	}
+	if len(items) == 0 && !fanOut.AllowEmpty {
+		return &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out items", Err: fmt.Errorf("fan-out source for node %q is empty; set allow_empty: true to accept it", nodeID)}
+	}
+	if fanOut.AllowDuplicates {
+		return nil
+	}
+	seen := map[string]int{}
+	for index, raw := range encodedItems {
+		key := string(raw)
+		if previous, exists := seen[key]; exists {
+			return &execution.Error{Kind: execution.KindInternal, Op: "resolve fan-out items", Err: fmt.Errorf("fan-out source for node %q contains duplicate items at indexes %d and %d; set allow_duplicates: true to run both", nodeID, previous, index)}
+		}
+		seen[key] = index
+	}
+	return nil
+}
+
+func (r *Runner) ensureFanOutLinks(state *store.RunState, nodeID string, nodeState *store.NodeState, attempt int, fanOut *spec.WorkflowFanOutSpec, encodedItems []json.RawMessage, fingerprint string) error {
+	if nodeState.FanOutAttempt == attempt {
+		if nodeState.FanOutFingerprint != fingerprint {
+			return &execution.Error{Kind: execution.KindInternal, Op: "resume child fan-out", Err: fmt.Errorf("fan-out items changed for node %q: stored=%s actual=%s", nodeID, nodeState.FanOutFingerprint, fingerprint)}
+		}
+		return nil
+	}
+	for index, raw := range encodedItems {
+		childID, err := newID()
+		if err != nil {
+			return err
+		}
+		itemHash := sha256.Sum256(raw)
+		record := store.ChildRunItemState{
+			Attempt: attempt, Index: index, Item: append(json.RawMessage(nil), raw...),
+			ItemFingerprint: hex.EncodeToString(itemHash[:]), RunID: childID, Status: store.NodePending,
+		}
+		nodeState.ChildRuns = append(nodeState.ChildRuns, record)
+		nodeState.ChildRunIDs = appendUniqueString(nodeState.ChildRunIDs, childID)
+		state.ChildRunIDs = appendUniqueString(state.ChildRunIDs, childID)
+	}
+	nodeState.FanOutAttempt = attempt
+	nodeState.FanOutFingerprint = fingerprint
+	return r.commit(state, "child_run.fan_out.linked", nodeID, map[string]any{
+		"attempt": attempt, "items": len(encodedItems), "items_fingerprint": fingerprint,
+		"max_parallel": normalizedMaxParallel(fanOut.MaxParallel), "join": normalizedFanOutJoin(fanOut.Join),
+	})
+}
+
+func (r *Runner) pendingFanOutPositions(nodeState *store.NodeState, positions []int, childWorkflow *spec.Workflow, outputNode string) ([]int, error) {
 	pending := make([]int, 0, len(positions))
 	for _, position := range positions {
 		record := &nodeState.ChildRuns[position]
-		childState, loadErr := loadCurrentChildRun(r.store, record.RunID)
-		if loadErr != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "load fan-out child run", Err: loadErr}
+		childState, err := loadCurrentChildRun(r.store, record.RunID)
+		if err != nil {
+			return nil, &execution.Error{Kind: execution.KindInternal, Op: "load fan-out child run", Err: err}
 		}
 		if childState != nil && terminalRunStatus(childState.Status) {
-			updateFanOutRecord(record, childWorkflow, definition.OutputNode, childState, nil)
+			updateFanOutRecord(record, childWorkflow, outputNode, childState, nil)
 			continue
 		}
 		pending = append(pending, position)
 	}
+	return pending, nil
+}
 
-	maxParallel := normalizedMaxParallel(fanOut.MaxParallel)
-	join := normalizedFanOutJoin(fanOut.Join)
-	if decided, _ := fanOutJoinDecision(nodeState.ChildRuns, attempt, len(items), join); decided {
-		cancelled := cancelFanOutPositions(nodeState.ChildRuns, pending, attempt, "fanout_result_decided")
-		if cancelled > 0 {
-			if err := r.commit(state, "child_run.fan_out.cancelled", node.ID, map[string]any{"attempt": attempt, "cancelled": cancelled, "reason": "fanout_result_decided", "join": join}); err != nil {
-				return execResult{}, err
-			}
-		}
-		pending = nil
+func (r *Runner) cancelPendingFanOut(state *store.RunState, nodeID string, nodeState *store.NodeState, positions []int, attempt int, join string) error {
+	cancelled := cancelFanOutPositions(nodeState.ChildRuns, positions, attempt, "fanout_result_decided")
+	if cancelled == 0 {
+		return nil
 	}
-	for start := 0; start < len(pending); start += maxParallel {
-		// A fan-out is one governed node. Once an operator requests a safe
-		// pause, do not start another batch. Already running children are allowed
-		// to reach their own safe boundary and the parent node is suspended.
+	return r.commit(state, "child_run.fan_out.cancelled", nodeID, map[string]any{
+		"attempt": attempt, "cancelled": cancelled, "reason": "fanout_result_decided", "join": join,
+	})
+}
+
+func (r *Runner) runFanOutBatches(ctx context.Context, state *store.RunState, node spec.Node, executionState *fanOutExecution, local map[string]store.NodeState, feedback, artifacts string) error {
+	for start := 0; start < len(executionState.pending); start += executionState.maxParallel {
 		if r.pauseRequested(state.ID) {
 			state.PauseRequested = true
-			return execResult{}, ErrPaused
+			return ErrPaused
 		}
-		end := start + maxParallel
-		if end > len(pending) {
-			end = len(pending)
+		end := start + executionState.maxParallel
+		if end > len(executionState.pending) {
+			end = len(executionState.pending)
 		}
-		batch := pending[start:end]
-		batchCtx, cancelBatch := context.WithCancel(ctx)
-		results := make(chan fanOutRunResult, len(batch))
-		var wg sync.WaitGroup
-		for _, position := range batch {
-			position := position
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				record := nodeState.ChildRuns[position]
-				childState, runErr := r.runFanOutChild(batchCtx, state, node, childWorkflow, childPath, record, items[record.Index], len(items), local, feedback, artifacts)
-				results <- fanOutRunResult{position: position, state: childState, err: runErr}
-			}()
+		batch := executionState.pending[start:end]
+		decided := r.runFanOutBatch(ctx, state, node, executionState, batch, local, feedback, artifacts)
+		if err := r.commitFanOutProgress(state, node.ID, executionState); err != nil {
+			return err
 		}
-		decided := false
-		for range batch {
-			result := <-results
-			updateFanOutRecord(&nodeState.ChildRuns[result.position], childWorkflow, definition.OutputNode, result.state, result.err)
-			if !decided {
-				if done, _ := fanOutJoinDecision(nodeState.ChildRuns, attempt, len(items), join); done && join != "all_done" {
-					decided = true
-					cancelBatch()
-				}
-			}
-		}
-		cancelBatch()
-		wg.Wait()
-		close(results)
-		if decided {
-			for _, position := range batch {
-				record := &nodeState.ChildRuns[position]
-				if record.Attempt == attempt && record.Status == store.RunCancelled && record.CancelReason == "" {
-					record.CancelReason = "fanout_result_decided"
-				}
-			}
-		}
-
-		if err := r.commit(state, "child_run.fan_out.progress", node.ID, map[string]any{
-			"attempt": attempt, "completed": fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunCompleted),
-			"waiting": fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunWaiting),
-			"paused":  fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunPaused), "join": join,
-		}); err != nil {
-			return execResult{}, err
-		}
-		if fanOutStatusCount(nodeState.ChildRuns, attempt, store.RunPaused) > 0 || r.pauseRequested(state.ID) {
+		if fanOutStatusCount(executionState.nodeState.ChildRuns, executionState.attempt, store.RunPaused) > 0 || r.pauseRequested(state.ID) {
 			state.PauseRequested = true
-			return execResult{}, ErrPaused
+			return ErrPaused
 		}
 		if decided {
-			remaining := pending[end:]
-			cancelled := cancelFanOutPositions(nodeState.ChildRuns, remaining, attempt, "fanout_result_decided")
-			if cancelled > 0 {
-				if err := r.commit(state, "child_run.fan_out.cancelled", node.ID, map[string]any{"attempt": attempt, "cancelled": cancelled, "reason": "fanout_result_decided", "join": join}); err != nil {
-					return execResult{}, err
-				}
-			}
-			break
+			return r.cancelPendingFanOut(state, node.ID, executionState.nodeState, executionState.pending[end:], executionState.attempt, executionState.join)
 		}
 	}
+	return nil
+}
 
-	output, usage, summaryErr := fanOutAggregate(nodeState.ChildRuns, attempt)
-	if summaryErr != nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "aggregate child fan-out", Err: summaryErr}
+func (r *Runner) runFanOutBatch(ctx context.Context, state *store.RunState, node spec.Node, executionState *fanOutExecution, batch []int, local map[string]store.NodeState, feedback, artifacts string) bool {
+	batchCtx, cancelBatch := context.WithCancel(ctx)
+	defer cancelBatch()
+	results := make(chan fanOutRunResult, len(batch))
+	var wg sync.WaitGroup
+	for _, position := range batch {
+		position := position
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			record := executionState.nodeState.ChildRuns[position]
+			childState, runErr := r.runFanOutChild(batchCtx, state, node, executionState.childWorkflow, executionState.childPath, record, executionState.items[record.Index], len(executionState.items), local, feedback, artifacts)
+			results <- fanOutRunResult{position: position, state: childState, err: runErr}
+		}()
 	}
-	waitingIDs := fanOutWaitingIDs(nodeState.ChildRuns, attempt)
+	decided := false
+	for range batch {
+		result := <-results
+		updateFanOutRecord(&executionState.nodeState.ChildRuns[result.position], executionState.childWorkflow, executionState.definition.OutputNode, result.state, result.err)
+		if !decided {
+			if done, _ := fanOutJoinDecision(executionState.nodeState.ChildRuns, executionState.attempt, len(executionState.items), executionState.join); done && executionState.join != "all_done" {
+				decided = true
+				cancelBatch()
+			}
+		}
+	}
+	cancelBatch()
+	wg.Wait()
+	close(results)
+	if decided {
+		for _, position := range batch {
+			record := &executionState.nodeState.ChildRuns[position]
+			if record.Attempt == executionState.attempt && record.Status == store.RunCancelled && record.CancelReason == "" {
+				record.CancelReason = "fanout_result_decided"
+			}
+		}
+	}
+	return decided
+}
+
+func (r *Runner) commitFanOutProgress(state *store.RunState, nodeID string, executionState *fanOutExecution) error {
+	return r.commit(state, "child_run.fan_out.progress", nodeID, map[string]any{
+		"attempt":   executionState.attempt,
+		"completed": fanOutStatusCount(executionState.nodeState.ChildRuns, executionState.attempt, store.RunCompleted),
+		"waiting":   fanOutStatusCount(executionState.nodeState.ChildRuns, executionState.attempt, store.RunWaiting),
+		"paused":    fanOutStatusCount(executionState.nodeState.ChildRuns, executionState.attempt, store.RunPaused),
+		"join":      executionState.join,
+	})
+}
+
+func (r *Runner) finishFanOut(state *store.RunState, node spec.Node, executionState *fanOutExecution) (execResult, error) {
+	output, usage, err := fanOutAggregate(executionState.nodeState.ChildRuns, executionState.attempt)
+	if err != nil {
+		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "aggregate child fan-out", Err: err}
+	}
+	waitingIDs := fanOutWaitingIDs(executionState.nodeState.ChildRuns, executionState.attempt)
 	if len(waitingIDs) > 0 {
 		message := fmt.Sprintf("%d child runs are waiting for input", len(waitingIDs))
 		state.Status = store.RunWaiting
@@ -210,44 +269,43 @@ func (r *Runner) runChildWorkflowFanOut(ctx context.Context, state *store.RunSta
 		if len(waitingIDs) == 1 {
 			state.Waiting.ChildRunID = waitingIDs[0]
 		}
-		nodeState.Status = store.NodeWaiting
+		executionState.nodeState.Status = store.NodeWaiting
 		if err := r.commit(state, "child_run.fan_out.waiting", node.ID, map[string]any{"child_run_ids": waitingIDs, "message": message}); err != nil {
 			return execResult{}, err
 		}
 		return execResult{}, ErrWaiting
 	}
-
-	result := execResult{Output: output, Stdout: output, ExitCode: 0, Usage: usage, Artifacts: fanOutArtifacts(nodeState.ChildRuns, attempt)}
-	completed, failed := fanOutTerminalCounts(nodeState.ChildRuns, attempt)
-	var joinErr error
-	switch join {
-	case "all_success":
-		if failed > 0 {
-			joinErr = fmt.Errorf("%d of %d child runs did not complete successfully", failed, completed+failed)
-		}
-	case "one_success":
-		if completed == 0 {
-			joinErr = fmt.Errorf("none of %d child runs completed successfully", failed)
-		}
-	case "all_done":
-	}
-	if joinErr != nil {
+	result := execResult{Output: output, Stdout: output, ExitCode: 0, Usage: usage, Artifacts: fanOutArtifacts(executionState.nodeState.ChildRuns, executionState.attempt)}
+	completed, failed := fanOutTerminalCounts(executionState.nodeState.ChildRuns, executionState.attempt)
+	if err := validateFanOutJoin(executionState.join, completed, failed); err != nil {
 		result.ExitCode = 1
-		return result, &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "child fan-out join", Err: joinErr}
+		return result, &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "child fan-out join", Err: err}
 	}
 	if err := r.commit(state, "child_run.fan_out.completed", node.ID, map[string]any{
-		"attempt": attempt, "children": completed + failed, "completed": completed, "failed": failed, "join": join,
+		"attempt": executionState.attempt, "children": completed + failed, "completed": completed, "failed": failed, "join": executionState.join,
 	}); err != nil {
 		return execResult{}, err
 	}
 	return result, nil
 }
 
+func validateFanOutJoin(join string, completed, failed int) error {
+	switch join {
+	case "all_success":
+		if failed > 0 {
+			return fmt.Errorf("%d of %d child runs did not complete successfully", failed, completed+failed)
+		}
+	case "one_success":
+		if completed == 0 {
+			return fmt.Errorf("none of %d child runs completed successfully", failed)
+		}
+	}
+	return nil
+}
+
 func (r *Runner) runFanOutChild(ctx context.Context, parent *store.RunState, node spec.Node, childWorkflow *spec.Workflow, childPath string, record store.ChildRunItemState, item any, total int, local map[string]store.NodeState, feedback, artifacts string) (*store.RunState, error) {
 	definition := node.WorkflowRun
-	childRunner := New(childWorkflow, r.config, childPath, r.configPath, r.controlWorkspace)
-	childRunner.store = r.store
-	childRunner.assistants = r.assistants
+	childRunner := r.childRunner(childWorkflow, childPath, r.controlWorkspace)
 	childState, loadErr := loadCurrentChildRun(r.store, record.RunID)
 	if loadErr != nil {
 		return nil, loadErr

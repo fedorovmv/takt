@@ -89,6 +89,7 @@ type Options struct {
 
 type Server struct {
 	runs        *application.RunService
+	external    *application.ExternalService
 	maintenance *application.MaintenanceService
 	api         *appapi.Registry
 	mcps        map[mcp.Surface]*mcp.Server
@@ -115,7 +116,7 @@ func New(options Options) (*Server, error) {
 	if options.ErrOut == nil {
 		options.ErrOut = os.Stderr
 	}
-	server := &Server{runs: service.RunService, maintenance: service.Maintenance, api: app.API, paths: paths, errOut: options.ErrOut, stop: make(chan struct{}), mcps: map[mcp.Surface]*mcp.Server{}}
+	server := &Server{runs: service.RunService, external: service.ExternalService, maintenance: service.Maintenance, api: app.API, paths: paths, errOut: options.ErrOut, stop: make(chan struct{}), mcps: map[mcp.Surface]*mcp.Server{}}
 	for _, surface := range []mcp.Surface{mcp.SurfaceAll, mcp.SurfaceAgent, mcp.SurfaceHost, mcp.SurfaceWorker, mcp.SurfaceOperator} {
 		server.mcps[surface] = mcp.NewWithDependencies(mcp.Dependencies{API: app.API, Plans: service.PlanService, External: service.ExternalService, Maintenance: service.Maintenance}, nil, nil, options.ErrOut, surface)
 	}

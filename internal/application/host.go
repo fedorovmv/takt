@@ -63,8 +63,6 @@ type HostGuardDecision struct {
 }
 
 func (s *HostService) BeginHostSession(ctx context.Context, request HostBeginRequest) (*HostBeginResult, error) {
-	s.hostMu.Lock()
-	defer s.hostMu.Unlock()
 	host := strings.TrimSpace(request.Host)
 	hostSessionID := strings.TrimSpace(request.HostSessionID)
 	if host == "" || hostSessionID == "" {
@@ -83,7 +81,7 @@ func (s *HostService) BeginHostSession(ctx context.Context, request HostBeginReq
 	default:
 		return nil, fmt.Errorf("unsupported host enforcement %q", enforcement)
 	}
-	store := hostcontrol.Store{Workspace: s.Workspace}
+	store := s.store
 	release, err := acquireHostStoreLock(store)
 	if err != nil {
 		return nil, err
@@ -93,7 +91,7 @@ func (s *HostService) BeginHostSession(ctx context.Context, request HostBeginReq
 		if enforcement == hostcontrol.EnforcementStrict && (existing.Enforcement != hostcontrol.EnforcementStrict || !existing.Capabilities.StrictReady()) {
 			return nil, fmt.Errorf("existing host session %s does not satisfy strict host control", existing.ID)
 		}
-		view, viewErr := s.Plans.GetPlan(existing.PlanID)
+		view, viewErr := s.plans.GetPlan(existing.PlanID)
 		if viewErr != nil {
 			return nil, viewErr
 		}
@@ -102,7 +100,7 @@ func (s *HostService) BeginHostSession(ctx context.Context, request HostBeginReq
 	} else if !os.IsNotExist(findErr) {
 		return nil, findErr
 	}
-	plan, err := s.Plans.Plan(ctx, PlanRequest{Goal: request.Goal, Profile: request.Profile, Candidate: request.Candidate})
+	plan, err := s.plans.Plan(ctx, PlanRequest{Goal: request.Goal, Profile: request.Profile, Candidate: request.Candidate})
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +116,7 @@ func (s *HostService) BeginHostSession(ctx context.Context, request HostBeginReq
 	return &HostBeginResult{Session: session, Plan: plan}, nil
 }
 
-func acquireHostStoreLock(store hostcontrol.Store) (func() error, error) {
+func acquireHostStoreLock(store HostStore) (func() error, error) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		release, err := store.AcquireLock()
@@ -133,9 +131,12 @@ func acquireHostStoreLock(store hostcontrol.Store) (func() error, error) {
 }
 
 func (s *HostService) ConfirmHostSession(ctx context.Context, request HostConfirmRequest) (*HostSessionView, error) {
-	s.hostMu.Lock()
-	defer s.hostMu.Unlock()
-	store := hostcontrol.Store{Workspace: s.Workspace}
+	store := s.store
+	release, err := acquireHostStoreLock(store)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	session, err := store.Load(request.SessionID)
 	if err != nil {
 		return nil, err
@@ -143,7 +144,7 @@ func (s *HostService) ConfirmHostSession(ctx context.Context, request HostConfir
 	if session.Status == hostcontrol.StatusReleased {
 		return nil, fmt.Errorf("host session %s is released", session.ID)
 	}
-	record, err := s.Plans.ExecutePlan(ctx, ExecutePlanRequest{PlanID: session.PlanID, Confirm: request.Confirm, Detached: request.Detached})
+	record, err := s.plans.ExecutePlan(ctx, ExecutePlanRequest{PlanID: session.PlanID, Confirm: request.Confirm, Detached: request.Detached})
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +153,7 @@ func (s *HostService) ConfirmHostSession(ctx context.Context, request HostConfir
 	if err := store.Save(session); err != nil {
 		return nil, err
 	}
-	plan, err := s.Plans.GetPlan(session.PlanID)
+	plan, err := s.plans.GetPlan(session.PlanID)
 	if err != nil {
 		return nil, err
 	}
@@ -160,9 +161,12 @@ func (s *HostService) ConfirmHostSession(ctx context.Context, request HostConfir
 }
 
 func (s *HostService) GetHostSession(sessionID string) (*HostSessionView, error) {
-	s.hostMu.Lock()
-	defer s.hostMu.Unlock()
-	store := hostcontrol.Store{Workspace: s.Workspace}
+	store := s.store
+	release, err := acquireHostStoreLock(store)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	session, err := store.Load(sessionID)
 	if err != nil {
 		return nil, err
@@ -171,9 +175,12 @@ func (s *HostService) GetHostSession(sessionID string) (*HostSessionView, error)
 }
 
 func (s *HostService) FindHostSession(host, hostSessionID string) (*HostSessionView, error) {
-	s.hostMu.Lock()
-	defer s.hostMu.Unlock()
-	store := hostcontrol.Store{Workspace: s.Workspace}
+	store := s.store
+	release, err := acquireHostStoreLock(store)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	session, err := store.Find(strings.TrimSpace(host), strings.TrimSpace(hostSessionID))
 	if err != nil {
 		return nil, err
@@ -266,9 +273,12 @@ func (s *HostService) GuardHostCompletion(request HostCompletionGuardRequest) (*
 }
 
 func (s *HostService) ReleaseHostSession(sessionID string) (*hostcontrol.Session, error) {
-	s.hostMu.Lock()
-	defer s.hostMu.Unlock()
-	store := hostcontrol.Store{Workspace: s.Workspace}
+	store := s.store
+	release, err := acquireHostStoreLock(store)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	session, err := store.Load(sessionID)
 	if err != nil {
 		return nil, err
@@ -283,8 +293,8 @@ func (s *HostService) ReleaseHostSession(sessionID string) (*hostcontrol.Session
 	return session, nil
 }
 
-func (s *HostService) refreshHostSession(store hostcontrol.Store, session *hostcontrol.Session) (*HostSessionView, error) {
-	plan, err := s.Plans.GetPlan(session.PlanID)
+func (s *HostService) refreshHostSession(store HostStore, session *hostcontrol.Session) (*HostSessionView, error) {
+	plan, err := s.plans.GetPlan(session.PlanID)
 	if err != nil {
 		return nil, err
 	}

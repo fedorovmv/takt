@@ -24,6 +24,7 @@ type Registry struct {
 	hosts         *application.HostService
 	plans         *application.PlanService
 	runs          *application.RunService
+	forks         *application.ForkService
 	notifications *application.NotificationService
 }
 
@@ -31,7 +32,7 @@ func New(services *application.Services) *Registry {
 	r := &Registry{
 		handlers: map[string]Handler{},
 		tasks:    services.TaskService, catalog: services.CatalogService, hosts: services.HostService,
-		plans: services.PlanService, runs: services.RunService, notifications: services.Notifications,
+		plans: services.PlanService, runs: services.RunService, forks: services.ForkService, notifications: services.Notifications,
 	}
 	r.registerTaskOperations()
 	r.registerCatalogOperations()
@@ -98,7 +99,7 @@ func (r *Registry) registerTaskOperations() {
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return r.tasks.StopTask(params)
+		return r.tasks.StopTask(ctx, params)
 	}
 	r.handlers["task.explain"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var params struct {
@@ -252,7 +253,7 @@ func (r *Registry) registerPlanOperations() {
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return r.plans.PromotePlanWithOptions(params.PlanID, params.Name, application.PromotePlanOptions{Force: params.Force})
+		return r.plans.PromotePlanWithOptions(ctx, params.PlanID, params.Name, application.PromotePlanOptions{Force: params.Force})
 	}
 }
 
@@ -313,7 +314,7 @@ func (r *Registry) registerRunOperations() {
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return r.runs.Pause(params.RunID)
+		return r.runs.Pause(ctx, params.RunID)
 	}
 	r.handlers["run.resume_paused"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var params struct {
@@ -338,7 +339,7 @@ func (r *Registry) registerRunOperations() {
 			return nil, err
 		}
 		params.Detached = true
-		return r.runs.Fork(ctx, params)
+		return r.forks.Fork(ctx, params)
 	}
 	r.handlers["run.abandon"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var params struct {
@@ -348,7 +349,7 @@ func (r *Registry) registerRunOperations() {
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return r.runs.Abandon(params.RunID, params.Reason)
+		return r.runs.Abandon(ctx, params.RunID, params.Reason)
 	}
 	r.handlers["run.recover"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
 		return r.runs.RecoverInterruptedRuns(ctx)
@@ -381,7 +382,7 @@ func (r *Registry) registerRunOperations() {
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return r.runs.Cancel(params.RunID, params.Reason)
+		return r.runs.Cancel(ctx, params.RunID, params.Reason)
 	}
 	r.handlers["run.children"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var params struct {

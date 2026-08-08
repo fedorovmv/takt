@@ -10,32 +10,20 @@ type LearningPattern = learning.Pattern
 type LearningProposal = learning.Proposal
 type LearningProposeRequest = learning.ProposeRequest
 
-type LearningService struct{ *Context }
+type LearningService struct{ backend LearningBackend }
 
 func (s *LearningService) Scan(ctx context.Context, minRuns int) ([]LearningPattern, error) {
-	return (learning.Manager{Workspace: s.Workspace}).Scan(ctx, minRuns)
+	return s.backend.Scan(ctx, minRuns)
 }
-
-func (s *LearningService) List() ([]*LearningProposal, error) {
-	return (learning.Manager{Workspace: s.Workspace}).List()
-}
-
-func (s *LearningService) Get(id string) (*LearningProposal, error) {
-	return (learning.Manager{Workspace: s.Workspace}).Load(id)
-}
-
+func (s *LearningService) List() ([]*LearningProposal, error)       { return s.backend.List() }
+func (s *LearningService) Get(id string) (*LearningProposal, error) { return s.backend.Load(id) }
 func (s *LearningService) Propose(ctx context.Context, req LearningProposeRequest) (*LearningProposal, error) {
-	return (learning.Manager{Workspace: s.Workspace}).Propose(ctx, req)
+	return s.backend.Propose(ctx, req)
 }
-
 func (s *LearningService) Review(id, decision, reason string) (*LearningProposal, error) {
-	return (learning.Manager{Workspace: s.Workspace}).Review(id, decision, reason)
+	return s.backend.Review(id, decision, reason)
 }
-
 func (s *LearningService) Evaluate(id, reportPath string) (*LearningProposal, error) {
-	return (learning.Manager{Workspace: s.Workspace}).Evaluate(id, reportPath)
+	return s.backend.Evaluate(id, reportPath)
 }
-
-func (s *LearningService) Stage(id string) (*LearningProposal, error) {
-	return (learning.Manager{Workspace: s.Workspace}).Stage(id)
-}
+func (s *LearningService) Stage(id string) (*LearningProposal, error) { return s.backend.Stage(id) }

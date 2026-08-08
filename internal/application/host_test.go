@@ -22,14 +22,14 @@ func TestHostBeginBindsPlanBeforeManagedExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	candidate := candidateDynamicPlan()
-	result, err := service.BeginHostSession(context.Background(), HostBeginRequest{Host: "pi", HostSessionID: "pi-session-1", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementStrict, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, CompletionBlocking: true, SessionRecovery: true}, Candidate: &candidate})
+	result, err := service.HostService.BeginHostSession(context.Background(), HostBeginRequest{Host: "pi", HostSessionID: "pi-session-1", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementStrict, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, CompletionBlocking: true, SessionRecovery: true}, Candidate: &candidate})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Session.Status != hostcontrol.StatusPreview || result.Session.PlanID != result.Plan.PlanID || result.Session.Enforcement != hostcontrol.EnforcementStrict {
 		t.Fatalf("unexpected host begin result: %#v", result)
 	}
-	recovered, err := service.FindHostSession("pi", "pi-session-1")
+	recovered, err := service.HostService.FindHostSession("pi", "pi-session-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestStrictHostRequiresBlockingCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	candidate := candidateDynamicPlan()
-	_, err = service.BeginHostSession(context.Background(), HostBeginRequest{Host: "opencode", HostSessionID: "ses-incomplete", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementStrict, Capabilities: hostcontrol.Capabilities{ToolCallBlocking: true}, Candidate: &candidate})
+	_, err = service.HostService.BeginHostSession(context.Background(), HostBeginRequest{Host: "opencode", HostSessionID: "ses-incomplete", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementStrict, Capabilities: hostcontrol.Capabilities{ToolCallBlocking: true}, Candidate: &candidate})
 	if err == nil {
 		t.Fatal("expected strict host capability rejection")
 	}
@@ -73,49 +73,49 @@ func TestManagedHostBlocksMutationAndFinalCompletion(t *testing.T) {
 	if err := (hostcontrol.Store{Workspace: workspace}).Save(session); err != nil {
 		t.Fatal(err)
 	}
-	mutation, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "edit"})
+	mutation, err := service.HostService.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "edit"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if mutation.Allowed {
 		t.Fatalf("mutation escaped managed mode: %#v", mutation)
 	}
-	spoofed, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "edit", ReadOnly: true})
+	spoofed, err := service.HostService.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "edit", ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if spoofed.Allowed {
 		t.Fatalf("host-supplied read-only claim bypassed canonical tool classification: %#v", spoofed)
 	}
-	read, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "grep", ReadOnly: true})
+	read, err := service.HostService.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "grep", ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !read.Allowed {
 		t.Fatalf("read-only inspection was blocked: %#v", read)
 	}
-	unknownControl, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "takt.evil"})
+	unknownControl, err := service.HostService.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "takt.evil"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if unknownControl.Allowed {
 		t.Fatalf("unknown takt-prefixed tool bypassed exact allowlist: %#v", unknownControl)
 	}
-	retryControl, err := service.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "takt.run.retry"})
+	retryControl, err := service.HostService.GuardHostTool(HostToolGuardRequest{SessionID: session.ID, Tool: "takt.run.retry"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !retryControl.Allowed {
 		t.Fatalf("known Takt control tool was blocked: %#v", retryControl)
 	}
-	final, err := service.GuardHostCompletion(HostCompletionGuardRequest{SessionID: session.ID, Kind: "final"})
+	final, err := service.HostService.GuardHostCompletion(HostCompletionGuardRequest{SessionID: session.ID, Kind: "final"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if final.Allowed {
 		t.Fatalf("premature final completion escaped managed mode: %#v", final)
 	}
-	status, err := service.GuardHostCompletion(HostCompletionGuardRequest{SessionID: session.ID, Kind: "status"})
+	status, err := service.HostService.GuardHostCompletion(HostCompletionGuardRequest{SessionID: session.ID, Kind: "status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,14 +135,14 @@ func TestBeginHostSessionRejectsStrictReuseOfAdvisorySession(t *testing.T) {
 	}
 	candidate := candidateDynamicPlan()
 	ctx := context.Background()
-	first, err := service.BeginHostSession(ctx, HostBeginRequest{Host: "pi", HostSessionID: "session-reuse", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementAdvisory, Candidate: &candidate})
+	first, err := service.HostService.BeginHostSession(ctx, HostBeginRequest{Host: "pi", HostSessionID: "session-reuse", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementAdvisory, Candidate: &candidate})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.Session.Enforcement != hostcontrol.EnforcementAdvisory {
 		t.Fatalf("enforcement = %q", first.Session.Enforcement)
 	}
-	_, err = service.BeginHostSession(ctx, HostBeginRequest{Host: "pi", HostSessionID: "session-reuse", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementStrict, Candidate: &candidate, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, CompletionBlocking: true, SessionRecovery: true}})
+	_, err = service.HostService.BeginHostSession(ctx, HostBeginRequest{Host: "pi", HostSessionID: "session-reuse", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementStrict, Candidate: &candidate, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, CompletionBlocking: true, SessionRecovery: true}})
 	if err == nil || !strings.Contains(err.Error(), "does not satisfy strict") {
 		t.Fatalf("expected strict reuse error, got %v", err)
 	}
@@ -158,7 +158,7 @@ func TestBeginHostSessionAfterCompletedCreatesFreshSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	candidate := candidateDynamicPlan()
-	first, err := service.BeginHostSession(context.Background(), HostBeginRequest{Host: "pi", HostSessionID: "reusable", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementGuarded, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, SessionRecovery: true}, Candidate: &candidate})
+	first, err := service.HostService.BeginHostSession(context.Background(), HostBeginRequest{Host: "pi", HostSessionID: "reusable", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementGuarded, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, SessionRecovery: true}, Candidate: &candidate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestBeginHostSessionAfterCompletedCreatesFreshSession(t *testing.T) {
 	if err := (hostcontrol.Store{Workspace: workspace}).Save(first.Session); err != nil {
 		t.Fatal(err)
 	}
-	second, err := service.BeginHostSession(context.Background(), HostBeginRequest{Host: "pi", HostSessionID: "reusable", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementGuarded, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, SessionRecovery: true}, Candidate: &candidate})
+	second, err := service.HostService.BeginHostSession(context.Background(), HostBeginRequest{Host: "pi", HostSessionID: "reusable", Goal: candidate.Goal, Profile: "code", Enforcement: hostcontrol.EnforcementGuarded, Capabilities: hostcontrol.Capabilities{CommandInterception: true, InputInterception: true, ToolCallBlocking: true, SessionRecovery: true}, Candidate: &candidate})
 	if err != nil {
 		t.Fatal(err)
 	}

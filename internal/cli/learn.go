@@ -9,11 +9,10 @@ import (
 	"takt/internal/bootstrap"
 )
 
-func learnCmd(args []string) error {
+func learnCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: takt learn <scan|list|get|propose|review|evaluate|stage>")
 	}
-	ctx := context.Background()
 	switch args[0] {
 	case "scan":
 		fs := newFlagSet("learn scan")

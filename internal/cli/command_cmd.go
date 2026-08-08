@@ -9,7 +9,7 @@ import (
 	"takt/internal/bootstrap"
 )
 
-func commandCmd(args []string) error {
+func commandCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] != "run" {
 		return fmt.Errorf("usage: takt command run <name> [flags]")
 	}
@@ -34,7 +34,7 @@ func commandCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	state, err := app.Services.CommandService.Run(context.Background(), application.CommandRunRequest{
+	state, err := app.Services.CommandService.Run(ctx, application.CommandRunRequest{
 		Name: fs.Arg(0), Input: *input, Assistant: *assistantName, Model: *modelName, ConfigPath: *configPath,
 	})
 	if err != nil {

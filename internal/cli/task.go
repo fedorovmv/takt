@@ -10,27 +10,27 @@ import (
 	"takt/internal/daemon"
 )
 
-func taskCmd(args []string) error {
+func taskCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: takt task <start|status|respond|stop|explain> ...")
 	}
 	switch args[0] {
 	case "start":
-		return taskStartCmd(args[1:])
+		return taskStartCmd(ctx, args[1:])
 	case "status":
-		return taskStatusCmd(args[1:])
+		return taskStatusCmd(ctx, args[1:])
 	case "respond":
-		return taskRespondCmd(args[1:])
+		return taskRespondCmd(ctx, args[1:])
 	case "stop":
-		return taskStopCmd(args[1:])
+		return taskStopCmd(ctx, args[1:])
 	case "explain":
-		return taskExplainCmd(args[1:])
+		return taskExplainCmd(ctx, args[1:])
 	default:
 		return fmt.Errorf("usage: takt task <start|status|respond|stop|explain> ...")
 	}
 }
 
-func taskStartCmd(args []string) error {
+func taskStartCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("task start")
 	workspace := fs.String("workspace", ".", "control workspace")
 	profileName := fs.String("profile", "code", "routing profile")
@@ -67,7 +67,7 @@ func taskStartCmd(args []string) error {
 			return err
 		}
 		var result application.TaskView
-		if err := client.Call(context.Background(), "task.start", request, &result); err != nil {
+		if err := client.Call(ctx, "task.start", request, &result); err != nil {
 			return err
 		}
 		return printResult(*jsonOut, &result)
@@ -76,7 +76,7 @@ func taskStartCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := service.StartTask(context.Background(), request)
+	result, err := service.TaskService.StartTask(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func resolveTaskGoal(args []string, goalFile string) (string, error) {
 	return strings.TrimSpace(string(raw)), nil
 }
 
-func taskStatusCmd(args []string) error {
+func taskStatusCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("task status")
 	workspace := fs.String("workspace", ".", "control workspace")
 	useDaemon := fs.Bool("daemon", false, "query the local daemon")
@@ -116,7 +116,7 @@ func taskStatusCmd(args []string) error {
 			return err
 		}
 		var result application.TaskView
-		if err := client.Call(context.Background(), "task.status", map[string]string{"reference": fs.Arg(0)}, &result); err != nil {
+		if err := client.Call(ctx, "task.status", map[string]string{"reference": fs.Arg(0)}, &result); err != nil {
 			return err
 		}
 		return printResult(*jsonOut, &result)
@@ -125,14 +125,14 @@ func taskStatusCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := service.TaskStatus(fs.Arg(0))
+	result, err := service.TaskService.TaskStatus(fs.Arg(0))
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, result)
 }
 
-func taskRespondCmd(args []string) error {
+func taskRespondCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("task respond")
 	workspace := fs.String("workspace", ".", "control workspace")
 	action := fs.String("action", "", "go, continue, answer, steer, pause, resume, or retry")
@@ -154,7 +154,7 @@ func taskRespondCmd(args []string) error {
 			return err
 		}
 		var result application.TaskView
-		if err := client.Call(context.Background(), "task.respond", request, &result); err != nil {
+		if err := client.Call(ctx, "task.respond", request, &result); err != nil {
 			return err
 		}
 		return printResult(*jsonOut, &result)
@@ -163,14 +163,14 @@ func taskRespondCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := service.RespondTask(context.Background(), request)
+	result, err := service.TaskService.RespondTask(ctx, request)
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, result)
 }
 
-func taskStopCmd(args []string) error {
+func taskStopCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("task stop")
 	workspace := fs.String("workspace", ".", "control workspace")
 	reason := fs.String("reason", "", "stop reason")
@@ -190,7 +190,7 @@ func taskStopCmd(args []string) error {
 			return err
 		}
 		var result application.TaskView
-		if err := client.Call(context.Background(), "task.stop", request, &result); err != nil {
+		if err := client.Call(ctx, "task.stop", request, &result); err != nil {
 			return err
 		}
 		return printResult(*jsonOut, &result)
@@ -199,14 +199,14 @@ func taskStopCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := service.StopTask(request)
+	result, err := service.TaskService.StopTask(ctx, request)
 	if err != nil {
 		return err
 	}
 	return printResult(*jsonOut, result)
 }
 
-func taskExplainCmd(args []string) error {
+func taskExplainCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("task explain")
 	workspace := fs.String("workspace", ".", "control workspace")
 	useDaemon := fs.Bool("daemon", false, "query the local daemon")
@@ -224,7 +224,7 @@ func taskExplainCmd(args []string) error {
 			return err
 		}
 		var result application.TaskView
-		if err := client.Call(context.Background(), "task.explain", map[string]string{"reference": fs.Arg(0)}, &result); err != nil {
+		if err := client.Call(ctx, "task.explain", map[string]string{"reference": fs.Arg(0)}, &result); err != nil {
 			return err
 		}
 		return printResult(*jsonOut, &result)
@@ -233,7 +233,7 @@ func taskExplainCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := service.ExplainTask(fs.Arg(0))
+	result, err := service.TaskService.ExplainTask(fs.Arg(0))
 	if err != nil {
 		return err
 	}

@@ -113,7 +113,7 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	ctx = idle.Context()
 	resolver := r.assistants
 	if resolver == nil {
-		resolver = assistant.Factory{Config: r.config}
+		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: fmt.Errorf("assistant resolver dependency is required")}
 	}
 	adapter, err := resolver.Resolve(resolved.AssistantName)
 	if err != nil {
@@ -132,7 +132,7 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 		Emit: collector.Emit,
 	}
 	if r.redactor == nil {
-		r.redactor = runtimeRedactor(r.config)
+		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant secrets", Err: fmt.Errorf("redactor dependency is required")}
 	}
 	if r.config != nil {
 		for _, assistantSpec := range r.config.Assistants {

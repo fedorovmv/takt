@@ -25,10 +25,13 @@ type WorktreeListEntry struct {
 	ExecutionWorkspace string `json:"execution_workspace,omitempty"`
 }
 
-type WorktreeService struct{ *Context }
+type WorktreeService struct {
+	workspace string
+	store     WorktreeStore
+}
 
 func (s *WorktreeService) List(ctx context.Context) ([]WorktreeListEntry, error) {
-	runsDir := filepath.Join(s.Workspace, ".takt", "runs")
+	runsDir := filepath.Join(s.workspace, ".takt", "runs")
 	entries, err := os.ReadDir(runsDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return []WorktreeListEntry{}, nil
@@ -41,7 +44,7 @@ func (s *WorktreeService) List(ctx context.Context) ([]WorktreeListEntry, error)
 		if !entry.IsDir() {
 			continue
 		}
-		state, loadErr := s.runStore.Load(entry.Name())
+		state, loadErr := s.store.Load(entry.Name())
 		if loadErr != nil {
 			return nil, loadErr
 		}
@@ -65,12 +68,12 @@ func (s *WorktreeService) List(ctx context.Context) ([]WorktreeListEntry, error)
 }
 
 func (s *WorktreeService) Remove(ctx context.Context, runID string, force bool) (*store.RunState, error) {
-	release, err := acquireRunLock(s.runStore, runID)
+	release, err := acquireRunLock(s.store, runID)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	state, err := s.runStore.Load(runID)
+	state, err := s.store.Load(runID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +105,7 @@ func (s *WorktreeService) Remove(ctx context.Context, runID string, force bool) 
 	if branchErr != nil {
 		wt.BranchCleanupError = branchErr.Error()
 	}
-	if err := s.commitRedacted(s.runStore, state, store.Event{Type: "worktree.removed", Data: map[string]any{
+	if err := commitRedacted("", s.store, state, store.Event{Type: "worktree.removed", Data: map[string]any{
 		"path": wt.Path, "branch": wt.Branch, "manual": true, "force": force,
 		"branch_removed": branchRemoved, "branch_cleanup_error": wt.BranchCleanupError,
 	}}); err != nil {
@@ -112,5 +115,5 @@ func (s *WorktreeService) Remove(ctx context.Context, runID string, force bool) 
 }
 
 func (s *WorktreeService) Prune(ctx context.Context) error {
-	return gitworktree.Prune(ctx, s.Workspace)
+	return gitworktree.Prune(ctx, s.workspace)
 }

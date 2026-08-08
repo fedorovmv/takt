@@ -61,7 +61,7 @@ assistants:
 	}
 	mustWrite(t, filepath.Join(templateDir, ".takt", "runs", "stale"), "stale", 0o644)
 
-	report, err := Run(context.Background(), RunOptions{
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
 		WorkspaceTemplate: templateDir, OutputDir: outputDir, Repeat: 2,
 	})
@@ -107,7 +107,7 @@ func TestRunRejectsExistingWorkspaceWithoutReplace(t *testing.T) {
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "case.md"), "case", 0o644)
 
-	report, err := Run(context.Background(), RunOptions{
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
 		WorkspaceTemplate: templateDir, OutputDir: outputDir,
 	})
@@ -139,7 +139,7 @@ func TestRunRejectsCaseIDCollisionsBeforeCreatingOutput(t *testing.T) {
 	mustWrite(t, filepath.Join(casesDir, "a b.md"), "first", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "a+b.md"), "second", 0o644)
 
-	_, err := Run(context.Background(), RunOptions{
+	_, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: filepath.Join(root, "workflow.yaml"),
 		ConfigPath:   filepath.Join(root, "config.yaml"),
 		CasesDir:     casesDir, WorkspaceTemplate: templateDir, OutputDir: outputDir,
@@ -164,7 +164,7 @@ func TestRunRejectsOverlappingWorkspaceTemplateAndOutput(t *testing.T) {
 	mustWrite(t, filepath.Join(casesDir, "case.md"), "case", 0o644)
 	outputDir := filepath.Join(templateDir, "results")
 
-	_, err := Run(context.Background(), RunOptions{
+	_, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: filepath.Join(root, "workflow.yaml"),
 		ConfigPath:   filepath.Join(root, "config.yaml"),
 		CasesDir:     casesDir, WorkspaceTemplate: templateDir, OutputDir: outputDir,
@@ -211,7 +211,7 @@ func TestRunRejectsOutputNestedThroughWorkspaceTemplateSymlink(t *testing.T) {
 	}
 	mustWrite(t, filepath.Join(casesDir, "case.md"), "case", 0o644)
 	outputDir := filepath.Join(linkedTemplate, "results")
-	_, err := Run(context.Background(), RunOptions{
+	_, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: filepath.Join(root, "workflow.yaml"), ConfigPath: filepath.Join(root, "config.yaml"),
 		CasesDir: casesDir, WorkspaceTemplate: linkedTemplate, OutputDir: outputDir,
 	})
@@ -263,7 +263,7 @@ assistants:
 	mustWrite(t, filepath.Join(casesDir, "two.md"), "second", 0o644)
 	mustWrite(t, filepath.Join(templateDir, "route-validator"), "validator-v1", 0o755)
 
-	report, err := Run(context.Background(), RunOptions{
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
 		WorkspaceTemplate: templateDir, OutputDir: outputDir,
 		StrategyID: "mock-quality-v1", BenchmarkID: "route-quality-10",
@@ -327,7 +327,7 @@ nodes:
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
 
-	report, err := Run(context.Background(), RunOptions{
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
 		WorkspaceTemplate: templateDir, OutputDir: outputDir,
 		QualityNode: "quality", GenerationNode: "implement",
@@ -456,7 +456,7 @@ nodes:
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
 
-	report, err := Run(context.Background(), RunOptions{
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
 		WorkspaceTemplate: templateDir, OutputDir: outputDir,
 		QualityNode: "quality", GenerationNode: "implement",
@@ -572,7 +572,7 @@ nodes:
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
 
-	report, err := Run(context.Background(), RunOptions{
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
 		WorkspaceTemplate: templateDir, OutputDir: outputDir,
 		QualityNode: "quality", GenerationNode: "implement",
@@ -620,7 +620,7 @@ nodes:
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
 
-	report, err := Run(context.Background(), RunOptions{
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
 		WorkspaceTemplate: templateDir, OutputDir: outputDir,
 		QualityNode: "quality", GenerationNode: "implement",
@@ -671,7 +671,7 @@ nodes:
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
 
-	report, err := Run(context.Background(), RunOptions{
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
 		WorkspaceTemplate: templateDir, OutputDir: outputDir,
 		QualityNode: "quality", GenerationNode: "implement",
@@ -700,7 +700,7 @@ func TestBenchmarkFingerprintIncludesValidatorIDAndVersion(t *testing.T) {
 	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
 
 	run := func(id, version, output string) *SuiteReport {
-		report, err := Run(context.Background(), RunOptions{
+		report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 			WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
 			WorkspaceTemplate: templateDir, OutputDir: filepath.Join(root, output),
 			ValidatorID: id, ValidatorVersion: version,
@@ -787,7 +787,7 @@ nodes:
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
 
-	report, err := Run(context.Background(), RunOptions{
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory,
 		WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir,
 		WorkspaceTemplate: templateDir, OutputDir: outputDir,
 		QualityNode: "quality", GenerationNode: "implement",
@@ -855,7 +855,7 @@ nodes:
 `, 0o644)
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
-	report, err := Run(context.Background(), RunOptions{WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir, WorkspaceTemplate: templateDir, OutputDir: outputDir, QualityNode: "quality", GenerationNode: "implement"})
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory, WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir, WorkspaceTemplate: templateDir, OutputDir: outputDir, QualityNode: "quality", GenerationNode: "implement"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -973,7 +973,7 @@ gates:
     final_success_rate_min: 1
     unstable_cases_max: 0
 `, 0o644)
-	report, err := RunMatrix(context.Background(), MatrixRunOptions{MatrixPath: filepath.Join(root, "matrix.yaml"), OutputDir: filepath.Join(root, "results")})
+	report, err := RunMatrix(context.Background(), MatrixRunOptions{ExecutionFactory: testExecutionFactory, MatrixPath: filepath.Join(root, "matrix.yaml"), OutputDir: filepath.Join(root, "results")})
 	if err != nil {
 		t.Fatal(err)
 	}

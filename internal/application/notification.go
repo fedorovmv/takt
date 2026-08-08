@@ -4,22 +4,13 @@ import "takt/internal/notification"
 
 type NotificationItem = notification.Item
 
-// NotificationService owns notification use cases so transports do not create
-// persistence-backed dispatchers directly.
-type NotificationService struct{ Workspace string }
+type NotificationService struct{ backend NotificationBackend }
 
 func (s *NotificationService) List(unreadOnly bool, limit int) ([]notification.Item, error) {
-	return (notification.Dispatcher{Workspace: s.Workspace}).List(unreadOnly, limit)
+	return s.backend.List(unreadOnly, limit)
 }
-
-func (s *NotificationService) Ack(id string) (*notification.Item, error) {
-	return (notification.Dispatcher{Workspace: s.Workspace}).Ack(id)
-}
-
+func (s *NotificationService) Ack(id string) (*notification.Item, error) { return s.backend.Ack(id) }
 func (s *NotificationService) Test(message string) (*notification.Item, error) {
-	return (notification.Dispatcher{Workspace: s.Workspace}).Test(message)
+	return s.backend.Test(message)
 }
-
-func (s *NotificationService) Dispatch() ([]notification.Item, error) {
-	return (notification.Dispatcher{Workspace: s.Workspace}).Dispatch()
-}
+func (s *NotificationService) Dispatch() ([]notification.Item, error) { return s.backend.Dispatch() }

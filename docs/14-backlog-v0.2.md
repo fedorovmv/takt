@@ -1,18 +1,18 @@
 # Актуальный backlog Takt v0.2
 
-Статус пересобран после `v0.1.53-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
+Статус пересобран после `v0.1.54-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
 
-## P-1. Архитектурный долг — закрыт в v0.1.52
+## P-1. Архитектурный долг — закрыт в v0.1.52, hardened в v0.1.54
 
 ### ARCH-001. Application/transport/runtime boundaries — выполнено
 
-Удалён `internal/control.Service`, введены use-case application services и production `bootstrap`; `cmd/takt` оставлен launcher, daemon/MCP используют canonical API, filesystem persistence подключается через `RunStore`, runtime dependencies явные. `internal/architecture` защищает production и test boundaries от регрессии.
+Удалён `internal/control.Service`, введены use-case application services и production `bootstrap`; `cmd/takt` оставлен launcher, daemon/MCP используют canonical API, runtime dependencies явные. `v0.1.54` удалил shared application Context и Run↔Plan cycle, перенёс concrete infrastructure wiring в bootstrap, сделал execution lifetime явной и добавил gate на ацикличность/private dependencies.
 
 Новый DI/plugin/event-bus framework не вводился; refactor не изменил внешний API/state contracts.
 
-## P-0.5. Тестовый долг — закрыт в v0.1.53
+## P-0.5. Тестовый долг — закрыт в v0.1.53, hardened в v0.1.54
 
-Основной contract contour переведён на стандартные Go tests и `tests/e2e`; число `scripts/test-*.sh` сокращено с 38 до пяти явных внешних smoke tests. `internal/architecture` фиксирует allowlist.
+Основной contract contour переведён на стандартные Go tests и `tests/e2e`; в `v0.1.54` из исторических 38 `scripts/test-*.sh` остался один TypeScript compiler smoke. Остальные process/package/host assertions работают через bounded Go E2E harness. `internal/architecture` фиксирует границу.
 
 ## P0. Доказать полезность текущего Takt
 

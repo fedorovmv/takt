@@ -9,7 +9,7 @@ import (
 	"takt/internal/daemon"
 )
 
-func notifyCmd(args []string) error {
+func notifyCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: takt notify <list|ack|test|dispatch>")
 	}
@@ -36,7 +36,7 @@ func notifyCmd(args []string) error {
 			if err != nil {
 				return err
 			}
-			if err := client.Call(context.Background(), "notify.list", map[string]any{"unread_only": *unread, "limit": *limit}, &result); err != nil {
+			if err := client.Call(ctx, "notify.list", map[string]any{"unread_only": *unread, "limit": *limit}, &result); err != nil {
 				return err
 			}
 		} else {
@@ -69,7 +69,7 @@ func notifyCmd(args []string) error {
 			if err != nil {
 				return err
 			}
-			if err := client.Call(context.Background(), "notify.ack", map[string]string{"id": fs.Arg(0)}, &result); err != nil {
+			if err := client.Call(ctx, "notify.ack", map[string]string{"id": fs.Arg(0)}, &result); err != nil {
 				return err
 			}
 		} else {
@@ -104,7 +104,7 @@ func notifyCmd(args []string) error {
 			if err != nil {
 				return err
 			}
-			if err := client.Call(context.Background(), "notify.test", map[string]string{"message": *message}, &result); err != nil {
+			if err := client.Call(ctx, "notify.test", map[string]string{"message": *message}, &result); err != nil {
 				return err
 			}
 		} else {

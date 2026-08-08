@@ -8,7 +8,7 @@ import (
 	"takt/internal/application"
 )
 
-func blockCmd(args []string) error {
+func blockCmd(ctx context.Context, args []string) error {
 	subcommand := "list"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		subcommand = args[0]
@@ -72,7 +72,7 @@ func blockCmd(args []string) error {
 	}
 }
 
-func compatibilityCmd(args []string) error {
+func compatibilityCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: takt compatibility <matrix|fields|schema|check> ...")
 	}
@@ -115,7 +115,7 @@ func compatibilityCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		report, err := services.Compatibility.Check(context.Background(), *live)
+		report, err := services.Compatibility.Check(ctx, *live)
 		if err != nil {
 			return err
 		}
@@ -131,7 +131,7 @@ func compatibilityCmd(args []string) error {
 	}
 }
 
-func adapterCmd(args []string) error {
+func adapterCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: takt adapter <list|describe|doctor> ...")
 	}
@@ -160,7 +160,7 @@ func adapterCmd(args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt adapter describe <name> [--workspace dir] [--config path]")
 		}
-		declaration, err := services.Adapters.Describe(context.Background(), fs.Arg(0))
+		declaration, err := services.Adapters.Describe(ctx, fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -169,7 +169,7 @@ func adapterCmd(args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt adapter doctor <name> [--workspace dir] [--config path]")
 		}
-		report, err := services.Adapters.Doctor(context.Background(), fs.Arg(0))
+		report, err := services.Adapters.Doctor(ctx, fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -185,7 +185,7 @@ func adapterCmd(args []string) error {
 	}
 }
 
-func packageCmd(args []string) error {
+func packageCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: takt package <install|update|uninstall|list|sync|doctor|sign> ...")
 	}
@@ -206,7 +206,6 @@ func packageCmd(args []string) error {
 		return err
 	}
 	packages := services.Packages
-	ctx := context.Background()
 	switch sub {
 	case "install":
 		if fs.NArg() != 1 {

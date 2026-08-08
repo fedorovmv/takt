@@ -71,7 +71,7 @@ Mutating `change.create|comment|review` поддерживают durable reconci
 
 ## Проверяемая граница
 
-`scripts/test-reference-adapters.sh` выполняет два E2E:
+`tests/e2e` / `TestReferenceAdaptersBoundary` выполняет два E2E:
 
 1. настоящий Takt process-v1alpha2 → `qwen-takt-adapter` → fake upstream Qwen stream → completed Run;
 2. настоящий adapter node → `takt-github-scm-adapter` → fake `gh`, который создаёт внешний факт и теряет ответ → reconcile находит PR → completed без второго create.

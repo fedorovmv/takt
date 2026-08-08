@@ -14,6 +14,7 @@ import (
 	cfgpkg "takt/internal/config"
 	"takt/internal/runtime"
 	"takt/internal/store"
+	"takt/internal/testsupport/runtimefixture"
 	"takt/internal/workflow"
 )
 
@@ -60,7 +61,7 @@ assistants: {}
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := runtime.New(wf, cfg, workflowPath, configPath, dir)
+	runner := runtimefixture.New(wf, cfg, workflowPath, configPath, dir)
 	state, err := runner.Start(context.Background(), "")
 	if !errors.Is(err, runtime.ErrWaiting) {
 		t.Fatalf("expected waiting, got %v", err)
@@ -68,7 +69,7 @@ assistants: {}
 	if err := os.WriteFile(workflowPath, []byte(workflowV2), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := answerCmd([]string{state.ID, "approve", "--value", "yes", "--workspace", dir}); err == nil {
+	if err := answerCmd(context.Background(), []string{state.ID, "approve", "--value", "yes", "--workspace", dir}); err == nil {
 		t.Fatal("expected definition change error")
 	}
 	loaded, err := (store.FS{Workspace: dir}).Load(state.ID)
@@ -105,7 +106,7 @@ func TestValidatePreservesCWDRelativeWorkflowAndConfigPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(oldWD) })
-	if err := validateCmd([]string{"workflow.yaml", "--config", "config.yaml", "--workspace", workspace, "--json=false"}); err != nil {
+	if err := validateCmd(context.Background(), []string{"workflow.yaml", "--config", "config.yaml", "--workspace", workspace, "--json=false"}); err != nil {
 		t.Fatalf("validate cwd-relative path: %v", err)
 	}
 }
@@ -166,12 +167,12 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := runtime.New(wf, cfg, workflowPath, configPath, dir)
+	runner := runtimefixture.New(wf, cfg, workflowPath, configPath, dir)
 	state, err := runner.Start(context.Background(), "")
 	if !errors.Is(err, runtime.ErrWaiting) {
 		t.Fatalf("expected waiting, got %v", err)
 	}
-	if err := answerCmd([]string{state.ID, "child", "--value", "yes", "--workspace", dir, "--json=false"}); err != nil {
+	if err := answerCmd(context.Background(), []string{state.ID, "child", "--value", "yes", "--workspace", dir, "--json=false"}); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := (store.FS{Workspace: dir}).Load(state.ID)
@@ -222,12 +223,12 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := runtime.New(wf, cfg, workflowPath, configPath, repo).Start(context.Background(), "")
+	state, err := runtimefixture.New(wf, cfg, workflowPath, configPath, repo).Start(context.Background(), "")
 	if !errors.Is(err, runtime.ErrWaiting) {
 		t.Fatalf("expected waiting run, got state=%+v err=%v", state, err)
 	}
 	worktreePath := state.Worktree.Path
-	if err := answerCmd([]string{state.ID, "approve", "--value", "yes", "--workspace", repo, "--json=false"}); err != nil {
+	if err := answerCmd(context.Background(), []string{state.ID, "approve", "--value", "yes", "--workspace", repo, "--json=false"}); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := (store.FS{Workspace: repo}).Load(state.ID)
@@ -241,7 +242,7 @@ nodes:
 	if err != nil || string(answer) != "yes" {
 		t.Fatalf("answer was not written in worktree: %q err=%v", answer, err)
 	}
-	if err := worktreeRemoveCmd([]string{state.ID, "--workspace", repo, "--force", "--json=false"}); err != nil {
+	if err := worktreeRemoveCmd(context.Background(), []string{state.ID, "--workspace", repo, "--force", "--json=false"}); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err = (store.FS{Workspace: repo}).Load(state.ID)
@@ -313,11 +314,11 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := runtime.New(wf, cfg, workflowPath, configPath, dir).Start(context.Background(), "")
+	state, err := runtimefixture.New(wf, cfg, workflowPath, configPath, dir).Start(context.Background(), "")
 	if !errors.Is(err, runtime.ErrWaiting) {
 		t.Fatalf("expected governed child waiting, got %v", err)
 	}
-	if err := answerCmd([]string{state.ID, "child", "--value", "yes", "--workspace", dir, "--json=false"}); err != nil {
+	if err := answerCmd(context.Background(), []string{state.ID, "child", "--value", "yes", "--workspace", dir, "--json=false"}); err != nil {
 		t.Fatal(err)
 	}
 	st := store.FS{Workspace: dir}
@@ -338,7 +339,7 @@ nodes:
 	if child.Status != store.RunCompleted || child.Approvals["approve"] != "yes" {
 		t.Fatalf("child approval was not consumed: %+v", child)
 	}
-	if err := childrenCmd([]string{root.ID, "--workspace", dir, "--json=false"}); err != nil {
+	if err := childrenCmd(context.Background(), []string{root.ID, "--workspace", dir, "--json=false"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -375,12 +376,12 @@ nodes:
 	}
 	wf, _ := workflow.Load(workflowPath)
 	cfg, _ := cfgpkg.Load(configPath)
-	state, err := runtime.New(wf, cfg, workflowPath, configPath, dir).Start(context.Background(), "")
+	state, err := runtimefixture.New(wf, cfg, workflowPath, configPath, dir).Start(context.Background(), "")
 	if !errors.Is(err, runtime.ErrWaiting) {
 		t.Fatalf("expected waiting, got %v", err)
 	}
 	childID := state.Waiting.ChildRunID
-	if err := cancelCmd([]string{state.ID, "--workspace", dir, "--reason", "stop", "--json=false"}); err != nil {
+	if err := cancelCmd(context.Background(), []string{state.ID, "--workspace", dir, "--reason", "stop", "--json=false"}); err != nil {
 		t.Fatal(err)
 	}
 	st := store.FS{Workspace: dir}
@@ -419,11 +420,11 @@ nodes:
 	}
 	wf, _ := workflow.Load(workflowPath)
 	cfg, _ := cfgpkg.Load(configPath)
-	state, err := runtime.New(wf, cfg, workflowPath, configPath, dir).Start(context.Background(), "")
+	state, err := runtimefixture.New(wf, cfg, workflowPath, configPath, dir).Start(context.Background(), "")
 	if err == nil || state.Status != store.RunFailed {
 		t.Fatalf("expected failed run: state=%+v err=%v", state, err)
 	}
-	cancelErr := cancelCmd([]string{state.ID, "--workspace", dir, "--json=false"})
+	cancelErr := cancelCmd(context.Background(), []string{state.ID, "--workspace", dir, "--json=false"})
 	if cancelErr == nil || !strings.Contains(cancelErr.Error(), "cannot cancel terminal run") {
 		t.Fatalf("terminal cancel was not rejected: %v", cancelErr)
 	}
@@ -462,7 +463,7 @@ assistants:
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := runCmd([]string{workflowPath, "--config", configPath, "--workspace", dir, "--json=false"}); err != nil {
+	if err := runCmd(context.Background(), []string{workflowPath, "--config", configPath, "--workspace", dir, "--json=false"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -523,7 +524,7 @@ assistants:
 	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := runCmd([]string{workflowPath, "--workspace", dir, "--config", configPath})
+	err := runCmd(context.Background(), []string{workflowPath, "--workspace", dir, "--config", configPath})
 	if err == nil || !strings.Contains(err.Error(), "capability validation") || !strings.Contains(err.Error(), "tool_policy") {
 		t.Fatalf("runCmd error = %v, want capability preflight failure", err)
 	}
@@ -554,13 +555,13 @@ adapters:
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := adapterCmd([]string{"list", "--workspace", dir, "--config", path}); err != nil {
+	if err := adapterCmd(context.Background(), []string{"list", "--workspace", dir, "--config", path}); err != nil {
 		t.Fatal(err)
 	}
-	if err := adapterCmd([]string{"describe", "scm", "--workspace", dir, "--config", path}); err != nil {
+	if err := adapterCmd(context.Background(), []string{"describe", "scm", "--workspace", dir, "--config", path}); err != nil {
 		t.Fatal(err)
 	}
-	if err := adapterCmd([]string{"doctor", "scm", "--workspace", dir, "--config", path}); err != nil {
+	if err := adapterCmd(context.Background(), []string{"doctor", "scm", "--workspace", dir, "--config", path}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -584,7 +585,7 @@ adapters:
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := adapterCmd([]string{"doctor", "scm", "--workspace", dir, "--config", path}); err == nil || !strings.Contains(err.Error(), "configuration problems") {
+	if err := adapterCmd(context.Background(), []string{"doctor", "scm", "--workspace", dir, "--config", path}); err == nil || !strings.Contains(err.Error(), "configuration problems") {
 		t.Fatalf("expected non-zero doctor result for capability mismatch, got %v", err)
 	}
 }
@@ -639,20 +640,20 @@ blocks:
 		{"doctor", "--workspace", workspace},
 		{"uninstall", "cli-package", "--scope", "project", "--workspace", workspace},
 	} {
-		if err := packageCmd(args); err != nil {
-			t.Fatalf("packageCmd(%v): %v", args, err)
+		if err := packageCmd(context.Background(), args); err != nil {
+			t.Fatalf("packageCmd(context.Background(), %v): %v", args, err)
 		}
 	}
 }
 
 func TestCompatibilityCmdMatrixSchemaAndCheck(t *testing.T) {
-	if err := compatibilityCmd([]string{"matrix", "--json"}); err != nil {
+	if err := compatibilityCmd(context.Background(), []string{"matrix", "--json"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := compatibilityCmd([]string{"fields", "--json"}); err != nil {
+	if err := compatibilityCmd(context.Background(), []string{"fields", "--json"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := compatibilityCmd([]string{"schema", "--json"}); err != nil {
+	if err := compatibilityCmd(context.Background(), []string{"schema", "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
@@ -669,7 +670,7 @@ assistants:
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := compatibilityCmd([]string{"check", "--workspace", dir, "--config", path}); err != nil {
+	if err := compatibilityCmd(context.Background(), []string{"check", "--workspace", dir, "--config", path}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -687,7 +688,7 @@ assistants:
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := compatibilityCmd([]string{"check", "--workspace", dir, "--config", path, "--strict"}); err == nil || !strings.Contains(err.Error(), "status: warning") {
+	if err := compatibilityCmd(context.Background(), []string{"check", "--workspace", dir, "--config", path, "--strict"}); err == nil || !strings.Contains(err.Error(), "status: warning") {
 		t.Fatalf("expected strict compatibility warning to fail, got %v", err)
 	}
 }
@@ -710,7 +711,7 @@ adapters:
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := compatibilityCmd([]string{"check", "--workspace", dir, "--config", path, "--live"}); err != nil {
+	if err := compatibilityCmd(context.Background(), []string{"check", "--workspace", dir, "--config", path, "--live"}); err != nil {
 		t.Fatal(err)
 	}
 }

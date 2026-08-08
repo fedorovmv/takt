@@ -23,7 +23,7 @@ func (s *CatalogService) ListBlocks(profileName string) (*BlockCatalogView, erro
 	if profileName == "" {
 		profileName = "code"
 	}
-	resolved, err := profile.Resolve(profileName, s.Workspace)
+	resolved, err := profile.Resolve(profileName, s.workspace)
 	if err != nil {
 		return nil, err
 	}

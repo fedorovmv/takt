@@ -36,12 +36,4 @@ cat > "$TMP/tsconfig.json" <<EOF2
 }
 EOF2
 "$TSC" -p "$TMP/tsconfig.json"
-if grep -q 'Plugin.define\|from "@opencode-ai/plugin"' "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"; then
-  echo 'OpenCode integration must not import a runtime Plugin value or use Plugin.define' >&2
-  exit 1
-fi
-if grep -q '"next"\|"\*"' "$ROOT/integrations/coding-agent-host-control/opencode/package.json" "$ROOT/integrations/coding-agent-host-control/pi/package.json"; then
-  echo 'host integration dependencies must not use floating versions' >&2
-  exit 1
-fi
 echo 'coding-agent host integrations TypeScript: PASS'

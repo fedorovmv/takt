@@ -15,24 +15,24 @@ type MaintenanceResult struct {
 }
 
 type MaintenanceService struct {
-	Plans         *PlanService
-	External      *ExternalService
-	Notifications *NotificationService
+	plans         *PlanService
+	external      *ExternalService
+	notifications *NotificationService
 }
 
 func (s *MaintenanceService) Tick(ctx context.Context, now time.Time) (*MaintenanceResult, error) {
-	if s == nil || s.Plans == nil || s.External == nil || s.Notifications == nil {
+	if s == nil || s.plans == nil || s.external == nil || s.notifications == nil {
 		return nil, fmt.Errorf("maintenance service is not fully configured")
 	}
 	var failures []string
-	if err := s.Plans.AdvanceDynamicPlans(ctx); err != nil {
+	if err := s.plans.AdvanceDynamicPlans(ctx); err != nil {
 		failures = append(failures, "advance plans: "+err.Error())
 	}
-	expired, err := s.External.ExpireIdleExternal(ctx, now.UTC())
+	expired, err := s.external.ExpireIdleExternal(ctx, now.UTC())
 	if err != nil {
 		failures = append(failures, "expire external: "+err.Error())
 	}
-	emitted, err := s.Notifications.Dispatch()
+	emitted, err := s.notifications.Dispatch()
 	if err != nil {
 		failures = append(failures, "dispatch notifications: "+err.Error())
 	}

@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.54-alpha
+
+- Feature freeze продолжен: продуктовые/public contracts не расширялись; выполнен повторный architecture hardening после независимого аудита `v0.1.53`.
+- Удалён shared `application.Context`; все application services имеют private dependencies, concrete stores/backends/factories собираются в `internal/bootstrap`.
+- Разорван цикл `RunService ↔ PlanService`: cross-lineage fork вынесен в `ForkService`; architecture gate теперь строит service dependency graph и запрещает циклы.
+- Production runtime больше не имеет default/hidden constructor; child workflows наследуют injected dependencies, evaluation получает execution factory через bootstrap.
+- Signal-aware root context проходит `cmd/takt → CLI → application → runtime`; durable detached operations используют явный `detachedContext`, а direct `context.Background()` в application ограничен документированным recovery helper.
+- Удалены process-global `dynamicMu/hostMu`; Dynamic Plan и Host Control координируются durable store locks.
+- Разложены Task response, Dynamic Plan advance и governed child fan-out state machines без нового plugin/DI framework.
+- Canonical app operation identity централизована в `internal/appapi`; MCP использует тот же mapping вместо отдельной таблицы.
+- Оставшиеся package/reference/host/deep-workflow shell contracts перенесены в bounded Go E2E; `scripts/test-*.sh` содержит только TypeScript compiler smoke.
+- Добавлены ADR-087 и `docs/68-architecture-hardening-v0.1.54.md`; Takt skill обновлён до 0.36.0.
+
 ## v0.1.53-alpha
 
 - Feature freeze продолжен: продуктовые возможности не добавлялись; тестовый контур переработан после application-boundary refactor.

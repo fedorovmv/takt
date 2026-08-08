@@ -32,7 +32,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Detached: true})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Detached: true})
 	if err != nil {
 		t.Fatalf("detached durable failure must be accepted: %v", err)
 	}
@@ -69,21 +69,21 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	listed, err := service.ListRuns(RunListRequest{AttentionOnly: true})
+	listed, err := service.RunService.ListRuns(RunListRequest{AttentionOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(listed) != 1 || listed[0].Attention.Reason != "approval" {
 		t.Fatalf("attention list = %#v", listed)
 	}
-	summary, err := service.Summary(state.ID, true)
+	summary, err := service.RunService.Summary(state.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if summary.Status != store.RunWaiting || summary.NodesWaiting != 1 || !summary.Attention.Required {
 		t.Fatalf("summary = %#v", summary)
 	}
-	paused, err := service.Pause(state.ID)
+	paused, err := service.RunService.Pause(context.Background(), state.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ nodes:
 	if loaded.Status != store.RunPaused || loaded.PausedFrom != store.RunWaiting {
 		t.Fatalf("paused state = %#v", loaded)
 	}
-	resumed, err := service.ResumePaused(context.Background(), state.ID, false)
+	resumed, err := service.RunService.ResumePaused(context.Background(), state.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,12 +126,12 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Detached: true})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Detached: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(80 * time.Millisecond)
-	if _, err := service.Pause(started.RunID); err != nil {
+	if _, err := service.RunService.Pause(context.Background(), started.RunID); err != nil {
 		t.Fatal(err)
 	}
 	state := waitRunStatus(t, service, started.RunID, store.RunPaused, 4*time.Second)
@@ -141,7 +141,7 @@ nodes:
 	if _, err := os.Stat(filepath.Join(workspace, "second.txt")); !os.IsNotExist(err) {
 		t.Fatalf("second node ran before resume: %v", err)
 	}
-	if _, err := service.ResumePaused(context.Background(), started.RunID, false); err != nil {
+	if _, err := service.RunService.ResumePaused(context.Background(), started.RunID, false); err != nil {
 		t.Fatal(err)
 	}
 	completed := waitRunStatus(t, service, started.RunID, store.RunCompleted, 4*time.Second)
@@ -179,7 +179,7 @@ nodes:
 	if err := st.Save(failed); err != nil {
 		t.Fatal(err)
 	}
-	retried, err := service.Retry(context.Background(), RetryRequest{RunID: failed.ID})
+	retried, err := service.RunService.Retry(context.Background(), RetryRequest{RunID: failed.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ nodes:
 	if err := st.Save(lost); err != nil {
 		t.Fatal(err)
 	}
-	recovered, err := service.RecoverInterruptedRuns(context.Background())
+	recovered, err := service.RunService.RecoverInterruptedRuns(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,13 +211,13 @@ func waitRunStatus(t *testing.T, service *Services, runID, status string, timeou
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		state, err := service.GetRun(runID)
+		state, err := service.RunService.GetRun(runID)
 		if err == nil && state.Status == status {
 			return state
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	state, err := service.GetRun(runID)
+	state, err := service.RunService.GetRun(runID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ nodes:
 	if err := planStore.Save(record); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Pause(run.ID); err != nil {
+	if _, err := service.RunService.Pause(context.Background(), run.ID); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := planStore.Load(record.ID)
@@ -271,7 +271,7 @@ nodes:
 	if loaded.Status != "paused" {
 		t.Fatalf("plan status after pause = %q", loaded.Status)
 	}
-	if _, err := service.ResumePaused(context.Background(), run.ID, false); err != nil {
+	if _, err := service.RunService.ResumePaused(context.Background(), run.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err = planStore.Load(record.ID)
@@ -281,7 +281,7 @@ nodes:
 	if loaded.Status != "waiting" {
 		t.Fatalf("plan status after waiting resume = %q", loaded.Status)
 	}
-	if _, err := service.Abandon(run.ID, "operator stopped campaign"); err != nil {
+	if _, err := service.RunService.Abandon(context.Background(), run.ID, "operator stopped campaign"); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err = planStore.Load(record.ID)
@@ -291,7 +291,7 @@ nodes:
 	if loaded.Status != "abandoned" {
 		t.Fatalf("plan status after abandon = %q", loaded.Status)
 	}
-	state, err := service.GetRun(run.ID)
+	state, err := service.RunService.GetRun(run.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,13 +331,13 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: parentPath, ConfigPath: configPath, Detached: true})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: parentPath, ConfigPath: configPath, Detached: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		state, loadErr := service.GetRun(started.RunID)
+		state, loadErr := service.RunService.GetRun(started.RunID)
 		if loadErr == nil && len(state.ChildRunIDs) == 1 {
 			break
 		}
@@ -346,7 +346,7 @@ nodes:
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if _, err := service.Pause(started.RunID); err != nil {
+	if _, err := service.RunService.Pause(context.Background(), started.RunID); err != nil {
 		t.Fatal(err)
 	}
 	parent := waitRunStatus(t, service, started.RunID, store.RunPaused, 4*time.Second)
@@ -357,7 +357,7 @@ nodes:
 	if child.Nodes["second"].Status != store.NodePending {
 		t.Fatalf("child did not pause at boundary: %#v", child.Nodes)
 	}
-	if _, err := service.ResumePaused(context.Background(), parent.ID, false); err != nil {
+	if _, err := service.RunService.ResumePaused(context.Background(), parent.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	waitRunStatus(t, service, parent.ID, store.RunCompleted, 4*time.Second)
@@ -402,7 +402,7 @@ nodes:
 	if err := st.Save(pauseRoot); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Pause(pauseRoot.ID); err != nil {
+	if _, err := service.RunService.Pause(context.Background(), pauseRoot.ID); err != nil {
 		t.Fatal(err)
 	}
 	paused, err := st.PauseRequested(pauseChild)
@@ -430,7 +430,7 @@ nodes:
 	if err := st.Save(abandonRoot); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Abandon(abandonRoot.ID, "stop campaign"); err != nil {
+	if _, err := service.RunService.Abandon(context.Background(), abandonRoot.ID, "stop campaign"); err != nil {
 		t.Fatal(err)
 	}
 	abandoned, reason, err := st.AbandonRequested(abandonChild)
@@ -461,7 +461,7 @@ func TestResumePausedRejectsNonPausedWithoutClearingMarker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ResumePaused(context.Background(), state.ID, false); err == nil {
+	if _, err := service.RunService.ResumePaused(context.Background(), state.ID, false); err == nil {
 		t.Fatal("resume of a non-paused run unexpectedly succeeded")
 	}
 	requested, err := st.PauseRequested(state.ID)
@@ -502,11 +502,11 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: parentPath, ConfigPath: configPath})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: parentPath, ConfigPath: configPath})
 	if err != nil {
 		t.Fatal(err)
 	}
-	parent, err := service.GetRun(started.RunID)
+	parent, err := service.RunService.GetRun(started.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -514,31 +514,31 @@ nodes:
 		t.Fatalf("unexpected parent waiting state: %#v", parent)
 	}
 	childID := parent.ChildRunIDs[0]
-	child, err := service.GetRun(childID)
+	child, err := service.RunService.GetRun(childID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if child.Waiting == nil {
 		t.Fatalf("child is not waiting: %#v", child)
 	}
-	if _, err := service.Pause(parent.ID); err != nil {
+	if _, err := service.RunService.Pause(context.Background(), parent.ID); err != nil {
 		t.Fatal(err)
 	}
 	paused := waitRunStatus(t, service, parent.ID, store.RunPaused, 2*time.Second)
 	if paused.PausedFrom != store.RunWaiting {
 		t.Fatalf("paused_from=%q", paused.PausedFrom)
 	}
-	if _, err := service.Answer(context.Background(), childID, "approve", "yes"); err != nil {
+	if _, err := service.RunService.Answer(context.Background(), childID, "approve", "yes"); err != nil {
 		t.Fatal(err)
 	}
-	stillPaused, err := service.GetRun(parent.ID)
+	stillPaused, err := service.RunService.GetRun(parent.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if stillPaused.Status != store.RunPaused || stillPaused.Waiting == nil || stillPaused.Waiting.Kind != "child_run" {
 		t.Fatalf("answer implicitly resumed paused parent: %#v", stillPaused)
 	}
-	if _, err := service.ResumePaused(context.Background(), parent.ID, false); err != nil {
+	if _, err := service.RunService.ResumePaused(context.Background(), parent.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	waitRunStatus(t, service, parent.ID, store.RunCompleted, 2*time.Second)
@@ -577,12 +577,12 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Detached: true})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Detached: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(80 * time.Millisecond)
-	if _, err := service.Pause(started.RunID); err != nil {
+	if _, err := service.RunService.Pause(context.Background(), started.RunID); err != nil {
 		t.Fatal(err)
 	}
 	state := waitRunStatus(t, service, started.RunID, store.RunPaused, 3*time.Second)
@@ -621,14 +621,14 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.RecoverInterruptedRunsForeground(context.Background())
+	result, err := service.RunService.RecoverInterruptedRunsForeground(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(result.Recovered) != 1 || result.Recovered[0] != state.ID {
 		t.Fatalf("result=%#v", result)
 	}
-	paused, err := service.GetRun(state.ID)
+	paused, err := service.RunService.GetRun(state.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -664,7 +664,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.Retry(context.Background(), RetryRequest{RunID: state.ID})
+	result, err := service.RunService.Retry(context.Background(), RetryRequest{RunID: state.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -689,18 +689,18 @@ func TestForkPersistsSourceFingerprintAndProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Input: "source"})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Input: "source"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	forked, err := service.Fork(context.Background(), ForkRequest{RunID: started.RunID, Input: "fork input"})
+	forked, err := service.ForkService.Fork(context.Background(), ForkRequest{RunID: started.RunID, Input: "fork input"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if forked.Run == nil || forked.Run.RunID == started.RunID {
 		t.Fatalf("fork=%#v", forked)
 	}
-	state, err := service.GetRun(forked.Run.RunID)
+	state, err := service.RunService.GetRun(forked.Run.RunID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -729,7 +729,7 @@ func TestPlanForkPreservesStructuredTaskSource(t *testing.T) {
 			Adapter: "github", Kind: "github.issue", Reference: "acme/app#42", Revision: "sha256:immutable",
 		},
 	}
-	planned, err := service.Plan(context.Background(), PlanRequest{Goal: candidate.Goal, Profile: "code", Candidate: &candidate, TaskSource: source})
+	planned, err := service.PlanService.Plan(context.Background(), PlanRequest{Goal: candidate.Goal, Profile: "code", Candidate: &candidate, TaskSource: source})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -744,7 +744,7 @@ func TestPlanForkPreservesStructuredTaskSource(t *testing.T) {
 	if err := service.PlanService.savePlanRecord(planned.Record); err != nil {
 		t.Fatal(err)
 	}
-	forked, err := service.Fork(context.Background(), ForkRequest{RunID: sourceRunID})
+	forked, err := service.ForkService.Fork(context.Background(), ForkRequest{RunID: sourceRunID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,7 +772,7 @@ func TestRecursiveSummaryToleratesLinkedChildBeforeStatePublication(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	summary, err := service.Summary(state.ID, true)
+	summary, err := service.RunService.Summary(state.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -808,7 +808,7 @@ func TestAttentionIncludesParkedPlanWithFailureCode(t *testing.T) {
 	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
 		t.Fatal(err)
 	}
-	items, err := service.Attention()
+	items, err := service.RunService.Attention()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -846,7 +846,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	started, err := service.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath})
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath})
 	if err != nil {
 		t.Fatal(err)
 	}

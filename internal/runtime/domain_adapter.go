@@ -32,7 +32,7 @@ func (r *Runner) runDomainAdapter(ctx context.Context, state *store.RunState, no
 
 	resolver := r.adapters
 	if resolver == nil {
-		resolver = domainadapter.Factory{Config: r.config}
+		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve domain adapter", Err: fmt.Errorf("domain adapter resolver dependency is required")}
 	}
 	adapter, err := resolver.Resolve(node.Adapter.Name)
 	if err != nil {

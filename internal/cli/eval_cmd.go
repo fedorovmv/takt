@@ -7,7 +7,7 @@ import (
 	"takt/internal/bootstrap"
 )
 
-func evalCmd(args []string) error {
+func evalCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: takt eval <run|report|benchmark|task-benchmark|compare> [flags]")
 	}
@@ -48,7 +48,7 @@ func evalCmd(args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval run <workflow> --config path --cases dir --workspace-template dir [flags]")
 		}
-		report, err := service.Run(context.Background(), application.EvaluationRunRequest{
+		report, err := service.Run(ctx, application.EvaluationRunRequest{
 			WorkflowPath: fs.Arg(0), ConfigPath: *configPath, CasesDir: *casesDir,
 			WorkspaceTemplate: *templateDir, OutputDir: *outputDir, Repeat: *repeat,
 			ApprovalAnswer: *answer, Replace: *replace,
@@ -74,7 +74,7 @@ func evalCmd(args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval benchmark <matrix.yaml> [--output dir] [--repeat N] [--replace]")
 		}
-		report, err := service.Benchmark(context.Background(), application.EvaluationBenchmarkRequest{MatrixPath: fs.Arg(0), OutputDir: *outputDir, Repeat: *repeat, Replace: *replace})
+		report, err := service.Benchmark(ctx, application.EvaluationBenchmarkRequest{MatrixPath: fs.Arg(0), OutputDir: *outputDir, Repeat: *repeat, Replace: *replace})
 		if err != nil {
 			if report != nil {
 				if printErr := printResult(*jsonOut, report); printErr != nil {
@@ -97,7 +97,7 @@ func evalCmd(args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval task-benchmark <matrix.yaml> [--output dir] [--repeat N] [--replace]")
 		}
-		report, err := service.TaskBenchmark(context.Background(), application.EvaluationBenchmarkRequest{MatrixPath: fs.Arg(0), OutputDir: *outputDir, Repeat: *repeat, Replace: *replace})
+		report, err := service.TaskBenchmark(ctx, application.EvaluationBenchmarkRequest{MatrixPath: fs.Arg(0), OutputDir: *outputDir, Repeat: *repeat, Replace: *replace})
 		if err != nil {
 			if report != nil {
 				if printErr := printResult(*jsonOut, report); printErr != nil {
@@ -116,7 +116,7 @@ func evalCmd(args []string) error {
 		if fs.NArg() != 2 {
 			return fmt.Errorf("usage: takt eval compare <baseline-output-dir> <candidate-output-dir>")
 		}
-		report, err := service.Compare(context.Background(), fs.Arg(0), fs.Arg(1))
+		report, err := service.Compare(ctx, fs.Arg(0), fs.Arg(1))
 		if err != nil {
 			return err
 		}
@@ -130,7 +130,7 @@ func evalCmd(args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval report <evaluation-output-dir>")
 		}
-		report, err := service.Report(context.Background(), fs.Arg(0))
+		report, err := service.Report(ctx, fs.Arg(0))
 		if err != nil {
 			return err
 		}

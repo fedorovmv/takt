@@ -9,31 +9,31 @@ import (
 	"takt/internal/daemon"
 )
 
-func hostCmd(args []string) error {
+func hostCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: takt host <begin|confirm|status|find|guard-tool|guard-completion|release> ...")
 	}
 	switch args[0] {
 	case "begin":
-		return hostBeginCmd(args[1:])
+		return hostBeginCmd(ctx, args[1:])
 	case "confirm":
-		return hostConfirmCmd(args[1:])
+		return hostConfirmCmd(ctx, args[1:])
 	case "status":
-		return hostStatusCmd(args[1:])
+		return hostStatusCmd(ctx, args[1:])
 	case "find":
-		return hostFindCmd(args[1:])
+		return hostFindCmd(ctx, args[1:])
 	case "guard-tool":
-		return hostGuardToolCmd(args[1:])
+		return hostGuardToolCmd(ctx, args[1:])
 	case "guard-completion":
-		return hostGuardCompletionCmd(args[1:])
+		return hostGuardCompletionCmd(ctx, args[1:])
 	case "release":
-		return hostReleaseCmd(args[1:])
+		return hostReleaseCmd(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown host subcommand %q", args[0])
 	}
 }
 
-func hostBeginCmd(args []string) error {
+func hostBeginCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("host begin")
 	workspace := fs.String("workspace", ".", "control workspace")
 	host := fs.String("host", "", "coding-agent host name")
@@ -62,7 +62,7 @@ func hostBeginCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "host.begin", request, &result); err != nil {
+		if err := client.Call(ctx, "host.begin", request, &result); err != nil {
 			return err
 		}
 	} else {
@@ -70,7 +70,7 @@ func hostBeginCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		value, err := service.HostService.BeginHostSession(context.Background(), request)
+		value, err := service.HostService.BeginHostSession(ctx, request)
 		if err != nil {
 			return err
 		}
@@ -79,7 +79,7 @@ func hostBeginCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func hostConfirmCmd(args []string) error {
+func hostConfirmCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("host confirm")
 	workspace := fs.String("workspace", ".", "control workspace")
 	confirm := fs.Bool("confirm", false, "confirm preview and budgets")
@@ -99,7 +99,7 @@ func hostConfirmCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "host.confirm", request, &result); err != nil {
+		if err := client.Call(ctx, "host.confirm", request, &result); err != nil {
 			return err
 		}
 	} else {
@@ -107,7 +107,7 @@ func hostConfirmCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		value, err := service.HostService.ConfirmHostSession(context.Background(), request)
+		value, err := service.HostService.ConfirmHostSession(ctx, request)
 		if err != nil {
 			return err
 		}
@@ -116,7 +116,7 @@ func hostConfirmCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func hostStatusCmd(args []string) error {
+func hostStatusCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("host status")
 	workspace := fs.String("workspace", ".", "control workspace")
 	useDaemon := fs.Bool("daemon", false, "use local daemon")
@@ -134,7 +134,7 @@ func hostStatusCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "host.get", map[string]string{"session_id": fs.Arg(0)}, &result); err != nil {
+		if err := client.Call(ctx, "host.get", map[string]string{"session_id": fs.Arg(0)}, &result); err != nil {
 			return err
 		}
 	} else {
@@ -151,7 +151,7 @@ func hostStatusCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func hostFindCmd(args []string) error {
+func hostFindCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("host find")
 	workspace := fs.String("workspace", ".", "control workspace")
 	host := fs.String("host", "", "coding-agent host")
@@ -171,7 +171,7 @@ func hostFindCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "host.find", map[string]string{"host": *host, "host_session_id": *hostSession}, &result); err != nil {
+		if err := client.Call(ctx, "host.find", map[string]string{"host": *host, "host_session_id": *hostSession}, &result); err != nil {
 			return err
 		}
 	} else {
@@ -188,7 +188,7 @@ func hostFindCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func hostGuardToolCmd(args []string) error {
+func hostGuardToolCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("host guard-tool")
 	workspace := fs.String("workspace", ".", "control workspace")
 	tool := fs.String("tool", "", "host tool name")
@@ -209,7 +209,7 @@ func hostGuardToolCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "host.guard_tool", request, &result); err != nil {
+		if err := client.Call(ctx, "host.guard_tool", request, &result); err != nil {
 			return err
 		}
 	} else {
@@ -226,7 +226,7 @@ func hostGuardToolCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func hostGuardCompletionCmd(args []string) error {
+func hostGuardCompletionCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("host guard-completion")
 	workspace := fs.String("workspace", ".", "control workspace")
 	kind := fs.String("kind", "final", "final|question|status")
@@ -246,7 +246,7 @@ func hostGuardCompletionCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "host.guard_completion", request, &result); err != nil {
+		if err := client.Call(ctx, "host.guard_completion", request, &result); err != nil {
 			return err
 		}
 	} else {
@@ -263,7 +263,7 @@ func hostGuardCompletionCmd(args []string) error {
 	return printResult(*jsonOut, &result)
 }
 
-func hostReleaseCmd(args []string) error {
+func hostReleaseCmd(ctx context.Context, args []string) error {
 	fs := newFlagSet("host release")
 	workspace := fs.String("workspace", ".", "control workspace")
 	useDaemon := fs.Bool("daemon", false, "use local daemon")
@@ -281,7 +281,7 @@ func hostReleaseCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Call(context.Background(), "host.release", map[string]string{"session_id": fs.Arg(0)}, &result); err != nil {
+		if err := client.Call(ctx, "host.release", map[string]string{"session_id": fs.Arg(0)}, &result); err != nil {
 			return err
 		}
 	} else {
