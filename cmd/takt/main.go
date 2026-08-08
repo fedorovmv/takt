@@ -21,6 +21,7 @@ import (
 	"takt/internal/authoring"
 	"takt/internal/blockcatalog"
 	"takt/internal/command"
+	"takt/internal/compatibility"
 	cfgpkg "takt/internal/config"
 	"takt/internal/control"
 	"takt/internal/daemon"
@@ -84,6 +85,8 @@ func run(args []string) error {
 		return blockCmd(args[1:])
 	case "adapter":
 		return adapterCmd(args[1:])
+	case "compatibility":
+		return compatibilityCmd(args[1:])
 	case "package":
 		return packageCmd(args[1:])
 	case "answer":
@@ -331,6 +334,75 @@ func blockCmd(args []string) error {
 		return printResult(*jsonOut, catalog)
 	default:
 		return fmt.Errorf("unknown block subcommand %q", subcommand)
+	}
+}
+
+func compatibilityCmd(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: takt compatibility <matrix|fields|schema|check> ...")
+	}
+	switch args[0] {
+	case "matrix":
+		fs := newFlagSet("compatibility matrix")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 0 {
+			return fmt.Errorf("usage: takt compatibility matrix [--json]")
+		}
+		return printResult(*jsonOut, compatibility.CurrentMatrix())
+	case "fields":
+		fs := newFlagSet("compatibility fields")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 0 {
+			return fmt.Errorf("usage: takt compatibility fields [--json]")
+		}
+		return printResult(*jsonOut, compatibility.CurrentFieldMatrix())
+	case "schema":
+		fs := newFlagSet("compatibility schema")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 0 {
+			return fmt.Errorf("usage: takt compatibility schema [--json]")
+		}
+		return printResult(*jsonOut, compatibility.CurrentMatrix().SchemaSubset)
+	case "check":
+		fs := newFlagSet("compatibility check")
+		workspace := fs.String("workspace", ".", "control workspace")
+		configPath := fs.String("config", ".takt/config.yaml", "config path")
+		live := fs.Bool("live", false, "probe configured binaries/domain adapters")
+		strict := fs.Bool("strict", false, "treat compatibility warnings as an error")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--workspace": true, "--config": true, "--live": false, "--strict": false, "--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 0 {
+			return fmt.Errorf("usage: takt compatibility check [--workspace dir] [--config path] [--live] [--strict]")
+		}
+		path := *configPath
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(*workspace, path)
+		}
+		cfg, err := cfgpkg.Load(path)
+		if err != nil {
+			return err
+		}
+		report := compatibility.Check(context.Background(), cfg, compatibility.CheckOptions{Workspace: *workspace, Live: *live})
+		if err := printResult(*jsonOut, report); err != nil {
+			return err
+		}
+		if report.Status == "error" || (*strict && report.Status == "warning") {
+			return fmt.Errorf("compatibility check status: %s", report.Status)
+		}
+		return nil
+	default:
+		return fmt.Errorf("usage: takt compatibility <matrix|fields|schema|check> ...")
 	}
 }
 
@@ -1809,7 +1881,7 @@ func wantsJSON(args []string) bool {
 	value := false
 	if len(args) > 0 {
 		switch args[0] {
-		case "run", "plan", "execute", "steer", "answer", "resume", "status", "children", "artifacts", "worktree", "eval", "adapter":
+		case "run", "plan", "execute", "steer", "answer", "resume", "status", "children", "artifacts", "worktree", "eval", "adapter", "compatibility":
 			value = true
 		case "command":
 			value = len(args) > 1 && args[1] == "run"
@@ -1866,5 +1938,5 @@ func printErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|task|run|runs|attention|notify|plan|execute|steer|host|workflow|block|adapter|package|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
+	return fmt.Errorf("usage: takt <init|validate|task|run|runs|attention|notify|plan|execute|steer|host|workflow|block|adapter|compatibility|package|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
 }

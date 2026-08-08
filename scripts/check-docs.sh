@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.29.0" \
-  "VERSION|0.1.47-alpha" \
-  "internal/version/version.go|0.1.47-alpha" \
+  "skills/takt/VERSION|0.30.0" \
+  "VERSION|0.1.48-alpha" \
+  "internal/version/version.go|0.1.48-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/references/configuration.md|Приоритет настроек" \
@@ -130,6 +130,16 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-075" \
   "ARCHITECTURE_DECISIONS.md|ADR-076" \
   "ARCHITECTURE_DECISIONS.md|ADR-077" \
+  "ARCHITECTURE_DECISIONS.md|ADR-078" \
+  "ARCHITECTURE_DECISIONS.md|ADR-079" \
+  "docs/62-contract-convergence-compatibility-v0.1.48.md|Contract Convergence & Compatibility Matrix" \
+  "docs/03-specification.md|takt-schema-subset/v1" \
+  "docs/10-assistant-adapter-spec.md|takt compatibility matrix" \
+  "schemas/schema-subset-v1.schema.json|takt-schema-subset/v1" \
+  "schemas/compatibility-matrix.schema.json|Takt Compatibility Matrix" \
+  "schemas/compatibility-check.schema.json|CompatibilityCheck" \
+  "schemas/v1beta1-field-matrix.schema.json|V1Beta1FieldMatrix" \
+  "scripts/test-compatibility.sh|compatibility contract: PASS" \
   "docs/61-v0.2-stabilization-iteration-history-v0.1.47.md|Iteration History & Contract Audit" \
   "schemas/run-state.schema.json|loop_iterations" \
   "scripts/test-iteration-history.sh|iteration history contract: PASS" \

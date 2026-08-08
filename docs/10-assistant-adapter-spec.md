@@ -345,3 +345,16 @@ JSON stream текущего CLI не гарантирует отдельное 
 `cmd/takt-fake-assistant` использует public v1alpha2 request/result validators при работе как process wrapper, а его contract test повторно проверяет captured stdout через `ValidateTranscript`. Нативные Pi/OpenCode adapters не являются v1alpha2 process wrappers и поэтому не должны искусственно прогоняться через этот kit.
 
 Conformance kit видит только протокольный transcript stdout и поэтому **не может** доказать соответствие OS process exit status полю `result.exit_code`; это отдельно проверяет process-host contract test. Conformance kit дополняет, а не заменяет product-specific smoke test: возможность `resume`, pre-execution tool control или read-only режима считается поддержанной только после фактической проверки хоста. Пример и матрица возможностей находятся в `examples/agent-session-adapters/README.md`.
+
+
+## Compatibility matrix v0.2
+
+Начиная с `v0.1.48`, поддерживаемые границы публикуются через:
+
+```bash
+takt compatibility matrix
+takt compatibility check --config .takt/config.yaml
+takt compatibility check --config .takt/config.yaml --live
+```
+
+Session adapter compatibility не равна host-control compatibility. Built-in Pi/OpenCode contract fixtures проверяют transport/parser semantics, но bundled host extensions остаются `guarded` до live conformance на pinned host version. `takt-assistant/v1alpha1` сохраняется для чтения старых wrappers и помечен deprecated для новых интеграций; целевой process protocol — `v1alpha2`.

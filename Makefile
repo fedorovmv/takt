@@ -1,4 +1,4 @@
-.PHONY: build test race vet fmt docs contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract simple-reliable-contract evidence-routing-contract check demo
+.PHONY: build test race vet fmt docs contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract simple-reliable-contract evidence-routing-contract check demo
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -120,10 +120,13 @@ runtime-reliability-contract:
 iteration-history-contract: build
 	./scripts/test-iteration-history.sh
 
+compatibility-contract: build
+	./scripts/test-compatibility.sh
+
 agent-adapter-conformance:
 	go test ./sdk/agentadapter -count=1
 
-check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract dynamic-takt-contract block-package-contract host-control-contract host-integration-typescript autonomous-run-contract simple-reliable-contract evidence-routing-contract adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract agent-adapter-conformance docs
+check: fmt vet test race build contracts pi-contracts opencode-contracts route-e2e route-eval route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract dynamic-takt-contract block-package-contract host-control-contract host-integration-typescript autonomous-run-contract simple-reliable-contract evidence-routing-contract adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract agent-adapter-conformance docs
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml

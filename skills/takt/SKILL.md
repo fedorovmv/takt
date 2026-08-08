@@ -280,7 +280,7 @@ output_path: $ARTIFACTS_DIR/plan.md
 
 ## Структурированный вывод и умный роутер
 
-Для классификации, маршрутизации и других машинных решений задавай `output_format`. Он поддерживает проверяемый JSON-Schema-подобный subset: базовые типы, `properties`, `required`, `enum`, `items`, `additionalProperties`, min/max для массивов, строк, чисел и объектов, а также `pattern`.
+Для классификации, маршрутизации и других машинных решений задавай `output_format`. `input.schema` и `output_format` используют один версионированный контракт `takt-schema-subset/v1`, а не произвольный JSON Schema. Поддерживаются `type`, `description`, `properties`, `required`, строковый `enum`, `items`, `minItems/maxItems/uniqueItems`, `minLength/maxLength/pattern`, `minimum/maximum`, `minProperties/maxProperties` и boolean `additionalProperties`. `$ref`, `$defs`, `oneOf/anyOf/allOf`, `const/default/format` и schema-valued `additionalProperties` не используй. Точную машиночитаемую границу проверяй через `takt compatibility schema`.
 
 ```yaml
 - id: route
@@ -307,6 +307,8 @@ output_path: $ARTIFACTS_DIR/plan.md
 Runtime принимает ровно одно JSON-значение и завершает узел `protocol`-ошибкой при нарушении схемы. В шаблонах и `when` доступны вложенные пути `${nodes.route.output.workflow}` и `nodes.route.output.workflow`.
 
 Профиль может объявить именованный каталог `workflows`. Запускай роутер через `takt run code`, конкретный процесс — через `takt run code:piv-loop`, список — через `takt workflow list code`.
+
+Перед переносом конфигурации на другую машину или обновлением внешнего исполнителя используй `takt compatibility check --config <path>`. Для release/CI-preflight добавляй `--strict`; `--live` проверяет версию Pi/OpenCode и `Describe()` domain adapters, но сам по себе не доказывает live host conformance и не переводит guarded-интеграцию в strict. Текущий support boundary смотри через `takt compatibility matrix`, а field-level решения будущего `v1beta1` — через `takt compatibility fields`.
 
 ## Выбор prompt или command
 

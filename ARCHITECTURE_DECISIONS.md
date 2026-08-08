@@ -535,3 +535,17 @@ Nested `loop_group` остаётся запрещённым в `v0.2` и пер�
 Перед `v1beta1` контракты делятся на четыре категории: `stable-candidate`, `supported-alpha`, `deprecated`, `internal`. Workflow/Config/BlockPackage, durable Run lifecycle, typed artifacts, пять `takt.task.*` и neutral domain operations являются stable-candidate. Dynamic Plan/evaluation formats, Adapter SDK и advanced MCP host/worker/operator surfaces остаются supported-alpha до production evidence. `takt-assistant/v1alpha1` считается deprecated в пользу `v1alpha2`, но продолжает читаться ради совместимости. Store layout, expanded IDs, daemon socket и fake fixtures являются internal.
 
 `v0.2` продолжает принимать `takt/v1alpha1`; additive state changes не требуют новой authoring apiVersion. Финальная field-by-field migration в `v1beta1` выполняется только после live Route DSL, Go и Document evidence.
+
+## ADR-078. Structured JSON contracts use a versioned Takt subset, not implicit full JSON Schema
+
+**Решение.** `Workflow.input.schema` и `Node.output_format` используют единый `takt-schema-subset/v1`. Реализация validation/normalization находится в одном пакете `internal/schemasubset`; текущий набор types/keywords фиксируется как контракт v0.2. Полный JSON Schema (`$ref`, `oneOf`, schema-valued `additionalProperties` и т. п.) не заявляется.
+
+**Почему.** Поддержка произвольного JSON Schema потребовала бы отдельного полноценного validator/compiler и создала бы скрытые различия между editor schema, authoring и runtime. Текущий subset уже покрывает фактические structured contracts Takt. Новые keywords должны добавляться только по evidence и с явной версией совместимости.
+
+## ADR-079. Compatibility is reported separately for session adapters, host integrations and domain adapters
+
+**Решение.** Takt публикует `takt compatibility matrix|fields|schema|check`. Compatibility matrix не смешивает session adapter contract с host-control enforcement и domain transport. Live version probe или synthetic fixture не повышают host integration до `strict`; strict требует отдельного live conformance на pinned host version.
+
+Field matrix автоматически перечисляет audited public JSON fields и имеет contract-test на точный набор полей stable-candidate authoring/config contracts.
+
+**Почему.** До `v0.1.48` сведения о Pi/OpenCode version fixtures, host `guarded` status и process protocol deprecation находились в разных документах и легко воспринимались как одна гарантия. Машиночитаемая матрица делает границы совместимости проверяемыми и пригодными для CI/preflight.

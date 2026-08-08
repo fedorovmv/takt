@@ -3,6 +3,7 @@ package assistant
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"takt/internal/spec"
 )
@@ -104,3 +105,31 @@ func (f Factory) resolveDefaultAssistant() (string, spec.AssistantSpec, bool) {
 type UnknownAssistantError struct{ Name string }
 
 func (e *UnknownAssistantError) Error() string { return "unknown assistant: " + e.Name }
+
+// ProbeConfiguredVersion reports the coding-agent CLI version for built-in
+// Pi/OpenCode adapters without starting an agent session. Process wrappers do
+// not have a provider-neutral version probe and must expose their own version
+// through deployment metadata or a separate conformance suite.
+func ProbeConfiguredVersion(ctx context.Context, assistantSpec spec.AssistantSpec, workspace string) (string, error) {
+	req := Request{Workspace: workspace, Attempt: 1}
+	switch assistantSpec.Type {
+	case "pi":
+		binary := assistantSpec.Binary
+		if binary == "" {
+			binary = "pi"
+		}
+		return probePiVersion(ctx, binary, workspace, piEnvironment(assistantSpec, req))
+	case "opencode":
+		binary := assistantSpec.Binary
+		if binary == "" {
+			binary = "opencode"
+		}
+		env, err := openCodeEnvironment(assistantSpec, req)
+		if err != nil {
+			return "", err
+		}
+		return probeOpenCodeVersion(ctx, binary, workspace, env)
+	default:
+		return "", fmt.Errorf("assistant type %q has no provider-neutral version probe", assistantSpec.Type)
+	}
+}

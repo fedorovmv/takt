@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.48-alpha
+
+- Зафиксирован общий structured JSON contract `takt-schema-subset/v1` для `input.schema` и `output_format`; полный JSON Schema не заявляется, а unsupported keywords fail-closed проверяются общим validator.
+- Добавлены `takt compatibility matrix|fields|schema|check`: session adapters, host integrations и domain adapters имеют раздельные support/verification статусы; `--live` выполняет доступные probes, `--strict` даёт CI/preflight gate.
+- Добавлен машиночитаемый field-by-field audit будущей границы `v1beta1`; contract-test ломается при незадокументированном изменении публичных JSON-полей.
+- `takt-assistant/v1alpha1` формально помечен deprecated для новых process wrappers; целевой process protocol — `v1alpha2`, legacy чтение сохраняется в v0.2.
+- Добавлены JSON Schema для schema subset, compatibility matrix/check и v1beta1 field matrix, а compatibility E2E включён в `make check` и `scripts/verify.sh`.
+- Roadmap/backlog/status уточнены: финальная migration к `v1beta1` остаётся после production evidence, а live host conformance/reference adapters вынесены во внешние seams.
+
 ## v0.1.47-alpha
 
 - Начат стабилизационный этап `v0.2`: опубликован contract audit `stable-candidate | supported-alpha | deprecated | internal` и draft migration policy `v1alpha1 → v1beta1`.

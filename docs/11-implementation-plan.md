@@ -1,6 +1,6 @@
 # План реализации Takt v0.2
 
-Актуальный план после `v0.1.47-alpha`. Исторические этапы и реализованные возможности перечислены в `05-implementation-status.md`; здесь остаются только действия, которые влияют на решение о стабилизации `v0.2`.
+Актуальный план после `v0.1.48-alpha`. Исторические этапы и реализованные возможности перечислены в `05-implementation-status.md`; здесь остаются только действия, которые влияют на решение о стабилизации `v0.2`.
 
 ## 1. Принцип
 
@@ -85,17 +85,16 @@ Task Router
 
 Цель — подтвердить исходную границу Takt: Route DSL, Go и документы используют одно ядро, а предметная логика живёт в workflow/blocks/skills/adapters.
 
-## 5. Веха S1 — contract/schema audit v0.2 — начато в v0.1.47
+## 5. Веха S1 — contract/schema audit v0.2 — внутренний срез завершён в v0.1.48
 
-В `v0.1.47` выполнены пункты 1, 3, 4 и 6: опубликован первичный contract inventory/classification, ужесточены evaluation schemas, добавлена bounded iteration history и принято решение оставить nested `loop_group` запрещённым.
+`v0.1.47` дал contract inventory, bounded iteration history и решение по nested `loop_group`. `v0.1.48` завершает внутреннюю часть S1:
 
-После E1/E2 остаётся:
+1. field-level matrix для stable-candidate authoring/config contracts;
+2. `takt-schema-subset/v1` как окончательная граница structured input/output в v0.2;
+3. machine-readable compatibility matrix session/host/domain adapters;
+4. CLI preflight `takt compatibility check`, включая optional live version/Describe probes.
 
-1. по production evidence уточнить field-level `keep | deprecate | migrate | remove`;
-2. определить, нужна ли полная JSON Schema для `output_format`;
-3. зафиксировать adapter/host compatibility matrix.
-
-Результат — проект `v1beta1`, а не новая runtime-фича.
+После E1/E2 остаётся только подтвердить решения production evidence и сформировать окончательный `v1beta1` migration.
 
 ## 6. Веха S2 — migration в v1beta1
 

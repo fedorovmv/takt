@@ -1,6 +1,6 @@
 # План развития Takt
 
-Актуальный план после `v0.1.47-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/61-*.md`.
+Актуальный план после `v0.1.48-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/62-*.md`.
 
 ## Текущая позиция
 
@@ -30,7 +30,7 @@ Benchmark отдельно измеряет route accuracy, terminal success, pl
 
 ## P1. v0.2 Stabilization
 
-Stabilization начат в `v0.1.47`, но `v1beta1` не замораживается до production evidence.
+Stabilization начат в `v0.1.47` и продолжен в `v0.1.48`, но `v1beta1` не замораживается до production evidence.
 
 В `v0.1.47` уже выполнены:
 
@@ -39,13 +39,18 @@ Stabilization начат в `v0.1.47`, но `v1beta1` не заморажива�
 - решение оставить nested `loop_group` запрещённым в `v0.2`;
 - draft migration policy `v1alpha1 → v1beta1`.
 
-Остаётся после первого production evidence:
+В `v0.1.48` выполнены:
 
-- решение по границе `output_format`;
-- adapter/host compatibility matrix;
-- deprecation policy;
-- финальная field-by-field migration `v1alpha1 → v1beta1`;
-- очистка исторических полей и документации, которые больше не являются частью целевого API.
+- текущий structured contract заморожен как `takt-schema-subset/v1`, без обещания полного JSON Schema;
+- добавлены `compatibility matrix|check` для session/host/domain seams;
+- добавлен machine-readable field-by-field audit stable-candidate API;
+- зафиксирована deprecation boundary process `v1alpha1` → целевой `v1alpha2` для новых wrappers.
+
+Остаётся после production evidence:
+
+- финальная migration `v1alpha1 → v1beta1` по фактически используемым полям;
+- при необходимости migrator и cleanup deprecated compatibility fields;
+- live host/external seam evidence, которое может уточнить supported-alpha части до freeze.
 
 Цель v0.2 — не максимальное число функций, а небольшой набор доказанных стабильных контрактов.
 

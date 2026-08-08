@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.local/schemas/v1beta1-field-matrix.schema.json",
+  "title": "Takt v1beta1 field decision matrix",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "takt_version", "scope", "fields"],
+  "properties": {
+    "apiVersion": {"const": "takt-compatibility/v1"},
+    "kind": {"const": "V1Beta1FieldMatrix"},
+    "takt_version": {"type": "string", "minLength": 1},
+    "scope": {"type": "string", "minLength": 1},
+    "fields": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["contract", "field", "support", "decision"],
+        "properties": {
+          "contract": {"type": "string", "minLength": 1},
+          "field": {"type": "string", "minLength": 1},
+          "support": {"enum": ["stable-candidate", "supported-alpha", "deprecated", "internal"]},
+          "decision": {"enum": ["keep", "migrate-value", "defer", "deprecate", "remove"]},
+          "v1beta1_field": {"type": "string"},
+          "migration": {"type": "string"},
+          "notes": {"type": "string"}
+        }
+      }
+    }
+  }
+}

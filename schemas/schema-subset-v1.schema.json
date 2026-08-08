@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.local/schemas/schema-subset-v1.schema.json",
+  "title": "Takt Schema Subset v1",
+  "description": "Definition schema for takt-schema-subset/v1 used by workflow input.schema and node output_format.",
+  "$ref": "#/$defs/schema",
+  "$defs": {
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["object", "array", "string", "number", "integer", "boolean"]},
+        "description": {"type": "string"},
+        "properties": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/schema"}
+        },
+        "required": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "enum": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
+        "items": {"$ref": "#/$defs/schema"},
+        "minItems": {"type": "integer", "minimum": 0},
+        "maxItems": {"type": "integer", "minimum": 0},
+        "uniqueItems": {"type": "boolean"},
+        "minLength": {"type": "integer", "minimum": 0},
+        "maxLength": {"type": "integer", "minimum": 0},
+        "pattern": {"type": "string"},
+        "minimum": {"type": "number"},
+        "maximum": {"type": "number"},
+        "minProperties": {"type": "integer", "minimum": 0},
+        "maxProperties": {"type": "integer", "minimum": 0},
+        "additionalProperties": {"type": "boolean"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "object"}}, "required": ["type"]},
+          "then": {},
+          "else": {
+            "not": {"anyOf": [
+              {"required": ["properties"]}, {"required": ["required"]},
+              {"required": ["minProperties"]}, {"required": ["maxProperties"]},
+              {"required": ["additionalProperties"]}
+            ]}
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "array"}}, "required": ["type"]},
+          "then": {"required": ["items"]},
+          "else": {"not": {"anyOf": [
+            {"required": ["items"]}, {"required": ["minItems"]},
+            {"required": ["maxItems"]}, {"required": ["uniqueItems"]}
+          ]}}
+        },
+        {
+          "if": {"properties": {"type": {"const": "string"}}, "required": ["type"]},
+          "then": {},
+          "else": {"not": {"anyOf": [
+            {"required": ["minLength"]}, {"required": ["maxLength"]}, {"required": ["pattern"]}, {"required": ["enum"]}
+          ]}}
+        },
+        {
+          "if": {"properties": {"type": {"enum": ["number", "integer"]}}, "required": ["type"]},
+          "then": {},
+          "else": {"not": {"anyOf": [{"required": ["minimum"]}, {"required": ["maximum"]}]}}
+        }
+      ]
+    }
+  }
+}

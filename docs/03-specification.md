@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.47-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.48-alpha`. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -319,7 +319,7 @@ nodes:
 
 Передаёт assistant встроенный prompt.
 
-Для `command`, `prompt` и `script` можно задать проверяемый JSON-контракт `output_format`. Runtime принимает ровно одно JSON-значение, проверяет типы, обязательные поля, `enum`, дополнительные свойства, min/max для массивов, строк, чисел и объектов, а также строковый `pattern`, затем сохраняет канонический компактный JSON. Нарушение контракта завершает узел ошибкой `protocol`.
+Для `command`, `prompt` и `script` можно задать проверяемый JSON-контракт `output_format`. `input.schema` и `output_format` используют один версионированный контракт `takt-schema-subset/v1`, **не полный JSON Schema**. Поддерживаются `type`, `description`, `properties`, `required`, строковый `enum`, `items`, `minItems/maxItems/uniqueItems`, `minLength/maxLength/pattern`, `minimum/maximum`, `minProperties/maxProperties` и boolean `additionalProperties`. `$ref`, `oneOf/anyOf/allOf`, `const/default/format` и schema-valued `additionalProperties` не поддерживаются. Runtime принимает ровно одно JSON-значение и сохраняет канонический компактный JSON. Нарушение контракта завершает узел ошибкой `protocol`. Машиночитаемая граница доступна через `takt compatibility schema`.
 
 ```yaml
 - id: classify

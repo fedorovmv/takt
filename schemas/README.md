@@ -1,5 +1,9 @@
 # Машиночитаемые схемы
 
+- `schema-subset-v1.schema.json` — meta-schema для `takt-schema-subset/v1`, общего контракта `input.schema` и `output_format`;
+- `compatibility-matrix.schema.json` — machine-readable support/verification matrix session adapters, host integrations, domain adapters и MCP surfaces;
+- `compatibility-check.schema.json` — отчёт `takt compatibility check` для конкретного Config;
+- `v1beta1-field-matrix.schema.json` — field-level решения `keep|migrate-value|defer|...` для будущей границы v1beta1;
 - `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `default_assistant`, `mock`, `process`, `pi`, `opencode`, Pi-specific `session_dir/project_trust` и OpenCode-specific `agent/auto_approve`, `max_output_bytes` и условные запреты несовместимых полей;
 - `task-route.schema.json` — проверяемое решение Task Router: `workflow|template|dynamic`, сигналы и прогрессивные controls;
 - `evidence-manifest.schema.json` — внутренний EvidenceManifest: baseline, fingerprints известных failures, check-to-evidence mapping и verdict, привязанный к candidate SHA-256;

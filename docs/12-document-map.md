@@ -9,6 +9,7 @@
 1. `docs/01-project.md`;
 1. `docs/05-implementation-status.md`;
 1. `skills/takt/SKILL.md`;
+1. `docs/62-contract-convergence-compatibility-v0.1.48.md`;
 1. `docs/61-v0.2-stabilization-iteration-history-v0.1.47.md`;
 1. `docs/60-task-level-dynamic-evaluation-v0.1.46.md`;
 1. `docs/59-route-dsl-evaluation-strategy-benchmark-v0.1.45.md`;
@@ -94,7 +95,7 @@
 | Script-узлы и типизированные артефакты | `43-script-nodes-typed-artifacts-v0.1.29.md` | фактический |
 | Динамический fan-out governed children | `42-governed-child-fanout-v0.1.28.md` | фактический |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
-| v0.2 contract audit и iteration history | `61-v0.2-stabilization-iteration-history-v0.1.47.md`, `09-runtime-semantics.md`, `../schemas/run-state.schema.json` | фактический срез стабилизации; v1beta1 ещё не выпущен |
+| v0.2 contract convergence и compatibility | `62-contract-convergence-compatibility-v0.1.48.md`, `61-v0.2-stabilization-iteration-history-v0.1.47.md`, `09-runtime-semantics.md`, `../schemas/schema-subset-v1.schema.json`, `../schemas/v1beta1-field-matrix.schema.json` | schema subset/field audit/matrix фактические; v1beta1 ещё не выпущен |
 | Multi-repo Dynamic Workflows | `57-multi-repo-dynamic-workflows-v0.1.43.md`, `../schemas/workspace.schema.json` | фактический |
 | Runtime reliability, SecretRef и локальный OS sandbox | `58-runtime-reliability-local-security-v0.1.44.md`, `../schemas/workflow.schema.json`, `../schemas/run-state.schema.json` | фактический |
 | Переносимые BlockPackage и lock/policy | `56-portable-package-distribution-v0.1.42.md`, `03-specification.md` | фактический |

@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.local/schemas/compatibility-check.schema.json",
+  "title": "Takt Compatibility Check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "takt_version",
+    "status",
+    "schema"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "takt-compatibility/v1"
+    },
+    "kind": {
+      "const": "CompatibilityCheck"
+    },
+    "takt_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "ready",
+        "warning",
+        "error"
+      ]
+    },
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "status",
+        "contract"
+      ],
+      "properties": {
+        "version": {
+          "const": "takt-schema-subset/v1"
+        },
+        "status": {
+          "type": "string"
+        },
+        "contract": {
+          "type": "string"
+        }
+      }
+    },
+    "assistants": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component"
+      }
+    },
+    "adapters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component"
+      }
+    },
+    "bundled_hosts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/host"
+      }
+    },
+    "problems": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "type",
+        "support",
+        "status"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "support": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "warning",
+            "error"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "version": {
+          "type": "string"
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host",
+        "integration",
+        "target_contract",
+        "enforcement",
+        "live_verified",
+        "strict_allowed"
+      ],
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "integration": {
+          "type": "string"
+        },
+        "target_contract": {
+          "type": "string"
+        },
+        "enforcement": {
+          "enum": [
+            "advisory",
+            "guarded",
+            "strict"
+          ]
+        },
+        "live_verified": {
+          "type": "boolean"
+        },
+        "strict_allowed": {
+          "type": "boolean"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "missing_for_strict": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "notes": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

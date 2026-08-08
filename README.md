@@ -6,20 +6,20 @@
 
 ## Область применения текущей версии
 
-`v0.1.47-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.48-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Локальный `takt daemon` поддерживает фоновые Run и несколько клиентов одного пользователя через Unix socket. Сетевой и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и distributed locking. Эти режимы не поддерживаются.
 
 ## Текущая точка развития
 
-К `v0.1.47-alpha` основные механизмы локального Takt уже собраны. Ближайшая цель — **доказать пользу существующих стратегий на реальных задачах и завершить стабилизацию v0.2**, а не продолжать наращивать runtime без измерений.
+К `v0.1.48-alpha` основные механизмы локального Takt уже собраны. Ближайшая цель — **доказать пользу существующих стратегий на реальных задачах и завершить стабилизацию v0.2**, а не продолжать наращивать runtime без измерений.
 
 Приоритеты:
 
 1. live Route DSL matrix на реальном обезличенном corpus и штатном validator;
 2. task-level benchmark `Router → Dynamic Plan → replan` — измерительный контур реализован в `v0.1.46`;
 3. production-like Go и Document evaluation;
-4. contract/schema audit и iteration-history debt начаты в `v0.1.47`; финальный `v1beta1` — только после production evidence;
+4. contract convergence продолжен в `v0.1.48`: `takt-schema-subset/v1`, field matrix и compatibility check; финальный `v1beta1` — только после production evidence;
 5. затем reference adapters и human-reviewed learning loop для skills/blocks.
 
 Актуальный план: [`docs/06-roadmap.md`](docs/06-roadmap.md), backlog: [`docs/14-backlog-v0.2.md`](docs/14-backlog-v0.2.md).
@@ -161,6 +161,26 @@ Task-level matrix сравнивает не только terminal success, но 
 
 
 
+
+## Совместимость и граница structured JSON
+
+`input.schema` и `output_format` используют версионированный `takt-schema-subset/v1`, а не полный JSON Schema. Точный список поддерживаемых keywords доступен машинно:
+
+```bash
+takt compatibility schema
+```
+
+Для внешних executors и интеграций compatibility разделена на session adapter, coding-agent host integration и domain adapter:
+
+```bash
+takt compatibility matrix
+takt compatibility fields
+takt compatibility check --config .takt/config.yaml
+takt compatibility check --config .takt/config.yaml --live
+takt compatibility check --config .takt/config.yaml --strict
+```
+
+`--live` выполняет доступный version/Describe probe, но не считается live host conformance. Bundled Pi/OpenCode host integrations остаются `guarded`, пока конкретная версия хоста не прошла отдельный conformance smoke.
 
 ## Локальное управление через MCP и daemon
 
@@ -366,7 +386,7 @@ takt package sync
 
 Local/Git `BlockPackage` фиксируется lock-файлом и автоматически подключается к профилю. См. `examples/portable-package/` и `docs/56-portable-package-distribution-v0.1.42.md`.
 
-Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.16.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon, v0.1.34-alpha — Dynamic Takt и coding-agent flow, v0.1.35-alpha — доверенные корпоративные блоки и исправления бюджетов/исполнения, v0.1.36-alpha — host-control core и guarded Pi/OpenCode integrations, v0.1.37-alpha — автономные Run, attention, pause/recovery и уведомления, v0.1.38-alpha — нейтральный coding-agent, Task Router, simple-reliable template и role-based MCP surfaces, v0.1.39-alpha — Role Contract, bounded TaskBrief, required/preferred checks, deny/repair/warn и bounded automatic repair с исправлениями автономного control plane, v0.1.40-alpha — EvidenceManifest, baseline-aware failure classification, parking и reconciliation неизвестных external side effects, v0.1.41-alpha — нейтральную Adapter Platform для coding-agent, SCM, tracker и CI, v0.1.42-alpha — переносимую доставку пакетов с lock, dependency/capability preflight и source/signature policy, v0.1.43-alpha — multi-repo Dynamic Workflows с repository catalog, изолированными repo child Runs, per-repo evidence, neutral SCM publication и integration verification, v0.1.44-alpha — durable retry/backoff, diagnostic fingerprints, fan-out early termination, SecretRef/redaction, локальный OS sandbox для bash/script и NodePath, а v0.1.45-alpha — сравнительный Route DSL benchmark с matrix/repeat/compare/gates, true time-to-valid и стабильностью diagnostics. v0.1.46-alpha добавляет task-level Dynamic Takt benchmark и закрывает общий redaction-контракт external/control persistence, а v0.1.47-alpha начинает стабилизацию v0.2: first-class iteration history, bounded loop state, contract audit и draft migration policy к v1beta1. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.16.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon, v0.1.34-alpha — Dynamic Takt и coding-agent flow, v0.1.35-alpha — доверенные корпоративные блоки и исправления бюджетов/исполнения, v0.1.36-alpha — host-control core и guarded Pi/OpenCode integrations, v0.1.37-alpha — автономные Run, attention, pause/recovery и уведомления, v0.1.38-alpha — нейтральный coding-agent, Task Router, simple-reliable template и role-based MCP surfaces, v0.1.39-alpha — Role Contract, bounded TaskBrief, required/preferred checks, deny/repair/warn и bounded automatic repair с исправлениями автономного control plane, v0.1.40-alpha — EvidenceManifest, baseline-aware failure classification, parking и reconciliation неизвестных external side effects, v0.1.41-alpha — нейтральную Adapter Platform для coding-agent, SCM, tracker и CI, v0.1.42-alpha — переносимую доставку пакетов с lock, dependency/capability preflight и source/signature policy, v0.1.43-alpha — multi-repo Dynamic Workflows с repository catalog, изолированными repo child Runs, per-repo evidence, neutral SCM publication и integration verification, v0.1.44-alpha — durable retry/backoff, diagnostic fingerprints, fan-out early termination, SecretRef/redaction, локальный OS sandbox для bash/script и NodePath, а v0.1.45-alpha — сравнительный Route DSL benchmark с matrix/repeat/compare/gates, true time-to-valid и стабильностью diagnostics. v0.1.46-alpha добавляет task-level Dynamic Takt benchmark и закрывает общий redaction-контракт external/control persistence, а v0.1.47-alpha начинает стабилизацию v0.2: first-class iteration history, bounded loop state, contract audit и draft migration policy к v1beta1, а v0.1.48-alpha фиксирует `takt-schema-subset/v1`, machine-readable field audit и adapter/host/domain compatibility matrix. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
 
 Evaluation runner фиксирует идентичность стратегии, корпуса, workspace и валидатора, execution identity каждой попытки, true time-to-valid и diagnostic fingerprints. `examples/route-dsl-benchmark` содержит 25 размеченных regression/production-shaped synthetic cases и matrix для сравнения стратегий. Предметный следующий этап — прогнать ту же matrix со штатным Route DSL validator и отдельным реальным обезличенным corpus, когда он доступен. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 

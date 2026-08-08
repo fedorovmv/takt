@@ -94,6 +94,9 @@ func TestJSONModeDefaults(t *testing.T) {
 	if !wantsJSON([]string{"eval", "report", ".takt/evals/latest"}) {
 		t.Fatal("eval should default to JSON")
 	}
+	if !wantsJSON([]string{"compatibility", "matrix"}) {
+		t.Fatal("compatibility should default to JSON")
+	}
 }
 
 func TestAnswerAcceptsPublicSubworkflowNodeID(t *testing.T) {
@@ -610,5 +613,75 @@ blocks:
 		if err := packageCmd(args); err != nil {
 			t.Fatalf("packageCmd(%v): %v", args, err)
 		}
+	}
+}
+
+func TestCompatibilityCmdMatrixSchemaAndCheck(t *testing.T) {
+	if err := compatibilityCmd([]string{"matrix", "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := compatibilityCmd([]string{"fields", "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := compatibilityCmd([]string{"schema", "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	config := `apiVersion: takt/v1alpha1
+kind: Config
+assistants:
+  current:
+    type: process
+    protocol: takt-assistant/v1alpha2
+    argv: ["fake"]
+    capabilities: [tool_control]
+`
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := compatibilityCmd([]string{"check", "--workspace", dir, "--config", path}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCompatibilityCmdStrictRejectsLegacyProcess(t *testing.T) {
+	dir := t.TempDir()
+	config := `apiVersion: takt/v1alpha1
+kind: Config
+assistants:
+  legacy:
+    type: process
+    argv: ["fake"]
+`
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := compatibilityCmd([]string{"check", "--workspace", dir, "--config", path, "--strict"}); err == nil || !strings.Contains(err.Error(), "status: warning") {
+		t.Fatalf("expected strict compatibility warning to fail, got %v", err)
+	}
+}
+
+func TestCompatibilityCmdLiveDomainAdapterUsesDescribe(t *testing.T) {
+	dir := t.TempDir()
+	config := `apiVersion: takt/v1alpha1
+kind: Config
+adapters:
+  scm:
+    domain: scm
+    transport: process
+    argv: ["` + os.Args[0] + `", "-test.run=TestAdapterCLIHelper"]
+    env:
+      TAKT_ADAPTER_CLI_HELPER: "1"
+    operations:
+      change.create: change.create
+`
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := compatibilityCmd([]string{"check", "--workspace", dir, "--config", path, "--live"}); err != nil {
+		t.Fatal(err)
 	}
 }

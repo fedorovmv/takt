@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"takt/internal/artifacttype"
+	"takt/internal/schemasubset"
 	"takt/internal/spec"
 )
 
@@ -34,7 +35,7 @@ func Validate(wf *spec.Workflow) error {
 			if wf.Input.Schema == nil {
 				return fmt.Errorf("input.format json requires input.schema")
 			}
-			if err := validateOutputFormat(*wf.Input.Schema, "input.schema"); err != nil {
+			if err := schemasubset.ValidateDefinition(*wf.Input.Schema, "input.schema"); err != nil {
 				return err
 			}
 		default:
@@ -344,7 +345,7 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 			if n.Command == "" && n.Prompt == "" && n.Script == nil && n.Adapter == nil {
 				return fmt.Errorf("node %q output_format is supported only for command, prompt, script, or adapter nodes", n.ID)
 			}
-			if err := validateOutputFormat(*n.OutputFormat, "node "+n.ID+".output_format"); err != nil {
+			if err := schemasubset.ValidateDefinition(*n.OutputFormat, "node "+n.ID+".output_format"); err != nil {
 				return err
 			}
 		}
@@ -520,76 +521,6 @@ func nodeDependsOn(nodeID, target string, byID map[string]spec.Node, seen map[st
 		}
 	}
 	return false
-}
-
-func validateOutputFormat(format spec.OutputFormat, path string) error {
-	switch format.Type {
-	case "object":
-		if format.MinProperties < 0 || format.MaxProperties < 0 {
-			return fmt.Errorf("%s minProperties/maxProperties must not be negative", path)
-		}
-		if format.MaxProperties > 0 && format.MinProperties > format.MaxProperties {
-			return fmt.Errorf("%s minProperties must not exceed maxProperties", path)
-		}
-		for _, name := range format.Required {
-			if _, ok := format.Properties[name]; !ok {
-				return fmt.Errorf("%s requires unknown property %q", path, name)
-			}
-		}
-		for name, child := range format.Properties {
-			if err := validateOutputFormat(child, path+".properties."+name); err != nil {
-				return err
-			}
-		}
-	case "array":
-		if format.Items == nil {
-			return fmt.Errorf("%s array requires items", path)
-		}
-		if format.MinItems < 0 || format.MaxItems < 0 {
-			return fmt.Errorf("%s minItems/maxItems must not be negative", path)
-		}
-		if format.MaxItems > 0 && format.MinItems > format.MaxItems {
-			return fmt.Errorf("%s minItems must not exceed maxItems", path)
-		}
-		if err := validateOutputFormat(*format.Items, path+".items"); err != nil {
-			return err
-		}
-	case "string":
-		if format.MinLength < 0 || format.MaxLength < 0 {
-			return fmt.Errorf("%s minLength/maxLength must not be negative", path)
-		}
-		if format.MaxLength > 0 && format.MinLength > format.MaxLength {
-			return fmt.Errorf("%s minLength must not exceed maxLength", path)
-		}
-		if format.Pattern != "" {
-			if _, err := regexp.Compile(format.Pattern); err != nil {
-				return fmt.Errorf("%s pattern is invalid: %w", path, err)
-			}
-		}
-	case "number", "integer":
-		if format.Minimum != nil && format.Maximum != nil && *format.Minimum > *format.Maximum {
-			return fmt.Errorf("%s minimum must not exceed maximum", path)
-		}
-	case "boolean":
-	default:
-		return fmt.Errorf("%s has unsupported type %q", path, format.Type)
-	}
-	if format.Type != "array" && (format.MinItems != 0 || format.MaxItems != 0 || format.UniqueItems || format.Items != nil) {
-		return fmt.Errorf("%s array constraints require type array", path)
-	}
-	if format.Type != "string" && (format.MinLength != 0 || format.MaxLength != 0 || format.Pattern != "") {
-		return fmt.Errorf("%s string constraints require type string", path)
-	}
-	if format.Type != "number" && format.Type != "integer" && (format.Minimum != nil || format.Maximum != nil) {
-		return fmt.Errorf("%s numeric constraints require type number or integer", path)
-	}
-	if format.Type != "object" && (format.MinProperties != 0 || format.MaxProperties != 0 || len(format.Properties) > 0 || len(format.Required) > 0 || format.AdditionalProperties != nil) {
-		return fmt.Errorf("%s object constraints require type object", path)
-	}
-	if len(format.Enum) > 0 && format.Type != "string" {
-		return fmt.Errorf("%s enum is supported only for string", path)
-	}
-	return nil
 }
 
 func optionalStrings(value *[]string) []string {

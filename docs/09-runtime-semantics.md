@@ -262,7 +262,7 @@ Approval внутри `loop_group` сохраняет `loop_iteration` и доч
 
 ## 12. Структурированный вывод и JSON-пути
 
-Если AI-узел объявляет `output_format`, успешный сырой output сначала декодируется как ровно одно JSON-значение, затем проверяется по schema subset и канонизируется. Ошибка декодирования, лишнее значение или нарушение схемы классифицируются как `protocol`; такой output не становится успешным результатом узла.
+Если AI-узел объявляет `output_format`, успешный сырой output сначала декодируется как ровно одно JSON-значение, затем проверяется по `takt-schema-subset/v1` и канонизируется. Workflow JSON `input.schema` использует тот же validator; полный JSON Schema не заявляется. Ошибка декодирования, лишнее значение или нарушение схемы классифицируются как `protocol`; такой output не становится успешным результатом узла.
 
 `when` и renderer разрешают путь `nodes.<id>.output.<field>` только после декодирования output как JSON. Поля объектов и индексы массивов читаются без преобразования всего workflow в отдельный task AST.
 
@@ -304,10 +304,9 @@ Flag parser не печатает дополнительный текст в std
 
 ## 17. Оставшаяся семантика v0.2
 
-- дальнейшее приближение `output_format` к полному JSON Schema без скрытого принятия неподдерживаемых keywords;
-- schema version, attempt и correlation ID как отдельные поля всех системных event;
-- error fingerprints и единый каталог machine-readable diagnostics;
-- retry backoff и раннее завершение fan-out.
+- финальная `v1alpha1 → v1beta1` migration после production evidence;
+- live compatibility evidence для guarded host integrations и внешних wrappers;
+- новые schema keywords только как явное совместимое расширение `takt-schema-subset/v1`, если их потребует evidence.
 
 
 ## Композиция workflow

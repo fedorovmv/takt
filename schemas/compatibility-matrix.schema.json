@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.local/schemas/compatibility-matrix.schema.json",
+  "title": "Takt Compatibility Matrix",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "takt_version", "schema_subset", "assistants", "hosts", "domain_adapters", "mcp_surfaces"],
+  "properties": {
+    "apiVersion": {"const": "takt-compatibility/v1"},
+    "kind": {"const": "CompatibilityMatrix"},
+    "takt_version": {"type": "string", "minLength": 1},
+    "schema_subset": {"$ref": "#/$defs/schemaSubsetDescription"},
+    "assistants": {"type": "array", "items": {"$ref": "#/$defs/assistant"}},
+    "hosts": {"type": "array", "items": {"$ref": "#/$defs/host"}},
+    "domain_adapters": {"type": "array", "items": {"$ref": "#/$defs/domain"}},
+    "mcp_surfaces": {"type": "array", "items": {"$ref": "#/$defs/surface"}}
+  },
+  "$defs": {
+    "stringArray": {"type": "array", "items": {"type": "string"}},
+    "schemaSubsetDescription": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "types", "keywords", "enum_types", "additional_properties_modes", "pattern_dialect", "unsupported_keywords"],
+      "properties": {
+        "version": {"const": "takt-schema-subset/v1"},
+        "types": {"$ref": "#/$defs/stringArray"},
+        "keywords": {"$ref": "#/$defs/stringArray"},
+        "enum_types": {"$ref": "#/$defs/stringArray"},
+        "additional_properties_modes": {"$ref": "#/$defs/stringArray"},
+        "pattern_dialect": {"type": "string"},
+        "unsupported_keywords": {"$ref": "#/$defs/stringArray"},
+        "notes": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "assistant": {
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "support", "verification"],
+      "properties": {
+        "type": {"type": "string"}, "protocol": {"type": "string"}, "support": {"type": "string"},
+        "verification": {"type": "string"}, "contract_fixture": {"type": "string"},
+        "capabilities": {"$ref": "#/$defs/stringArray"}, "live_version_required": {"type": "boolean"},
+        "notes": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "host": {
+      "type": "object", "additionalProperties": false,
+      "required": ["host", "integration", "target_contract", "enforcement", "live_verified", "strict_allowed"],
+      "properties": {
+        "host": {"type": "string"}, "integration": {"type": "string"}, "target_contract": {"type": "string"},
+        "enforcement": {"enum": ["advisory", "guarded", "strict"]}, "live_verified": {"type": "boolean"},
+        "strict_allowed": {"type": "boolean"}, "capabilities": {"$ref": "#/$defs/stringArray"},
+        "missing_for_strict": {"$ref": "#/$defs/stringArray"}, "notes": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "domain": {
+      "type": "object", "additionalProperties": false,
+      "required": ["transport", "protocol", "support", "verification", "domains"],
+      "properties": {
+        "transport": {"enum": ["process", "mcp"]}, "protocol": {"type": "string"}, "support": {"type": "string"},
+        "verification": {"type": "string"}, "domains": {"$ref": "#/$defs/stringArray"}, "notes": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "surface": {
+      "type": "object", "additionalProperties": false,
+      "required": ["surface", "support"],
+      "properties": {"surface": {"type": "string"}, "support": {"type": "string"}, "notes": {"type": "string"}}
+    }
+  }
+}

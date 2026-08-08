@@ -1,6 +1,6 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.47-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.48-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
 ## Ядро runtime — реализовано
 
@@ -107,16 +107,24 @@ Deterministic fixture доказывает measurement correctness. Production q
 - authoring skill;
 - multi-repo/reference fake adapters.
 
+
+## v0.2 contract convergence — v0.1.48
+
+- `input.schema` и `output_format` используют единый `takt-schema-subset/v1`; полный JSON Schema не заявляется;
+- `takt compatibility matrix|fields|schema|check` публикует support/verification boundaries и проверяет конкретный Config;
+- field matrix покрывает public JSON fields stable-candidate Workflow/Node/Config/BlockPackage и явно defer-ит alpha seams;
+- Pi/OpenCode session adapter compatibility отделена от host-control enforcement; bundled host integrations остаются guarded до live conformance;
+- process `takt-assistant/v1alpha1` помечен deprecated для новых wrappers, `v1alpha2` остаётся целевым public protocol.
+
 ## Фактические незакрытые gaps
 
 1. Live Route DSL production evidence.
 2. Go + Document production evaluation.
-3. Финальная v0.2/v1beta1 migration после production evidence; первичный contract audit выполнен в v0.1.47.
-4. Решение по границе `output_format` и adapter/host compatibility matrix.
-5. Live strict host conformance Pi/OpenCode.
-6. Один реальный external coding-agent wrapper и один production-like Domain Adapter.
-7. Structured task source adapter.
-8. Human-reviewed skill/block learning loop.
-9. Workflow graph/explain/scaffold и статический reject/revise contract.
+3. Финальная v0.2/v1beta1 migration после production evidence; schema subset, field audit и compatibility matrix закрыты в v0.1.48.
+4. Live strict host conformance Pi/OpenCode.
+5. Один реальный external coding-agent wrapper и один production-like Domain Adapter.
+6. Structured task source adapter.
+7. Human-reviewed skill/block learning loop.
+8. Workflow graph/explain/scaffold и статический reject/revise contract.
 
 Подробный порядок — `06-roadmap.md`; задачи — `14-backlog-v0.2.md`.

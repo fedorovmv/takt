@@ -1,6 +1,6 @@
 # Актуальный backlog Takt v0.2
 
-Статус пересобран после `v0.1.47-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
+Статус пересобран после `v0.1.48-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
 
 ## P0. Доказать полезность текущего Takt
 
@@ -72,13 +72,21 @@ Draft compatibility/migration policy подготовлен. Финальная 
 
 Для `v0.2` и первого `v1beta1` nested `loop_group` явно остаётся запрещённым. Возврат этой возможности требует отдельного production use case и совместимого расширения контракта.
 
-### STABLE-005. Граница structured output
+### STABLE-005. Граница structured output — выполнено в v0.1.48
 
-По production evidence решить, достаточно ли текущего проверяемого subset `output_format` или нужен более полный JSON Schema. Не расширять контракт без фактических ограничений.
+Текущий контракт зафиксирован как `takt-schema-subset/v1` и используется одинаково для `input.schema` и `output_format`. Полный JSON Schema не входит в v0.2; расширение возможно только новой совместимой версией по production evidence.
 
-### STABLE-006. Compatibility matrix adapters/hosts
+### STABLE-006. Compatibility matrix adapters/hosts — выполнено в v0.1.48
 
-Зафиксировать проверенные версии и capability level для Pi/OpenCode и внешних wrappers. `strict` host control объявляется только после live conformance на конкретной версии.
+Добавлены `takt compatibility matrix|check`, разделяющие session adapter, host integration и domain adapter. Bundled Pi/OpenCode host остаются `guarded`; `strict` требует live conformance на pinned version.
+
+### STABLE-007. Field-by-field v1beta1 audit — выполнено в v0.1.48
+
+`takt compatibility fields` и contract-test фиксируют точный набор публичных полей stable-candidate authoring/config contracts. `executor`, `native_hooks` и `tool_approval` остаются `supported-alpha/defer`; process protocol `v1alpha1` deprecated для новых wrappers.
+
+### STABLE-008. Финальная v1beta1 migration — после P0 evidence
+
+На основании live Route DSL + Go + Document evidence подтвердить/скорректировать field decisions, выпустить migration guide и только при необходимости автоматический migrator.
 
 ## P2. Доказать внешние seams
 
