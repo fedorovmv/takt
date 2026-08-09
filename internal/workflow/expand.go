@@ -13,7 +13,7 @@ import (
 
 	"takt/internal/command"
 	"takt/internal/spec"
-	"takt/internal/yamlmini"
+	"takt/internal/yamlcodec"
 )
 
 const maxExpansionDepth = 16
@@ -307,7 +307,7 @@ func (c *compiler) resolveForeachItems(node spec.Node, workflowPath string) ([]a
 		return nil, "", fmt.Errorf("foreach node %q read items_from %s: %w", node.ID, abs, err)
 	}
 	var items []any
-	if err := yamlmini.Unmarshal(b, &items); err != nil {
+	if err := yamlcodec.Unmarshal(b, &items); err != nil {
 		return nil, "", fmt.Errorf("foreach node %q parse items_from %s: %w", node.ID, abs, err)
 	}
 	if len(items) == 0 {
@@ -334,7 +334,7 @@ func (c *compiler) loadChild(parentPath, rel string) (string, *spec.Workflow, er
 		return "", nil, fmt.Errorf("read %s: %w", abs, err)
 	}
 	var wf spec.Workflow
-	if err := yamlmini.Unmarshal(b, &wf); err != nil {
+	if err := yamlcodec.Unmarshal(b, &wf); err != nil {
 		return "", nil, fmt.Errorf("parse %s: %w", abs, err)
 	}
 	if wf.APIVersion != "takt/v1alpha1" || wf.Kind != "Workflow" || strings.TrimSpace(wf.Metadata.Name) == "" {

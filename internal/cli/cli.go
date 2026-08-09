@@ -12,6 +12,11 @@ import (
 	"takt/internal/apperror"
 	"takt/internal/application"
 	"takt/internal/bootstrap"
+	"takt/internal/experimental/dynamicflow"
+	experimentallearning "takt/internal/experimental/learning"
+	"takt/internal/extensions"
+	"takt/internal/maintenance"
+	"takt/internal/tooling"
 	"takt/internal/version"
 )
 
@@ -99,15 +104,46 @@ func absoluteIfExistingFile(value string) (string, error) {
 	return filepath.Abs(value)
 }
 
-func localServices(workspace, configPath string) (*application.Services, error) {
+type serviceView struct {
+	RunService       *application.RunService
+	CatalogService   *application.CatalogService
+	AuthoringService *application.AuthoringService
+	WorktreeService  *application.WorktreeService
+	CommandService   *application.CommandService
+	ExternalService  *application.ExternalService
+	PlanService      *dynamicflow.PlanService
+	TaskService      *dynamicflow.TaskService
+	ForkService      *dynamicflow.ForkService
+	HostService      *dynamicflow.HostService
+	Adapters         *extensions.AdapterService
+	Packages         *extensions.PackageService
+	Notifications    *extensions.NotificationService
+	Blocks           *extensions.BlockService
+	Compatibility    *tooling.CompatibilityService
+	Evaluation       *tooling.EvaluationService
+	Learning         *experimentallearning.Service
+	Maintenance      *maintenance.Service
+}
+
+func localServices(workspace, configPath string) (*serviceView, error) {
 	app, err := bootstrap.New(workspace, configPath)
 	if err != nil {
 		return nil, err
 	}
-	return app.Services, nil
+	return &serviceView{
+		RunService: app.Core.RunService, CatalogService: app.Core.CatalogService,
+		AuthoringService: app.Core.AuthoringService, WorktreeService: app.Core.WorktreeService,
+		CommandService: app.Core.CommandService, ExternalService: app.Core.ExternalService,
+		PlanService: app.Experimental.PlanService, TaskService: app.Experimental.TaskService,
+		ForkService: app.Experimental.ForkService, HostService: app.Experimental.HostService,
+		Adapters: app.Extensions.Adapters, Packages: app.Extensions.Packages,
+		Notifications: app.Extensions.Notifications, Blocks: app.Extensions.Blocks,
+		Compatibility: app.Tooling.Compatibility, Evaluation: app.Tooling.Evaluation,
+		Learning: app.Learning, Maintenance: app.Maintenance,
+	}, nil
 }
 
-func controlService(workspace string) (*application.Services, error) {
+func controlService(workspace string) (*serviceView, error) {
 	abs, err := filepath.Abs(workspace)
 	if err != nil {
 		return nil, err
@@ -359,5 +395,10 @@ func PrintErrorJSON(err error) error {
 }
 
 func usage() error {
-	return fmt.Errorf("usage: takt <init|validate|task|learn|run|runs|attention|notify|plan|execute|steer|host|workflow|block|adapter|compatibility|package|answer|resume|status|children|artifacts|events|cancel|worktree|command|eval|mcp|daemon|version>")
+	return fmt.Errorf(`usage: takt <command>
+
+stable: init validate run runs workflow answer resume status children artifacts events cancel worktree command adapter package mcp daemon version
+extensions: block notify attention
+experimental: task plan execute steer host learn
+tooling: eval compatibility`)
 }

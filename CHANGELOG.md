@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.55-alpha
+
+- Feature freeze продолжен: существующий функционал физически разделён на stable core, `internal/extensions`, `internal/experimental` и `internal/tooling` без удаления CLI/MCP возможностей.
+- Dynamic Flow (Router/Dynamic Plan/replan/evidence), Host Control и Learning Loop переведены в experimental boundary; stable application/runtime/workflow/config/profile/store не импортируют experimental/tooling/extensions.
+- Package Distribution, Block Catalog и Notifications оформлены как extensions; evaluation/compatibility вынесены в tooling. Profile resolution больше не зависит от package manager, installed packages подключает extension-aware catalog loader.
+- `internal/application` уменьшен примерно с 6,8 тыс. до 3,5 тыс. production-строк за счёт вынесения самостоятельных модулей, а не удаления функций.
+- Самописный `internal/yamlmini` удалён. YAML syntax делегирован `go.yaml.in/yaml/v3 v3.0.4`; Takt сохраняет небольшой `yamlcodec` для strict JSON-tag contract diagnostics.
+- Добавлен `make journeys`: black-box gate `init/validate/run/status/events/artifacts`, approval/answer, failure/retry и reusable subworkflow через настоящий CLI.
+- CLI usage группирует команды как stable/extensions/experimental/tooling.
+- Architecture gate закрепляет односторонние module dependencies и запрет возврата самописного YAML parser.
+- Добавлены ADR-088 и `docs/69-core-stabilization-modularization-v0.1.55.md`; Takt skill обновлён до 0.37.0.
+
 ## v0.1.54-alpha
 
 - Feature freeze продолжен: продуктовые/public contracts не расширялись; выполнен повторный architecture hardening после независимого аудита `v0.1.53`.

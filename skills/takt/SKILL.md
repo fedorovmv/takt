@@ -189,7 +189,7 @@ takt block validate path/to/package.yaml
 - `allow_failure: true` разрешает только штатный ненулевой exit code, но не timeout, cancellation или ошибку запуска.
 - Bash stdout/stderr сохраняются отдельно, а `${nodes.<id>.output}` содержит объединённый вывод. Script stdout/stderr также сохраняются раздельно; `output_format` меняет только нормализованный Output.
 - Validation envelope `takt-validation/v1alpha1` выводится только в stdout; логи валидатора идут в stderr.
-- Takt поддерживает ограниченный YAML subset. Для многострочного prompt или bash используй block scalar `|`.
+- Takt использует стандартный YAML parser `go.yaml.in/yaml/v3` и строгие публичные поля Takt. Для многострочного prompt или bash используй block scalar `|`.
 - Markdown-план не преобразуй в task AST ради `foreach`: используй явный `foreach.items` или `foreach.items_from.path` к YAML/JSON-массиву.
 - Неподдерживаемая capability должна завершать узел до вызова модели; не описывай ограничения только в prompt.
 - Для `command/prompt` filesystem/network policy остаётся assistant-enforced. Для локального `bash/script` используй `sandbox.enforcement: required|optional`, когда нужен реальный OS wrapper (`bwrap` Linux / `sandbox-exec` macOS); `required` должен fail-closed при отсутствии backend.

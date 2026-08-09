@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"takt/internal/application"
 	"takt/internal/daemon"
+	"takt/internal/experimental/dynamicflow"
 )
 
 func taskCmd(ctx context.Context, args []string) error {
@@ -60,13 +60,13 @@ func taskStartCmd(ctx context.Context, args []string) error {
 	} else if goal == "" {
 		return fmt.Errorf("usage: takt task start <goal> [--file path] [--source name --source-ref ref] [--go] [--profile code] [--daemon]")
 	}
-	request := application.TaskStartRequest{Goal: goal, Source: *sourceName, SourceRef: *sourceRef, Profile: *profileName, Go: *goNow}
+	request := dynamicflow.TaskStartRequest{Goal: goal, Source: *sourceName, SourceRef: *sourceRef, Profile: *profileName, Go: *goNow}
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
 			return err
 		}
-		var result application.TaskView
+		var result dynamicflow.TaskView
 		if err := client.Call(ctx, "task.start", request, &result); err != nil {
 			return err
 		}
@@ -115,7 +115,7 @@ func taskStatusCmd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		var result application.TaskView
+		var result dynamicflow.TaskView
 		if err := client.Call(ctx, "task.status", map[string]string{"reference": fs.Arg(0)}, &result); err != nil {
 			return err
 		}
@@ -147,13 +147,13 @@ func taskRespondCmd(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 || strings.TrimSpace(*action) == "" {
 		return fmt.Errorf("usage: takt task respond <plan-id|run-id> --action <action> [--message text] [--daemon]")
 	}
-	request := application.TaskRespondRequest{Reference: fs.Arg(0), Action: *action, Message: *message, NodeID: *nodeID}
+	request := dynamicflow.TaskRespondRequest{Reference: fs.Arg(0), Action: *action, Message: *message, NodeID: *nodeID}
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
 			return err
 		}
-		var result application.TaskView
+		var result dynamicflow.TaskView
 		if err := client.Call(ctx, "task.respond", request, &result); err != nil {
 			return err
 		}
@@ -183,13 +183,13 @@ func taskStopCmd(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt task stop <plan-id|run-id> [--reason text] [--daemon]")
 	}
-	request := application.TaskStopRequest{Reference: fs.Arg(0), Reason: *reason}
+	request := dynamicflow.TaskStopRequest{Reference: fs.Arg(0), Reason: *reason}
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
 			return err
 		}
-		var result application.TaskView
+		var result dynamicflow.TaskView
 		if err := client.Call(ctx, "task.stop", request, &result); err != nil {
 			return err
 		}
@@ -223,7 +223,7 @@ func taskExplainCmd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		var result application.TaskView
+		var result dynamicflow.TaskView
 		if err := client.Call(ctx, "task.explain", map[string]string{"reference": fs.Arg(0)}, &result); err != nil {
 			return err
 		}

@@ -11,13 +11,22 @@ import (
 	"testing"
 	"time"
 
+	"takt/internal/appapi"
 	"takt/internal/application"
-	"takt/internal/dynamicplan"
-	"takt/internal/notification"
+	"takt/internal/experimental/dynamicflow"
+	"takt/internal/experimental/dynamicplan"
+	"takt/internal/extensions/notification"
 	"takt/internal/profile"
 	"takt/internal/store"
 	"takt/internal/testsupport/appfixture"
 )
+
+func testDependencies(f *appfixture.Fixture) Dependencies {
+	return Dependencies{
+		API:   appapi.New(appapi.Dependencies{Core: f.Core, Dynamic: f.Dynamic, Blocks: f.Extensions.Blocks, Notifications: f.Extensions.Notifications}),
+		Plans: f.Dynamic.PlanService, External: f.Core.ExternalService, Maintenance: f.Maintenance,
+	}
+}
 
 func TestServeStdioSupportsLegacyInitializeAndModernDiscover(t *testing.T) {
 	service, err := appfixture.New(t.TempDir(), ".takt/config.yaml")
@@ -30,7 +39,7 @@ func TestServeStdioSupportsLegacyInitializeAndModernDiscover(t *testing.T) {
 			`{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}` + "\n",
 	)
 	var output bytes.Buffer
-	if err := New(service, input, &output, &bytes.Buffer{}).ServeStdio(context.Background()); err != nil {
+	if err := New(testDependencies(service), input, &output, &bytes.Buffer{}).ServeStdio(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	responses := decodeResponses(t, output.Bytes())
@@ -59,7 +68,7 @@ func TestAgentSurfaceExposesOnlyCompactTaskAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := NewWithSurface(service, nil, nil, nil, SurfaceAgent)
+	server := NewWithSurface(testDependencies(service), nil, nil, nil, SurfaceAgent)
 	tools := tools(SurfaceAgent)
 	want := []string{
 		"takt.task.start",
@@ -108,7 +117,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := New(service, nil, nil, nil)
+	server := New(testDependencies(service), nil, nil, nil)
 
 	startedValue, err := server.executeTool(context.Background(), "takt.run.start", map[string]any{
 		"selector": workflowPath, "config_path": configPath, "detached": false,
@@ -174,7 +183,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := New(service, nil, nil, nil)
+	server := New(testDependencies(service), nil, nil, nil)
 
 	startedValue, err := server.executeTool(context.Background(), "takt.run.start", map[string]any{
 		"selector": workflowPath, "config_path": configPath,
@@ -216,7 +225,7 @@ func TestToolArgumentsRejectUnknownFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := New(service, nil, nil, nil)
+	server := New(testDependencies(service), nil, nil, nil)
 	_, err = server.executeTool(context.Background(), "takt.run.get", map[string]any{"run_id": "run-1", "typo": true})
 	if err == nil {
 		t.Fatal("expected strict argument error")
@@ -280,7 +289,7 @@ func TestServeStdioAcceptsEnvelopeExtensionsAndRejectsInvalidEnvelope(t *testing
 			`{"jsonrpc":"2.0","id":2,"params":{}}` + "\n",
 	)
 	var output bytes.Buffer
-	if err := New(service, input, &output, &bytes.Buffer{}).ServeStdio(context.Background()); err != nil {
+	if err := New(testDependencies(service), input, &output, &bytes.Buffer{}).ServeStdio(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	responses := decodeResponses(t, output.Bytes())
@@ -335,7 +344,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := New(service, nil, nil, nil)
+	server := New(testDependencies(service), nil, nil, nil)
 	startedValue, err := server.executeTool(context.Background(), "takt.run.start", map[string]any{"selector": workflowPath, "config_path": configPath, "detached": false})
 	if err != nil {
 		t.Fatal(err)
@@ -462,7 +471,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := New(service, nil, nil, nil)
+	server := New(testDependencies(service), nil, nil, nil)
 	startedValue, err := server.executeTool(context.Background(), "takt.run.start", map[string]any{"selector": workflowPath, "config_path": configPath, "detached": false})
 	if err != nil {
 		t.Fatal(err)
@@ -529,7 +538,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := New(service, nil, nil, nil)
+	server := New(testDependencies(service), nil, nil, nil)
 	startedValue, err := server.executeTool(context.Background(), "takt.run.start", map[string]any{"selector": workflowPath, "config_path": configPath, "detached": false})
 	if err != nil {
 		t.Fatal(err)
@@ -560,7 +569,7 @@ func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := New(service, nil, nil, nil)
+	server := New(testDependencies(service), nil, nil, nil)
 	candidate := dynamicplan.Plan{
 		APIVersion: "takt/v1alpha1", Kind: "WorkflowPlan", Decision: "planned",
 		Goal: "summarize repository", Reason: "single trusted phase",
@@ -576,7 +585,7 @@ func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	begun := beginValue.(*application.HostBeginResult)
+	begun := beginValue.(*dynamicflow.HostBeginResult)
 	if begun.Session.ID == "" || begun.Session.Status != "preview" {
 		t.Fatalf("host begin = %#v", begun)
 	}
@@ -584,14 +593,14 @@ func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if getValue.(*application.HostSessionView).Session.ID != begun.Session.ID {
+	if getValue.(*dynamicflow.HostSessionView).Session.ID != begun.Session.ID {
 		t.Fatalf("host get = %#v", getValue)
 	}
 	guardValue, err := server.executeTool(context.Background(), "takt.host.guard_tool", map[string]any{"session_id": begun.Session.ID, "tool": "edit"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if guardValue.(*application.HostGuardDecision).Allowed {
+	if guardValue.(*dynamicflow.HostGuardDecision).Allowed {
 		t.Fatalf("edit tool escaped MCP guard: %#v", guardValue)
 	}
 	startedAt := time.Now()
@@ -625,10 +634,10 @@ func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
 	// detached Run reaches a stable plan boundary before TempDir cleanup.
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if err := service.PlanService.AdvanceDynamicPlans(context.Background()); err != nil {
+		if err := service.Dynamic.PlanService.AdvanceDynamicPlans(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		planView, err := service.PlanService.GetPlan(begun.Session.PlanID)
+		planView, err := service.Dynamic.PlanService.GetPlan(begun.Session.PlanID)
 		if err != nil {
 			t.Fatal(err)
 		}

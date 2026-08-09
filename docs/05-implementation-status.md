@@ -1,6 +1,20 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.54-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.55-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+
+## Модульная стабильность — реализовано в v0.1.55
+
+Функциональность сохранена, но разделена по стабильности и назначению:
+
+- stable application/runtime/workflow/config/profile/store не зависят от experimental/tooling/extensions;
+- Dynamic Flow, evidence routing, Host Control и Learning Loop находятся в `internal/experimental`;
+- Package Distribution, Block Catalog и Notifications — в `internal/extensions`;
+- evaluation и compatibility — в `internal/tooling`;
+- `internal/application` уменьшен примерно с 6,8 тыс. до 3,5 тыс. production-строк без удаления use cases;
+- самописный YAML parser удалён; YAML syntax делегирован `go.yaml.in/yaml/v3`, Takt сохраняет только strict JSON-shaped contract adapter;
+- `make journeys` отдельно проверяет четыре стабильных пользовательских сценария через настоящий CLI.
+
+Dynamic Flow остаётся доступным и regression-tested, но считается experimental до production evidence.
 
 ## Ядро runtime — реализовано
 

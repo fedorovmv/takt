@@ -15,6 +15,8 @@ import (
 
 	"takt/internal/appapi"
 	"takt/internal/application"
+	"takt/internal/experimental/dynamicflow"
+	"takt/internal/maintenance"
 	"takt/internal/version"
 )
 
@@ -25,9 +27,9 @@ const (
 
 type Server struct {
 	api         *appapi.Registry
-	plans       *application.PlanService
+	plans       *dynamicflow.PlanService
 	external    *application.ExternalService
-	maintenance *application.MaintenanceService
+	maintenance *maintenance.Service
 	in          io.Reader
 	out         io.Writer
 	errOut      io.Writer
@@ -74,23 +76,16 @@ type callParams struct {
 
 type Dependencies struct {
 	API         *appapi.Registry
-	Plans       *application.PlanService
+	Plans       *dynamicflow.PlanService
 	External    *application.ExternalService
-	Maintenance *application.MaintenanceService
+	Maintenance *maintenance.Service
 }
 
-func New(service *application.Services, in io.Reader, out, errOut io.Writer) *Server {
-	return NewWithSurface(service, in, out, errOut, SurfaceAll)
+func New(deps Dependencies, in io.Reader, out, errOut io.Writer) *Server {
+	return NewWithDependencies(deps, in, out, errOut, SurfaceAll)
 }
 
-// NewWithSurface is the repository compatibility constructor. Production
-// composition should use NewWithDependencies so MCP receives only the use cases
-// it needs rather than the whole application service graph.
-func NewWithSurface(service *application.Services, in io.Reader, out, errOut io.Writer, surface Surface) *Server {
-	deps := Dependencies{}
-	if service != nil {
-		deps = Dependencies{API: appapi.New(service), Plans: service.PlanService, External: service.ExternalService, Maintenance: service.Maintenance}
-	}
+func NewWithSurface(deps Dependencies, in io.Reader, out, errOut io.Writer, surface Surface) *Server {
 	return NewWithDependencies(deps, in, out, errOut, surface)
 }
 

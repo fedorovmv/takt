@@ -28,7 +28,7 @@ func initCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	root, err := app.Services.AuthoringService.InitProfile(fs.Arg(0), *force)
+	root, err := app.Core.AuthoringService.InitProfile(fs.Arg(0), *force)
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func validateCmd(ctx context.Context, args []string) error {
 			return err
 		}
 	}
-	result, err := app.Services.AuthoringService.ValidateWorkflow(selector, configOverride, *warningsAsErrors)
+	result, err := app.Core.AuthoringService.ValidateWorkflow(selector, configOverride, *warningsAsErrors)
 	if err != nil {
 		return err
 	}
@@ -142,7 +142,7 @@ func runCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := app.Services.RunService.Start(ctx, request)
+	result, err := app.Core.RunService.Start(ctx, request)
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func workflowListCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	entries, err := app.Services.CatalogService.ListWorkflows(fs.Arg(0))
+	entries, err := app.Core.CatalogService.ListWorkflows(fs.Arg(0))
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func workflowDescribeCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := app.Services.CatalogService.DescribeWorkflow(fs.Arg(0))
+	result, err := app.Core.CatalogService.DescribeWorkflow(fs.Arg(0))
 	if err != nil {
 		return err
 	}

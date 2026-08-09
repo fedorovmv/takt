@@ -1,6 +1,6 @@
 GO_TEST_P ?= 8
 
-.PHONY: build test race vet fmt docs manifest contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract architecture-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract host-integration-typescript simple-reliable-contract evidence-routing-contract e2e smoke check demo
+.PHONY: build test race vet fmt docs manifest contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract architecture-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract host-integration-typescript simple-reliable-contract evidence-routing-contract e2e journeys smoke check demo
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -44,7 +44,7 @@ route-benchmark route-strategy-benchmark-contract:
 	go test ./tests/e2e -run '^TestRouteDSLBenchmarkContract$$' -count=1
 
 task-evaluation-contract:
-	go test ./internal/evaluation ./internal/application -count=1
+	go test ./internal/tooling/evaluation ./internal/experimental/dynamicflow -count=1
 
 composition:
 	go test ./internal/definition ./internal/runtime ./tests/e2e -run 'Composition' -count=1
@@ -86,16 +86,16 @@ autonomous-run-contract:
 	go test ./internal/application ./internal/daemon -run 'Pause|Resume|Retry|Abandon|Attention|Notification' -count=1
 
 simple-reliable-contract:
-	go test ./internal/taskroute ./internal/application ./tests/e2e -run 'SimpleReliable|Router' -count=1
+	go test ./internal/experimental/taskroute ./internal/experimental/dynamicflow ./tests/e2e -run 'SimpleReliable|Router' -count=1
 
 evidence-routing-contract:
-	go test ./internal/evidence ./internal/application ./internal/runtime -run 'Evidence|Baseline|Parking|Repair' -count=1
+	go test ./internal/experimental/evidence ./internal/experimental/dynamicflow ./internal/runtime -run 'Evidence|Baseline|Parking|Repair' -count=1
 
 adapter-platform-contract:
 	go test ./internal/domainadapter ./sdk/domainadapter ./tests/e2e -run 'Adapter|Domain' -count=1
 
 multi-repo-contract:
-	go test ./internal/workspacecatalog ./internal/runtime ./internal/application -run 'Repository|Workspace|Multi' -count=1
+	go test ./internal/experimental/workspacecatalog ./internal/runtime ./internal/experimental/dynamicflow -run 'Repository|Workspace|Multi' -count=1
 
 runtime-reliability-contract:
 	go test ./internal/runtime ./internal/store ./internal/localsandbox ./internal/redact -count=1
@@ -104,19 +104,19 @@ iteration-history-contract:
 	go test ./internal/runtime ./internal/store -run 'Iteration|Loop|Resume' -count=1
 
 compatibility-contract:
-	go test ./internal/compatibility ./tests/e2e -run 'Compatibility' -count=1
+	go test ./internal/tooling/compatibility ./tests/e2e -run 'Compatibility' -count=1
 
 task-source-contract:
 	go test ./internal/tasksource ./sdk/tasksource ./reference/githubtask ./tests/e2e -run 'TaskSource|TaskSources' -count=1
 
 learning-loop-contract:
-	go test ./internal/learning ./tests/e2e -run 'Learning' -count=1
+	go test ./internal/experimental/learning ./tests/e2e -run 'Learning' -count=1
 
 architecture-contract:
 	go test ./internal/architecture -count=1
 
 schema-contract:
-	go test ./internal/schemacontract ./internal/schemasubset ./internal/config ./internal/compatibility -run 'Schema|Subset|Meta' -count=1
+	go test ./internal/schemacontract ./internal/schemasubset ./internal/config ./internal/tooling/compatibility -run 'Schema|Subset|Meta' -count=1
 
 agent-adapter-conformance:
 	go test ./sdk/agentadapter -count=1
@@ -141,9 +141,14 @@ host-integration-typescript:
 e2e:
 	go test ./tests/e2e -count=1
 
+# Stable user-facing journeys are an explicit release gate, separate from
+# internal contract coverage.
+journeys:
+	go test ./tests/e2e -run '^TestUserJourney' -count=1
+
 smoke: host-integration-typescript
 
-check: fmt vet test race build smoke docs manifest
+check: fmt vet test journeys race build smoke docs manifest
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"takt/internal/dynamicplan"
 	"takt/internal/store"
 )
 
@@ -64,65 +63,6 @@ nodes:
 	}
 	if got := persisted.Approvals["approve"]; got != "<redacted>" {
 		t.Fatalf("persisted approval=%q", got)
-	}
-}
-
-func TestSavePlanRecordRedactsRunConfigSecrets(t *testing.T) {
-	workspace := t.TempDir()
-	defaultConfig := filepath.Join(workspace, "default.yaml")
-	runConfig := filepath.Join(workspace, "run.yaml")
-	const envName = "TAKT_PLAN_REDACTION_VALUE"
-	const secret = "plan-secret-42"
-	t.Setenv(envName, secret)
-	mustWriteControlTest(t, defaultConfig, `apiVersion: takt/v1alpha1
-kind: Config
-models:
-  demo:
-    provider: test
-    id: demo
-assistants:
-  worker:
-    type: mock
-`)
-	mustWriteControlTest(t, runConfig, `apiVersion: takt/v1alpha1
-kind: Config
-models:
-  demo:
-    provider: test
-    id: demo
-assistants:
-  worker:
-    type: mock
-    env:
-      VALUE: secret://`+envName+`
-`)
-	service, err := New(workspace, defaultConfig)
-	if err != nil {
-		t.Fatal(err)
-	}
-	record := &dynamicplan.Record{
-		ID:         "plan-redaction-test",
-		Status:     "running",
-		Profile:    "code",
-		ConfigPath: runConfig,
-		Results:    map[string]string{"inspect": `{"summary":"` + secret + `"}`},
-		LastError:  "failed with " + secret,
-		Steering:   []dynamicplan.Steering{{Message: "keep " + secret}},
-		Revisions:  []dynamicplan.Revision{},
-	}
-	if err := service.PlanService.savePlanRecord(record); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := (dynamicplan.Store{Workspace: workspace}).Load(record.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw := string(mustJSONTest(t, loaded))
-	if strings.Contains(raw, secret) {
-		t.Fatalf("plan record leaked secret: %s", raw)
-	}
-	if loaded.LastError != "failed with <redacted>" || loaded.Steering[0].Message != "keep <redacted>" || !strings.Contains(loaded.Results["inspect"], "<redacted>") {
-		t.Fatalf("plan record was not redacted: %#v", loaded)
 	}
 }
 

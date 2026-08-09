@@ -243,13 +243,9 @@ func (s *RunService) prepareStart(ctx context.Context, request StartRequest) (*p
 	if err != nil {
 		return nil, err
 	}
-	if resolved != nil {
-		catalog, catalogErr := catalogForResolved(resolved)
-		if catalogErr != nil {
-			return nil, catalogErr
-		}
-		if _, preflightErr := preflightCatalogAdapters(ctx, catalog, cfg, s.adapterFactory(cfg)); preflightErr != nil {
-			return nil, preflightErr
+	if resolved != nil && s.profilePreflight != nil {
+		if err := s.profilePreflight(ctx, resolved, cfg); err != nil {
+			return nil, err
 		}
 	}
 	runner := s.runnerFactory(runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: wfPath, ConfigPath: cfgPath, ControlWorkspace: s.workspace}, RunnerOptions{})

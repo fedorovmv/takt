@@ -34,7 +34,7 @@ func commandCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	state, err := app.Services.CommandService.Run(ctx, application.CommandRunRequest{
+	state, err := app.Core.CommandService.Run(ctx, application.CommandRunRequest{
 		Name: fs.Arg(0), Input: *input, Assistant: *assistantName, Model: *modelName, ConfigPath: *configPath,
 	})
 	if err != nil {

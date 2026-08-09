@@ -8,7 +8,7 @@ import (
 
 	"takt/internal/domainadapter"
 	"takt/internal/spec"
-	"takt/internal/yamlmini"
+	"takt/internal/yamlcodec"
 )
 
 func Load(path string) (*spec.Config, error) {
@@ -17,7 +17,7 @@ func Load(path string) (*spec.Config, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 	var cfg spec.Config
-	if err := yamlmini.Unmarshal(b, &cfg); err != nil {
+	if err := yamlcodec.Unmarshal(b, &cfg); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
 	if err := validate(&cfg); err != nil {

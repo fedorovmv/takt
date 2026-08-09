@@ -306,6 +306,9 @@ func TestArchitectureBoundaries(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "internal", "control")); !os.IsNotExist(err) {
 		t.Fatalf("legacy internal/control must stay removed")
 	}
+	if _, err := os.Stat(filepath.Join(root, "internal", "yamlmini")); !os.IsNotExist(err) {
+		t.Fatalf("hand-written YAML parser must stay removed; YAML syntax belongs to the upstream module")
+	}
 
 	cmdImports := packageImports(t, root, "cmd/takt")
 	allowed := map[string]bool{"context": true, "fmt": true, "os": true, "os/signal": true, "syscall": true, "takt/internal/cli": true}
@@ -320,14 +323,16 @@ func TestArchitectureBoundaries(t *testing.T) {
 
 	requireOnlyInternalImports(t, root, "internal/cli",
 		"takt/internal/apperror", "takt/internal/application", "takt/internal/bootstrap",
-		"takt/internal/daemon", "takt/internal/mcp", "takt/internal/version")
+		"takt/internal/daemon", "takt/internal/mcp", "takt/internal/version",
+		"takt/internal/experimental/dynamicflow", "takt/internal/experimental/learning",
+		"takt/internal/extensions", "takt/internal/maintenance", "takt/internal/tooling")
 	applicationSource := productionSource(t, root, "internal/application")
 	for _, forbidden := range []string{"store.FS{", "dynamicplan.Store{", "hostcontrol.Store{", "notification.Dispatcher{", "learning.Manager{", "packagedist.New(", "type Context struct", "dynamicMu", "hostMu"} {
 		if strings.Contains(applicationSource, forbidden) {
 			t.Errorf("application must receive infrastructure through narrow ports; found %q", forbidden)
 		}
 	}
-	evaluationSource := productionSource(t, root, "internal/evaluation")
+	evaluationSource := productionSource(t, root, "internal/tooling/evaluation")
 	for _, forbidden := range []string{"runtime.New(", "store.FS{"} {
 		if strings.Contains(evaluationSource, forbidden) {
 			t.Errorf("evaluation must receive execution infrastructure from bootstrap; found %q", forbidden)
@@ -349,13 +354,17 @@ func TestArchitectureBoundaries(t *testing.T) {
 	requireExplicitApplicationBackground(t, root)
 
 	forbidImports(t, root, "internal/application",
-		"takt/internal/cli", "takt/internal/mcp", "takt/internal/daemon", "takt/internal/appapi", "takt/internal/bootstrap")
+		"takt/internal/cli", "takt/internal/mcp", "takt/internal/daemon", "takt/internal/appapi", "takt/internal/bootstrap",
+		"takt/internal/experimental", "takt/internal/tooling", "takt/internal/extensions")
+	for _, stable := range []string{"internal/application", "internal/profile", "internal/runtime", "internal/workflow", "internal/store", "internal/config"} {
+		forbidImports(t, root, stable, "takt/internal/experimental", "takt/internal/tooling", "takt/internal/extensions")
+	}
 	forbidImports(t, root, "internal/appapi",
 		"takt/internal/cli", "takt/internal/mcp", "takt/internal/daemon", "takt/internal/bootstrap", "takt/internal/runtime")
 	forbidImports(t, root, "internal/mcp",
-		"takt/internal/cli", "takt/internal/daemon", "takt/internal/runtime", "takt/internal/evaluation", "takt/internal/notification")
+		"takt/internal/cli", "takt/internal/daemon", "takt/internal/runtime", "takt/internal/tooling/evaluation", "takt/internal/extensions/notification")
 	forbidImports(t, root, "internal/daemon",
-		"takt/internal/cli", "takt/internal/runtime", "takt/internal/evaluation", "takt/internal/notification")
+		"takt/internal/cli", "takt/internal/runtime", "takt/internal/tooling/evaluation", "takt/internal/extensions/notification")
 }
 
 func TestShellSmokeBudget(t *testing.T) {

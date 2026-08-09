@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"takt/internal/application"
 	"takt/internal/bootstrap"
 	"takt/internal/daemon"
+	"takt/internal/extensions"
 )
 
 func notifyCmd(ctx context.Context, args []string) error {
@@ -30,7 +30,7 @@ func notifyCmd(ctx context.Context, args []string) error {
 		if fs.NArg() != 0 {
 			return fmt.Errorf("usage: takt notify list [--unread]")
 		}
-		var result []application.NotificationItem
+		var result []extensions.NotificationItem
 		if *useDaemon {
 			client, err := daemon.NewClient(*workspace, *socket)
 			if err != nil {
@@ -44,7 +44,7 @@ func notifyCmd(ctx context.Context, args []string) error {
 			if err != nil {
 				return err
 			}
-			notifyService := app.Services.Notifications
+			notifyService := app.Extensions.Notifications
 			result, err = notifyService.List(*unread, *limit)
 			if err != nil {
 				return err
@@ -63,7 +63,7 @@ func notifyCmd(ctx context.Context, args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt notify ack <notification-id>")
 		}
-		var result application.NotificationItem
+		var result extensions.NotificationItem
 		if *useDaemon {
 			client, err := daemon.NewClient(*workspace, *socket)
 			if err != nil {
@@ -77,7 +77,7 @@ func notifyCmd(ctx context.Context, args []string) error {
 			if err != nil {
 				return err
 			}
-			notifyService := app.Services.Notifications
+			notifyService := app.Extensions.Notifications
 			value, err := notifyService.Ack(fs.Arg(0))
 			if err != nil {
 				return err
@@ -98,7 +98,7 @@ func notifyCmd(ctx context.Context, args []string) error {
 		if fs.NArg() != 0 {
 			return fmt.Errorf("usage: takt notify test [--message text]")
 		}
-		var result application.NotificationItem
+		var result extensions.NotificationItem
 		if *useDaemon {
 			client, err := daemon.NewClient(*workspace, *socket)
 			if err != nil {
@@ -112,7 +112,7 @@ func notifyCmd(ctx context.Context, args []string) error {
 			if err != nil {
 				return err
 			}
-			notifyService := app.Services.Notifications
+			notifyService := app.Extensions.Notifications
 			value, err := notifyService.Test(*message)
 			if err != nil {
 				return err
@@ -131,7 +131,7 @@ func notifyCmd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		notifyService := app.Services.Notifications
+		notifyService := app.Extensions.Notifications
 		result, err := notifyService.Dispatch()
 		if err != nil {
 			return err

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"takt/internal/yamlmini"
+	"takt/internal/yamlcodec"
 )
 
 type Command struct {
@@ -58,7 +58,7 @@ func Parse(name, path, src string) (*Command, error) {
 	}
 	fmText := rest[:idx]
 	var fm map[string]any
-	if err := yamlmini.Unmarshal([]byte(fmText), &fm); err != nil {
+	if err := yamlcodec.Unmarshal([]byte(fmText), &fm); err != nil {
 		return nil, fmt.Errorf("command %s frontmatter: %w", path, err)
 	}
 	if v, ok := fm["description"].(string); ok {

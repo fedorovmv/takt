@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"takt/internal/application"
 	"takt/internal/daemon"
+	"takt/internal/experimental/dynamicflow"
 )
 
 func hostCmd(ctx context.Context, args []string) error {
@@ -39,7 +39,7 @@ func hostBeginCmd(ctx context.Context, args []string) error {
 	host := fs.String("host", "", "coding-agent host name")
 	hostSession := fs.String("host-session", "", "stable coding-agent session ID")
 	profileName := fs.String("profile", "code", "planning profile")
-	enforcement := fs.String("enforcement", application.HostEnforcementAdvisory, "advisory|guarded|strict")
+	enforcement := fs.String("enforcement", dynamicflow.HostEnforcementAdvisory, "advisory|guarded|strict")
 	commandInterception := fs.Bool("command-interception", false, "host intercepts /takt before the LLM")
 	inputInterception := fs.Bool("input-interception", false, "host intercepts later user input while managed")
 	toolCallBlocking := fs.Bool("tool-call-blocking", false, "host can block tool calls before execution")
@@ -55,8 +55,8 @@ func hostBeginCmd(ctx context.Context, args []string) error {
 	if *host == "" || *hostSession == "" || goal == "" {
 		return fmt.Errorf("usage: takt host begin <goal> --host pi|opencode --host-session <id> [--daemon]")
 	}
-	request := application.HostBeginRequest{Host: *host, HostSessionID: *hostSession, Goal: goal, Profile: *profileName, Enforcement: *enforcement, Capabilities: application.HostCapabilities{CommandInterception: *commandInterception, InputInterception: *inputInterception, ToolCallBlocking: *toolCallBlocking, CompletionBlocking: *completionBlocking, SessionRecovery: *sessionRecovery}}
-	var result application.HostBeginResult
+	request := dynamicflow.HostBeginRequest{Host: *host, HostSessionID: *hostSession, Goal: goal, Profile: *profileName, Enforcement: *enforcement, Capabilities: dynamicflow.HostCapabilities{CommandInterception: *commandInterception, InputInterception: *inputInterception, ToolCallBlocking: *toolCallBlocking, CompletionBlocking: *completionBlocking, SessionRecovery: *sessionRecovery}}
+	var result dynamicflow.HostBeginResult
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
@@ -92,8 +92,8 @@ func hostConfirmCmd(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt host confirm <session-id> --confirm [--daemon]")
 	}
-	request := application.HostConfirmRequest{SessionID: fs.Arg(0), Confirm: *confirm}
-	var result application.HostSessionView
+	request := dynamicflow.HostConfirmRequest{SessionID: fs.Arg(0), Confirm: *confirm}
+	var result dynamicflow.HostSessionView
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
@@ -128,7 +128,7 @@ func hostStatusCmd(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt host status <session-id>")
 	}
-	var result application.HostSessionView
+	var result dynamicflow.HostSessionView
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
@@ -165,7 +165,7 @@ func hostFindCmd(ctx context.Context, args []string) error {
 	if *host == "" || *hostSession == "" {
 		return fmt.Errorf("usage: takt host find --host pi|opencode --host-session <id>")
 	}
-	var result application.HostSessionView
+	var result dynamicflow.HostSessionView
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
@@ -202,8 +202,8 @@ func hostGuardToolCmd(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 || *tool == "" {
 		return fmt.Errorf("usage: takt host guard-tool <session-id> --tool <name>")
 	}
-	request := application.HostToolGuardRequest{SessionID: fs.Arg(0), Tool: *tool, ReadOnly: *readOnly}
-	var result application.HostGuardDecision
+	request := dynamicflow.HostToolGuardRequest{SessionID: fs.Arg(0), Tool: *tool, ReadOnly: *readOnly}
+	var result dynamicflow.HostGuardDecision
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
@@ -239,8 +239,8 @@ func hostGuardCompletionCmd(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt host guard-completion <session-id> --kind final|question|status")
 	}
-	request := application.HostCompletionGuardRequest{SessionID: fs.Arg(0), Kind: *kind}
-	var result application.HostGuardDecision
+	request := dynamicflow.HostCompletionGuardRequest{SessionID: fs.Arg(0), Kind: *kind}
+	var result dynamicflow.HostGuardDecision
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
@@ -275,7 +275,7 @@ func hostReleaseCmd(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt host release <session-id>")
 	}
-	var result application.HostSession
+	var result dynamicflow.HostSession
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {

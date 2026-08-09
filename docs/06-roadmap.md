@@ -1,10 +1,10 @@
 # План развития Takt
 
-Актуальный план после `v0.1.54-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/68-*.md`.
+Актуальный план после `v0.1.55-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/69-*.md`.
 
 ## Текущая позиция
 
-Takt уже закрывает основной локальный control plane и в `v0.1.52–v0.1.54` прошёл application, test и architecture-hardening стабилизацию: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
+Takt уже закрывает основной локальный control plane и в `v0.1.52–v0.1.55` прошёл application, test, architecture-hardening и modularization стабилизацию: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
 
 Главный риск теперь — продолжать добавлять механизмы быстрее, чем появляется evidence их пользы. Поэтому ближайший порядок меняется с feature-driven на evidence-driven.
 
@@ -27,7 +27,23 @@ Takt уже закрывает основной локальный control plane
 
 После production refactor product correctness принадлежит Go tests, black-box проверки живут в `tests/e2e`, subprocesses bounded. В `v0.1.54` shell ограничен единственным TypeScript compiler smoke. Architecture gate контролирует эту границу. Детали — `docs/67-go-native-test-architecture-v0.1.53.md`, `docs/68-architecture-hardening-v0.1.54.md`, ADR-086/087.
 
-## P0. Evidence
+## P-0.25. Core modularization — выполнено в v0.1.55
+
+Stable core отделён от `experimental`, `extensions` и `tooling` односторонними import boundaries. Dynamic Flow остаётся одним из экспериментальных способов интеграции с coding agents, evaluation/compatibility вынесены из runtime graph, Package/Block/Notification оформлены как extensions. Самописный YAML parser заменён upstream library, добавлен отдельный user-journey release gate. Детали — `docs/69-core-stabilization-modularization-v0.1.55.md`, ADR-088.
+
+## P0. User stabilization
+
+До promotion новых контрактов приоритет имеет основной пользовательский путь stable core:
+
+- сборка/установка и `init` на поддерживаемых ОС;
+- `validate -> run -> status/events/artifacts`;
+- approval/answer, failure/retry и reusable composition;
+- понятные диагностики и backward compatibility существующих Workflow/Run контрактов;
+- live coding-agent/adapter сценарии через stable APIs.
+
+`make journeys` закрепляет минимальный black-box baseline. Новые проблемы из реального использования исправляются раньше расширения feature surface.
+
+## P0.5. Evidence для experimental/tooling
 
 ### 1. Live Route DSL benchmark
 

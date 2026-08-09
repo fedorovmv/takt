@@ -3,8 +3,8 @@ package cli
 import (
 	"context"
 	"fmt"
-	"takt/internal/application"
 	"takt/internal/bootstrap"
+	"takt/internal/tooling"
 )
 
 func evalCmd(ctx context.Context, args []string) error {
@@ -15,7 +15,7 @@ func evalCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	service := app.Services.Evaluation
+	service := app.Tooling.Evaluation
 	switch args[0] {
 	case "run":
 		fs := newFlagSet("eval run")
@@ -48,7 +48,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval run <workflow> --config path --cases dir --workspace-template dir [flags]")
 		}
-		report, err := service.Run(ctx, application.EvaluationRunRequest{
+		report, err := service.Run(ctx, tooling.EvaluationRunRequest{
 			WorkflowPath: fs.Arg(0), ConfigPath: *configPath, CasesDir: *casesDir,
 			WorkspaceTemplate: *templateDir, OutputDir: *outputDir, Repeat: *repeat,
 			ApprovalAnswer: *answer, Replace: *replace,
@@ -74,7 +74,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval benchmark <matrix.yaml> [--output dir] [--repeat N] [--replace]")
 		}
-		report, err := service.Benchmark(ctx, application.EvaluationBenchmarkRequest{MatrixPath: fs.Arg(0), OutputDir: *outputDir, Repeat: *repeat, Replace: *replace})
+		report, err := service.Benchmark(ctx, tooling.EvaluationBenchmarkRequest{MatrixPath: fs.Arg(0), OutputDir: *outputDir, Repeat: *repeat, Replace: *replace})
 		if err != nil {
 			if report != nil {
 				if printErr := printResult(*jsonOut, report); printErr != nil {
@@ -97,7 +97,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval task-benchmark <matrix.yaml> [--output dir] [--repeat N] [--replace]")
 		}
-		report, err := service.TaskBenchmark(ctx, application.EvaluationBenchmarkRequest{MatrixPath: fs.Arg(0), OutputDir: *outputDir, Repeat: *repeat, Replace: *replace})
+		report, err := service.TaskBenchmark(ctx, tooling.EvaluationBenchmarkRequest{MatrixPath: fs.Arg(0), OutputDir: *outputDir, Repeat: *repeat, Replace: *replace})
 		if err != nil {
 			if report != nil {
 				if printErr := printResult(*jsonOut, report); printErr != nil {

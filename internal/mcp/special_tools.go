@@ -8,6 +8,7 @@ import (
 
 	"takt/internal/application"
 	"takt/internal/assistant"
+	"takt/internal/experimental/dynamicflow"
 	"takt/internal/store"
 )
 
@@ -49,7 +50,7 @@ func (s *Server) specialToolHandler(name string) (specialToolHandler, bool) {
 }
 
 func (s *Server) executePlanTool(ctx context.Context, args map[string]any) (any, error) {
-	var in application.ExecutePlanRequest
+	var in dynamicflow.ExecutePlanRequest
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}

@@ -4,13 +4,11 @@ import (
 	"context"
 	"os"
 
-	"takt/internal/application"
 	"takt/internal/domainadapter"
-	"takt/internal/dynamicplan"
-	"takt/internal/hostcontrol"
-	"takt/internal/learning"
-	"takt/internal/notification"
-	"takt/internal/packagedist"
+	"takt/internal/experimental/dynamicflow"
+	"takt/internal/experimental/dynamicplan"
+	"takt/internal/extensions"
+	"takt/internal/extensions/packagedist"
 	"takt/internal/spec"
 )
 
@@ -24,24 +22,24 @@ func (s planStore) Load(id string) (*dynamicplan.Record, error) { return s.inner
 func (s planStore) Save(record *dynamicplan.Record) error       { return s.inner.Save(record) }
 func (s planStore) List() ([]*dynamicplan.Record, error)        { return s.inner.List() }
 func (s planStore) Dir(id string) string                        { return s.inner.Dir(id) }
-func (s planStore) AcquireAdvanceLock(ctx context.Context) (application.AdvanceLock, error) {
-	file, err := s.inner.AcquireAdvanceLock(ctx)
+func (s planStore) AcquireAdvanceLock(ctx context.Context) (dynamicflow.AdvanceLock, error) {
+	f, err := s.inner.AcquireAdvanceLock(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return advanceLock{file: file}, nil
+	return advanceLock{f}, nil
 }
-func (s planStore) TryAdvanceLock() (application.AdvanceLock, bool, error) {
-	file, ok, err := s.inner.TryAdvanceLock()
+func (s planStore) TryAdvanceLock() (dynamicflow.AdvanceLock, bool, error) {
+	f, ok, err := s.inner.TryAdvanceLock()
 	if err != nil || !ok {
 		return nil, ok, err
 	}
-	return advanceLock{file: file}, true, nil
+	return advanceLock{f}, true, nil
 }
 
 type packageBackend struct{ workspace string }
 
-func (b packageBackend) Manager() (application.PackageManager, error) {
+func (b packageBackend) Manager() (extensions.PackageManager, error) {
 	return packagedist.New(b.workspace)
 }
 func (b packageBackend) Sign(path, keyID, keyFile string) error {
@@ -53,15 +51,4 @@ func (b packageBackend) InstalledManifestPaths() ([]string, error) {
 
 func adapterFactory(cfg *spec.Config) domainadapter.Resolver {
 	return domainadapter.Factory{Config: cfg}
-}
-
-func applicationDependencies(workspace string) application.Dependencies {
-	return application.Dependencies{
-		PlanStore:      planStore{inner: dynamicplan.Store{Workspace: workspace}},
-		HostStore:      hostcontrol.Store{Workspace: workspace},
-		Notifications:  notification.Dispatcher{Workspace: workspace},
-		Learning:       learning.Manager{Workspace: workspace},
-		Packages:       packageBackend{workspace: workspace},
-		AdapterFactory: adapterFactory,
-	}
 }

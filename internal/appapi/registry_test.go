@@ -15,7 +15,7 @@ func TestCanonicalOperationRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry := New(services)
+	registry := New(Dependencies{Core: services.Core, Dynamic: services.Dynamic, Blocks: services.Extensions.Blocks, Notifications: services.Extensions.Notifications})
 	got := make([]string, 0, len(registry.handlers))
 	for id := range registry.handlers {
 		got = append(got, id)
@@ -41,7 +41,7 @@ func TestCanonicalOperationRejectsUnknownMethodAndFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry := New(services)
+	registry := New(Dependencies{Core: services.Core, Dynamic: services.Dynamic, Blocks: services.Extensions.Blocks, Notifications: services.Extensions.Notifications})
 	if _, err := registry.Call(context.Background(), "missing.operation", json.RawMessage(`{}`)); err == nil {
 		t.Fatal("expected unknown operation error")
 	}

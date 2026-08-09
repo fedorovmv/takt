@@ -42,7 +42,7 @@ func worktreeListCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := app.Services.WorktreeService.List(ctx)
+	result, err := app.Core.WorktreeService.List(ctx)
 	if err != nil {
 		return err
 	}
@@ -68,7 +68,7 @@ func worktreeRemoveCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := app.Services.WorktreeService.Remove(ctx, fs.Arg(0), *force)
+	result, err := app.Core.WorktreeService.Remove(ctx, fs.Arg(0), *force)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func worktreePruneCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := app.Services.WorktreeService.Prune(ctx); err != nil {
+	if err := app.Core.WorktreeService.Prune(ctx); err != nil {
 		return err
 	}
 	return printResult(*jsonOut, map[string]any{"pruned": true})

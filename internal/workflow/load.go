@@ -8,7 +8,7 @@ import (
 	"sort"
 
 	"takt/internal/spec"
-	"takt/internal/yamlmini"
+	"takt/internal/yamlcodec"
 )
 
 const maxGovernedWorkflowDepth = 16
@@ -35,7 +35,7 @@ func loadOne(path string) (*spec.Workflow, error) {
 		return nil, fmt.Errorf("read workflow: %w", err)
 	}
 	var wf spec.Workflow
-	if err := yamlmini.Unmarshal(b, &wf); err != nil {
+	if err := yamlcodec.Unmarshal(b, &wf); err != nil {
 		return nil, fmt.Errorf("parse workflow %s: %w", path, err)
 	}
 	expanded, err := Expand(path, &wf)

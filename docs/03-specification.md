@@ -657,14 +657,18 @@ Timeout и cancellation portable hook относятся ко всей попы�
 
 Stdout и stderr неуспешного hook добавляются в `${feedback}` следующей попытки.
 
-## 9. YAML subset
+## 9. YAML input
 
-Takt не заявляет полную совместимость с YAML 1.2. Поддерживаются карты, списки, простые scalar, inline JSON object, inline list и block scalar:
+YAML syntax разбирается upstream-библиотекой `go.yaml.in/yaml/v3`. Takt не поддерживает собственную грамматику или отдельный YAML subset: карты, списки, quoted/plain scalars, block scalars, anchors/aliases и другие синтаксические возможности определяются выбранной YAML-библиотекой.
 
-- `|`, `|-`, `|+`;
-- `>`, `>-`, `>+`.
+Поверх parser Takt применяет свой публичный contract layer:
 
-Пустые строки, `#`, `:`, `${...}` и отступы внутри block scalar сохраняются. Tabs запрещены.
+- канонические имена полей берутся из существующих `json` tags;
+- неизвестные поля отклоняются с диагностикой и подсказкой ближайшего имени;
+- YAML и JSON проходят через одну нормализованную JSON-shaped модель до декодирования в структуры Takt;
+- semantic validation Workflow/Config/Profile остаётся в соответствующих валидаторах Takt.
+
+Для многострочных `prompt` и `bash` рекомендуется обычный YAML block scalar `|`.
 
 ## 10. Переменные
 

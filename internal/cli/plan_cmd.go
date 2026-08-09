@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"takt/internal/application"
 	"takt/internal/daemon"
+	"takt/internal/experimental/dynamicflow"
 )
 
 func planCmd(ctx context.Context, args []string) error {
@@ -45,7 +45,7 @@ func planCmd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		record, err := service.PlanService.PromotePlanWithOptions(ctx, fs.Arg(0), *name, application.PromotePlanOptions{Force: *force})
+		record, err := service.PlanService.PromotePlanWithOptions(ctx, fs.Arg(0), *name, dynamicflow.PromotePlanOptions{Force: *force})
 		if err != nil {
 			return err
 		}
@@ -73,7 +73,7 @@ func planCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := service.PlanService.Plan(ctx, application.PlanRequest{Goal: goal, Profile: *profileName})
+	result, err := service.PlanService.Plan(ctx, dynamicflow.PlanRequest{Goal: goal, Profile: *profileName})
 	if err != nil {
 		return err
 	}
@@ -93,13 +93,13 @@ func executeCmd(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt execute <plan-id> --confirm [--daemon] [--workspace dir]")
 	}
-	request := application.ExecutePlanRequest{PlanID: fs.Arg(0), Confirm: *confirm}
+	request := dynamicflow.ExecutePlanRequest{PlanID: fs.Arg(0), Confirm: *confirm}
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {
 			return err
 		}
-		var record application.PlanRecord
+		var record dynamicflow.PlanRecord
 		if err := client.Call(ctx, "plan.execute", request, &record); err != nil {
 			return err
 		}
@@ -129,7 +129,7 @@ func steerCmd(ctx context.Context, args []string) error {
 	if fs.NArg() < 2 && *runID == "" {
 		return fmt.Errorf("usage: takt steer <plan-id> <message> [--daemon] [--workspace dir]")
 	}
-	request := application.SteerRequest{RunID: *runID}
+	request := dynamicflow.SteerRequest{RunID: *runID}
 	if *runID != "" {
 		request.Message = strings.TrimSpace(strings.Join(fs.Args(), " "))
 	} else {
@@ -141,7 +141,7 @@ func steerCmd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		var record application.PlanRecord
+		var record dynamicflow.PlanRecord
 		if err := client.Call(ctx, "plan.steer", request, &record); err != nil {
 			return err
 		}

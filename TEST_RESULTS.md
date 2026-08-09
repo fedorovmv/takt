@@ -1,70 +1,130 @@
-# Takt v0.1.54-alpha — test results
+# Takt v0.1.55-alpha — TEST RESULTS
 
-`v0.1.54-alpha` is an architecture-hardening release. Product features and public Workflow/Config/Run/MCP/adapter contracts were frozen while the remaining application/runtime/test coupling found by the post-`v0.1.53` review was removed. Verification was performed on Linux; macOS-specific regression tests remain in the suite, but this report does not claim a fresh macOS execution.
+Release theme: **Core Stabilization & Modularization**. No product capability was intentionally removed and no new workflow/runtime feature was added.
 
-## Architecture changes verified
+## Architecture / modularization
 
-- shared `application.Context` removed;
-- application service dependency fields are private;
-- `RunService ↔ PlanService` cycle removed; fork coordination lives in `ForkService`;
-- AST architecture gate rejects cycles between application services;
-- concrete Dynamic Plan/Host/notification/learning/package/adapter infrastructure is wired by bootstrap rather than application use cases;
-- production runtime has no default/hidden dependency constructor; evaluation receives its execution factory from bootstrap;
-- CLI root context is signal-aware and foreground operations propagate caller context;
-- durable detached execution is explicit; production application contains one centralized request-independent `context.Background()` helper only;
-- process-global Dynamic Plan/Host mutexes removed in favor of durable store locks;
-- Task response, Dynamic Plan advance and governed fan-out were decomposed into explicit phases;
-- daemon/MCP canonical operation identity is shared through `internal/appapi`;
-- shell `test-*.sh` surface is one TypeScript compiler smoke; process/package/host/deep-workflow assertions are Go E2E with bounded subprocess contexts.
+PASS:
 
-## Working tree verification
+- `internal/application` contains the stable Run-facing use cases and does not import `internal/experimental`, `internal/extensions` or `internal/tooling`;
+- Dynamic Flow / Router / Dynamic Plan / Evidence / Host Control / Learning are under `internal/experimental`;
+- Package Distribution / Block Catalog / Notifications are under `internal/extensions`;
+- evaluation / compatibility are under `internal/tooling`;
+- `profile` no longer imports package distribution; installed package manifests are merged by `internal/catalogload` above the stable boundary;
+- production composition remains in `internal/bootstrap`;
+- architecture tests reject reverse stable -> experimental/extensions/tooling imports and the return of `internal/yamlmini`.
 
-| Check | Result |
-| --- | --- |
-| `gofmt` | PASS |
-| `go vet ./...` | PASS |
-| `go test ./... -count=1` | PASS |
-| `go build ./...` | PASS |
-| `go test ./internal/architecture -count=1` | PASS |
-| `./scripts/check-docs.sh` | PASS |
-| `make smoke` | PASS — TypeScript compiler boundary |
-| release CLI validation examples | PASS |
-| `go test -race -p 8 ./... -count=1` | external 5-minute limit stopped the aggregate after all printed internal/reference/SDK packages passed; no race/test failure was emitted |
-| `go test -race -p 4 ./tests/e2e -count=1` | PASS |
+Production Go LOC after the split (tests excluded):
 
-The interrupted aggregate race run is not reported as an aggregate PASS. The only unprinted package at the cutoff was `tests/e2e`; it was run separately under `-race` and passed. This preserves the distinction between observed test success and the execution environment's wall-time limit.
+| Area | LOC |
+| --- | ---: |
+| `internal/application` | 3,493 |
+| `internal/experimental` | 5,639 |
+| `internal/extensions` | 2,681 |
+| `internal/tooling` | 3,184 |
+| `internal/runtime` | 5,164 |
+| `internal/yamlcodec` | 228 |
 
-## Regression coverage retained
+The stable application package was reduced from about 6.8k LOC in v0.1.54 to 3.5k LOC by moving independent modules, not by deleting their functionality.
 
-The normal Go suite includes the previously separate contracts for:
+## User journeys
 
-- runtime/composition/iteration history/child Runs/fan-out;
-- Dynamic Takt, Task Router and task-level evaluation;
-- MCP, daemon, external executor and host control;
-- Structured Task Sources and reference adapters;
-- portable package distribution and multi-repo flows;
-- Human-reviewed Learning Loop;
-- schema subset/registry/compatibility contracts;
-- Route DSL evaluation and benchmark fixtures;
-- security/redaction/worktree/recovery behavior.
+`make journeys` uses the real `takt` binary through the Go black-box harness. PASS:
 
-## Clean archive verification
+1. `init -> validate -> run -> status/events/artifacts`;
+2. approval -> `answer` -> continue;
+3. failed Run -> `retry` -> completed;
+4. reusable `subworkflow`.
 
-A candidate ZIP was extracted into a fresh directory and verified independently of the working tree:
+The README quick start was changed to the same stable path. Dynamic Flow and evaluation are no longer prerequisites for the first user experience.
 
-| Check | Result |
-| --- | --- |
-| `VERSION` | `0.1.54-alpha` |
-| Takt skill | `0.36.0` |
-| `bin/` in archive | absent |
-| `MANIFEST.sha256` | PASS — 608 files |
-| `./scripts/check-docs.sh` | PASS |
-| `go vet ./...` | PASS |
-| `go test ./... -count=1` | PASS |
-| `go build ./...` | PASS |
-| `go test ./internal/architecture -count=1` | PASS |
-| `make smoke` | PASS |
-| changed architecture/runtime packages under `-race` | PASS for application/runtime/CLI/daemon/MCP/appapi/architecture |
-| clean-archive `go test -race ./tests/e2e -count=1` | PASS |
+## YAML dependency
 
-The grouped clean-archive race command was also stopped by the outer five-minute execution limit after all printed architecture/runtime packages had passed and before `tests/e2e` printed a result. `tests/e2e` was then executed separately under `-race` and passed. No interrupted aggregate is reported as PASS.
+The handwritten `internal/yamlmini` parser was removed. Production source imports:
+
+```text
+go.yaml.in/yaml/v3 v3.0.4
+```
+
+`internal/yamlcodec` keeps only Takt-specific contract behavior: canonical JSON field names, strict unknown-field diagnostics, suggestions, JSON-shaped normalization and the common YAML/JSON decode path.
+
+### Release-environment limitation
+
+This execution environment has no outbound DNS and did not have `go.yaml.in/yaml/v3 v3.0.4` in its Go module cache. A direct offline production-dependency check therefore reports:
+
+```text
+go: downloading go.yaml.in/yaml/v3 v3.0.4
+module lookup disabled by GOPROXY=off
+```
+
+For local verification only, the test commands used an **external temporary compatibility module** at the same import path. It preserves the previous YAML behavior so the modular refactor and all existing contracts can be regression-tested in this sandbox. The temporary module is outside the project, is not included in the release archive, and the final `go.mod` contains **no `replace` directive**.
+
+Consequently:
+
+- all Takt regression results below are factual;
+- direct execution against the downloaded upstream v3.0.4 module was **environment-blocked here**, not claimed as PASS;
+- normal Go/CI environments resolve the exact production dependency from `go.mod`/`go.sum`; `.github/workflows/ci.yml` runs `make check` on Linux and macOS and will exercise the actual module.
+
+## Verification results
+
+Using the final source tree plus the temporary external compatibility dependency described above:
+
+```text
+gofmt                         PASS
+go vet ./...                  PASS
+go test -p 8 ./... -count=1  PASS
+go build ./...                PASS
+architecture gate             PASS
+documentation gate            PASS
+make journeys                 PASS
+TypeScript host smoke         PASS
+```
+
+Full race run:
+
+```text
+go test -race -p 8 ./... -count=1  PASS
+```
+
+This includes stable application/runtime, all experimental/extensions/tooling packages, CLI/daemon/MCP/appapi, reference adapters/SDKs and `tests/e2e`.
+
+## Release scope
+
+External contracts intentionally retained:
+
+- `takt/v1alpha1` Workflow/Config contracts;
+- durable Run state/event semantics;
+- CLI and MCP operation compatibility;
+- assistant/domain-adapter/task-source public SDKs;
+- Dynamic Flow state/API compatibility, now explicitly experimental;
+- evaluation/compatibility/learning/package functionality.
+
+The release changes stability boundaries and dependency direction, not the intended behavior of those capabilities.
+
+## Clean-archive candidate verification
+
+A candidate ZIP was unpacked into a new directory before final packaging.
+
+Before any sandbox-only dependency substitution:
+
+```text
+VERSION                         0.1.55-alpha
+Takt skill                      0.37.0
+bin/                            absent
+MANIFEST                        PASS (615 files)
+documentation                   PASS
+go.mod replace directives       absent
+```
+
+With the same external temporary YAML compatibility module used only to compensate for this sandbox's missing network/module cache:
+
+```text
+go vet ./...                    PASS
+go test -p 8 ./... -count=1    PASS
+go build ./...                  PASS
+make journeys                   PASS
+changed modular contour -race   PASS
+TypeScript host smoke           PASS
+```
+
+A second full `go test -race -p 8 ./...` from the clean directory was stopped by the external execution limit during repeated race compilation, so a clean-directory aggregate race PASS is **not** claimed. The identical final source tree had already completed one uninterrupted full aggregate race PASS before packaging, and the entire changed modular/E2E contour completed race PASS again from the clean extraction.

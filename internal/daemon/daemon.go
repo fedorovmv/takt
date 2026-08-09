@@ -21,6 +21,7 @@ import (
 	"takt/internal/appapi"
 	"takt/internal/application"
 	"takt/internal/bootstrap"
+	"takt/internal/maintenance"
 	"takt/internal/mcp"
 	"takt/internal/store"
 	"takt/internal/version"
@@ -90,7 +91,7 @@ type Options struct {
 type Server struct {
 	runs        *application.RunService
 	external    *application.ExternalService
-	maintenance *application.MaintenanceService
+	maintenance *maintenance.Service
 	api         *appapi.Registry
 	mcps        map[mcp.Surface]*mcp.Server
 	paths       Paths
@@ -108,19 +109,19 @@ func New(options Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	service := app.Services
-	paths, err := ResolvePaths(service.Workspace, options.SocketPath)
+	core := app.Core
+	paths, err := ResolvePaths(app.Workspace, options.SocketPath)
 	if err != nil {
 		return nil, err
 	}
 	if options.ErrOut == nil {
 		options.ErrOut = os.Stderr
 	}
-	server := &Server{runs: service.RunService, external: service.ExternalService, maintenance: service.Maintenance, api: app.API, paths: paths, errOut: options.ErrOut, stop: make(chan struct{}), mcps: map[mcp.Surface]*mcp.Server{}}
+	server := &Server{runs: core.RunService, external: core.ExternalService, maintenance: app.Maintenance, api: app.API, paths: paths, errOut: options.ErrOut, stop: make(chan struct{}), mcps: map[mcp.Surface]*mcp.Server{}}
 	for _, surface := range []mcp.Surface{mcp.SurfaceAll, mcp.SurfaceAgent, mcp.SurfaceHost, mcp.SurfaceWorker, mcp.SurfaceOperator} {
-		server.mcps[surface] = mcp.NewWithDependencies(mcp.Dependencies{API: app.API, Plans: service.PlanService, External: service.ExternalService, Maintenance: service.Maintenance}, nil, nil, options.ErrOut, surface)
+		server.mcps[surface] = mcp.NewWithDependencies(mcp.Dependencies{API: app.API, Plans: app.Experimental.PlanService, External: core.ExternalService, Maintenance: app.Maintenance}, nil, nil, options.ErrOut, surface)
 	}
-	server.metadata = Metadata{API: APIRevision, PID: os.Getpid(), Workspace: service.Workspace, Socket: paths.Socket, StartedAt: time.Now().UTC(), Version: version.Value}
+	server.metadata = Metadata{API: APIRevision, PID: os.Getpid(), Workspace: app.Workspace, Socket: paths.Socket, StartedAt: time.Now().UTC(), Version: version.Value}
 	return server, nil
 }
 

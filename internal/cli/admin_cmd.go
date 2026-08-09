@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"takt/internal/application"
+	"takt/internal/extensions"
 )
 
 func blockCmd(ctx context.Context, args []string) error {
@@ -38,13 +38,13 @@ func blockCmd(ctx context.Context, args []string) error {
 			return err
 		}
 		if subcommand == "list" {
-			value, err := services.CatalogService.ListBlocks(*profileName)
+			value, err := services.Blocks.List(*profileName)
 			if err != nil {
 				return err
 			}
 			return printResult(*jsonOut, value)
 		}
-		value, err := services.CatalogService.DescribeBlock(*profileName, fs.Arg(0))
+		value, err := services.Blocks.Describe(*profileName, fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -62,7 +62,7 @@ func blockCmd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		catalog, err := services.CatalogService.ValidateBlockPackage(fs.Arg(0))
+		catalog, err := services.Blocks.Validate(fs.Arg(0))
 		if err != nil {
 			return err
 		}
@@ -215,7 +215,7 @@ func packageCmd(ctx context.Context, args []string) error {
 		if s == "" {
 			s = "project"
 		}
-		entry, err := packages.Install(ctx, fs.Arg(0), application.PackageInstallOptions{Scope: s, Ref: *ref})
+		entry, err := packages.Install(ctx, fs.Arg(0), extensions.PackageInstallOptions{Scope: s, Ref: *ref})
 		if err != nil {
 			return err
 		}

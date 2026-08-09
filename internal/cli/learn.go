@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"takt/internal/application"
 	"takt/internal/bootstrap"
+	experimentallearning "takt/internal/experimental/learning"
 )
 
 func learnCmd(ctx context.Context, args []string) error {
@@ -92,7 +92,7 @@ func learnCmd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		proposal, err := service.Propose(ctx, application.LearningProposeRequest{
+		proposal, err := service.Propose(ctx, experimentallearning.ProposeRequest{
 			PatternFingerprint: *pattern,
 			CandidateKind:      *kind,
 			Name:               *name,
@@ -169,10 +169,10 @@ func learnCmd(ctx context.Context, args []string) error {
 	}
 }
 
-func learningService(workspace string) (*application.LearningService, error) {
+func learningService(workspace string) (*experimentallearning.Service, error) {
 	app, err := bootstrap.New(workspace, ".takt/config.yaml")
 	if err != nil {
 		return nil, err
 	}
-	return app.Services.Learning, nil
+	return app.Learning, nil
 }

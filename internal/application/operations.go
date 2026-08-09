@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"takt/internal/dynamicplan"
 	"takt/internal/runtime"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -104,18 +103,6 @@ type RetryRequest struct {
 	RunID    string `json:"run_id"`
 	NodeID   string `json:"node_id,omitempty"`
 	Detached bool   `json:"-"`
-}
-
-type ForkRequest struct {
-	RunID    string `json:"run_id"`
-	Input    string `json:"input,omitempty"`
-	Detached bool   `json:"-"`
-}
-
-type ForkResult struct {
-	SourceRunID string       `json:"source_run_id"`
-	Run         *StartResult `json:"run,omitempty"`
-	Plan        *PlanResult  `json:"plan,omitempty"`
 }
 
 type RecoverResult struct {
@@ -245,22 +232,12 @@ func (s *RunService) Attention() ([]AttentionItem, error) {
 		run := runs[i]
 		items = append(items, AttentionItem{Kind: "run", Run: &run, Status: run.EffectiveState, Reason: run.Attention.Reason, Message: run.Attention.Message, UpdatedAt: run.UpdatedAt})
 	}
-	plans, err := s.planStore.List()
-	if err != nil {
-		return nil, err
-	}
-	for _, plan := range plans {
-		if plan.CurrentRunID != "" || (plan.Status != "waiting" && plan.Status != "parked") {
-			continue
+	if s.planHooks.Attention != nil {
+		planItems, hookErr := s.planHooks.Attention()
+		if hookErr != nil {
+			return nil, hookErr
 		}
-		reason := "question"
-		if plan.Status == "parked" {
-			reason = "owner_decision_required"
-			if plan.Failure != nil && strings.TrimSpace(plan.Failure.Code) != "" {
-				reason = strings.ToLower(plan.Failure.Code)
-			}
-		}
-		items = append(items, AttentionItem{Kind: "plan", PlanID: plan.ID, Status: plan.Status, Reason: reason, Message: plan.LastError, UpdatedAt: plan.UpdatedAt})
+		items = append(items, planItems...)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].UpdatedAt.After(items[j].UpdatedAt) })
 	return items, nil
@@ -746,27 +723,17 @@ func sortedKeys(values map[string]bool) []string {
 	return out
 }
 
-func (s *ForkService) Fork(ctx context.Context, request ForkRequest) (*ForkResult, error) {
-	st := s.runs.store
+type RunForkRequest struct {
+	RunID    string `json:"run_id"`
+	Input    string `json:"input,omitempty"`
+	Detached bool   `json:"-"`
+}
+
+func (s *RunService) ForkRun(ctx context.Context, request RunForkRequest) (*StartResult, error) {
+	st := s.store
 	state, err := st.Load(request.RunID)
 	if err != nil {
 		return nil, err
-	}
-	if record, planErr := s.plans.resolvePlanRecord("", request.RunID); planErr == nil {
-		candidate := latestPlan(record)
-		if strings.TrimSpace(request.Input) != "" {
-			candidate.Goal = strings.TrimSpace(request.Input)
-		}
-		result, err := s.plans.Plan(ctx, PlanRequest{Goal: candidate.Goal, Profile: record.Profile, Candidate: &candidate, TaskSource: record.TaskSource})
-		if err != nil {
-			return nil, err
-		}
-		result.Record.ForkedFromPlanID = record.ID
-		result.Record.ForkSourceFingerprint = planForkFingerprint(record)
-		if err := s.plans.savePlanRecord(result.Record); err != nil {
-			return nil, err
-		}
-		return &ForkResult{SourceRunID: request.RunID, Plan: result}, nil
 	}
 	input := state.Input
 	if strings.TrimSpace(request.Input) != "" {
@@ -777,7 +744,7 @@ func (s *ForkService) Fork(ctx context.Context, request ForkRequest) (*ForkResul
 	if state.RunOptions.WorktreeMode != "auto" {
 		worktreePtr = &worktree
 	}
-	started, err := s.runs.Start(ctx, StartRequest{Selector: state.WorkflowPath, ConfigPath: state.ConfigPath, Input: input, Detached: request.Detached, Worktree: worktreePtr, WorktreeBase: state.RunOptions.WorktreeBase, KeepWorktree: state.RunOptions.KeepWorktree, AllowDirty: state.RunOptions.AllowDirty})
+	started, err := s.Start(ctx, StartRequest{Selector: state.WorkflowPath, ConfigPath: state.ConfigPath, Input: input, Detached: request.Detached, Worktree: worktreePtr, WorktreeBase: state.RunOptions.WorktreeBase, KeepWorktree: state.RunOptions.KeepWorktree, AllowDirty: state.RunOptions.AllowDirty})
 	if err != nil {
 		return nil, err
 	}
@@ -791,7 +758,7 @@ func (s *ForkService) Fork(ctx context.Context, request ForkRequest) (*ForkResul
 		return nil, err
 	}
 	started.State = forked.PublicView()
-	return &ForkResult{SourceRunID: request.RunID, Run: started}, nil
+	return started, nil
 }
 
 func firstIncompleteNodeID(state *store.RunState, nodes []spec.Node) string {
@@ -809,15 +776,6 @@ func runForkFingerprint(state *store.RunState) string {
 		return ""
 	}
 	sum := sha256.Sum256([]byte(strings.Join([]string{state.WorkflowFingerprint, state.ConfigFingerprint, state.CommandsFingerprint, fmt.Sprintf("%d", state.Revision)}, "\x00")))
-	return hex.EncodeToString(sum[:])
-}
-
-func planForkFingerprint(record *dynamicplan.Record) string {
-	if record == nil {
-		return ""
-	}
-	plan := latestPlan(record)
-	sum := sha256.Sum256([]byte(record.BlockCatalogFingerprint + "\x00" + dynamicplan.PlanJSON(plan) + "\x00" + fmt.Sprintf("%d", len(record.Revisions))))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -971,24 +929,8 @@ func processAlive(pid int) bool {
 }
 
 func (s *RunService) setOwningPlanStatus(ctx context.Context, runID, status, lastError string) error {
-	planStore := s.planStore
-	lock, err := planStore.AcquireAdvanceLock(ctx)
-	if err != nil {
-		return err
+	if s.planHooks.SetOwningRunStatus == nil {
+		return nil
 	}
-	defer lock.Release()
-	records, err := planStore.List()
-	if err != nil {
-		return err
-	}
-	for _, record := range records {
-		if record.CurrentRunID != runID && !containsString(record.ExecutionRunIDs, runID) {
-			continue
-		}
-		record.Status = status
-		record.LastError = lastError
-		record.UpdatedAt = time.Now().UTC()
-		return savePlanRecord(s.configPath, s.planStore, record)
-	}
-	return nil
+	return s.planHooks.SetOwningRunStatus(ctx, runID, status, lastError)
 }

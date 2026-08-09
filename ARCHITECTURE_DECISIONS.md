@@ -50,7 +50,9 @@ State и event одного перехода получают одинакову
 
 ## ADR-013. Поддерживается документированный YAML subset
 
-До появления требования полной YAML 1.2 Takt сохраняет stdlib-only parser, формально ограничивает subset и покрывает block scalar тестами.
+Историческое решение ранних `v0.1`: Takt использовал собственный stdlib-only parser и формально ограничивал YAML subset.
+
+**Статус: superseded в `v0.1.55` ADR-088.** Общая YAML grammar больше не является частью Takt: syntax parsing делегирован `go.yaml.in/yaml/v3`, а в Takt остаётся только strict contract/diagnostic layer для публичных структур.
 
 ## ADR-014. Timeout ограничивает всю попытку узла
 
@@ -600,6 +602,8 @@ Human-reviewed learning использует durable Run history только к
 
 **Статус:** принято.
 
+**Уточнение:** физическая модульная граница stable/experimental/extensions/tooling определена ADR-088; перечисление use cases ниже описывает состояние `v0.1.52`.
+
 `cmd/takt`, CLI, MCP и daemon являются transport adapters и не владеют Run/runtime business semantics. Use cases находятся в `internal/application` и разделены на сервисы Run, Plan, Task, External, Host, Catalog, Authoring, Worktree, Command, Notification, Maintenance, Evaluation, Learning, Compatibility, Adapter и Package. Production concrete dependencies собираются в `internal/bootstrap`. CLI не вызывает runtime/store/evaluation/learning/package engines напрямую.
 
 Общие daemon/MCP операции используют один `internal/appapi` handler registry со strict decode/default semantics. Daemon не реализует отдельный application switch. MCP получает только canonical API, Plan, External и Maintenance dependencies; его собственными остаются только MCP-specific protocol operations и явно отличающаяся foreground semantics `takt.execute`.
@@ -635,3 +639,21 @@ Foreground lifetime передаётся одним `context.Context` от `cmd/
 Shell `test-*.sh` после миграции Go E2E разрешён только для TypeScript compiler smoke, где внешняя toolchain является самим предметом проверки. Остальные product assertions, включая process boundaries, принадлежат Go tests с bounded subprocess context.
 
 **Причина.** ADR-085 убрал transport/control god objects, но повторный аудит `v0.1.53` показал остатки той же связности внутри application: shared Context, циклический Run↔Plan graph, concrete backend construction, неполную cancellation chain и process-wide mutexes. Простое дальнейшее дробление файлов или package-per-use-case увеличило бы церемонию, не устраняя причины. Private acyclic dependencies, один composition root и явная execution lifetime дают проверяемые SOLID/DIP/ISP границы, сохраняя KISS/YAGNI.
+
+## ADR-088. Stable core is a dependency direction; experimental, extensions and tooling remain outside its stability boundary
+
+**Статус:** принято.
+
+Takt сохраняет существующий функционал, но не считает все внутренние подсистемы одинаково стабильными. Стабильный контур определяется направлением зависимостей, а не одной физической папкой: `application`, `runtime`, `workflow`, `config`, `profile` и `store` не импортируют `experimental`, `tooling` или `extensions`. `bootstrap` является composition root и может связывать эти модули.
+
+`internal/experimental` содержит Dynamic Flow/Router/Dynamic Plan, evidence routing, Host Control и Learning Loop. Эти механизмы используют stable APIs, продолжают тестироваться и остаются доступны через существующие CLI/MCP surfaces, но могут эволюционировать до появления production evidence. Dynamic Flow в частности рассматривается как один из способов интеграции Takt с coding agents, а не обязательная часть workflow runtime.
+
+`internal/extensions` содержит подключаемые package/block/notification capabilities. Stable `profile` не знает о Package Distribution: объединение profile manifests с установленными packages выполняется extension-aware loader'ом выше stable boundary.
+
+`internal/tooling` содержит evaluation и compatibility machinery. Их CLI сохраняется, но tooling не входит в execution/application graph стабильного runtime.
+
+Commodity infrastructure не реализуется внутри Takt без предметной причины. Самописный YAML parser удалён в пользу `go.yaml.in/yaml/v3`; Takt сохраняет только adapter, обеспечивающий собственные JSON-tag/strict-field diagnostics. `takt-schema-subset/v1` остаётся отдельным случаем, потому что он является намеренно ограниченным публичным dialect, а не попыткой реализовать общий JSON Schema.
+
+Отдельный `make journeys` проверяет стабильные user-facing сценарии через настоящий CLI. Внутренний contract suite и user journey gate являются разными гарантиями: первый доказывает correctness механизмов, второй — пригодность основного пользовательского пути.
+
+**Причина.** После architecture hardening стало видно, что общий размер репозитория отражает несколько разных классов функциональности. Дальнейшее дробление одного application package не решало бы проблему стабильности. Односторонние module boundaries позволяют сохранять возможности, не заставляя experimental/evaluation/package evolution менять core, а использование зрелых общих библиотек уменьшает поддерживаемый Takt-specific код.

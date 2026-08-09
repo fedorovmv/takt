@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.36.0" \
-  "VERSION|0.1.54-alpha" \
-  "internal/version/version.go|0.1.54-alpha" \
+  "skills/takt/VERSION|0.37.0" \
+  "VERSION|0.1.55-alpha" \
+  "internal/version/version.go|0.1.55-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/SKILL.md|Human-reviewed Learning Loop" \
@@ -120,7 +120,8 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-071" \
   "ARCHITECTURE_DECISIONS.md|ADR-072" \
   "ARCHITECTURE_DECISIONS.md|ADR-073" \
-  "docs/06-roadmap.md|P0. Evidence" \
+  "docs/06-roadmap.md|P0. User stabilization" \
+  "docs/06-roadmap.md|P0.5. Evidence для experimental/tooling" \
   "docs/06-roadmap.md|P1. v0.2 Stabilization" \
   "docs/14-backlog-v0.2.md|EVIDENCE-001" \
   "docs/05-implementation-status.md|eval task-benchmark" \
@@ -139,6 +140,8 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-085" \
   "ARCHITECTURE_DECISIONS.md|ADR-086" \
   "ARCHITECTURE_DECISIONS.md|ADR-087" \
+  "ARCHITECTURE_DECISIONS.md|ADR-088" \
+  "docs/69-core-stabilization-modularization-v0.1.55.md|Core Stabilization & Modularization" \
   "docs/68-architecture-hardening-v0.1.54.md|Architecture Hardening" \
   "docs/67-go-native-test-architecture-v0.1.53.md|Go-native Test Architecture" \
   "tests/e2e/harness_test.go|func TestMain" \
@@ -146,7 +149,7 @@ for check in \
   "docs/66-application-boundary-architecture-refactor-v0.1.52.md|Application Boundary Architecture Refactor" \
   "docs/65-human-reviewed-learning-loop-v0.1.51.md|Human-reviewed Skill/Block Learning Loop" \
   "schemas/learning-proposal.schema.json|takt-learning/v1alpha1" \
-  "internal/learning/learning.go|StatusPending" \
+  "internal/experimental/learning/learning.go|StatusPending" \
   "examples/learning-loop/README.md|Human-reviewed learning loop" \
   "docs/64-structured-task-sources-v0.1.50.md|Structured Task Sources" \
   "schemas/task-source.schema.json|Normalized Takt Task Source" \

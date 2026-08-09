@@ -7,6 +7,8 @@ GO_TEST_P="${GO_TEST_P:-8}"
 gofmt -w cmd internal sdk reference tests
 go vet ./...
 go test -p "$GO_TEST_P" ./... -count=1
+# User-facing stabilization gate: prove the documented stable journeys through the real CLI.
+go test ./tests/e2e -run '^TestUserJourney' -count=1
 go test -race -p "$GO_TEST_P" ./... -count=1
 go build -o bin/takt ./cmd/takt
 

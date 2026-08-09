@@ -13,11 +13,11 @@ func TestEmptySurfaceDefaultsToAgentWhileNewKeepsCompatibilityAll(t *testing.T) 
 	if parsed != SurfaceAgent {
 		t.Fatalf("ParseSurface empty=%q", parsed)
 	}
-	server := NewWithSurface(nil, bytes.NewBuffer(nil), &bytes.Buffer{}, &bytes.Buffer{}, "")
+	server := NewWithSurface(Dependencies{}, bytes.NewBuffer(nil), &bytes.Buffer{}, &bytes.Buffer{}, "")
 	if server.surface != SurfaceAgent {
 		t.Fatalf("NewWithSurface empty=%q", server.surface)
 	}
-	legacy := New(nil, bytes.NewBuffer(nil), &bytes.Buffer{}, &bytes.Buffer{})
+	legacy := New(Dependencies{}, bytes.NewBuffer(nil), &bytes.Buffer{}, &bytes.Buffer{})
 	if legacy.surface != SurfaceAll {
 		t.Fatalf("New compatibility surface=%q", legacy.surface)
 	}

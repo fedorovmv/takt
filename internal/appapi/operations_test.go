@@ -10,7 +10,7 @@ func TestCanonicalOperationsAreRegisteredExactlyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry := New(services)
+	registry := New(Dependencies{Core: services.Core, Dynamic: services.Dynamic, Blocks: services.Extensions.Blocks, Notifications: services.Extensions.Notifications})
 	seenID, seenTool := map[string]bool{}, map[string]bool{}
 	for _, descriptor := range CanonicalOperations() {
 		if descriptor.ID == "" || descriptor.MCPTool == "" {

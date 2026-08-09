@@ -4,29 +4,28 @@
 CLI / MCP / Local Daemon
  │
  ▼
-Control Service / Control Workspace / Run Store ── Git Worktree Manager ── Execution Workspace
+Transport adapters ──► Stable application services ──► Runtime / Workflow / Run Store
+ │                           │
+ │                           ├── Extensions: packages / blocks / notifications / adapters
+ │                           ├── Experimental: Dynamic Flow / host control / learning
+ │                           └── Tooling: evaluation / compatibility
  │
  ▼
-Workflow Loader ── Command Resolver ── Config/Model Registry
+Bootstrap / composition root
  │
- ▼
-Runner / Shared DAG Scheduler
- ├── Agent Node ── Assistant Adapter ── Pi/OpenCode/Codex/Oh My Pi/Qwen CLI/другой CLI
- ├── Bash Node
- ├── Approval Node
- ├── Loop Group ── тот же DAG Scheduler
- ├── Structural Subworkflow/Foreach ── скомпилированный DAG
- ├── Governed Workflow Node ── Child Runner / отдельный Run Store entry
- └── Hook Runtime
- │
- ├── Definition Fingerprints
- ├── Revisioned State/Event Store
- └── Artifact Store
+ ├── Assistant / Domain Adapter / Task Source SDKs
+ ├── Git Worktree / Execution Workspace
+ ├── Definition fingerprints / revisioned state & events
+ └── Artifact store
+
+Dependency rule:
+experimental / extensions / tooling ──► stable core
+stable core ──X─► experimental / extensions / tooling
 ```
 
 ## Пакеты
 
-- `internal/yamlmini` — документированный YAML subset без внешних зависимостей;
+- `internal/yamlcodec` — тонкий Takt-адаптер над `go.yaml.in/yaml/v3`: единый YAML/JSON decode path, `json`-имена полей и strict unknown-field diagnostics; общую YAML grammar Takt не реализует;
 - `internal/spec` — структуры текущей схемы;
 - `internal/config` — модели и исполнители;
 - `internal/command` — Markdown-команды;
@@ -39,14 +38,17 @@ Runner / Shared DAG Scheduler
 - `internal/definition` — fingerprints workflow/config/commands;
 - `internal/workflow` — загрузка и статическая проверка DAG;
 - `internal/authoring` — diagnostics для templates, output/artifact references и несовместимых параметров;
-- `internal/application` — use-case boundary для CLI, MCP и daemon; сервисы Run/Plan/Task/External/Host и tooling возвращают application DTO, а durable Run state после mutation повторно загружается через persistence port;
-- `internal/domainadapter` и `sdk/domainadapter` — нейтральные SCM/tracker/CI operations и process/MCP transports;
-- `internal/packagedist` — переносимые пакеты, lock, dependency/source/signature policy;
-- `internal/workspacecatalog` — bounded multi-repo catalog, discovery и dependency graph;
-- `internal/daemon` — локальный Unix-socket процесс для background Runs и subscriptions;
+- `internal/application` — стабильные use cases Run/Catalog/Authoring/Worktree/Command/External; пакет не зависит от experimental/extensions/tooling;
 - `internal/runtime` — общий scheduler, hooks, loops, approval, governed child lifecycle, cancellation tree и итог Run;
-- `internal/store` — revisioned state/event store, parent/child links, durable cancel markers, aggregate usage и lock Run;
-- `internal/evaluation` — изолированный запуск наборов заданий и агрегация метрик из RunState.
+- `internal/store` — revisioned state/event store, parent/child links, durable control markers, aggregate usage и Run lock;
+- `internal/extensions` — Package Distribution, Block Catalog, Notifications и подключаемые application facades;
+- `internal/experimental` — Dynamic Flow/Router/Task/Evidence, Host Control, Learning и связанный workspace catalog;
+- `internal/tooling` — evaluation/benchmark и compatibility/schema/field audit;
+- `internal/catalogload` — extension-aware сборка каталога профиля и установленных BlockPackage без обратной зависимости `profile -> packages`;
+- `internal/maintenance` — orchestration периодических plan/external/notification задач поверх модулей;
+- `internal/domainadapter` и `sdk/domainadapter` — нейтральные SCM/tracker/CI operations и process/MCP transports;
+- `internal/daemon` — локальный Unix-socket transport и lifecycle host; бизнес-семантика остаётся в modular services;
+- `internal/bootstrap` — единственный production composition root, который связывает stable, extensions, experimental и tooling.
 
 ## Граница с кодовым агентом
 
@@ -102,7 +104,7 @@ Workflow definitions, config, commands, Run state, events, locks и artifacts п
 
 Authoring preflight выполняется до создания Run: loader предлагает `did you mean`, capability validator проверяет фактические adapters, а analyzer проверяет template/output/artifact references. Renderer остаётся частью runtime и повторяет fail-closed проверку при фактическом выполнении.
 
-`takt daemon` владеет тем же `control.Service`, что CLI/MCP, и добавляет только время жизни процесса и Unix-socket transport. Store, scheduler и модель Run не дублируются. Background Run переживает закрытие клиента, event stream использует revision cursor, а concurrent control mutations сериализуются per-Run lock. БД не требуется.
+`takt daemon` использует те же modular application services и canonical API registry, что CLI/MCP, и добавляет только время жизни процесса и Unix-socket transport. Store, scheduler и модель Run не дублируются. Background Run переживает закрытие клиента, event stream использует revision cursor, а concurrent control mutations сериализуются per-Run lock. БД не требуется.
 
 ## Scope безопасности
 

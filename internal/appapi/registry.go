@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"takt/internal/application"
+	"takt/internal/experimental/dynamicflow"
+	"takt/internal/extensions"
 	"takt/internal/store"
 )
 
@@ -19,21 +21,37 @@ type Handler func(context.Context, json.RawMessage) (any, error)
 
 type Registry struct {
 	handlers      map[string]Handler
-	tasks         *application.TaskService
+	tasks         *dynamicflow.TaskService
 	catalog       *application.CatalogService
-	hosts         *application.HostService
-	plans         *application.PlanService
+	blocks        *extensions.BlockService
+	hosts         *dynamicflow.HostService
+	plans         *dynamicflow.PlanService
 	runs          *application.RunService
-	forks         *application.ForkService
-	notifications *application.NotificationService
+	forks         *dynamicflow.ForkService
+	notifications *extensions.NotificationService
 }
 
-func New(services *application.Services) *Registry {
-	r := &Registry{
-		handlers: map[string]Handler{},
-		tasks:    services.TaskService, catalog: services.CatalogService, hosts: services.HostService,
-		plans: services.PlanService, runs: services.RunService, forks: services.ForkService, notifications: services.Notifications,
+type Dependencies struct {
+	Core          *application.Services
+	Dynamic       *dynamicflow.Services
+	Blocks        *extensions.BlockService
+	Notifications *extensions.NotificationService
+}
+
+func New(deps Dependencies) *Registry {
+	r := &Registry{handlers: map[string]Handler{}}
+	if deps.Core != nil {
+		r.catalog = deps.Core.CatalogService
+		r.runs = deps.Core.RunService
 	}
+	if deps.Dynamic != nil {
+		r.tasks = deps.Dynamic.TaskService
+		r.hosts = deps.Dynamic.HostService
+		r.plans = deps.Dynamic.PlanService
+		r.forks = deps.Dynamic.ForkService
+	}
+	r.blocks = deps.Blocks
+	r.notifications = deps.Notifications
 	r.registerTaskOperations()
 	r.registerCatalogOperations()
 	r.registerHostOperations()
@@ -70,7 +88,7 @@ func (r *Registry) Call(ctx context.Context, method string, raw json.RawMessage)
 
 func (r *Registry) registerTaskOperations() {
 	r.handlers["task.start"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.TaskStartRequest
+		var params dynamicflow.TaskStartRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
@@ -87,7 +105,7 @@ func (r *Registry) registerTaskOperations() {
 		return r.tasks.TaskStatus(params.Reference)
 	}
 	r.handlers["task.respond"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.TaskRespondRequest
+		var params dynamicflow.TaskRespondRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
@@ -95,7 +113,7 @@ func (r *Registry) registerTaskOperations() {
 		return r.tasks.RespondTask(ctx, params)
 	}
 	r.handlers["task.stop"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.TaskStopRequest
+		var params dynamicflow.TaskStopRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
@@ -138,7 +156,7 @@ func (r *Registry) registerCatalogOperations() {
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return r.catalog.ListBlocks(params.Profile)
+		return r.blocks.List(params.Profile)
 	}
 	r.handlers["block.describe"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
 		var params struct {
@@ -148,20 +166,20 @@ func (r *Registry) registerCatalogOperations() {
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return r.catalog.DescribeBlock(params.Profile, params.Name)
+		return r.blocks.Describe(params.Profile, params.Name)
 	}
 }
 
 func (r *Registry) registerHostOperations() {
 	r.handlers["host.begin"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.HostBeginRequest
+		var params dynamicflow.HostBeginRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
 		return r.hosts.BeginHostSession(ctx, params)
 	}
 	r.handlers["host.confirm"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.HostConfirmRequest
+		var params dynamicflow.HostConfirmRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
@@ -188,14 +206,14 @@ func (r *Registry) registerHostOperations() {
 		return r.hosts.FindHostSession(params.Host, params.HostSessionID)
 	}
 	r.handlers["host.guard_tool"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.HostToolGuardRequest
+		var params dynamicflow.HostToolGuardRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
 		return r.hosts.GuardHostTool(params)
 	}
 	r.handlers["host.guard_completion"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.HostCompletionGuardRequest
+		var params dynamicflow.HostCompletionGuardRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
@@ -214,7 +232,7 @@ func (r *Registry) registerHostOperations() {
 
 func (r *Registry) registerPlanOperations() {
 	r.handlers["plan.create"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.PlanRequest
+		var params dynamicflow.PlanRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
@@ -230,7 +248,7 @@ func (r *Registry) registerPlanOperations() {
 		return r.plans.GetPlan(params.PlanID)
 	}
 	r.handlers["plan.execute"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.ExecutePlanRequest
+		var params dynamicflow.ExecutePlanRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
@@ -238,7 +256,7 @@ func (r *Registry) registerPlanOperations() {
 		return r.plans.ExecutePlan(ctx, params)
 	}
 	r.handlers["plan.steer"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.SteerRequest
+		var params dynamicflow.SteerRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
@@ -253,7 +271,7 @@ func (r *Registry) registerPlanOperations() {
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}
-		return r.plans.PromotePlanWithOptions(ctx, params.PlanID, params.Name, application.PromotePlanOptions{Force: params.Force})
+		return r.plans.PromotePlanWithOptions(ctx, params.PlanID, params.Name, dynamicflow.PromotePlanOptions{Force: params.Force})
 	}
 }
 
@@ -334,7 +352,7 @@ func (r *Registry) registerRunOperations() {
 		return r.runs.Retry(ctx, params)
 	}
 	r.handlers["run.fork"] = func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params application.ForkRequest
+		var params dynamicflow.ForkRequest
 		if err := decodeParams(raw, &params); err != nil {
 			return nil, err
 		}

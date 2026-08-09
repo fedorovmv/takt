@@ -10,6 +10,7 @@ import (
 
 	"takt/internal/application"
 	"takt/internal/daemon"
+	"takt/internal/experimental/dynamicflow"
 )
 
 func runDispatchCmd(ctx context.Context, args []string) error {
@@ -281,8 +282,8 @@ func runForkCmd(ctx context.Context, args []string) error {
 	if fs.NArg() != 1 {
 		return fmt.Errorf("usage: takt run fork <run-id> [--input value]")
 	}
-	request := application.ForkRequest{RunID: fs.Arg(0), Input: *input}
-	var result application.ForkResult
+	request := dynamicflow.ForkRequest{RunID: fs.Arg(0), Input: *input}
+	var result dynamicflow.ForkResult
 	if *useDaemon {
 		client, err := daemon.NewClient(*workspace, *socket)
 		if err != nil {

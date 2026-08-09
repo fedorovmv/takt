@@ -9,8 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"takt/internal/packagedist"
-	"takt/internal/yamlmini"
+	"takt/internal/yamlcodec"
 )
 
 //go:embed builtin/**
@@ -128,11 +127,6 @@ func Resolve(selector, workspace string) (*Resolved, error) {
 			if err != nil {
 				return nil, err
 			}
-			installed, err := packagedist.InstalledManifestPaths(workspace)
-			if err != nil {
-				return nil, err
-			}
-			resolved.BlockPackagePaths = append(resolved.BlockPackagePaths, installed...)
 			return resolved.SelectWorkflow(workflowName)
 		}
 	}
@@ -154,7 +148,7 @@ func Load(path string) (*Resolved, error) {
 		return nil, fmt.Errorf("read profile: %w", err)
 	}
 	var manifest Manifest
-	if err := yamlmini.Unmarshal(b, &manifest); err != nil {
+	if err := yamlcodec.Unmarshal(b, &manifest); err != nil {
 		return nil, fmt.Errorf("parse profile %s: %w", path, err)
 	}
 	if manifest.APIVersion != "takt/v1alpha1" {

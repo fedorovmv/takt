@@ -4,19 +4,19 @@ import (
 	"context"
 	"fmt"
 
-	"takt/internal/application"
 	"takt/internal/assistant"
 	"takt/internal/domainadapter"
-	"takt/internal/evaluation"
 	"takt/internal/redact"
 	"takt/internal/runtime"
 	"takt/internal/spec"
 	"takt/internal/store"
+	"takt/internal/tooling"
+	"takt/internal/tooling/evaluation"
 )
 
 type evaluationEngine struct{}
 
-func (evaluationEngine) Run(ctx context.Context, req application.EvaluationRunRequest) (any, error) {
+func (evaluationEngine) Run(ctx context.Context, req tooling.EvaluationRunRequest) (any, error) {
 	return evaluation.Run(ctx, evaluation.RunOptions{
 		ExecutionFactory: evaluationExecutionFactory,
 		WorkflowPath:     req.WorkflowPath, ConfigPath: req.ConfigPath, CasesDir: req.CasesDir,
@@ -28,11 +28,11 @@ func (evaluationEngine) Run(ctx context.Context, req application.EvaluationRunRe
 	})
 }
 
-func (evaluationEngine) Benchmark(ctx context.Context, req application.EvaluationBenchmarkRequest) (any, error) {
+func (evaluationEngine) Benchmark(ctx context.Context, req tooling.EvaluationBenchmarkRequest) (any, error) {
 	return evaluation.RunMatrix(ctx, evaluation.MatrixRunOptions{ExecutionFactory: evaluationExecutionFactory, MatrixPath: req.MatrixPath, OutputDir: req.OutputDir, Repeat: req.Repeat, Replace: req.Replace})
 }
 
-func (evaluationEngine) TaskBenchmark(ctx context.Context, req application.EvaluationBenchmarkRequest) (any, error) {
+func (evaluationEngine) TaskBenchmark(ctx context.Context, req tooling.EvaluationBenchmarkRequest) (any, error) {
 	return evaluation.RunTaskMatrix(ctx, evaluation.TaskMatrixRunOptions{
 		MatrixPath: req.MatrixPath, OutputDir: req.OutputDir, Repeat: req.Repeat, Replace: req.Replace,
 		CaseRunner: func(ctx context.Context, workspace, goal, profileName string) (evaluation.TaskCaseExecution, error) {
@@ -40,7 +40,7 @@ func (evaluationEngine) TaskBenchmark(ctx context.Context, req application.Evalu
 			if err != nil {
 				return evaluation.TaskCaseExecution{}, err
 			}
-			observed, runErr := app.Services.EvaluateTaskCase(ctx, goal, profileName)
+			observed, runErr := app.Experimental.EvaluateTaskCase(ctx, goal, profileName)
 			return evaluation.TaskCaseExecution{
 				PlanID: observed.PlanID, RunID: observed.RunID, Status: observed.Status,
 				Route: observed.Route, Template: observed.Template, Workflow: observed.Workflow,

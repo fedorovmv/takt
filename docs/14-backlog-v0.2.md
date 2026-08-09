@@ -1,6 +1,6 @@
 # Актуальный backlog Takt v0.2
 
-Статус пересобран после `v0.1.54-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
+Статус пересобран после `v0.1.55-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
 
 ## P-1. Архитектурный долг — закрыт в v0.1.52, hardened в v0.1.54
 
@@ -14,7 +14,21 @@
 
 Основной contract contour переведён на стандартные Go tests и `tests/e2e`; в `v0.1.54` из исторических 38 `scripts/test-*.sh` остался один TypeScript compiler smoke. Остальные process/package/host assertions работают через bounded Go E2E harness. `internal/architecture` фиксирует границу.
 
-## P0. Доказать полезность текущего Takt
+## P-0.25. Модульный долг — закрыт в v0.1.55
+
+### ARCH-002. Stable / experimental / extensions / tooling boundaries — выполнено
+
+Функциональность не удалялась. Dynamic Flow/Host/Learning отделены в experimental, evaluation/compatibility — в tooling, package/block/notification — в extensions. Stable core не импортирует эти модули. `profile` больше не зависит от package manager; extension-aware catalog собирается выше stable boundary. Самописный YAML parser удалён в пользу upstream `go.yaml.in/yaml/v3`.
+
+Следующая стабилизация должна исправлять дефекты реальных user/live сценариев, а не снова перестраивать package tree без evidence.
+
+## P0. Стабилизировать пользовательский stable path
+
+### STAB-001. Реальные user journeys и platform smoke
+
+Поддерживать `build/init/validate/run/inspect/recover` как основной пользовательский путь. `make journeys` уже закрепляет black-box baseline; следующий evidence должен прийти из реальных Linux/macOS запусков, coding-agent/adapter интеграций и обратной связи пользователей. Найденные ошибки совместимости, диагностики и lifecycle имеют приоритет над новым feature growth.
+
+## P0.5. Доказать полезность experimental/tooling механизмов
 
 ### EVIDENCE-001. Live Route DSL matrix
 

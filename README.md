@@ -6,23 +6,21 @@
 
 ## Область применения текущей версии
 
-`v0.1.54-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.55-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Локальный `takt daemon` поддерживает фоновые Run и несколько клиентов одного пользователя через Unix socket. Сетевой и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и distributed locking. Эти режимы не поддерживаются.
 
 ## Текущая точка развития
 
-К `v0.1.54-alpha` основные механизмы локального Takt уже собраны, а повторный architecture hardening довёл application/runtime/test границы после рефакторингов `v0.1.52–0.1.53`. Ближайшая цель снова evidence-first: **доказать пользу существующих стратегий на реальных задачах и завершить стабилизацию v0.2**, не возвращаясь к feature growth через transport/control монолиты.
+К `v0.1.55-alpha` Takt перешёл от накопления возможностей к стабилизации пользовательского контура. Stable core отделён от extensions, experimental и tooling; Dynamic Flow остаётся доступным, но больше не определяет стабильность основного Run/runtime API. Ближайшая цель — **проверять основные пользовательские сценарии на реальных задачах, исправлять найденные дефекты и постепенно продвигать доказанные experimental contracts в stable surface**.
 
 Приоритеты:
 
-1. архитектурная граница application/bootstrap и regression gate — выполнено в `v0.1.52`;
-2. live Route DSL matrix на реальном обезличенном corpus и штатном validator;
-3. task-level benchmark `Router → Dynamic Plan → replan` — измерительный контур реализован в `v0.1.46`;
-4. production-like Go и Document evaluation;
-5. contract convergence продолжен в `v0.1.48`: `takt-schema-subset/v1`, field matrix и compatibility check; финальный `v1beta1` — только после production evidence;
-6. P2 External seams продолжен в `v0.1.50`: reference Qwen/GitHub SCM и Structured Task Sources реализованы поверх public SDK; из крупного P2 остаётся live host conformance;
-7. P3 открыт в `v0.1.51`: human-reviewed Skill/Block Learning Loop реализован без автоматической мутации trusted packages; следующим UX-срезом остаются graph/explain/scaffold и bounded reject/revise.
+1. application/test/architecture/modular boundaries — выполнены в `v0.1.52–v0.1.55` и закреплены автоматическими gates;
+2. стабильный пользовательский путь `build → init → validate → run → inspect/recover`: Linux/macOS smoke, понятные ошибки, документация и backward compatibility;
+3. реальные coding-agent/adapter сценарии через stable Run/runtime API; live conformance там, где сейчас есть только guarded/reference integrations;
+4. evidence на реальном обезличенном corpus для experimental Dynamic Flow и tooling evaluation до promotion их контрактов в stable;
+5. `v1beta1` contract convergence — только после пользовательского и production evidence, без нового feature growth ради самого roadmap.
 
 Актуальный план: [`docs/06-roadmap.md`](docs/06-roadmap.md), backlog: [`docs/14-backlog-v0.2.md`](docs/14-backlog-v0.2.md).
 
@@ -62,7 +60,7 @@
 - OpenCode CLI adapter через `opencode run --format json`, с model/agent/variant mapping, проверенным resume, per-step usage, сохранением provider diagnostics при timeout/cancellation и contract suite;
 - полное совпадение OS exit code и envelope `exit_code`, включая ноль;
 - единый JSON envelope CLI для успеха и ошибок;
-- строгий YAML subset с сохранением пустых строк в block scalar, path-aware `did you mean` и authoring diagnostics;
+- YAML через поддерживаемый `go.yaml.in/yaml/v3` с Takt-specific strict JSON-field adapter, path-aware `did you mean` и authoring diagnostics;
 - расширенный проверяемый `output_format`, статическая диагностика output/artifact references и строгие `${path}`, `${path?}`, `${path:-default}`;
 - именованные workflow профиля, `workflow list/describe` и селектор `profile:name`;
 - профиль `code` 0.16.0 с 19 процессами разработки, Task Router, внутренними Role/TaskBrief contracts и одиннадцатью встроенными доверенными блоками и шестью глубокими workflow со строгими JSON-входами, checkpoint artifacts, domain errors, Git/recovery semantics;
@@ -88,7 +86,11 @@
 - измеренные нулевые показатели сохраняются как `0`, а недоступные средние значения — как `null`;
 - validation envelope сохраняется при любом terminal status quality-node; успех требует `completed && valid=true`;
 - строгий контракт результата валидатора `takt-validation/v1alpha1`;
-- только стандартная библиотека Go.
+- одна production dependency для YAML (`go.yaml.in/yaml/v3`); предметная логика Takt остаётся в собственных пакетах.
+
+## Core Stabilization & Modularization v0.1.55
+
+`v0.1.55-alpha` не удаляет функциональность, а разделяет её по стабильности: stable application/runtime/workflow/config/profile/store не зависят от `experimental`, `extensions` или `tooling`; Dynamic Flow/Host/Learning находятся в experimental, Package/Block/Notification — в extensions, evaluation/compatibility — в tooling. `internal/application` уменьшен примерно с 6,8 тыс. до 3,5 тыс. production-строк. Самописный YAML parser удалён в пользу `go.yaml.in/yaml/v3`; `make journeys` проверяет основной пользовательский путь через реальный CLI. Решение: [`docs/69-core-stabilization-modularization-v0.1.55.md`](docs/69-core-stabilization-modularization-v0.1.55.md), ADR-088.
 
 ## Architecture hardening v0.1.54
 
@@ -153,77 +155,57 @@ go build ./cmd/takt-github-scm-adapter
 
 ## Быстрый старт
 
+Сборка пользовательского CLI (Go сам загрузит зафиксированную YAML-зависимость из `go.mod`):
+
 ```bash
-make check
-
-./bin/takt validate examples/route-dsl/workflow.yaml \
-  --config examples/route-dsl/config.yaml
-
-./bin/takt run examples/route-dsl/workflow.yaml \
-  --config examples/route-dsl/config.yaml \
-  --workspace examples/route-dsl \
-  --input examples/route-dsl/specification.md
+mkdir -p bin
+go build -o bin/takt ./cmd/takt
 ```
 
-Демонстрационный процесс остановится на approval-узле и вернёт `run_id`. Продолжение:
+Создание локального проекта:
 
 ```bash
-./bin/takt answer <run-id> approve-result \
-  --workspace examples/route-dsl \
-  --value "Подтверждаю"
+./bin/takt init code --dir ./takt-demo --json
 ```
 
-Повторное продолжение Run после временной ошибки CLI:
+Минимальный workflow `takt-demo/workflow.yaml`:
 
-```bash
-./bin/takt resume <run-id> --workspace examples/route-dsl
+```yaml
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: hello
+nodes:
+  - id: hello
+    bash: printf 'hello from Takt'
+    output_type: result
+    output_mime: text/plain
 ```
 
-Прогон набора Route DSL заданий:
+Проверка и запуск:
 
 ```bash
-./bin/takt eval run examples/route-dsl-e2e/workflow.yaml \
-  --config examples/route-dsl-e2e/config.yaml \
-  --cases examples/route-dsl-eval/cases \
-  --workspace-template examples/route-dsl-e2e \
-  --output .takt/evals/qwen-resume \
-  --answer approved \
-  --strategy-id qwen-route-feedback-v1 \
-  --benchmark-id route-dsl-regression-v1 \
-  --quality-node full-validation \
-  --generation-node implement \
-  --validator-id route-tool \
-  --validator-version 1.0 \
-  --validator-path route-tool \
-  --repeat 3 \
-  --replace \
+./bin/takt validate ./takt-demo/workflow.yaml \
+  --config ./takt-demo/.takt/config.yaml \
+  --workspace ./takt-demo
+
+./bin/takt run ./takt-demo/workflow.yaml \
+  --config ./takt-demo/.takt/config.yaml \
+  --workspace ./takt-demo \
   --json
 ```
 
-Сравнение нескольких стратегий на одной матрице:
+Команда `run` вернёт `id`. Состояние, события и артефакты можно посмотреть без знания внутреннего формата `.takt`:
 
 ```bash
-./bin/takt eval benchmark examples/route-dsl-benchmark/matrix.example.yaml \
-  --output .takt/evals/route-dsl-matrix \
-  --repeat 3 --replace --json
-
-./bin/takt eval compare \
-  .takt/evals/route-dsl-matrix/strategies/baseline-direct \
-  .takt/evals/route-dsl-matrix/strategies/feedback-repair
+./bin/takt status <run-id> --workspace ./takt-demo --json
+./bin/takt events <run-id> --workspace ./takt-demo --json
+./bin/takt artifacts <run-id> --workspace ./takt-demo --json
 ```
 
-Проверка полного Task Router/Dynamic Takt контура:
+Approval/retry/subworkflow проходят теми же Run APIs и входят в обязательный `make journeys` release gate. Для разработки самого Takt полный gate запускается `make check`.
 
-```bash
-./bin/takt eval task-benchmark path/to/task-matrix.yaml \
-  --output .takt/evals/task-dynamic \
-  --repeat 3 --replace --json
-```
-
-Task-level matrix сравнивает не только terminal success, но и корректность route, число ревизий плана, фактические replanner runs, unexpected needs-input и router fallback.
-
-
-
+Experimental Dynamic Flow и tooling evaluation остаются доступными, но не являются обязательной частью этого stable quick start.
 
 ## Совместимость и граница structured JSON
 
@@ -449,7 +431,7 @@ takt package sync
 
 Local/Git `BlockPackage` фиксируется lock-файлом и автоматически подключается к профилю. См. `examples/portable-package/` и `docs/56-portable-package-distribution-v0.1.42.md`.
 
-Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.16.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon, v0.1.34-alpha — Dynamic Takt и coding-agent flow, v0.1.35-alpha — доверенные корпоративные блоки и исправления бюджетов/исполнения, v0.1.36-alpha — host-control core и guarded Pi/OpenCode integrations, v0.1.37-alpha — автономные Run, attention, pause/recovery и уведомления, v0.1.38-alpha — нейтральный coding-agent, Task Router, simple-reliable template и role-based MCP surfaces, v0.1.39-alpha — Role Contract, bounded TaskBrief, required/preferred checks, deny/repair/warn и bounded automatic repair с исправлениями автономного control plane, v0.1.40-alpha — EvidenceManifest, baseline-aware failure classification, parking и reconciliation неизвестных external side effects, v0.1.41-alpha — нейтральную Adapter Platform для coding-agent, SCM, tracker и CI, v0.1.42-alpha — переносимую доставку пакетов с lock, dependency/capability preflight и source/signature policy, v0.1.43-alpha — multi-repo Dynamic Workflows с repository catalog, изолированными repo child Runs, per-repo evidence, neutral SCM publication и integration verification, v0.1.44-alpha — durable retry/backoff, diagnostic fingerprints, fan-out early termination, SecretRef/redaction, локальный OS sandbox для bash/script и NodePath, а v0.1.45-alpha — сравнительный Route DSL benchmark с matrix/repeat/compare/gates, true time-to-valid и стабильностью diagnostics. v0.1.46-alpha добавляет task-level Dynamic Takt benchmark и закрывает общий redaction-контракт external/control persistence, а v0.1.47-alpha начинает стабилизацию v0.2: first-class iteration history, bounded loop state, contract audit и draft migration policy к v1beta1, а v0.1.48-alpha фиксирует `takt-schema-subset/v1`, machine-readable field audit и adapter/host/domain compatibility matrix; v0.1.49-alpha впервые доказывает внешние seams реальными reference implementations `qwen-takt-adapter` и `takt-github-scm-adapter`, включая exact resume и reconcile неизвестного SCM side effect; v0.1.50-alpha добавляет Structured Task Sources: нормализованный внешний Task с immutable revision до Router/Dynamic Takt и reference GitHub Issue source; v0.1.51-alpha — human-reviewed Skill/Block Learning Loop с immutable candidate snapshot, обязательным review/evaluation и staging без автоматической установки, v0.1.52-alpha — application/bootstrap refactor, thin transports и architecture regression gate, v0.1.53-alpha — Go-native test architecture, а v0.1.54-alpha — architecture hardening private/acyclic application dependencies, explicit execution lifetime и единственного TypeScript shell smoke; последние три релиза не добавляют продуктовых функций. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
+Пакеты профилей, reusable `subworkflow`, параллельный DAG и оба режима `foreach` реализованы. Профиль `code` 0.16.0 содержит 19 процессов разработки и умный роутер с отдельным child Run для выбранного процесса. Интерактивные PIV/PRD-циклы возобновляют активную итерацию после approval, а структурированные классификаторы проверяются через `output_format`. Per-node политики инструментов, skills, MCP и assistant-enforced sandbox реализованы с проверкой возможностей adapter до запуска. Динамический fan-out дочерних Run реализован и используется smart/comprehensive review. Script-узлы и типизированные артефакты используются для review perspectives, планов и PRD. Локальная интеграция Takt через MCP реализована в v0.1.30-alpha; v0.1.31-alpha добавляет durable `executor: external`, v0.1.32-alpha завершает управляемый tool lifecycle и углубляет шесть основных workflow, v0.1.33-alpha добавляет строгий authoring preflight и локальный daemon, v0.1.34-alpha — Dynamic Takt и coding-agent flow, v0.1.35-alpha — доверенные корпоративные блоки и исправления бюджетов/исполнения, v0.1.36-alpha — host-control core и guarded Pi/OpenCode integrations, v0.1.37-alpha — автономные Run, attention, pause/recovery и уведомления, v0.1.38-alpha — нейтральный coding-agent, Task Router, simple-reliable template и role-based MCP surfaces, v0.1.39-alpha — Role Contract, bounded TaskBrief, required/preferred checks, deny/repair/warn и bounded automatic repair с исправлениями автономного control plane, v0.1.40-alpha — EvidenceManifest, baseline-aware failure classification, parking и reconciliation неизвестных external side effects, v0.1.41-alpha — нейтральную Adapter Platform для coding-agent, SCM, tracker и CI, v0.1.42-alpha — переносимую доставку пакетов с lock, dependency/capability preflight и source/signature policy, v0.1.43-alpha — multi-repo Dynamic Workflows с repository catalog, изолированными repo child Runs, per-repo evidence, neutral SCM publication и integration verification, v0.1.44-alpha — durable retry/backoff, diagnostic fingerprints, fan-out early termination, SecretRef/redaction, локальный OS sandbox для bash/script и NodePath, а v0.1.45-alpha — сравнительный Route DSL benchmark с matrix/repeat/compare/gates, true time-to-valid и стабильностью diagnostics. v0.1.46-alpha добавляет task-level Dynamic Takt benchmark и закрывает общий redaction-контракт external/control persistence, а v0.1.47-alpha начинает стабилизацию v0.2: first-class iteration history, bounded loop state, contract audit и draft migration policy к v1beta1, а v0.1.48-alpha фиксирует `takt-schema-subset/v1`, machine-readable field audit и adapter/host/domain compatibility matrix; v0.1.49-alpha впервые доказывает внешние seams реальными reference implementations `qwen-takt-adapter` и `takt-github-scm-adapter`, включая exact resume и reconcile неизвестного SCM side effect; v0.1.50-alpha добавляет Structured Task Sources: нормализованный внешний Task с immutable revision до Router/Dynamic Takt и reference GitHub Issue source; v0.1.51-alpha — human-reviewed Skill/Block Learning Loop с immutable candidate snapshot, обязательным review/evaluation и staging без автоматической установки, v0.1.52-alpha — application/bootstrap refactor, thin transports и architecture regression gate, v0.1.53-alpha — Go-native test architecture, а v0.1.54-alpha — architecture hardening private/acyclic application dependencies, explicit execution lifetime и единственный TypeScript shell smoke, а v0.1.55-alpha — modularization stable/experimental/extensions/tooling, upstream YAML и user-journey gate; релизы v0.1.52–v0.1.55 не добавляют продуктовых функций. Web UI, БД и удалённый многопользовательский server остаются proposal-направлением.
 
 Evaluation runner фиксирует идентичность стратегии, корпуса, workspace и валидатора, execution identity каждой попытки, true time-to-valid и diagnostic fingerprints. `examples/route-dsl-benchmark` содержит 25 размеченных regression/production-shaped synthetic cases и matrix для сравнения стратегий. Предметный следующий этап — прогнать ту же matrix со штатным Route DSL validator и отдельным реальным обезличенным corpus, когда он доступен. OpenCode adapter реализован и может использоваться вместо Pi на уровне defaults, Markdown-команды или отдельного узла.
 
