@@ -9,7 +9,7 @@ Takt — Go-runtime, который снаружи оркестрирует го
 ## Перед изменением
 
 1. Прочитайте `docs/12-document-map.md` и `docs/05-implementation-status.md`.
-2. Для runtime и local control plane изучите `docs/03-specification.md`, `docs/09-runtime-semantics.md`, `docs/44-local-mcp-control-plane-v0.1.30.md`, `docs/47-authoring-local-daemon-v0.1.33.md` и ADR.
+2. Для runtime и local control plane изучите `docs/03-specification.md`, `docs/04-architecture.md`, `docs/09-runtime-semantics.md`, `docs/72-architecture-contracts-v0.1.57.md` и ADR.
 3. Для assistants изучите `docs/10-assistant-adapter-spec.md` и соответствующие contract tests.
 4. Для evaluation изучите `docs/13-evaluation-plan.md` и документы `docs/26–30`.
 5. Зафиксируйте исходное состояние командой `make check`.
@@ -45,6 +45,9 @@ Takt — Go-runtime, который снаружи оркестрирует го
 - `cmd/takt` остаётся launcher; parsing/output живёт в `internal/cli`. Stable Run use cases находятся в `internal/application`/`internal/externalworker`, расширения — в `internal/extensions`, экспериментальные flow/host/learning — в `internal/experimental`, evaluation/compatibility — в `internal/tooling`; concrete wiring находится только в `internal/bootstrap`.
 - Stable use cases зависят от persistence через consumer-owned ports; `internal/runcontrol` содержит только общие lock/redaction/durable-reload helpers. Transport packages не создают `store.FS`, `runtime.Runner` или notification dispatcher напрямую.
 - Общие MCP/daemon операции добавляются один раз в canonical `internal/appapi` registry. Новый transport-specific business switch запрещён.
+- Конституция workflow: **YAML координирует. Код вычисляет. Агент принимает решения.** Новое YAML-поле допускается только если runtime должен видеть его для governance, оно является декларативными данными и существующий script/command/prompt escape hatch не решает задачу без потери governance-свойств. `when` остаётся ограничен `==`, `!=`, `&&`, `||`; не добавляйте скобки, функции, regex, арифметику или новые операторы по одному.
+- Concrete assistant extensions только объявляют `ProviderRegistration`. Production immutable registry собирается ровно один раз в `internal/bootstrap`; package-global registries, `init()`-регистрация и скрытая мутация provider set запрещены.
+- Canonical application operation описывается один раз через `internal/appapi.OperationDescriptor`: ID/stage/MCP name/title/description/InputSchema/annotations. Schema проверяет вход до typed decode; MCP и generated docs используют те же descriptors. Не дублируйте canonical MCP schemas/metadata в transport package.
 - Closed-world switch node actions допустим и предпочтительнее generic plugin framework; новую абстракцию добавляйте только при двух фактических реализациях/потребителях или подтверждённой внешней extension boundary.
 - Product correctness принадлежит Go `*_test.go`; black-box contracts живут в `tests/e2e`. Новый `scripts/test-*.sh` допускается только как явно обоснованный внешний smoke boundary и должен быть добавлен в allowlist `internal/architecture`.
 

@@ -375,3 +375,34 @@ nodes:
 		})
 	}
 }
+
+func TestValidateRejectsWhenExpressionCreepAtLoadTime(t *testing.T) {
+	cases := []string{
+		`nodes.a.output > 3`,
+		`(nodes.a.output == "ok")`,
+		`contains(nodes.a.output, "ok") == true`,
+		`nodes.a.output + 1 == 2`,
+	}
+	for _, when := range cases {
+		t.Run(when, func(t *testing.T) {
+			wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "when-constitution"}, Nodes: []spec.Node{
+				{ID: "a", Bash: "echo ok"},
+				{ID: "b", Bash: "true", DependsOn: []string{"a"}, When: when},
+			}}
+			err := Validate(wf)
+			if err == nil || !strings.Contains(err.Error(), "intentionally limited to ==, !=, && and ||") {
+				t.Fatalf("expected workflow language constitution error for %q, got %v", when, err)
+			}
+		})
+	}
+}
+
+func TestValidateAcceptsConstitutionalWhenGate(t *testing.T) {
+	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "when-constitution"}, Nodes: []spec.Node{
+		{ID: "classify-v2", Bash: "echo ready"},
+		{ID: "b", Bash: "true", DependsOn: []string{"classify-v2"}, When: `nodes.classify-v2.output == "ready" && inputs.input != "dry-run"`},
+	}}
+	if err := Validate(wf); err != nil {
+		t.Fatalf("small declarative when gate rejected: %v", err)
+	}
+}

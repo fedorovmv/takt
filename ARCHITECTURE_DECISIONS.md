@@ -669,3 +669,31 @@ Stable `internal/assistant` определяет provider-neutral session/proces
 Test fixture binaries `takt-fake-*` принадлежат `internal/testsupport/cmd`, а не product `cmd/`. Пользовательские transport surfaces обязаны явно обозначать experimental функции: доступность команды или MCP tool не означает stable compatibility guarantee.
 
 **Причина.** После modularization `v0.1.55` оставались три формы ложной принадлежности к core: собственный JSON Schema execution, provider-specific Pi/OpenCode implementation в stable assistant package и test executables в product `cmd`. Они увеличивали поддерживаемый код и визуальную поверхность ядра без предметной ценности. Делегирование commodity semantics upstream-библиотеке, provider injection и отдельный testsupport boundary уменьшают связность, сохраняя весь существующий функционал и KISS/YAGNI.
+
+## ADR-090. Workflow language, extension registration and canonical operations are protected architecture contracts
+
+**Статус:** принято.
+
+Takt адаптирует три проверенных принципа из Archon как ограничения эволюции, а не как новый framework.
+
+### Конституция языка workflow
+
+Нормативная формула Takt: **«YAML координирует. Код вычисляет. Агент принимает решения.»** YAML содержит только декларативную информацию, которую runtime должен видеть для управления Run. Новое YAML-поле или expression capability допускается только если runtime действительно должен видеть его для governance, оно является данными с фиксированной семантикой и существующий script/command/prompt escape hatch не решает задачу без потери governance-свойств.
+
+`when` в `takt/v1alpha1` остаётся намеренно малым gate language: `==`, `!=`, `&&`, `||`, paths `nodes.*`/`inputs.*` и литералы. Скобки, функции, арифметика, regex и новые операторы не добавляются инкрементально. Более сложное условие вычисляет отдельный узел. Если когда-либо будет доказана потребность в полноценном expression language, он принимается как зрелый специфицированный язык целиком отдельным versioned change, а не выращивается внутри Takt. Единственный parser/evaluator находится в `internal/whenexpr`; workflow loader валидирует его до Run, runtime использует ту же реализацию.
+
+Load-time композиция должна разрешаться до обычного DAG. Runtime-resolved структура выражается governed child Run, а не неявной мутацией DAG. Experimental Dynamic Flow строится поверх stable contracts и не расширяет язык workflow автоматически.
+
+### Registration descriptors расширений
+
+Concrete assistant extensions объявляют `assistant.ProviderRegistration` с identity, stage, factory и дополнительной metadata. Они не изменяют package-global registry и не используют `init()` для регистрации. Единственный production registry собирается из registrations в `internal/bootstrap`, копирует входные descriptors, проверяет дубликаты и после construction является immutable/read-only. Stable assistant/runtime знают registration contract, но не concrete Pi/OpenCode packages.
+
+Из Archon заимствуется локальность добавления provider через registration descriptor, но **не** глобальная mutable registration map: набор доступных providers Takt определяется явным composition graph.
+
+### Schema-first canonical operations
+
+`internal/appapi.OperationDescriptor` является единственным источником transport-neutral operation ID, stability stage, MCP name, title/description, JSON `InputSchema` и annotations. `registerOperation[T]` связывает descriptor с конкретным typed Go request. Вход сначала валидируется schema descriptor, затем проходит strict Go decode и handler.
+
+MCP canonical surface строится из `appapi.CanonicalOperations()`, а generated `docs/71-canonical-operation-contracts.generated.md` строится из тех же descriptors и защищён regression test. MCP-specific external-worker protocol tools могут сохранять локальные descriptors, поскольку они не являются canonical application operations.
+
+**Причина.** После стабилизации `v0.1.52–v0.1.56` главный риск сместился от god objects к постепенной архитектурной энтропии: рост собственного expression language, скрытая mutable registration и рассинхронизация Go DTO/MCP schema/docs. Эти три контракта уменьшают будущую стоимость изменений без нового слоя фреймворков и поддерживают SOLID/DRY/KISS/YAGNI. Подробности: `docs/72-architecture-contracts-v0.1.57.md`.

@@ -14,6 +14,9 @@ import (
 
 	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 
+	"takt/internal/assistant"
+	assistantproviders "takt/internal/extensions/assistants"
+
 	"takt/internal/schemasubset"
 	"takt/internal/spec"
 )
@@ -27,7 +30,7 @@ func TestPublishedSchemasValidateCompatibilityPayloads(t *testing.T) {
 		{"matrix", "compatibility-matrix.schema.json", CurrentMatrix()},
 		{"fields", "v1beta1-field-matrix.schema.json", CurrentFieldMatrix()},
 		{"schema", "schema-subset-description.schema.json", CurrentMatrix().SchemaSubset},
-		{"check", "compatibility-check.schema.json", Check(context.Background(), cfg, CheckOptions{})},
+		{"check", "compatibility-check.schema.json", Check(context.Background(), cfg, CheckOptions{Providers: assistant.MustRegistry(assistantproviders.Registrations()...)})},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

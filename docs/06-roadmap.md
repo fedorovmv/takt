@@ -1,10 +1,10 @@
 # План развития Takt
 
-Актуальный план после `v0.1.56-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/69-*.md`.
+Актуальный план после `v0.1.57-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/72-*.md`.
 
 ## Текущая позиция
 
-Takt уже закрывает основной локальный control plane и в `v0.1.52–v0.1.56` прошёл application, test, architecture-hardening и modularization стабилизацию: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
+Takt уже закрывает основной локальный control plane и в `v0.1.52–v0.1.57` прошёл application, test, architecture-hardening и modularization стабилизацию: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
 
 Главный риск теперь — продолжать добавлять механизмы быстрее, чем появляется evidence их пользы. Поэтому ближайший порядок меняется с feature-driven на evidence-driven.
 
@@ -34,6 +34,10 @@ Stable core отделён от `experimental`, `extensions` и `tooling` одн
 ## P-0.1. Codebase hygiene — выполнено в v0.1.56
 
 Commodity JSON Schema execution вынесен в upstream library, Pi/OpenCode отделены от stable assistant core, fake binaries — от product commands, внешний worker/tool lifecycle выделен в `internal/externalworker`, а оставшиеся стабильные orchestration hotspots разложены на фазы. После этого общий архитектурный refactor считается закрытым; дальнейшие изменения должны исходить из реальных user/live scenarios. Детали — `docs/70-codebase-hygiene-stabilization-v0.1.56.md`, ADR-089.
+
+## P-0.05. Architecture contracts — выполнено в v0.1.57
+
+Перед переходом к user stabilization закреплены три ограничения эволюции: workflow-language constitution, immutable extension registrations через единственный bootstrap и schema-first canonical operations для appapi/MCP/docs. Это не новый framework и не feature slice; правила защищают уже очищенные границы от повторного разрастания. Детали — `docs/72-architecture-contracts-v0.1.57.md`, ADR-090.
 
 ## P0. User stabilization
 

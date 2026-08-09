@@ -57,7 +57,7 @@ type ProviderFactory func(spec.AssistantSpec) Adapter
 
 type Factory struct {
 	Config    *spec.Config
-	Providers map[string]ProviderFactory
+	Providers Registry
 }
 
 func (f Factory) Resolve(name string) (Adapter, error) {
@@ -71,8 +71,8 @@ func (f Factory) Resolve(name string) (Adapter, error) {
 	case "process":
 		return Process{spec: s}, nil
 	default:
-		if provider := f.Providers[s.Type]; provider != nil {
-			return provider(s), nil
+		if provider, ok := f.Providers.Resolve(s.Type, s); ok {
+			return provider, nil
 		}
 		return nil, &UnknownAssistantError{Name: name}
 	}

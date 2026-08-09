@@ -109,6 +109,46 @@ func productionSource(t *testing.T, root, rel string) string {
 	return out.String()
 }
 
+func productionSourceRecursive(t *testing.T, root, rel string, skipPrefixes ...string) string {
+	t.Helper()
+	base := filepath.Join(root, rel)
+	var out strings.Builder
+	err := filepath.WalkDir(base, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		relPath = filepath.ToSlash(relPath)
+		for _, prefix := range skipPrefixes {
+			if relPath == prefix || strings.HasPrefix(relPath, strings.TrimSuffix(prefix, "/")+"/") {
+				if entry.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		out.WriteString(relPath)
+		out.WriteByte('\n')
+		out.Write(data)
+		out.WriteByte('\n')
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out.String()
+}
+
 func requireOnlyInternalImports(t *testing.T, root, rel string, allowed ...string) {
 	t.Helper()
 	allow := map[string]bool{}
@@ -379,6 +419,57 @@ func TestArchitectureBoundaries(t *testing.T) {
 		"takt/internal/cli", "takt/internal/daemon", "takt/internal/runtime", "takt/internal/tooling/evaluation", "takt/internal/extensions/notification")
 	forbidImports(t, root, "internal/daemon",
 		"takt/internal/cli", "takt/internal/runtime", "takt/internal/tooling/evaluation", "takt/internal/extensions/notification")
+
+	// Architecture Contracts (ADR-090): provider extensions declare immutable
+	// registrations, and only bootstrap assembles the production registry.
+	productionInternal := productionSourceRecursive(t, root, "internal", "internal/bootstrap", "internal/testsupport")
+	for _, forbidden := range []string{"assistant.MustRegistry(", "assistant.NewRegistry("} {
+		if strings.Contains(productionInternal, forbidden) {
+			t.Errorf("production assistant registry assembly belongs only in bootstrap; found %q outside it", forbidden)
+		}
+	}
+	bootstrapSource := productionSource(t, root, "internal/bootstrap")
+	if strings.Count(bootstrapSource, "assistant.MustRegistry(assistantproviders.Registrations()...)") != 1 {
+		t.Error("bootstrap must assemble exactly one immutable assistant registry from extension registrations")
+	}
+	extensionAssistantSource := productionSource(t, root, "internal/extensions/assistants")
+	if !strings.Contains(extensionAssistantSource, "func Registrations() []core.ProviderRegistration") {
+		t.Error("assistant extensions must declare ProviderRegistration descriptors")
+	}
+	for _, forbidden := range []string{"func init()", "var registry", "registerProvider("} {
+		if strings.Contains(extensionAssistantSource, forbidden) {
+			t.Errorf("assistant extensions must not mutate global registration state; found %q", forbidden)
+		}
+	}
+
+	// Workflow language constitution: when is one deliberately small governance
+	// language owned by whenexpr. Runtime evaluates it; loader validates it.
+	runtimeImports := packageImports(t, root, "internal/runtime")
+	workflowImports := packageImports(t, root, "internal/workflow")
+	if !runtimeImports["takt/internal/whenexpr"] || !workflowImports["takt/internal/whenexpr"] {
+		t.Error("runtime and workflow validation must share the constitutional whenexpr implementation")
+	}
+	for _, forbidden := range []string{"splitLogicalExpression", "contains(", "regexp.MatchString(expr"} {
+		if strings.Contains(runtimeSource, forbidden) {
+			t.Errorf("runtime must not regrow a second or richer when-expression parser; found %q", forbidden)
+		}
+	}
+
+	// Schema-first operations: appapi owns metadata/schema, validates it before
+	// typed decode, and MCP projects canonical tools from those descriptors.
+	appapiSource := productionSource(t, root, "internal/appapi")
+	for _, required := range []string{"type OperationDescriptor struct", "InputSchema map[string]any", "func registerOperation[T any]", "validateOperationInput(schema, raw)", "func RenderOperationDocs() string"} {
+		if !strings.Contains(appapiSource, required) {
+			t.Errorf("schema-first application operation contract is incomplete; missing %q", required)
+		}
+	}
+	mcpSource := productionSource(t, root, "internal/mcp")
+	if !strings.Contains(mcpSource, "appapi.CanonicalOperations()") {
+		t.Error("MCP canonical tools must be projected from appapi operation descriptors")
+	}
+	if _, err := os.Stat(filepath.Join(root, "docs", "71-canonical-operation-contracts.generated.md")); err != nil {
+		t.Errorf("generated canonical operation documentation is required: %v", err)
+	}
 
 	schemaImports := packageImports(t, root, "internal/schemasubset")
 	if !schemaImports["github.com/santhosh-tekuri/jsonschema/v6"] {

@@ -625,7 +625,12 @@ when: nodes.analyze.exit_code == 0
 when: nodes.classify.output == "feature"
 when: nodes.classify.output.workflow == "fix-github-issue"
 when: inputs.input != "dry-run"
+when: nodes.classify.output == "feature" && nodes.validate.output == "ready"
 ```
+
+`when` является намеренно малым gate language, а не общим языком выражений. В `takt/v1alpha1` разрешены только `==`, `!=`, `&&` и `||`; `&&` имеет больший приоритет, чем `||`. Левый операнд — `nodes.<id>.<path>` или `inputs.input|inputs.message`, правый — литерал. Скобки, функции, арифметика, regex и операторы порядка не входят в контракт. Более сложное условие вычисляется отдельным `script`/`command`/`prompt` узлом и передаётся дальше через structured output. Loader проверяет синтаксис `when` до создания Run, runtime использует ту же реализацию `internal/whenexpr`.
+
+Это часть конституции языка workflow: **YAML координирует, код вычисляет, агент принимает решения**. Новые операторы не добавляются по одному; при доказанной потребности в полноценном expression language он должен быть принят целиком как отдельный versioned contract change.
 
 ## 8. Hooks
 

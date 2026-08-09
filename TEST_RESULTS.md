@@ -1,121 +1,98 @@
-# Takt v0.1.56-alpha — TEST RESULTS
+# Takt v0.1.57-alpha — TEST RESULTS
 
-Release theme: **Codebase Hygiene & Stabilization**. No product capability was intentionally removed and no new Workflow/Run/SDK operation was added.
+Release theme: **Architecture Contracts**. Product capabilities and the external `takt/v1alpha1` Workflow/Config API were intentionally not expanded.
 
-## Codebase / architecture
-
-PASS:
-
-- stable `internal/application` no longer owns the external worker/tool subsystem; it is isolated in `internal/externalworker`;
-- common durable lock/redaction/reload helpers are centralized in `internal/runcontrol` rather than copied between Run and external-worker lifecycles;
-- `internal/application` is about 2.2k production LOC (down from ~3.5k in v0.1.55 and ~6.8k before modularization);
-- stable `internal/assistant` is provider-neutral; Pi/OpenCode implementations are under `internal/extensions/assistants` and are injected by `internal/bootstrap`;
-- fake assistant/code/domain/Pi/OpenCode binaries live under `internal/testsupport/cmd`, not product `cmd/`;
-- stable core does not import `internal/experimental` or `internal/tooling`, and stable assistant/application/external-worker code does not import provider extension implementations;
-- Dynamic Flow / Host Control / Learning remain available under the experimental boundary;
-- evaluation / compatibility remain available under tooling;
-- architecture tests reject the return of fake product commands, provider-specific assistant code in core, the old JSON Schema engine, service dependency cycles and reverse stable-module imports.
-
-Production LOC after the refactor (tests and `internal/testsupport` excluded where applicable):
-
-| Area | LOC |
-| --- | ---: |
-| `internal/application` | 2,159 |
-| `internal/externalworker` | 1,279 |
-| `internal/runcontrol` | 86 |
-| stable `internal/assistant` | 1,368 |
-| Pi extension | 941 |
-| OpenCode extension | 761 |
-| `internal/schemasubset` | 213 |
-| `internal/runtime` | 5,226 |
-| `internal/experimental` | 5,639 |
-| `internal/tooling` | 3,185 |
-
-The repository still contains the existing experimental/tooling/extension functionality; the LOC reduction in stable application/core comes from moving independent responsibilities, not deleting features.
-
-## Commodity libraries
-
-PASS at the code-contract level:
-
-- YAML syntax is delegated to `go.yaml.in/yaml/v3 v3.0.4`; Takt keeps only its strict `yamlcodec` contract/diagnostics;
-- JSON Schema Draft 2020-12 instance validation is delegated to `github.com/santhosh-tekuri/jsonschema/v6 v6.0.2`;
-- `internal/schemasubset` now owns only the Takt-specific allowed-subset policy and canonical JSON normalization;
-- compatibility/schema tests use the same upstream JSON Schema API; the second test-only validator was removed;
-- `go.mod`/`go.sum` contain normal pinned dependencies and contain no `replace` or sandbox path.
-
-Sandbox limitation: this execution environment has no normal external module DNS/cache for the newly added YAML/JSON Schema modules. Verification here therefore used temporary API-compatible modules **outside the release tree** through `-modfile`. No replacement is present in the release. A networked clean Go/CI build against the exact upstream module contents remains required before promotion beyond alpha.
-
-## Stable runtime / assistant decomposition
+## Architecture contracts
 
 PASS:
 
-- `takt-assistant/v1alpha2` process execution is split into process startup, stream read/decode, record dispatch, tool/result handling and final process verification;
-- script execution is split into working-directory, argument rendering, policy/sandbox, command configuration and result mapping;
-- governed child Run execution is split into definition/output preparation, durable lineage, start/resume, isolation options and terminal projection;
-- logical assistant configuration validation is independent of provider implementation availability;
-- runtime capability preflight and actual execution use the same injected assistant resolver;
-- evaluation execution uses the same bundled assistant provider set as normal runtime wiring (regression caught by black-box Route DSL evaluation).
+### Workflow Language Constitution
 
-## User / black-box journeys
+- normative rule is documented in `docs/04-architecture.md`, `docs/03-specification.md`, `AGENTS.md`, ADR-090 and `docs/72-architecture-contracts-v0.1.57.md`;
+- `internal/whenexpr` is the single implementation of `when` parsing/evaluation;
+- supported gate language remains only `==`, `!=`, `&&`, `||`, `nodes.*`/`inputs.*` paths and literals;
+- parentheses/functions/arithmetic/order operators are rejected;
+- `internal/workflow` validates `when` before Run creation and `internal/runtime` uses the same implementation;
+- workflow regression tests cover accepted gates, hyphenated node IDs and rejected expression creep.
 
-PASS using the real `takt` binary through the Go E2E harness:
+### Immutable provider registrations
 
-1. `init -> validate -> run -> status/events/artifacts`;
-2. approval -> `answer` -> continue;
-3. failed Run -> `retry` -> completed;
-4. reusable subworkflow;
-5. MCP contract;
-6. daemon lifecycle;
-7. Route DSL E2E/evaluation/strategy benchmark;
-8. Dynamic Takt, Task Sources, Host Control and Simple Reliable Router experimental contracts;
-9. package distribution/reference adapters/adapter platform boundaries;
-10. authoring, composition, worktree, learning and profile catalog contracts.
+- bundled Pi/OpenCode extension packages declare `assistant.ProviderRegistration` values;
+- production provider registry is assembled exactly once in `internal/bootstrap`;
+- no global mutable provider registry or `init()` registration path exists;
+- `assistant.Registry` copies registrations, rejects duplicate IDs and returns deterministic read-only snapshots;
+- runtime and tooling receive the same provider registry graph from bootstrap;
+- architecture tests reject production registry construction outside bootstrap/testsupport.
 
-The E2E harness has a test-only `TAKT_TEST_GO_MODFILE` build hook so sandbox dependency substitution is used only when compiling Takt fixtures and is not leaked into workflows/subprocesses under test.
+### Schema-first canonical operations
 
-## Test results
+- `internal/appapi.OperationDescriptor` owns operation ID, stability stage, MCP name, title, description, JSON InputSchema and annotations;
+- `registerOperation[T]` binds each descriptor to a concrete Go request type;
+- descriptor schema validates input before strict typed decode;
+- top-level JSON fields of each Go request are checked against descriptor schema during registration and by contract tests;
+- duplicate operation IDs/MCP names fail fast;
+- descriptor snapshots deep-copy schema/annotation maps and cannot mutate canonical state;
+- MCP canonical tools are projected from `appapi.CanonicalOperations()` and a test checks exact metadata/schema equality;
+- `docs/71-canonical-operation-contracts.generated.md` is generated from the same descriptors and a regression test rejects documentation drift.
 
-PASS on the final working tree:
+A pre-existing contract mismatch was exposed during implementation: `host.begin` accepted `candidate` in the typed Go request but the MCP schema did not publish it. The descriptor was corrected; the new typed-schema alignment check prevents that class of drift even when a particular E2E payload is not exercised.
 
-- `gofmt` on Go sources;
-- `go vet ./...` (with sandbox-only external modfile);
-- `go build ./...` (same condition);
-- all non-runtime Go packages, executed in bounded groups;
-- all runtime tests, executed in two bounded groups covering the complete `Test*` set;
-- all Go E2E contracts, executed in bounded logical groups;
+## Verification
+
+PASS on the final working tree after the architecture-contract changes:
+
+- `gofmt` for changed Go sources;
+- `go vet ./...` using the sandbox-only external modfile described below;
+- `go build ./...` under the same condition;
+- ordinary tests for the complete repository in bounded verification: the broad suite passed all packages except the known sandbox `GOFLAGS` collision in the runtime Go-script subtest, and that complete runtime package then passed with the test binary launched without the sandbox-only `GOFLAGS`;
+- complete `tests/e2e` suite;
+- stable user journeys (`^TestUserJourney`);
+- `internal/architecture`;
+- `internal/assistant`, bundled provider extensions and tooling compatibility/evaluation;
+- `internal/whenexpr`, `internal/workflow`, `internal/runtime`, `internal/appapi`, `internal/mcp`;
 - `./scripts/check-docs.sh`;
 - `./scripts/test-host-integrations-typescript.sh`.
 
-Race PASS for the changed/stable contour:
+Race PASS in bounded groups for the changed contour:
 
-- `internal/application`, `internal/externalworker`, `internal/runcontrol`;
-- `internal/assistant`, Pi/OpenCode provider extensions;
-- `internal/schemasubset`, compatibility, workflow and architecture;
-- CLI, daemon and MCP;
-- governed child Run, structured-output/schema/script and assistant-provider runtime regressions;
-- user journeys, MCP/daemon E2E and Route DSL evaluation/benchmark E2E.
+- `internal/assistant` and Pi/OpenCode extensions;
+- tooling compatibility/evaluation;
+- `internal/whenexpr` and `internal/workflow`;
+- `internal/runtime`, `internal/appapi`, `internal/mcp`, `internal/architecture`;
+- complete `tests/e2e`.
 
-A single uninterrupted `go test -race ./...` is not claimed for this release because the container command channel has a hard execution limit and process-heavy Go suites exceed it. The changed surfaces above were run under race in bounded groups.
+The first combined race command was stopped by the outer command-channel time limit after the assistant/providers/tooling/when/workflow packages had already printed PASS. The remaining runtime/appapi/MCP/architecture packages and E2E were then run separately under `-race` and passed. An uninterrupted aggregate `go test -race ./...` is therefore not claimed.
 
-## Release-specific regression found and fixed
+## Sandbox module limitation
 
-The black-box evaluation suite found that, after moving Pi/OpenCode out of stable `internal/assistant`, the dedicated evaluation execution factory was still constructing an assistant factory without provider extensions. Normal runs worked, while evaluation reported `unknown assistant: pi`. `internal/bootstrap/evaluation.go` now injects the same provider factories used by the primary runtime composition root; Route DSL evaluation and benchmark contracts pass again.
+This execution environment has no normal external module DNS/cache for the pinned YAML/JSON Schema dependencies introduced in prior releases. Verification therefore compiles Takt with a temporary API-compatible `-modfile` located **outside the release tree**. For tests that intentionally execute a user's `go run` script, the compiled test binary is launched with that temporary `GOFLAGS` removed; this prevents a Takt-specific modfile from leaking into the user's Go process.
 
-## Release promotion note
+No `replace`, shim path or `/mnt/data` path is part of the project tree or release archive. A networked CI run against the exact pinned upstream modules remains required before promotion beyond alpha, as already noted for v0.1.55/v0.1.56.
 
-The architecture/codebase cleanup is considered complete after this release. Further stabilization should be driven by actual installation and live user/provider scenarios. Promotion beyond alpha additionally requires one networked clean build/test using the exact pinned upstream YAML and JSON Schema modules rather than the sandbox compatibility substitutes used here.
+## Release contract
+
+Expected release metadata:
+
+- Takt `0.1.57-alpha`;
+- authoring skill `0.39.0`;
+- Workflow/Config API remains `takt/v1alpha1`;
+- ADR-090 present in `ARCHITECTURE_DECISIONS.md`;
+- normative architecture contract present in `docs/04-architecture.md` and `docs/72-architecture-contracts-v0.1.57.md`;
+- generated canonical operation surface present in `docs/71-canonical-operation-contracts.generated.md`.
 
 ## Clean archive verification
 
-The release candidate was unpacked into a new directory and checked independently of the working tree:
+The candidate ZIP was extracted into a new directory and checked independently of the working tree:
 
-- `VERSION=0.1.56-alpha`, Takt skill `0.38.0`;
-- `bin/` absent;
-- manifest PASS with 621 tracked files;
+- `VERSION=0.1.57-alpha`, authoring skill `0.39.0`;
+- `bin/` absent before verification;
+- manifest PASS with 628 tracked files;
 - documentation gate PASS;
-- no sandbox path or local `replace` in the release tree;
-- `go vet ./...` and `go build ./...` PASS with the sandbox-only external modfile described above;
-- stable application/assistant/provider/schema/tooling/workflow/architecture/MCP/daemon/CLI tests PASS;
-- the complete runtime `Test*` set PASS in two bounded groups;
-- user journeys + MCP/daemon + Route DSL evaluation/benchmark black-box E2E PASS;
+- no `/mnt/data` sandbox path or local dependency `replace` in the release tree;
+- `go vet ./...` and `go build ./...` PASS under the sandbox-only external modfile described above;
+- assistant registry, `whenexpr`, workflow validation, appapi, MCP and architecture contracts PASS;
+- the complete `internal/runtime` package PASS with the test binary isolated from sandbox `GOFLAGS`;
+- complete `tests/e2e` PASS;
 - TypeScript host integration smoke PASS.
+
+The first combined clean-archive test command was stopped by the outer command channel after runtime had already printed PASS; E2E and the TypeScript smoke were then run separately and passed.

@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.38.0" \
-  "VERSION|0.1.56-alpha" \
-  "internal/version/version.go|0.1.56-alpha" \
+  "skills/takt/VERSION|0.39.0" \
+  "VERSION|0.1.57-alpha" \
+  "internal/version/version.go|0.1.57-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/SKILL.md|Human-reviewed Learning Loop" \
@@ -142,6 +142,16 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-087" \
   "ARCHITECTURE_DECISIONS.md|ADR-088" \
   "ARCHITECTURE_DECISIONS.md|ADR-089" \
+  "ARCHITECTURE_DECISIONS.md|ADR-090" \
+  "docs/04-architecture.md|YAML координирует. Код вычисляет. Агент принимает решения." \
+  "docs/04-architecture.md|Registration descriptors расширений" \
+  "docs/04-architecture.md|Schema-first canonical operations" \
+  "docs/03-specification.md|намеренно малым gate language" \
+  "docs/71-canonical-operation-contracts.generated.md|# Canonical operation contracts" \
+  "docs/72-architecture-contracts-v0.1.57.md|Architecture Contracts v0.1.57" \
+  "AGENTS.md|YAML координирует. Код вычисляет. Агент принимает решения." \
+  "AGENTS.md|ProviderRegistration" \
+  "AGENTS.md|OperationDescriptor" \
   "docs/70-codebase-hygiene-stabilization-v0.1.56.md|Codebase Hygiene & Stabilization" \
   "docs/69-core-stabilization-modularization-v0.1.55.md|Core Stabilization & Modularization" \
   "docs/68-architecture-hardening-v0.1.54.md|Architecture Hardening" \

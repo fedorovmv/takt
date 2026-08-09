@@ -16,8 +16,8 @@ func TestCanonicalOperationRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := New(Dependencies{Core: services.Core, Dynamic: services.Dynamic, Blocks: services.Extensions.Blocks, Notifications: services.Extensions.Notifications})
-	got := make([]string, 0, len(registry.handlers))
-	for id := range registry.handlers {
+	got := make([]string, 0, len(registry.operations))
+	for id := range registry.operations {
 		got = append(got, id)
 	}
 	sort.Strings(got)

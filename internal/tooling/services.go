@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"takt/internal/assistant"
 	cfgpkg "takt/internal/config"
 	"takt/internal/tooling/compatibility"
 )
@@ -77,10 +78,11 @@ type CompatibilityReport = compatibility.CheckReport
 type CompatibilityService struct {
 	workspace  string
 	configPath string
+	providers  assistant.Registry
 }
 
-func NewCompatibility(workspace, configPath string) *CompatibilityService {
-	return &CompatibilityService{workspace: workspace, configPath: configPath}
+func NewCompatibility(workspace, configPath string, providers assistant.Registry) *CompatibilityService {
+	return &CompatibilityService{workspace: workspace, configPath: configPath, providers: providers}
 }
 func (s *CompatibilityService) Matrix() CompatibilityMatrix { return compatibility.CurrentMatrix() }
 func (s *CompatibilityService) Fields() CompatibilityFieldMatrix {
@@ -91,7 +93,7 @@ func (s *CompatibilityService) Check(ctx context.Context, live bool) (Compatibil
 	if err != nil {
 		return CompatibilityReport{}, err
 	}
-	return compatibility.Check(ctx, cfg, compatibility.CheckOptions{Workspace: s.workspace, Live: live}), nil
+	return compatibility.Check(ctx, cfg, compatibility.CheckOptions{Workspace: s.workspace, Live: live, Providers: s.providers}), nil
 }
 
 type Services struct {

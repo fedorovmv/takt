@@ -8,7 +8,6 @@ import (
 
 	"takt/internal/assistant"
 	"takt/internal/domainadapter"
-	assistantproviders "takt/internal/extensions/assistants"
 	"takt/internal/schemasubset"
 	"takt/internal/spec"
 	"takt/internal/version"
@@ -111,6 +110,7 @@ func CurrentMatrix() Matrix {
 type CheckOptions struct {
 	Workspace string
 	Live      bool
+	Providers assistant.Registry
 }
 
 type CheckReport struct {
@@ -181,7 +181,7 @@ func Check(ctx context.Context, cfg *spec.Config, options CheckOptions) CheckRep
 			check.Support = policy.Support
 			check.Capabilities = append([]string(nil), policy.Capabilities...)
 		}
-		resolved, err := (assistant.Factory{Config: cfg, Providers: assistantproviders.Factories()}).Resolve(name)
+		resolved, err := (assistant.Factory{Config: cfg, Providers: options.Providers}).Resolve(name)
 		if err != nil {
 			check.Problems = append(check.Problems, err.Error())
 		} else {
@@ -194,13 +194,15 @@ func Check(ctx context.Context, cfg *spec.Config, options CheckOptions) CheckRep
 		if check.Support == "deprecated" {
 			check.Warnings = append(check.Warnings, "configured component uses a deprecated compatibility contract")
 		}
-		if options.Live && (value.Type == "pi" || value.Type == "opencode") {
-			versionText, probeErr := assistantproviders.ProbeVersion(ctx, value, options.Workspace)
-			if probeErr != nil {
-				check.Problems = append(check.Problems, "version probe: "+probeErr.Error())
-			} else {
-				check.Version = strings.TrimSpace(versionText)
-				check.Warnings = append(check.Warnings, "binary version detected; live agent/host conformance is still required before claiming strict compatibility")
+		if options.Live {
+			if registration, exists := options.Providers.Registration(value.Type); exists && registration.ProbeVersion != nil {
+				versionText, probeErr := registration.ProbeVersion(ctx, value, options.Workspace)
+				if probeErr != nil {
+					check.Problems = append(check.Problems, "version probe: "+probeErr.Error())
+				} else {
+					check.Version = strings.TrimSpace(versionText)
+					check.Warnings = append(check.Warnings, "binary version detected; live agent/host conformance is still required before claiming strict compatibility")
+				}
 			}
 		}
 		finalizeComponent(&check)

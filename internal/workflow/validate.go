@@ -10,6 +10,7 @@ import (
 	"takt/internal/artifacttype"
 	"takt/internal/schemasubset"
 	"takt/internal/spec"
+	"takt/internal/whenexpr"
 )
 
 func Validate(wf *spec.Workflow) error {
@@ -109,6 +110,7 @@ func validateNode(node spec.Node, scope string, insideLoop bool) error {
 		validateExternalExecution,
 		validateAttempts,
 		validateTiming,
+		validateWhen,
 		validateAssistantPolicy,
 		validateSandbox,
 		validateOutputs,
@@ -346,6 +348,16 @@ func validateTiming(node spec.Node) error {
 		if node.When != "" {
 			return fmt.Errorf("node %q always_run is incompatible with when; use an explicit all_done node without always_run when conditional cleanup is required", node.ID)
 		}
+	}
+	return nil
+}
+
+func validateWhen(node spec.Node) error {
+	if node.When == "" {
+		return nil
+	}
+	if err := whenexpr.Validate(node.When); err != nil {
+		return fmt.Errorf("node %q when: %w", node.ID, err)
 	}
 	return nil
 }

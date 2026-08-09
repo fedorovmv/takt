@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"takt/internal/store"
+	"takt/internal/whenexpr"
 )
 
 var variableRE = regexp.MustCompile(`\$\{([^}]+)\}`)
@@ -268,77 +269,9 @@ func nodeFieldLookup(n store.NodeState, field string) (string, bool) {
 }
 
 func evalWhen(expr string, state *store.RunState) (bool, error) {
-	expr = strings.TrimSpace(expr)
-	if expr == "" {
-		return true, nil
-	}
-	if parts := splitLogicalExpression(expr, "||"); len(parts) > 1 {
-		for _, part := range parts {
-			ok, err := evalWhen(part, state)
-			if err != nil {
-				return false, err
-			}
-			if ok {
-				return true, nil
-			}
-		}
-		return false, nil
-	}
-	if parts := splitLogicalExpression(expr, "&&"); len(parts) > 1 {
-		for _, part := range parts {
-			ok, err := evalWhen(part, state)
-			if err != nil {
-				return false, err
-			}
-			if !ok {
-				return false, nil
-			}
-		}
-		return true, nil
-	}
-	ops := []string{"==", "!="}
-	for _, op := range ops {
-		if idx := strings.Index(expr, op); idx >= 0 {
-			left := strings.TrimSpace(expr[:idx])
-			right := strings.Trim(strings.TrimSpace(expr[idx+len(op):]), `"'`)
-			value, err := resolveExprPath(left, state)
-			if err != nil {
-				return false, err
-			}
-			if op == "==" {
-				return value == right, nil
-			}
-			return value != right, nil
-		}
-	}
-	return false, fmt.Errorf("unsupported when expression %q", expr)
-}
-
-func splitLogicalExpression(expr, operator string) []string {
-	var parts []string
-	start := 0
-	var quote rune
-	for index, r := range expr {
-		if quote != 0 {
-			if r == quote {
-				quote = 0
-			}
-			continue
-		}
-		if r == '\'' || r == '"' {
-			quote = r
-			continue
-		}
-		if index+len(operator) <= len(expr) && expr[index:index+len(operator)] == operator {
-			parts = append(parts, strings.TrimSpace(expr[start:index]))
-			start = index + len(operator)
-		}
-	}
-	if start == 0 {
-		return []string{expr}
-	}
-	parts = append(parts, strings.TrimSpace(expr[start:]))
-	return parts
+	return whenexpr.Evaluate(expr, func(path string) (string, error) {
+		return resolveExprPath(path, state)
+	})
 }
 
 func resolveExprPath(path string, state *store.RunState) (string, error) {

@@ -23,6 +23,42 @@ experimental / extensions / tooling ──► stable core
 stable core ──X─► experimental / extensions / tooling
 ```
 
+## Архитектурные контракты эволюции
+
+После стабилизации `v0.1.52–v0.1.57` Takt фиксирует три дополнительные защиты от повторного разрастания связности. Они адаптированы из сильных практик Archon, но встроены в собственную архитектуру Takt без глобальных registries и нового framework-слоя.
+
+### 1. Конституция языка workflow
+
+> **YAML координирует. Код вычисляет. Агент принимает решения.**
+
+Workflow YAML содержит только то, что runtime должен статически видеть для управления Run: структуру, зависимости, gates, retry, approval, session/artifact identity и композицию. Вычисление значения принадлежит `bash`/`script`/`command`, модельное решение — `prompt`/assistant node.
+
+Перед добавлением YAML-поля, node surface или expression capability нужно ответить на три вопроса:
+
+1. Должен ли runtime видеть это для управления Run?
+2. Это декларативные данные с фиксированной семантикой, а не вычисление?
+3. Можно ли выразить задачу существующим script/command/prompt node и текущей связкой узлов?
+
+Положительный ответ на третий вопрос означает, что новое поле допускается только при отдельной governance-ценности: наблюдаемости, resumability, auditability или безопасном управлении жизненным циклом.
+
+`when` — намеренно малый gate language: только `==`, `!=`, `&&`, `||`, `nodes.*`/`inputs.*` paths и литералы. Скобки, функции, арифметика, regex и операторы порядка не добавляются инкрементально. Более сложное решение вычисляется отдельным узлом и публикуется как structured output. Если когда-либо понадобится полноценный expression language, Takt принимает зрелый специфицированный язык целиком отдельным versioned change, а не выращивает собственный parser. `internal/whenexpr` является единственной реализацией; loader и runtime используют один контракт.
+
+Load-time композиция разворачивается до обычного DAG. Runtime-resolved работа оформляется governed child Run с собственным state/events/artifacts. Experimental Dynamic Flow использует stable runtime, но не расширяет неявно язык workflow.
+
+### 2. Registration descriptors расширений
+
+Concrete assistant integrations объявляют `assistant.ProviderRegistration` (`ID`, display name, stage, factory, version probe). Extension package только декларирует registration; `init()`-регистрация и package-global mutable registry запрещены. Единственный production registry собирается в `internal/bootstrap`, копирует descriptors, проверяет дубликаты и после construction предоставляет только read-only lookup/snapshots.
+
+Stable `internal/assistant` знает registration contract, но не импортирует Pi/OpenCode. Runtime и tooling получают один и тот же собранный provider graph. Таким образом, доступные providers определяются явным object graph, а не порядком скрытых вызовов `register...()`.
+
+### 3. Schema-first canonical operations
+
+`internal/appapi.OperationDescriptor` является единственным источником canonical operation ID, stability stage, MCP tool name, title/description, `InputSchema` и annotations. `registerOperation[T]` связывает descriptor с конкретным Go request type. Вход сначала проходит JSON Schema descriptor, затем strict typed decode.
+
+MCP canonical tools проецируются из `appapi.CanonicalOperations()`, а `docs/71-canonical-operation-contracts.generated.md` генерируется из тех же descriptors и проверяется на drift. Локальные MCP schemas остаются только у MCP-specific external-worker protocol tools, которые не являются canonical application operations.
+
+Эти правила и их executable gates подробно описаны в `docs/72-architecture-contracts-v0.1.57.md` и ADR-090.
+
 ## Пакеты
 
 - `internal/yamlcodec` — тонкий Takt-адаптер над `go.yaml.in/yaml/v3`: единый YAML/JSON decode path, `json`-имена полей и strict unknown-field diagnostics; общую YAML grammar Takt не реализует;
@@ -34,11 +70,11 @@ stable core ──X─► experimental / extensions / tooling
 - `internal/redact` — `secret://ENV_NAME`, регистрация известных секретов и редактирование сохраняемых данных;
 - `internal/localsandbox` — локальный OS enforcement для deterministic `bash/script` узлов через bubblewrap/sandbox-exec;
 - `internal/gitworktree` — создание ветки/worktree, проверка dirty state, удаление и prune;
-- `internal/assistant` — адаптеры `mock`, универсальный `process` и специализированные `pi` и `opencode`;
+- `internal/assistant` — stable provider-neutral `mock`/`process` contracts и immutable provider registry; concrete Pi/OpenCode implementations находятся в extensions;
 - `internal/definition` — fingerprints workflow/config/commands;
 - `internal/workflow` — загрузка и статическая проверка DAG;
 - `internal/authoring` — diagnostics для templates, output/artifact references и несовместимых параметров;
-- `internal/application` — стабильные use cases Run/Catalog/Authoring/Worktree/Command/External; пакет не зависит от experimental/extensions/tooling;
+- `internal/application` — стабильные use cases Run/Catalog/Authoring/Worktree/Command; внешний worker/tool lifecycle находится в `internal/externalworker`, пакет не зависит от experimental/extensions/tooling;
 - `internal/runtime` — общий scheduler, hooks, loops, approval, governed child lifecycle, cancellation tree и итог Run;
 - `internal/store` — revisioned state/event store, parent/child links, durable control markers, aggregate usage и Run lock;
 - `internal/extensions` — Package Distribution, Block Catalog, Notifications и подключаемые application facades;
@@ -76,11 +112,11 @@ TAKT_NATIVE_HOOKS_JSON
 Ненулевой exit code классифицируется как `exit`; ошибка запуска — `start`; context timeout — `timed_out`; cancellation — `cancelled`.
 
 
-## Pi assistant
+## Pi assistant extension
 
 Специализированный `pi` adapter запускает `pi --mode rpc`, передаёт prompt по JSONL и получает Session ID, итоговый текст, статистику и сообщения через RPC-команды. Версия Pi сохраняется из version probe, а фактическая модель определяется по `responseModel` последнего assistant message с fallback на выбранную модель сессии. `fresh` создаёт новую сессию, `resume` передаёт сохранённый ID через `--session` и проверяет его по `get_state`. Инструменты, файлы, shell, skills и история остаются внутри Pi.
 
-## OpenCode assistant
+## OpenCode assistant extension
 
 Специализированный `opencode` adapter запускает `opencode run --format json` в workspace узла. Prompt передаётся через stdin, stdout читается как NDJSON event stream, stderr остаётся диагностикой. Takt нормализует итоговый текст, Session ID, version, requested/resolved model и usage, но не вмешивается во внутренний tool loop, agents, MCP и работу с файлами OpenCode.
 

@@ -11,10 +11,12 @@
 5. `09-runtime-semantics.md` — durable execution semantics;
 6. `10-assistant-adapter-spec.md` — stable assistant protocol и extension adapters;
 7. `../skills/takt/SKILL.md` — authoring workflow/profile;
-8. `70-codebase-hygiene-stabilization-v0.1.56.md` — текущая архитектурная граница stable/extensions/experimental/tooling;
-9. `../ARCHITECTURE_DECISIONS.md` — действующие архитектурные решения.
+8. `72-architecture-contracts-v0.1.57.md` — нормативные контракты эволюции языка, registrations и canonical operations;
+9. `71-canonical-operation-contracts.generated.md` — generated appapi/MCP operation surface;
+10. `70-codebase-hygiene-stabilization-v0.1.56.md` — граница stable/extensions/experimental/tooling;
+11. `../ARCHITECTURE_DECISIONS.md` — действующие архитектурные решения.
 
-Документы `16–69` сохраняют историю отдельных alpha-релизов и нужны при расследовании происхождения конкретного контракта. Они **не являются обязательным маршрутом onboarding**. `proposals/` описывает принятые или обсуждаемые направления, а не текущий пользовательский контракт.
+Документы `16–70` сохраняют историю отдельных alpha-релизов и нужны при расследовании происхождения конкретного контракта. Они **не являются обязательным маршрутом onboarding**. `proposals/` описывает принятые или обсуждаемые направления, а не текущий пользовательский контракт.
 
 Для изменения runtime:
 
@@ -110,7 +112,7 @@
 | Script-узлы и типизированные артефакты | `43-script-nodes-typed-artifacts-v0.1.29.md` | фактический |
 | Динамический fan-out governed children | `42-governed-child-fanout-v0.1.28.md` | фактический |
 | Текущее состояние кода | `05-implementation-status.md` | фактический |
-| Архитектурные и тестовые границы | `70-codebase-hygiene-stabilization-v0.1.56.md`, `../internal/application/`, `../internal/externalworker/`, `../internal/runcontrol/`, `../internal/architecture/`, `../tests/e2e/` | stable dependency direction + focused Run/external-worker use cases + modular experimental/extensions/tooling + Go-native contracts |
+| Архитектурные и тестовые границы | `72-architecture-contracts-v0.1.57.md`, `71-canonical-operation-contracts.generated.md`, `70-codebase-hygiene-stabilization-v0.1.56.md`, `../internal/application/`, `../internal/externalworker/`, `../internal/runcontrol/`, `../internal/architecture/`, `../tests/e2e/` | stable dependency direction + focused Run/external-worker use cases + modular experimental/extensions/tooling + Go-native contracts |
 | v0.2 contract convergence и compatibility | `62-contract-convergence-compatibility-v0.1.48.md`, `61-v0.2-stabilization-iteration-history-v0.1.47.md`, `09-runtime-semantics.md`, `../schemas/schema-subset-v1.schema.json`, `../schemas/v1beta1-field-matrix.schema.json` | schema subset/field audit/matrix фактические; v1beta1 ещё не выпущен |
 | Multi-repo Dynamic Workflows | `57-multi-repo-dynamic-workflows-v0.1.43.md`, `../schemas/workspace.schema.json` | фактический |
 | Runtime reliability, SecretRef и локальный OS sandbox | `58-runtime-reliability-local-security-v0.1.44.md`, `../schemas/workflow.schema.json`, `../schemas/run-state.schema.json` | фактический |
@@ -204,6 +206,6 @@
 
 - Structured Task Sources / ingress protocol: `docs/64-structured-task-sources-v0.1.50.md`, `sdk/tasksource`, `schemas/task-source*.schema.json`.
 
-- Application boundary / architecture refactor: `docs/66-application-boundary-architecture-refactor-v0.1.52.md`, hardening `docs/68-architecture-hardening-v0.1.54.md`, modularization `docs/69-core-stabilization-modularization-v0.1.55.md`, hygiene `docs/70-codebase-hygiene-stabilization-v0.1.56.md`, `internal/application`, `internal/externalworker`, `internal/runcontrol`, `internal/experimental`, `internal/extensions`, `internal/tooling`, `internal/bootstrap`, `internal/appapi`, `internal/architecture`, `go test ./internal/architecture`.
+- Application boundary / architecture refactor: `docs/66-application-boundary-architecture-refactor-v0.1.52.md`, hardening `docs/68-architecture-hardening-v0.1.54.md`, modularization `docs/69-core-stabilization-modularization-v0.1.55.md`, hygiene `docs/70-codebase-hygiene-stabilization-v0.1.56.md`, architecture contracts `docs/72-architecture-contracts-v0.1.57.md`, generated operations `docs/71-canonical-operation-contracts.generated.md`, `internal/application`, `internal/externalworker`, `internal/runcontrol`, `internal/experimental`, `internal/extensions`, `internal/tooling`, `internal/bootstrap`, `internal/appapi`, `internal/architecture`, `go test ./internal/architecture`.
 
 - Human-reviewed Skill/Block Learning Loop: `docs/65-human-reviewed-learning-loop-v0.1.51.md`, `internal/experimental/learning`, `schemas/learning-proposal.schema.json`, Go regression/E2E tests.

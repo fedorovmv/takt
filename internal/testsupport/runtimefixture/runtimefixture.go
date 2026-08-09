@@ -19,7 +19,7 @@ func Dependencies(def runtime.Definition) runtime.Dependencies {
 	return runtime.Dependencies{
 		Commands:   runtime.NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
 		Store:      store.FS{Workspace: def.ControlWorkspace},
-		Assistants: assistant.Factory{Config: def.Config, Providers: assistantproviders.Factories()},
+		Assistants: assistant.Factory{Config: def.Config, Providers: assistant.MustRegistry(assistantproviders.Registrations()...)},
 		Adapters:   domainadapter.Factory{Config: def.Config},
 		Redactor:   redact.NewFromConfig(def.Config),
 	}

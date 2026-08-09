@@ -31,7 +31,7 @@ type PlanRequest struct {
 	Goal       string            `json:"goal"`
 	Profile    string            `json:"profile,omitempty"`
 	Candidate  *dynamicplan.Plan `json:"candidate,omitempty"`
-	TaskSource *tasksource.Task  `json:"task_source,omitempty"`
+	TaskSource *tasksource.Task  `json:"-"`
 }
 
 type PlanResult struct {

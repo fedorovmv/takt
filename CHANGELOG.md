@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.1.57-alpha
+
+- Feature freeze сохранён: новых Workflow/Run/CLI/MCP возможностей не добавлено; релиз фиксирует три architecture contracts после сравнения с идеологическим родителем Archon.
+- Принята конституция языка workflow: **YAML координирует. Код вычисляет. Агент принимает решения.** `when` централизован в `internal/whenexpr`, валидируется до Run и остаётся намеренно ограничен `==`, `!=`, `&&`, `||` без incremental expression creep.
+- Bundled assistant integrations объявляют `ProviderRegistration`; immutable provider registry собирается единственным production composition root в `internal/bootstrap`, без global mutable registry или `init()` registration.
+- `internal/appapi.OperationDescriptor` стал schema-first источником canonical operation ID/stage/MCP metadata/InputSchema/annotations/docs; вход валидируется той же schema до generic typed decode.
+- MCP canonical tools проецируются из appapi descriptors. `docs/71-canonical-operation-contracts.generated.md` генерируется из них же и защищён drift-test.
+- Architecture gate запрещает второй `when` parser, production provider-registry assembly вне bootstrap и расхождение canonical MCP/appapi boundary.
+- Добавлены ADR-090 и `docs/72-architecture-contracts-v0.1.57.md`; основной `docs/04-architecture.md` обновлён нормативными правилами. Takt skill обновлён до 0.39.0.
+
 ## v0.1.56-alpha
 
 - Feature freeze завершён codebase-hygiene проходом: функции не удалялись и публичные Workflow/Run/SDK operation names не расширялись.

@@ -48,6 +48,7 @@ func New(workspace, configPath string) (*App, error) {
 		return nil, err
 	}
 
+	providers := assistant.MustRegistry(assistantproviders.Registrations()...)
 	var dynamic *dynamicflow.Services
 	coreDeps := application.Dependencies{
 		RunStore: store.FS{Workspace: absWorkspace},
@@ -78,7 +79,7 @@ func New(workspace, configPath string) (*App, error) {
 		deps := runtime.Dependencies{
 			Commands:   runtime.NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
 			Store:      store.FS{Workspace: def.ControlWorkspace},
-			Assistants: assistant.Factory{Config: def.Config, Providers: assistantproviders.Factories()},
+			Assistants: assistant.Factory{Config: def.Config, Providers: providers},
 			Adapters:   domainadapter.Factory{Config: def.Config},
 			Redactor:   redact.NewFromConfig(def.Config),
 		}
@@ -108,8 +109,8 @@ func New(workspace, configPath string) (*App, error) {
 	})
 	learn := experimentallearning.NewService(experimentallearning.Manager{Workspace: core.Workspace})
 	tools := &tooling.Services{
-		Evaluation:    tooling.NewEvaluation(evaluationEngine{}),
-		Compatibility: tooling.NewCompatibility(core.Workspace, core.ConfigPath),
+		Evaluation:    tooling.NewEvaluation(evaluationEngine{providers: providers}),
+		Compatibility: tooling.NewCompatibility(core.Workspace, core.ConfigPath, providers),
 	}
 	maint := maintenance.New(dynamic.PlanService, external, func() (int, error) {
 		items, err := ext.Notifications.Dispatch()

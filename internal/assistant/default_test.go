@@ -25,13 +25,14 @@ func TestCodingAgentResolvesConfiguredDefault(t *testing.T) {
 }
 
 func TestCodingAgentFallsBackToLegacyOpenCode(t *testing.T) {
+	providers := MustRegistry(
+		ProviderRegistration{ID: "opencode", Factory: func(spec.AssistantSpec) Adapter { return defaultTestAdapter("opencode") }},
+		ProviderRegistration{ID: "pi", Factory: func(spec.AssistantSpec) Adapter { return defaultTestAdapter("pi") }},
+	)
 	factory := Factory{Config: &spec.Config{Assistants: map[string]spec.AssistantSpec{
 		"opencode": {Type: "opencode", Binary: "opencode"},
 		"pi":       {Type: "pi", Binary: "pi"},
-	}}, Providers: map[string]ProviderFactory{
-		"opencode": func(spec.AssistantSpec) Adapter { return defaultTestAdapter("opencode") },
-		"pi":       func(spec.AssistantSpec) Adapter { return defaultTestAdapter("pi") },
-	}}
+	}}, Providers: providers}
 	adapter, err := factory.Resolve("coding-agent")
 	if err != nil {
 		t.Fatal(err)

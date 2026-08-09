@@ -6,17 +6,17 @@
 
 ## Область применения текущей версии
 
-`v0.1.56-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.57-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Локальный `takt daemon` поддерживает фоновые Run и несколько клиентов одного пользователя через Unix socket. Сетевой и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и distributed locking. Эти режимы не поддерживаются.
 
 ## Текущая точка развития
 
-К `v0.1.56-alpha` Takt завершил архитектурный feature freeze и перешёл от накопления возможностей к стабилизации пользовательского контура. Stable core отделён от extensions, experimental и tooling; Dynamic Flow остаётся доступным, но больше не определяет стабильность основного Run/runtime API. Ближайшая цель — **проверять основные пользовательские сценарии на реальных задачах, исправлять найденные дефекты и постепенно продвигать доказанные experimental contracts в stable surface**.
+К `v0.1.57-alpha` Takt завершил архитектурный feature freeze и перешёл от накопления возможностей к стабилизации пользовательского контура. Stable core отделён от extensions, experimental и tooling; Dynamic Flow остаётся доступным, но больше не определяет стабильность основного Run/runtime API. Ближайшая цель — **проверять основные пользовательские сценарии на реальных задачах, исправлять найденные дефекты и постепенно продвигать доказанные experimental contracts в stable surface**.
 
 Приоритеты:
 
-1. application/test/architecture/modular/codebase-hygiene boundaries — выполнены в `v0.1.52–v0.1.56` и закреплены автоматическими gates;
+1. application/test/architecture/modular/codebase-hygiene boundaries — выполнены в `v0.1.52–v0.1.57` и закреплены автоматическими gates;
 2. стабильный пользовательский путь `build → init → validate → run → inspect/recover`: Linux/macOS smoke, понятные ошибки, документация и backward compatibility;
 3. реальные coding-agent/adapter сценарии через stable Run/runtime API; live conformance там, где сейчас есть только guarded/reference integrations;
 4. evidence на реальном обезличенном corpus для experimental Dynamic Flow и tooling evaluation до promotion их контрактов в stable;
@@ -87,6 +87,10 @@
 - validation envelope сохраняется при любом terminal status quality-node; успех требует `completed && valid=true`;
 - строгий контракт результата валидатора `takt-validation/v1alpha1`;
 - commodity parsing/validation делегированы поддерживаемым Go-библиотекам: `go.yaml.in/yaml/v3` и `github.com/santhosh-tekuri/jsonschema/v6`; Takt сохраняет только собственные strict/subset contracts.
+
+## Architecture Contracts v0.1.57
+
+`v0.1.57-alpha` закрепляет три правила эволюции без новых функций: **«YAML координирует. Код вычисляет. Агент принимает решения.»**, immutable provider registrations с единственной production-сборкой в `bootstrap`, и schema-first `OperationDescriptor` как единый источник appapi/MCP/docs контрактов. `when` не расширяется по одному оператору; extensions не используют global registration state; generated canonical operation docs проверяются на drift. Решение: [`docs/72-architecture-contracts-v0.1.57.md`](docs/72-architecture-contracts-v0.1.57.md), ADR-090.
 
 ## Codebase Hygiene & Stabilization v0.1.56
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"takt/internal/assistant"
+	assistantproviders "takt/internal/extensions/assistants"
 	"takt/internal/spec"
 )
 
@@ -44,7 +45,7 @@ func TestCheckWarnsOnLegacyProcessAndDeprecatesV1Alpha1(t *testing.T) {
 		"old": {Type: "process", Protocol: assistant.ProtocolV1Alpha1, Argv: []string{"fake"}},
 		"new": {Type: "process", Protocol: assistant.ProtocolV1Alpha2, Argv: []string{"fake"}, Capabilities: []string{"tool_control"}},
 	}}
-	report := Check(context.Background(), cfg, CheckOptions{})
+	report := Check(context.Background(), cfg, CheckOptions{Providers: assistant.MustRegistry(assistantproviders.Registrations()...)})
 	if report.Status != "warning" {
 		t.Fatalf("status=%s problems=%v warnings=%v", report.Status, report.Problems, report.Warnings)
 	}
@@ -72,7 +73,7 @@ func TestCheckLivePiProbeReportsVersionWithoutClaimingStrictHost(t *testing.T) {
 	cfg := &spec.Config{Assistants: map[string]spec.AssistantSpec{
 		"pi": {Type: "pi", Binary: binary},
 	}}
-	report := Check(context.Background(), cfg, CheckOptions{Workspace: dir, Live: true})
+	report := Check(context.Background(), cfg, CheckOptions{Workspace: dir, Live: true, Providers: assistant.MustRegistry(assistantproviders.Registrations()...)})
 	if report.Status != "warning" {
 		t.Fatalf("status=%s problems=%v warnings=%v", report.Status, report.Problems, report.Warnings)
 	}

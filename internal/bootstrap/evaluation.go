@@ -6,7 +6,6 @@ import (
 
 	"takt/internal/assistant"
 	"takt/internal/domainadapter"
-	assistantproviders "takt/internal/extensions/assistants"
 	"takt/internal/redact"
 	"takt/internal/runtime"
 	"takt/internal/spec"
@@ -15,11 +14,11 @@ import (
 	"takt/internal/tooling/evaluation"
 )
 
-type evaluationEngine struct{}
+type evaluationEngine struct{ providers assistant.Registry }
 
-func (evaluationEngine) Run(ctx context.Context, req tooling.EvaluationRunRequest) (any, error) {
+func (e evaluationEngine) Run(ctx context.Context, req tooling.EvaluationRunRequest) (any, error) {
 	return evaluation.Run(ctx, evaluation.RunOptions{
-		ExecutionFactory: evaluationExecutionFactory,
+		ExecutionFactory: e.executionFactory,
 		WorkflowPath:     req.WorkflowPath, ConfigPath: req.ConfigPath, CasesDir: req.CasesDir,
 		CaseManifestPath: req.CaseManifestPath, WorkspaceTemplate: req.WorkspaceTemplate,
 		OutputDir: req.OutputDir, Repeat: req.Repeat, ApprovalAnswer: req.ApprovalAnswer, Replace: req.Replace,
@@ -29,8 +28,8 @@ func (evaluationEngine) Run(ctx context.Context, req tooling.EvaluationRunReques
 	})
 }
 
-func (evaluationEngine) Benchmark(ctx context.Context, req tooling.EvaluationBenchmarkRequest) (any, error) {
-	return evaluation.RunMatrix(ctx, evaluation.MatrixRunOptions{ExecutionFactory: evaluationExecutionFactory, MatrixPath: req.MatrixPath, OutputDir: req.OutputDir, Repeat: req.Repeat, Replace: req.Replace})
+func (e evaluationEngine) Benchmark(ctx context.Context, req tooling.EvaluationBenchmarkRequest) (any, error) {
+	return evaluation.RunMatrix(ctx, evaluation.MatrixRunOptions{ExecutionFactory: e.executionFactory, MatrixPath: req.MatrixPath, OutputDir: req.OutputDir, Repeat: req.Repeat, Replace: req.Replace})
 }
 
 func (evaluationEngine) TaskBenchmark(ctx context.Context, req tooling.EvaluationBenchmarkRequest) (any, error) {
@@ -77,12 +76,12 @@ func (evaluationEngine) Report(_ context.Context, outputDir string) (any, error)
 	}
 }
 
-func evaluationExecutionFactory(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspace string) (evaluation.Execution, error) {
+func (e evaluationEngine) executionFactory(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspace string) (evaluation.Execution, error) {
 	def := runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: workflowPath, ConfigPath: configPath, ControlWorkspace: workspace}
 	deps := runtime.Dependencies{
 		Commands:   runtime.NewCommandResolver(workflowPath, workspace, workspace),
 		Store:      store.FS{Workspace: workspace},
-		Assistants: assistant.Factory{Config: cfg, Providers: assistantproviders.Factories()},
+		Assistants: assistant.Factory{Config: cfg, Providers: e.providers},
 		Adapters:   domainadapter.Factory{Config: cfg},
 		Redactor:   redact.NewFromConfig(cfg),
 	}

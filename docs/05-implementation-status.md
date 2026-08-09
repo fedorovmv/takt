@@ -1,6 +1,14 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.56-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.57-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+
+## Architecture contracts — выполнено в v0.1.57
+
+- конституция языка workflow закрепляет границу «YAML координирует; код вычисляет; агент принимает решения» и запрет incremental expression creep;
+- `when` имеет одну реализацию `internal/whenexpr` и проверяется loader-ом до Run;
+- bundled assistant providers подключаются через immutable `ProviderRegistration` registry, собираемый только в bootstrap;
+- canonical appapi/MCP/docs contract описывается одним schema-first `OperationDescriptor`;
+- generated `docs/71-canonical-operation-contracts.generated.md` и architecture tests блокируют drift.
 
 ## Codebase hygiene — выполнено в v0.1.56
 

@@ -14,6 +14,10 @@ Workflow профиля может использовать `assistant: coding-a
 
 Адаптер может заявлять только фактически обеспеченные capabilities. Отсутствие блокирующего перехвата tool call означает отсутствие `tool_control`; наблюдательные события после исполнения не считаются enforcement.
 
+### 1.2. Регистрация bundled extensions
+
+Concrete bundled provider не регистрирует себя через package-global state или `init()`. Extension package возвращает декларативный `assistant.ProviderRegistration` с ID, display name, stability stage, factory и optional version probe. Production `assistant.Registry` собирается один раз в `internal/bootstrap`, проверяет дубликаты, копирует registrations и после construction доступен только для чтения. Stable assistant protocol поэтому не импортирует Pi/OpenCode, а runtime и tooling используют один и тот же явно собранный provider graph.
+
 ## 2. Базовый Go-контракт
 
 Целевой интерфейс:
