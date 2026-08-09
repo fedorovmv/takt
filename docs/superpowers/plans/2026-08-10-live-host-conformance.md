@@ -30,7 +30,7 @@
 - Consumes: `Pi.Run(context.Context, assistant.Request) (assistant.Result, error)`.
 - Produces: `TestPiAdapterOptInSmoke`, подтверждающий fresh Session ID, version и exact resume.
 
-- [ ] **Step 1: Расширить opt-in test второй попыткой**
+- [x] **Step 1: Расширить opt-in test второй попыткой**
 
 После существующих fresh assertions добавить проверку identity и resume:
 
@@ -52,20 +52,21 @@ if !strings.Contains(resumed.Output, "TAKT_PI_RESUME_OK") || resumed.SessionID !
 }
 ```
 
-- [ ] **Step 2: Запустить live test и наблюдать фактический результат**
+- [x] **Step 2: Запустить live test и наблюдать фактический результат**
 
 Run:
 
 ```bash
+NODE_OPTIONS=--use-system-ca \
 TAKT_PI_SMOKE=1 \
 TAKT_PI_SMOKE_PROVIDER=aihub \
 TAKT_PI_SMOKE_MODEL=Qwen/Qwen3.6-27B \
 go test ./internal/extensions/assistants/pi -run '^TestPiAdapterOptInSmoke$' -count=1 -v
 ```
 
-Expected: PASS с Pi `0.83.0`, либо FAIL на конкретной fresh/resume/version границе. При FAIL не ослаблять assertions: сохранить sanitized diagnostic, применить `superpowers:systematic-debugging`, добавить deterministic regression в `TestPiAdapterContract` и только затем менять `pi.go`.
+Expected: PASS с Pi `0.83.0`, либо FAIL на конкретной fresh/resume/version границе. `NODE_OPTIONS=--use-system-ca` нужен локальному Node для корпоративной TLS-цепочки AIHub; без него direct Pi и adapter одинаково завершаются `UNABLE_TO_VERIFY_LEAF_SIGNATURE`. При FAIL не ослаблять assertions: сохранить sanitized diagnostic, применить `superpowers:systematic-debugging`, добавить deterministic regression в `TestPiAdapterContract` и только затем менять `pi.go`.
 
-- [ ] **Step 3: Проверить deterministic Pi contract**
+- [x] **Step 3: Проверить deterministic Pi contract**
 
 Run:
 
@@ -75,7 +76,7 @@ go test ./internal/extensions/assistants/pi -count=1
 
 Expected: PASS; opt-in test SKIP без env.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/extensions/assistants/pi/pi_contract_test.go

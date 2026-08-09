@@ -408,6 +408,21 @@ func TestPiAdapterOptInSmoke(t *testing.T) {
 	if result.ResolvedModel == nil || result.ResolvedModel.Provider == "" || result.ResolvedModel.ID == "" {
 		t.Fatalf("Pi smoke did not expose resolved model: %+v", result.ResolvedModel)
 	}
+	if result.SessionID == "" || result.AssistantVersion == "" {
+		t.Fatalf("Pi smoke did not expose session/version: %+v", result)
+	}
+	freshSessionID := result.SessionID
+	req.Attempt = 2
+	req.Prompt = "Reply with exactly: TAKT_PI_RESUME_OK"
+	req.SessionMode = "resume"
+	req.SessionID = freshSessionID
+	resumed, err := adapter.Run(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(resumed.Output, "TAKT_PI_RESUME_OK") || resumed.SessionID != freshSessionID || !resumed.Resumed {
+		t.Fatalf("Pi smoke did not resume exact session: fresh=%+v resumed=%+v", result, resumed)
+	}
 }
 
 func TestPiPolicyArguments(t *testing.T) {
