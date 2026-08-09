@@ -175,7 +175,10 @@ func TestStructuredOutputRetryPolicyPassesValidationFeedback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prompts) != 2 || !strings.Contains(prompts[1], "JSON Schema validation failed") {
+	if len(prompts) != 2 || !strings.Contains(prompts[0], "Required JSON output contract") || !strings.Contains(prompts[0], `"enum":["assist"]`) {
+		t.Fatalf("output contract was not passed to assistant: %#v", prompts)
+	}
+	if !strings.Contains(prompts[1], "JSON Schema validation failed") {
 		t.Fatalf("validation feedback was not passed to retry: %#v", prompts)
 	}
 	node := state.Nodes["route"]

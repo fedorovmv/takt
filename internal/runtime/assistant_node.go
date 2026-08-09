@@ -103,6 +103,13 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 	if err != nil {
 		return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindInternal, Op: "render assistant prompt", Err: err}
 	}
+	if node.OutputFormat != nil {
+		outputFormat, err := json.Marshal(node.OutputFormat)
+		if err != nil {
+			return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindInternal, Op: "render assistant output contract", Err: err}
+		}
+		renderedPrompt += "\n\nRequired JSON output contract (return exactly one JSON value without Markdown fences or commentary):\n" + string(outputFormat)
+	}
 	return resolvedAssistantNode{
 		Prompt: renderedPrompt, AssistantName: assistantName,
 		ModelName: modelName, Model: model, Policy: policy, Capabilities: capabilities,
