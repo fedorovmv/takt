@@ -3,6 +3,7 @@ import { execFile } from "node:child_process"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { promisify } from "node:util"
+import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin"
 
 const execFileAsync = promisify(execFile)
 const ACTIVE = new Set(["preview", "managed", "waiting", "paused"])
@@ -15,14 +16,6 @@ type Begin = { session: Session; plan: { preview: string } }
 type Guard = { allowed: boolean; reason: string }
 type CachedState = { session: Session; host_session_id: string; updated_at: string }
 type RunList = { runs: Array<{ id: string }> }
-
-type HookRegistrar = { hook(name: string, handler: (event: any) => Promise<any>): Promise<void> | void }
-type OpenCodeContext = {
-  options?: { workspace?: string }
-  session: HookRegistrar
-  tool: HookRegistrar
-  shell?: HookRegistrar
-}
 
 function unwrap<T>(stdout: string): T {
   const envelope = JSON.parse(stdout) as Envelope<T>
@@ -41,15 +34,6 @@ function textOf(value: unknown): string {
   if (value && typeof value === "object") {
     const v = value as Record<string, unknown>
     return textOf(v.text ?? v.content ?? v.parts ?? "")
-  }
-  return ""
-}
-
-function latestUserText(messages: unknown): string {
-  if (!Array.isArray(messages)) return ""
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const item = messages[i] as Record<string, unknown>
-    if (item?.role === "user") return textOf(item.content ?? item.parts)
   }
   return ""
 }
@@ -83,8 +67,8 @@ async function clearCache(cwd: string, sessionID: string): Promise<void> {
   await rm(cachePath(cwd, sessionID), { force: true })
 }
 
-export default async function taktHostControl(ctx: OpenCodeContext): Promise<void> {
-  const cwd = typeof ctx.options?.workspace === "string" ? ctx.options.workspace : process.cwd()
+const taktHostControl: Plugin = async (ctx: PluginInput): Promise<Hooks> => {
+  const cwd = ctx.directory || process.cwd()
   const sessions = new Map<string, Session>()
   const disconnected = new Set<string>()
 
@@ -118,9 +102,9 @@ export default async function taktHostControl(ctx: OpenCodeContext): Promise<voi
     }
   }
 
-  await ctx.session.hook("context", async (event: any) => {
+  const onMessage: NonNullable<Hooks["chat.message"]> = async (event, output) => {
     const sessionID = String(event.sessionID)
-    const input = latestUserText(event.messages).trim()
+    const input = textOf(output.parts).trim()
     let view: View | undefined
     try {
       view = await find(sessionID)
@@ -195,9 +179,9 @@ export default async function taktHostControl(ctx: OpenCodeContext): Promise<voi
       if (String(error).includes("Input routed to")) throw error
       throw new Error(`Takt rejected steering; input remains blocked and the main LLM was not invoked: ${String(error)}`)
     }
-  })
+  }
 
-  await ctx.tool.hook("execute.before", async (event: any) => {
+  const onTool: NonNullable<Hooks["tool.execute.before"]> = async (event) => {
     const sessionID = String(event.sessionID)
     let view: View | undefined
     try {
@@ -214,13 +198,13 @@ export default async function taktHostControl(ctx: OpenCodeContext): Promise<voi
       disconnected.add(sessionID)
       throw new Error(`Takt tool guard unavailable; managed mode is fail-closed: ${String(error)}`)
     }
-  })
+  }
 
-  if (ctx.shell) {
-    await ctx.shell.hook("create.before", async (event: any) => {
-      const sessionID = String(event.sessionID)
-      const view = await find(sessionID)
-      if (view && active(view.session)) throw new Error("User shell is blocked while Takt managed mode is active")
-    })
+  return {
+    "chat.message": onMessage,
+    "tool.execute.before": onTool,
   }
 }
+
+export const server = taktHostControl
+export default taktHostControl

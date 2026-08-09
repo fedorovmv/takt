@@ -30,6 +30,8 @@ cat > "$TMP/tsconfig.json" <<EOF2
   },
   "files": [
     "$ROOT/integrations/coding-agent-host-control/contracts/pi-0.73.1.d.ts",
+    "$ROOT/integrations/coding-agent-host-control/contracts/opencode-1.18.14.d.ts",
+    "$ROOT/integrations/coding-agent-host-control/contracts/opencode-entrypoint-contract.mts",
     "$ROOT/integrations/coding-agent-host-control/pi/index.ts",
     "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"
   ]

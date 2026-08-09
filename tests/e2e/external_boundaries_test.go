@@ -440,13 +440,13 @@ func TestHostIntegrationSourceContract(t *testing.T) {
 	if strings.Contains(pi, "before_agent_start") || strings.Contains(pi, "completion-blocking") {
 		t.Fatal("Pi integration advertises unsupported lifecycle hook")
 	}
-	for _, needle := range []string{`envelope.result`, `ctx.session.hook("context"`, `ctx.tool.hook("execute.before"`, `ctx.shell.hook("create.before"`, `The main LLM was not invoked`, `["host", "status", cached.id]`, `"--enforcement", "guarded"`} {
+	for _, needle := range []string{`envelope.result`, `"chat.message": onMessage`, `"tool.execute.before": onTool`, `The main LLM was not invoked`, `["host", "status", cached.id]`, `"--enforcement", "guarded"`} {
 		if !strings.Contains(opencode, needle) {
 			t.Fatalf("OpenCode integration missing %q", needle)
 		}
 	}
-	if strings.Contains(opencode, "Plugin.define") || strings.Contains(opencode, `from "@opencode-ai/plugin"`) {
-		t.Fatal("OpenCode integration must not import a runtime Plugin value or use Plugin.define")
+	if strings.Contains(opencode, "Plugin.define") {
+		t.Fatal("OpenCode integration must not use unsupported Plugin.define")
 	}
 	for _, rel := range []string{"opencode/package.json", "pi/package.json"} {
 		path := filepath.Join(repoRoot, "integrations", "coding-agent-host-control", filepath.FromSlash(rel))
