@@ -157,7 +157,10 @@ func parseComparison(expr string) (string, string, string, error) {
 }
 
 func literal(value string) (string, error) {
-	if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
+	if strings.ContainsAny(value, `"'`) {
+		if len(value) < 2 || (value[0] != '"' && value[0] != '\'') || value[len(value)-1] != value[0] {
+			return "", fmt.Errorf("quoted string literals must use matching delimiters")
+		}
 		return value[1 : len(value)-1], nil
 	}
 	if strings.ContainsAny(value, " \t\r\n") {

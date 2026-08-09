@@ -19,6 +19,9 @@ func TestConstitutionAllowsOnlySmallGateLanguage(t *testing.T) {
 		`contains(nodes.a.output, "x") == true`,
 		`nodes.a.output + "x" == "yx"`,
 		`nodes.a.output =~ "x"`,
+		`inputs.input == "unterminated`,
+		`inputs.input == 'unterminated`,
+		`inputs.input == "mismatched'`,
 	}
 	for _, value := range invalid {
 		if err := Validate(value); err == nil {
