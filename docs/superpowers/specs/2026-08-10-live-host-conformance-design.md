@@ -11,7 +11,7 @@
 - Реальные CLI доступны локально: Pi `0.83.0`, OpenCode `1.18.14`.
 - Pi host extension типизирован против Pi `0.73.1`; текущая установленная версия новее этого контракта.
 - `takt compatibility check --live` видит оба CLI, но честно возвращает `warning`; bundled host integrations остаются `guarded` и `live_verified: false`.
-- Доступны модели для bounded smoke: Pi `aihub/Qwen/Qwen3.6-27B`, OpenCode `opencode/deepseek-v4-flash-free`.
+- Для обоих smoke используется Qwen 3.6 27B через AIHub: Pi получает provider/model `aihub` + `Qwen/Qwen3.6-27B`, а OpenCode — доступный в его каталоге полный ID `aihub-sbt/Qwen/Qwen3.6-27B`.
 
 ## Выбранный подход
 
