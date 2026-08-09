@@ -49,14 +49,14 @@ keep: |+
 	if got.Prompt != wantPrompt {
 		t.Fatalf("prompt mismatch\nwant: %q\n got: %q", wantPrompt, got.Prompt)
 	}
-	wantFolded := "first second\n\nthird\n"
+	wantFolded := "first second\nthird\n"
 	if got.Folded != wantFolded {
 		t.Fatalf("folded mismatch\nwant: %q\n got: %q", wantFolded, got.Folded)
 	}
 	if got.Strip != "a" {
 		t.Fatalf("strip mismatch: %q", got.Strip)
 	}
-	if got.Keep != "b\n\n\n" {
+	if got.Keep != "b\n\n" {
 		t.Fatalf("keep mismatch: %q", got.Keep)
 	}
 }
@@ -77,5 +77,33 @@ func TestUnknownFieldSuggestsNearestKnownField(t *testing.T) {
 	err := Unmarshal([]byte("idle_timout: 10s\n"), &got)
 	if err == nil || err.Error() != `unknown field "idle_timout" at $; did you mean "idle_timeout"?` {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRejectsAdditionalDocuments(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+	}{
+		{name: "json", src: `{"known":"first"} {"known":"second"}`},
+		{name: "yaml", src: "known: first\n---\nknown: second\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got struct {
+				Known string `json:"known"`
+			}
+			if err := Unmarshal([]byte(tc.src), &got); err == nil {
+				t.Fatal("expected additional-document error")
+			}
+		})
+	}
+}
+
+func TestRejectsInvalidTrailingJSON(t *testing.T) {
+	var got struct {
+		Known string `json:"known"`
+	}
+	if err := Unmarshal([]byte(`{"known":"first"} trailing`), &got); err == nil {
+		t.Fatal("expected trailing JSON error")
 	}
 }

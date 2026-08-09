@@ -3,6 +3,7 @@ package yamlcodec
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 
@@ -29,7 +30,26 @@ func Unmarshal(data []byte, out any) error {
 		if err := dec.Decode(&value); err != nil {
 			return err
 		}
+		var extra any
+		if err := dec.Decode(&extra); err != io.EOF {
+			if err == nil {
+				return fmt.Errorf("decode JSON document: multiple documents")
+			}
+			return fmt.Errorf("decode JSON document trailing data: %w", err)
+		}
 	} else {
+		dec := yaml.NewDecoder(strings.NewReader(string(data)))
+		var document any
+		if err := dec.Decode(&document); err != nil {
+			return fmt.Errorf("decode YAML document: %w", err)
+		}
+		var extra any
+		if err := dec.Decode(&extra); err != io.EOF {
+			if err == nil {
+				return fmt.Errorf("decode YAML document: multiple documents")
+			}
+			return fmt.Errorf("decode YAML document trailing data: %w", err)
+		}
 		if err := yaml.Unmarshal(data, &value); err != nil {
 			return fmt.Errorf("decode YAML document: %w", err)
 		}
