@@ -113,7 +113,16 @@ func binary(t *testing.T, name string) string {
 	path := filepath.Join(buildDir, name)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "build", "-o", path, "./cmd/"+name)
+	source := "./cmd/" + name
+	if strings.HasPrefix(name, "takt-fake-") {
+		source = "./internal/testsupport/cmd/" + name
+	}
+	buildArgs := []string{"build"}
+	if modfile := strings.TrimSpace(os.Getenv("TAKT_TEST_GO_MODFILE")); modfile != "" {
+		buildArgs = append(buildArgs, "-modfile="+modfile)
+	}
+	buildArgs = append(buildArgs, "-o", path, source)
+	cmd := exec.CommandContext(ctx, "go", buildArgs...)
 	cmd.Dir = repoRoot
 	out, err := cmd.CombinedOutput()
 	if err != nil {

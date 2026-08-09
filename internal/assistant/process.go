@@ -161,28 +161,13 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 }
 
 func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, env map[string]string) (Result, error) {
-	stdin, err := cmd.StdinPipe()
+	stdin, stdout, stderr, err := startV1Alpha2Process(cmd)
 	if err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindStart, Op: "assistant process v1alpha2 stdin", Err: err}
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindStart, Op: "assistant process v1alpha2 stdout", Err: err}
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindStart, Op: "assistant process v1alpha2 stderr", Err: err}
-	}
-	if err := cmd.Start(); err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindStart, Op: "assistant process v1alpha2", Err: err}
+		return Result{}, err
 	}
 	budget := &outputBudget{limit: p.spec.MaxOutputBytes}
 	rawOut, rawErr := newLimitedBuffer(budget), newLimitedBuffer(budget)
-	stderrDone := make(chan error, 1)
-	go func() {
-		_, copyErr := io.Copy(rawErr, stderr)
-		stderrDone <- copyErr
-	}()
+	stderrDone := copyProcessStderr(stderr, rawErr)
 	processFinished := false
 	defer func() {
 		if processFinished {
@@ -203,99 +188,16 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 	if err := encoder.Encode(protocolRequest); err != nil {
 		_ = stdin.Close()
 		_ = cmd.Process.Kill()
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 request", Err: err}
+		return Result{}, protocolError("assistant process v1alpha2 request", err)
 	}
 
-	scanner := bufio.NewScanner(io.TeeReader(stdout, rawOut))
-	max := p.spec.MaxOutputBytes
-	if max <= 0 || max > 16*1024*1024 {
-		max = 16 * 1024 * 1024
-	}
-	scanner.Buffer(make([]byte, 64*1024), max)
-	var final *ProtocolResult
-	declarationSeen := false
-	var streamDeclaration CapabilityDeclaration
-	for scanner.Scan() {
-		var message ProtocolStreamMessage
-		decoder := json.NewDecoder(strings.NewReader(scanner.Text()))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&message); err != nil {
-			_ = stdin.Close()
-			_ = cmd.Process.Kill()
-			return Result{Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1}, &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "assistant process v1alpha2", Err: fmt.Errorf("decode stream record: %w", err)}
-		}
-		if message.ProtocolVersion != ProtocolV1Alpha2 {
-			return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("unsupported stream protocol_version %q", message.ProtocolVersion)}
-		}
-		switch message.Type {
-		case "capabilities":
-			if declarationSeen || message.Declaration == nil {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("invalid capabilities record")}
-			}
-			if err := validateStreamDeclaration(*message.Declaration); err != nil {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 declaration", Err: err}
-			}
-			for _, required := range p.spec.Capabilities {
-				if !containsString(message.Declaration.Capabilities, required) {
-					return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 declaration", Err: fmt.Errorf("configured capability %q was not declared by wrapper", required)}
-				}
-			}
-			streamDeclaration = *message.Declaration
-			declarationSeen = true
-		case "event":
-			if !declarationSeen {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("capability declaration must precede event")}
-			}
-			if message.Event == nil {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("event record requires event")}
-			}
-			if err := ValidateEvent(*message.Event); err != nil {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: err}
-			}
-			if !containsString(streamDeclaration.EventTypes, message.Event.Type) {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("event %q was not declared by wrapper", message.Event.Type)}
-			}
-			Emit(req, *message.Event)
-		case "tool.request":
-			if !declarationSeen || !streamDeclaration.ToolControl {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("tool request without declared tool_control")}
-			}
-			if message.ToolRequest == nil {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("tool.request record requires tool_request")}
-			}
-			decision := policyToolDecision(req.Policy, *message.ToolRequest)
-			if req.ToolControl != nil {
-				decision, err = req.ToolControl.Decide(ctx, *message.ToolRequest)
-				if err != nil {
-					return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 tool decision", Err: err}
-				}
-			}
-			Emit(req, Event{Type: EventToolRequested, Tool: message.ToolRequest.Tool, CallID: message.ToolRequest.CallID, Input: message.ToolRequest.Input, SessionID: message.ToolRequest.SessionID})
-			eventType := EventToolAllowed
-			if decision.Decision != "allow" {
-				eventType = EventToolDenied
-			}
-			Emit(req, Event{Type: eventType, Tool: message.ToolRequest.Tool, CallID: message.ToolRequest.CallID, Decision: decision.Decision, Reason: decision.Reason, SessionID: message.ToolRequest.SessionID})
-			if err := encoder.Encode(ProtocolToolDecisionMessage{ProtocolVersion: ProtocolV1Alpha2, Type: "tool.decision", CallID: message.ToolRequest.CallID, Decision: decision}); err != nil {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 tool decision", Err: err}
-			}
-		case "result":
-			if !declarationSeen {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("capability declaration must precede result")}
-			}
-			if message.Result == nil || final != nil {
-				return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("stream requires exactly one final result")}
-			}
-			final = message.Result
-		default:
-			return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("unsupported stream record type %q", message.Type)}
-		}
-	}
+	state, err := p.readV1Alpha2Stream(ctx, stdout, rawOut, req, encoder)
 	_ = stdin.Close()
-	if err := scanner.Err(); err != nil {
+	if err != nil {
 		_ = cmd.Process.Kill()
-		return Result{Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1, Truncated: rawOut.Truncated() || rawErr.Truncated()}, &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "assistant process v1alpha2 stream", Err: err}
+		return Result{Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1, Truncated: rawOut.Truncated() || rawErr.Truncated()}, err
 	}
+
 	// Drain stderr before Wait closes the StderrPipe. os/exec documents that
 	// calling Wait while reads from StderrPipe are still in flight is incorrect
 	// and can surface a spurious "file already closed" under the race detector.
@@ -303,8 +205,169 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 	waitErr := cmd.Wait()
 	processFinished = true
 	if copyErr != nil {
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 stderr", Err: copyErr}
+		return Result{}, protocolError("assistant process v1alpha2 stderr", copyErr)
 	}
+	return finishV1Alpha2(ctx, protocolRequest, state, waitErr, rawOut, rawErr)
+}
+
+type v1Alpha2StreamState struct {
+	declarationSeen bool
+	declaration     CapabilityDeclaration
+	final           *ProtocolResult
+}
+
+func startV1Alpha2Process(cmd *exec.Cmd) (io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, nil, nil, &execution.Error{Kind: execution.KindStart, Op: "assistant process v1alpha2 stdin", Err: err}
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, nil, &execution.Error{Kind: execution.KindStart, Op: "assistant process v1alpha2 stdout", Err: err}
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, nil, nil, &execution.Error{Kind: execution.KindStart, Op: "assistant process v1alpha2 stderr", Err: err}
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, nil, nil, &execution.Error{Kind: execution.KindStart, Op: "assistant process v1alpha2", Err: err}
+	}
+	return stdin, stdout, stderr, nil
+}
+
+func copyProcessStderr(stderr io.Reader, dst io.Writer) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(dst, stderr)
+		done <- err
+	}()
+	return done
+}
+
+func (p Process) readV1Alpha2Stream(ctx context.Context, stdout io.Reader, rawOut io.Writer, req Request, encoder *json.Encoder) (v1Alpha2StreamState, error) {
+	state := v1Alpha2StreamState{}
+	scanner := bufio.NewScanner(io.TeeReader(stdout, rawOut))
+	max := p.spec.MaxOutputBytes
+	if max <= 0 || max > 16*1024*1024 {
+		max = 16 * 1024 * 1024
+	}
+	scanner.Buffer(make([]byte, 64*1024), max)
+	for scanner.Scan() {
+		message, err := decodeV1Alpha2Message(scanner.Text())
+		if err != nil {
+			return state, err
+		}
+		if err := p.handleV1Alpha2Message(ctx, req, encoder, &state, message); err != nil {
+			return state, err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return state, protocolError("assistant process v1alpha2 stream", err)
+	}
+	return state, nil
+}
+
+func decodeV1Alpha2Message(line string) (ProtocolStreamMessage, error) {
+	var message ProtocolStreamMessage
+	decoder := json.NewDecoder(strings.NewReader(line))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&message); err != nil {
+		return ProtocolStreamMessage{}, protocolError("assistant process v1alpha2", fmt.Errorf("decode stream record: %w", err))
+	}
+	if message.ProtocolVersion != ProtocolV1Alpha2 {
+		return ProtocolStreamMessage{}, protocolError("assistant process v1alpha2", fmt.Errorf("unsupported stream protocol_version %q", message.ProtocolVersion))
+	}
+	return message, nil
+}
+
+func (p Process) handleV1Alpha2Message(ctx context.Context, req Request, encoder *json.Encoder, state *v1Alpha2StreamState, message ProtocolStreamMessage) error {
+	switch message.Type {
+	case "capabilities":
+		return p.handleV1Alpha2Capabilities(state, message)
+	case "event":
+		return handleV1Alpha2Event(req, state, message)
+	case "tool.request":
+		return handleV1Alpha2ToolRequest(ctx, req, encoder, state, message)
+	case "result":
+		return handleV1Alpha2Result(state, message)
+	default:
+		return protocolError("assistant process v1alpha2", fmt.Errorf("unsupported stream record type %q", message.Type))
+	}
+}
+
+func (p Process) handleV1Alpha2Capabilities(state *v1Alpha2StreamState, message ProtocolStreamMessage) error {
+	if state.declarationSeen || message.Declaration == nil {
+		return protocolError("assistant process v1alpha2", fmt.Errorf("invalid capabilities record"))
+	}
+	if err := validateStreamDeclaration(*message.Declaration); err != nil {
+		return protocolError("assistant process v1alpha2 declaration", err)
+	}
+	for _, required := range p.spec.Capabilities {
+		if !containsString(message.Declaration.Capabilities, required) {
+			return protocolError("assistant process v1alpha2 declaration", fmt.Errorf("configured capability %q was not declared by wrapper", required))
+		}
+	}
+	state.declaration = *message.Declaration
+	state.declarationSeen = true
+	return nil
+}
+
+func handleV1Alpha2Event(req Request, state *v1Alpha2StreamState, message ProtocolStreamMessage) error {
+	if !state.declarationSeen {
+		return protocolError("assistant process v1alpha2", fmt.Errorf("capability declaration must precede event"))
+	}
+	if message.Event == nil {
+		return protocolError("assistant process v1alpha2", fmt.Errorf("event record requires event"))
+	}
+	if err := ValidateEvent(*message.Event); err != nil {
+		return protocolError("assistant process v1alpha2", err)
+	}
+	if !containsString(state.declaration.EventTypes, message.Event.Type) {
+		return protocolError("assistant process v1alpha2", fmt.Errorf("event %q was not declared by wrapper", message.Event.Type))
+	}
+	Emit(req, *message.Event)
+	return nil
+}
+
+func handleV1Alpha2ToolRequest(ctx context.Context, req Request, encoder *json.Encoder, state *v1Alpha2StreamState, message ProtocolStreamMessage) error {
+	if !state.declarationSeen || !state.declaration.ToolControl {
+		return protocolError("assistant process v1alpha2", fmt.Errorf("tool request without declared tool_control"))
+	}
+	if message.ToolRequest == nil {
+		return protocolError("assistant process v1alpha2", fmt.Errorf("tool.request record requires tool_request"))
+	}
+	decision := policyToolDecision(req.Policy, *message.ToolRequest)
+	if req.ToolControl != nil {
+		var err error
+		decision, err = req.ToolControl.Decide(ctx, *message.ToolRequest)
+		if err != nil {
+			return protocolError("assistant process v1alpha2 tool decision", err)
+		}
+	}
+	Emit(req, Event{Type: EventToolRequested, Tool: message.ToolRequest.Tool, CallID: message.ToolRequest.CallID, Input: message.ToolRequest.Input, SessionID: message.ToolRequest.SessionID})
+	eventType := EventToolAllowed
+	if decision.Decision != "allow" {
+		eventType = EventToolDenied
+	}
+	Emit(req, Event{Type: eventType, Tool: message.ToolRequest.Tool, CallID: message.ToolRequest.CallID, Decision: decision.Decision, Reason: decision.Reason, SessionID: message.ToolRequest.SessionID})
+	if err := encoder.Encode(ProtocolToolDecisionMessage{ProtocolVersion: ProtocolV1Alpha2, Type: "tool.decision", CallID: message.ToolRequest.CallID, Decision: decision}); err != nil {
+		return protocolError("assistant process v1alpha2 tool decision", err)
+	}
+	return nil
+}
+
+func handleV1Alpha2Result(state *v1Alpha2StreamState, message ProtocolStreamMessage) error {
+	if !state.declarationSeen {
+		return protocolError("assistant process v1alpha2", fmt.Errorf("capability declaration must precede result"))
+	}
+	if message.Result == nil || state.final != nil {
+		return protocolError("assistant process v1alpha2", fmt.Errorf("stream requires exactly one final result"))
+	}
+	state.final = message.Result
+	return nil
+}
+
+func finishV1Alpha2(ctx context.Context, protocolRequest ProtocolRequest, state v1Alpha2StreamState, waitErr error, rawOut, rawErr *limitedBuffer) (Result, error) {
 	if ctx.Err() != nil {
 		kind := execution.KindCancelled
 		if ctx.Err() == context.DeadlineExceeded {
@@ -312,34 +375,30 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 		}
 		return Result{Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1}, &execution.Error{Kind: kind, ExitCode: -1, Op: "assistant process v1alpha2", Err: ctx.Err()}
 	}
-	if !declarationSeen {
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("capability declaration is required")}
+	if !state.declarationSeen {
+		return Result{}, protocolError("assistant process v1alpha2", fmt.Errorf("capability declaration is required"))
 	}
-	if final == nil {
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("final result is missing")}
+	if state.final == nil {
+		return Result{}, protocolError("assistant process v1alpha2", fmt.Errorf("final result is missing"))
 	}
-	final.ProtocolVersion = ProtocolV1Alpha2
-	if err := validateProtocolResult(*final, protocolRequest.Session, ProtocolV1Alpha2); err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2 result", Err: err}
+	state.final.ProtocolVersion = ProtocolV1Alpha2
+	if err := validateProtocolResult(*state.final, protocolRequest.Session, ProtocolV1Alpha2); err != nil {
+		return Result{}, protocolError("assistant process v1alpha2 result", err)
 	}
-	osExit := 0
-	if waitErr != nil {
-		if ee, ok := waitErr.(*exec.ExitError); ok {
-			osExit = ee.ExitCode()
-		} else {
-			return Result{}, &execution.Error{Kind: execution.KindStart, Op: "assistant process v1alpha2", Err: waitErr}
-		}
+	osExit, err := processExitCode(waitErr)
+	if err != nil {
+		return Result{}, err
 	}
-	if osExit != *final.ExitCode {
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process v1alpha2", Err: fmt.Errorf("process exit code %d differs from result exit_code %d", osExit, *final.ExitCode)}
+	if osExit != *state.final.ExitCode {
+		return Result{}, protocolError("assistant process v1alpha2", fmt.Errorf("process exit code %d differs from result exit_code %d", osExit, *state.final.ExitCode))
 	}
-	result := Result{Output: final.Output, Structured: final.Structured, ExitCode: *final.ExitCode, Stdout: rawOut.String(), Stderr: rawErr.String(), ResolvedModel: final.ResolvedModel, Usage: final.Usage, Truncated: rawOut.Truncated() || rawErr.Truncated()}
-	if final.Session != nil {
-		result.SessionID, result.Resumed = final.Session.ID, final.Session.Resumed
+	result := Result{Output: state.final.Output, Structured: state.final.Structured, ExitCode: *state.final.ExitCode, Stdout: rawOut.String(), Stderr: rawErr.String(), ResolvedModel: state.final.ResolvedModel, Usage: state.final.Usage, Truncated: rawOut.Truncated() || rawErr.Truncated()}
+	if state.final.Session != nil {
+		result.SessionID, result.Resumed = state.final.Session.ID, state.final.Session.Resumed
 	}
 	if result.ExitCode != 0 {
 		kind := execution.KindExit
-		switch final.FailureKind {
+		switch state.final.FailureKind {
 		case "timed_out":
 			kind = execution.KindTimedOut
 		case "cancelled":
@@ -348,6 +407,20 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 		return result, &execution.Error{Kind: kind, ExitCode: result.ExitCode, Op: "assistant process v1alpha2", Err: waitErr}
 	}
 	return result, nil
+}
+
+func processExitCode(waitErr error) (int, error) {
+	if waitErr == nil {
+		return 0, nil
+	}
+	if ee, ok := waitErr.(*exec.ExitError); ok {
+		return ee.ExitCode(), nil
+	}
+	return 0, &execution.Error{Kind: execution.KindStart, Op: "assistant process v1alpha2", Err: waitErr}
+}
+
+func protocolError(op string, err error) error {
+	return &execution.Error{Kind: execution.KindProtocol, Op: op, Err: err}
 }
 
 func policyToolDecision(policy Policy, request ToolRequest) ToolDecision {
@@ -400,7 +473,7 @@ func containsString(values []string, want string) bool {
 	return false
 }
 
-func compactJSON(src json.RawMessage) (string, error) {
+func CompactJSON(src json.RawMessage) (string, error) {
 	var value any
 	if err := json.Unmarshal(src, &value); err != nil {
 		return "", err
@@ -432,7 +505,7 @@ func RegisterRenderedEnvSecrets(r *redact.Redactor, s spec.AssistantSpec, req Re
 	}
 }
 
-func renderArg(s string, req Request) string {
+func RenderArg(s string, req Request) string {
 	mode, sessionID := effectiveSession(req.SessionMode, req.SessionID)
 	repl := map[string]string{
 		"{{prompt}}":         req.Prompt,
@@ -458,7 +531,7 @@ func mustJSON(v any) []byte {
 	return b
 }
 
-type outputBudget struct {
+type OutputBudget struct {
 	mu         sync.Mutex
 	limit      int
 	used       int
@@ -466,14 +539,27 @@ type outputBudget struct {
 	onTruncate func()
 }
 
-type limitedBuffer struct {
+type LimitedBuffer struct {
 	data   []byte
-	budget *outputBudget
+	budget *OutputBudget
 }
 
-func newLimitedBuffer(budget *outputBudget) *limitedBuffer { return &limitedBuffer{budget: budget} }
+func NewOutputBudget(limit int, onTruncate func()) *OutputBudget {
+	return &OutputBudget{limit: limit, onTruncate: onTruncate}
+}
 
-func (b *limitedBuffer) Write(p []byte) (int, error) {
+func NewLimitedBuffer(budget *OutputBudget) *LimitedBuffer { return &LimitedBuffer{budget: budget} }
+
+// Internal aliases keep the process adapter source compact while extension adapters
+// use the exported helpers across the package boundary.
+type outputBudget = OutputBudget
+type limitedBuffer = LimitedBuffer
+
+func newLimitedBuffer(budget *OutputBudget) *LimitedBuffer { return NewLimitedBuffer(budget) }
+func compactJSON(src json.RawMessage) (string, error)      { return CompactJSON(src) }
+func renderArg(s string, req Request) string               { return RenderArg(s, req) }
+
+func (b *LimitedBuffer) Write(p []byte) (int, error) {
 	original := len(p)
 	if b.budget == nil {
 		b.data = append(b.data, p...)
@@ -507,7 +593,7 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return original, nil
 }
 
-func (b *limitedBuffer) String() string {
+func (b *LimitedBuffer) String() string {
 	if b.budget == nil {
 		return string(b.data)
 	}
@@ -515,7 +601,7 @@ func (b *limitedBuffer) String() string {
 	defer b.budget.mu.Unlock()
 	return string(b.data)
 }
-func (b *limitedBuffer) Truncated() bool {
+func (b *LimitedBuffer) Truncated() bool {
 	if b.budget == nil {
 		return false
 	}
@@ -550,3 +636,7 @@ func (p Process) CapabilityDeclaration() CapabilityDeclaration {
 	// empty instead of overclaiming every v2 event.
 	return value
 }
+
+// CombineOutput joins stdout and stderr for adapters that expose a single
+// diagnostic/output field while preserving each stream separately.
+func CombineOutput(stdout, stderr string) string { return combineOutput(stdout, stderr) }

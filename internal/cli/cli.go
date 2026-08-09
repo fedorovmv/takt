@@ -15,6 +15,7 @@ import (
 	"takt/internal/experimental/dynamicflow"
 	experimentallearning "takt/internal/experimental/learning"
 	"takt/internal/extensions"
+	"takt/internal/externalworker"
 	"takt/internal/maintenance"
 	"takt/internal/tooling"
 	"takt/internal/version"
@@ -110,7 +111,7 @@ type serviceView struct {
 	AuthoringService *application.AuthoringService
 	WorktreeService  *application.WorktreeService
 	CommandService   *application.CommandService
-	ExternalService  *application.ExternalService
+	ExternalService  *externalworker.Service
 	PlanService      *dynamicflow.PlanService
 	TaskService      *dynamicflow.TaskService
 	ForkService      *dynamicflow.ForkService
@@ -133,7 +134,7 @@ func localServices(workspace, configPath string) (*serviceView, error) {
 	return &serviceView{
 		RunService: app.Core.RunService, CatalogService: app.Core.CatalogService,
 		AuthoringService: app.Core.AuthoringService, WorktreeService: app.Core.WorktreeService,
-		CommandService: app.Core.CommandService, ExternalService: app.Core.ExternalService,
+		CommandService: app.Core.CommandService, ExternalService: app.External,
 		PlanService: app.Experimental.PlanService, TaskService: app.Experimental.TaskService,
 		ForkService: app.Experimental.ForkService, HostService: app.Experimental.HostService,
 		Adapters: app.Extensions.Adapters, Packages: app.Extensions.Packages,

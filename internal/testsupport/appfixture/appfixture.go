@@ -15,6 +15,7 @@ import (
 	"takt/internal/extensions/blockcatalog"
 	"takt/internal/extensions/notification"
 	"takt/internal/extensions/packagedist"
+	"takt/internal/externalworker"
 	"takt/internal/maintenance"
 	"takt/internal/profile"
 	"takt/internal/runtime"
@@ -65,6 +66,7 @@ func adapterFactory(cfg *spec.Config) domainadapter.Resolver {
 
 type Fixture struct {
 	Core        *application.Services
+	External    *externalworker.Service
 	Dynamic     *dynamicflow.Services
 	Extensions  *extensions.Services
 	Maintenance *maintenance.Service
@@ -116,6 +118,7 @@ func New(workspace, configPath string) (*Fixture, error) {
 		Packages:      extensions.NewPackage(core.Workspace, core.ConfigPath, packageBackend{abs}, adapterFactory),
 		Notifications: extensions.NewNotification(notification.Dispatcher{Workspace: abs}), Blocks: extensions.NewBlocks(abs),
 	}
-	maint := maintenance.New(dynamic.PlanService, core.ExternalService, func() (int, error) { items, err := ext.Notifications.Dispatch(); return len(items), err })
-	return &Fixture{Core: core, Dynamic: dynamic, Extensions: ext, Maintenance: maint}, nil
+	external := externalworker.New(core.Workspace, core.RunService, store.FS{Workspace: core.Workspace})
+	maint := maintenance.New(dynamic.PlanService, external, func() (int, error) { items, err := ext.Notifications.Dispatch(); return len(items), err })
+	return &Fixture{Core: core, External: external, Dynamic: dynamic, Extensions: ext, Maintenance: maint}, nil
 }

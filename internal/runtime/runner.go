@@ -105,6 +105,10 @@ func NewWithDependencies(def Definition, deps Dependencies) *Runner {
 // Callers may inspect it for preflight validation but cannot replace runtime dependencies.
 func (r *Runner) CommandResolver() command.Resolver { return r.commands }
 
+// AssistantResolver exposes the immutable assistant lookup configured for this runner.
+// Preflight capability checks therefore use the exact provider set used at execution.
+func (r *Runner) AssistantResolver() assistant.Resolver { return r.assistants }
+
 func NewCommandResolver(workflowPath, executionWorkspace, controlWorkspace string) command.Resolver {
 	workflowDir := filepath.Dir(workflowPath)
 	home, _ := os.UserHomeDir()

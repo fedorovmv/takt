@@ -6,6 +6,7 @@ import (
 
 	"takt/internal/assistant"
 	"takt/internal/domainadapter"
+	assistantproviders "takt/internal/extensions/assistants"
 	"takt/internal/redact"
 	"takt/internal/runtime"
 	"takt/internal/spec"
@@ -81,7 +82,7 @@ func evaluationExecutionFactory(wf *spec.Workflow, cfg *spec.Config, workflowPat
 	deps := runtime.Dependencies{
 		Commands:   runtime.NewCommandResolver(workflowPath, workspace, workspace),
 		Store:      store.FS{Workspace: workspace},
-		Assistants: assistant.Factory{Config: cfg},
+		Assistants: assistant.Factory{Config: cfg, Providers: assistantproviders.Factories()},
 		Adapters:   domainadapter.Factory{Config: cfg},
 		Redactor:   redact.NewFromConfig(cfg),
 	}

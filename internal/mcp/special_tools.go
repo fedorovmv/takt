@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"takt/internal/application"
 	"takt/internal/assistant"
 	"takt/internal/experimental/dynamicflow"
+	"takt/internal/externalworker"
 	"takt/internal/store"
 )
 
@@ -65,7 +65,7 @@ func (s *Server) pendingExternalTool(_ context.Context, args map[string]any) (an
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}
-	tasks, err := s.external.PendingExternal(in.RunID, in.Recursive)
+	tasks, err := s.external.Pending(in.RunID, in.Recursive)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func (s *Server) claimExternalTool(_ context.Context, args map[string]any) (any,
 	if in.LeaseMS < 0 || in.LeaseMS > int(time.Hour/time.Millisecond) {
 		return nil, fmt.Errorf("lease_ms must be between 0 and 3600000")
 	}
-	return s.external.ClaimExternal(application.ExternalClaimRequest{RunID: in.RunID, NodeID: in.NodeID, WorkerID: in.WorkerID, Capabilities: in.Capabilities, Declaration: in.Declaration, Lease: time.Duration(in.LeaseMS) * time.Millisecond})
+	return s.external.Claim(externalworker.ClaimRequest{RunID: in.RunID, NodeID: in.NodeID, WorkerID: in.WorkerID, Capabilities: in.Capabilities, Declaration: in.Declaration, Lease: time.Duration(in.LeaseMS) * time.Millisecond})
 }
 
 func (s *Server) reconcileExternalTool(ctx context.Context, args map[string]any) (any, error) {
@@ -102,7 +102,7 @@ func (s *Server) reconcileExternalTool(ctx context.Context, args map[string]any)
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}
-	return s.external.ReconcileExternal(ctx, application.ExternalReconcileRequest{RunID: in.RunID, NodeID: in.NodeID, Outcome: in.Outcome, Receipt: in.Receipt, Submission: application.ExternalSubmission{Output: in.Output, Structured: in.Structured}})
+	return s.external.Reconcile(ctx, externalworker.ReconcileRequest{RunID: in.RunID, NodeID: in.NodeID, Outcome: in.Outcome, Receipt: in.Receipt, Submission: externalworker.Submission{Output: in.Output, Structured: in.Structured}})
 }
 
 func (s *Server) appendExternalEventTool(_ context.Context, args map[string]any) (any, error) {
@@ -115,7 +115,7 @@ func (s *Server) appendExternalEventTool(_ context.Context, args map[string]any)
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}
-	sequence, err := s.external.AppendExternalEvent(in.RunID, in.NodeID, in.ClaimToken, in.Event)
+	sequence, err := s.external.AppendEvent(in.RunID, in.NodeID, in.ClaimToken, in.Event)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (s *Server) requestExternalTool(ctx context.Context, args map[string]any) (
 	if in.WaitMS < 0 || in.WaitMS > 30000 {
 		return nil, fmt.Errorf("wait_ms must be between 0 and 30000")
 	}
-	return s.external.RequestExternalTool(ctx, application.ExternalToolRequest{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Tool: in.Tool, Input: in.Input, Message: in.Message, Wait: time.Duration(in.WaitMS) * time.Millisecond})
+	return s.external.RequestTool(ctx, externalworker.ToolRequest{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Tool: in.Tool, Input: in.Input, Message: in.Message, Wait: time.Duration(in.WaitMS) * time.Millisecond})
 }
 
 func (s *Server) decideExternalTool(_ context.Context, args map[string]any) (any, error) {
@@ -153,7 +153,7 @@ func (s *Server) decideExternalTool(_ context.Context, args map[string]any) (any
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}
-	return s.external.DecideExternalTool(application.ExternalToolDecisionRequest{RunID: in.RunID, NodeID: in.NodeID, CallID: in.CallID, Decision: in.Decision, Reason: in.Reason})
+	return s.external.DecideTool(externalworker.ToolDecisionRequest{RunID: in.RunID, NodeID: in.NodeID, CallID: in.CallID, Decision: in.Decision, Reason: in.Reason})
 }
 
 func (s *Server) startExternalTool(_ context.Context, args map[string]any) (any, error) {
@@ -166,7 +166,7 @@ func (s *Server) startExternalTool(_ context.Context, args map[string]any) (any,
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}
-	return s.external.StartExternalTool(application.ExternalToolUpdate{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID})
+	return s.external.StartTool(externalworker.ToolUpdate{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID})
 }
 
 func (s *Server) completeExternalTool(_ context.Context, args map[string]any) (any, error) {
@@ -182,7 +182,7 @@ func (s *Server) completeExternalTool(_ context.Context, args map[string]any) (a
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}
-	return s.external.CompleteExternalTool(application.ExternalToolUpdate{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Output: in.Output, Failed: in.Failed, Reason: in.Reason})
+	return s.external.CompleteTool(externalworker.ToolUpdate{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Output: in.Output, Failed: in.Failed, Reason: in.Reason})
 }
 
 func (s *Server) getExternalTool(_ context.Context, args map[string]any) (any, error) {
@@ -194,7 +194,7 @@ func (s *Server) getExternalTool(_ context.Context, args map[string]any) (any, e
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}
-	return s.external.GetExternalTool(in.RunID, in.NodeID, in.CallID)
+	return s.external.GetTool(in.RunID, in.NodeID, in.CallID)
 }
 
 func (s *Server) cancelExternalTool(_ context.Context, args map[string]any) (any, error) {
@@ -207,7 +207,7 @@ func (s *Server) cancelExternalTool(_ context.Context, args map[string]any) (any
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}
-	return s.external.CancelExternalTool(in.RunID, in.NodeID, in.CallID, in.Reason)
+	return s.external.CancelTool(in.RunID, in.NodeID, in.CallID, in.Reason)
 }
 
 func (s *Server) declareExternalArtifactTool(_ context.Context, args map[string]any) (any, error) {
@@ -223,7 +223,7 @@ func (s *Server) declareExternalArtifactTool(_ context.Context, args map[string]
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}
-	return s.external.DeclareExternalArtifact(application.ExternalArtifactRequest{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Type: in.Type, MIME: in.MIME, Path: in.Path})
+	return s.external.DeclareArtifact(externalworker.ArtifactRequest{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, CallID: in.CallID, Type: in.Type, MIME: in.MIME, Path: in.Path})
 }
 
 func (s *Server) completeExternalNodeTool(ctx context.Context, args map[string]any) (any, error) {
@@ -254,9 +254,9 @@ func (s *Server) finishExternalNodeTool(ctx context.Context, args map[string]any
 	if err := decodeArguments(args, &in); err != nil {
 		return nil, err
 	}
-	submission := application.ExternalSubmission{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, Output: in.Output, Structured: in.Structured, Stdout: in.Stdout, Stderr: in.Stderr, ExitCode: in.ExitCode, SessionID: in.SessionID, Resumed: in.Resumed, AssistantVersion: in.AssistantVersion, ResolvedModel: in.ResolvedModel, Usage: in.Usage, ErrorCode: in.ErrorCode, Error: in.Error}
+	submission := externalworker.Submission{RunID: in.RunID, NodeID: in.NodeID, ClaimToken: in.ClaimToken, Output: in.Output, Structured: in.Structured, Stdout: in.Stdout, Stderr: in.Stderr, ExitCode: in.ExitCode, SessionID: in.SessionID, Resumed: in.Resumed, AssistantVersion: in.AssistantVersion, ResolvedModel: in.ResolvedModel, Usage: in.Usage, ErrorCode: in.ErrorCode, Error: in.Error}
 	if failed {
-		return s.external.FailExternal(ctx, submission)
+		return s.external.Fail(ctx, submission)
 	}
-	return s.external.CompleteExternal(ctx, submission)
+	return s.external.Complete(ctx, submission)
 }

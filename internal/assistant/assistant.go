@@ -3,7 +3,6 @@ package assistant
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"takt/internal/spec"
 )
@@ -54,16 +53,15 @@ type Resolver interface {
 	Resolve(string) (Adapter, error)
 }
 
+type ProviderFactory func(spec.AssistantSpec) Adapter
+
 type Factory struct {
-	Config *spec.Config
+	Config    *spec.Config
+	Providers map[string]ProviderFactory
 }
 
 func (f Factory) Resolve(name string) (Adapter, error) {
-	resolvedName := name
-	s, ok := f.Config.Assistants[resolvedName]
-	if !ok && name == "coding-agent" {
-		resolvedName, s, ok = f.resolveDefaultAssistant()
-	}
+	resolvedName, s, ok := ResolveConfigured(name, f.Config)
 	if !ok {
 		return nil, &UnknownAssistantError{Name: name}
 	}
@@ -72,31 +70,36 @@ func (f Factory) Resolve(name string) (Adapter, error) {
 		return Mock{name: resolvedName}, nil
 	case "process":
 		return Process{spec: s}, nil
-	case "pi":
-		return NewPi(s), nil
-	case "opencode":
-		return NewOpenCode(s), nil
 	default:
+		if provider := f.Providers[s.Type]; provider != nil {
+			return provider(s), nil
+		}
 		return nil, &UnknownAssistantError{Name: name}
 	}
 }
 
-func (f Factory) resolveDefaultAssistant() (string, spec.AssistantSpec, bool) {
-	if f.Config == nil {
+func ResolveConfigured(name string, cfg *spec.Config) (string, spec.AssistantSpec, bool) {
+	if cfg == nil {
 		return "", spec.AssistantSpec{}, false
 	}
-	if name := f.Config.DefaultAssistant; name != "" {
-		value, ok := f.Config.Assistants[name]
-		return name, value, ok
+	if value, ok := cfg.Assistants[name]; ok {
+		return name, value, true
+	}
+	if name != "coding-agent" {
+		return "", spec.AssistantSpec{}, false
+	}
+	if configured := cfg.DefaultAssistant; configured != "" {
+		value, ok := cfg.Assistants[configured]
+		return configured, value, ok
 	}
 	// Compatibility for code profiles initialized before logical coding-agent
 	// selection was introduced. Existing OpenCode configurations keep working.
-	if value, ok := f.Config.Assistants["opencode"]; ok {
+	if value, ok := cfg.Assistants["opencode"]; ok {
 		return "opencode", value, true
 	}
-	if len(f.Config.Assistants) == 1 {
-		for name, value := range f.Config.Assistants {
-			return name, value, true
+	if len(cfg.Assistants) == 1 {
+		for configured, value := range cfg.Assistants {
+			return configured, value, true
 		}
 	}
 	return "", spec.AssistantSpec{}, false
@@ -105,31 +108,3 @@ func (f Factory) resolveDefaultAssistant() (string, spec.AssistantSpec, bool) {
 type UnknownAssistantError struct{ Name string }
 
 func (e *UnknownAssistantError) Error() string { return "unknown assistant: " + e.Name }
-
-// ProbeConfiguredVersion reports the coding-agent CLI version for built-in
-// Pi/OpenCode adapters without starting an agent session. Process wrappers do
-// not have a provider-neutral version probe and must expose their own version
-// through deployment metadata or a separate conformance suite.
-func ProbeConfiguredVersion(ctx context.Context, assistantSpec spec.AssistantSpec, workspace string) (string, error) {
-	req := Request{Workspace: workspace, Attempt: 1}
-	switch assistantSpec.Type {
-	case "pi":
-		binary := assistantSpec.Binary
-		if binary == "" {
-			binary = "pi"
-		}
-		return probePiVersion(ctx, binary, workspace, piEnvironment(assistantSpec, req))
-	case "opencode":
-		binary := assistantSpec.Binary
-		if binary == "" {
-			binary = "opencode"
-		}
-		env, err := openCodeEnvironment(assistantSpec, req)
-		if err != nil {
-			return "", err
-		}
-		return probeOpenCodeVersion(ctx, binary, workspace, env)
-	default:
-		return "", fmt.Errorf("assistant type %q has no provider-neutral version probe", assistantSpec.Type)
-	}
-}

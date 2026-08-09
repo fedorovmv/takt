@@ -1,4 +1,4 @@
-package assistant
+package opencode
 
 import (
 	"bufio"
@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	core "takt/internal/assistant"
 	"takt/internal/execution"
 	"takt/internal/spec"
 )
@@ -79,12 +80,12 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 		limit = defaultOpenCodeOutputLimit
 	}
 	var limitOnce sync.Once
-	budget := &outputBudget{limit: limit, onTruncate: func() {
+	budget := core.NewOutputBudget(limit, func() {
 		if o.onOutputTruncated != nil {
 			o.onOutputTruncated()
 		}
 		limitOnce.Do(cancel)
-	}}
+	})
 	stdout := newLimitedBuffer(budget)
 	stderr := newLimitedBuffer(budget)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
@@ -708,4 +709,17 @@ func (o OpenCode) CapabilityDeclaration() CapabilityDeclaration {
 		Capabilities: o.Capabilities(), EventTypes: []string{EventSessionStarted, EventSessionResumed, EventMessage, EventUsage, EventDiagnostic, EventCompleted, EventFailed},
 		SessionEvents: true, UsageEvents: true,
 	}
+}
+
+// ProbeVersion checks the configured OpenCode CLI without starting an agent session.
+func ProbeVersion(ctx context.Context, assistantSpec spec.AssistantSpec, workspace string) (string, error) {
+	binary := strings.TrimSpace(assistantSpec.Binary)
+	if binary == "" {
+		binary = "opencode"
+	}
+	env, err := openCodeEnvironment(assistantSpec, Request{Workspace: workspace, Attempt: 1})
+	if err != nil {
+		return "", err
+	}
+	return probeOpenCodeVersion(ctx, binary, workspace, env)
 }

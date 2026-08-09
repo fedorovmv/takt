@@ -1,6 +1,6 @@
 # Спецификация адаптеров исполнителей
 
-Статус: process-протокол v1alpha1/v1alpha2, Pi RPC adapter, OpenCode CLI adapter, capability declaration, нормализованный EventSink и переиспользуемый conformance kit реализованы и покрыты контрактными наборами.
+Статус: stable core содержит process-протокол v1alpha1/v1alpha2, capability declaration, нормализованный EventSink и переиспользуемый conformance kit. Pi RPC и OpenCode CLI поставляются как bundled extension adapters и покрыты отдельными контрактными наборами; их live host-conformance остаётся guarded.
 
 ## 1. Назначение
 
@@ -8,7 +8,7 @@ Session adapter связывает Takt с готовым кодинг-аген�
 
 ## 1.1. Логический исполнитель
 
-Workflow профиля может использовать `assistant: coding-agent`. Runtime разрешает его через `default_assistant`, сохраняя один и тот же DAG при смене хоста. Встроенные Pi/OpenCode adapters и внешний `process` являются реализациями одного `SessionAdapter`.
+Workflow профиля может использовать `assistant: coding-agent`. Runtime разрешает его через `default_assistant`, сохраняя один и тот же DAG при смене хоста. Универсальный `process` реализует stable core contract; bundled Pi/OpenCode extensions реализуют тот же `SessionAdapter`, но не входят в stable core dependency graph.
 
 Для сторонних кодинг-агентов используется `takt-assistant/v1alpha2`. Takt передаёт нормализованный Request с моделью, workspace, fresh/resume session, политикой и limits и получает поток событий и один terminal Result. Готовая обёртка конкретного CLI является отдельным интеграционным пакетом; ядро Takt не зависит от Kiro CLI и не эмулирует tool loop стороннего агента.
 
@@ -333,7 +333,7 @@ JSON stream текущего CLI не гарантирует отдельное 
 21. fire-and-forget `set_editor_text`;
 22. opt-in smoke test с реальным бинарником.
 
-Для CI используются `cmd/takt-fake-assistant`, `cmd/takt-fake-pi`, `cmd/takt-fake-opencode` и соответствующие contract scripts. Реальный Pi smoke test включается только через `TAKT_PI_SMOKE=1` и не блокирует обычный unit test suite.
+Для CI используются `internal/testsupport/cmd/takt-fake-assistant`, `internal/testsupport/cmd/takt-fake-pi`, `internal/testsupport/cmd/takt-fake-opencode` и Go contract tests. Реальный Pi smoke test включается только через `TAKT_PI_SMOKE=1` и не блокирует обычный unit test suite.
 
 
 ## 12. Conformance kit для сторонних coding-agent adapters
@@ -342,7 +342,7 @@ JSON stream текущего CLI не гарантирует отдельное 
 
 `ValidateTranscript` принимает NDJSON transcript и проверяет protocol version, declaration capabilities, уникальность tool `call_id`, наличие `tool_control` при блокирующих tool requests, ровно один terminal result, согласованность status/exit code и сохранение Session ID при обязательном resume. Внешняя обёртка может использовать пакет в собственных Go contract tests. Канонические NDJSON fixtures находятся в `sdk/agentadapter/testdata/v1alpha2/`; адаптер на другом языке может прогонять эти же файлы своим validator-ом.
 
-`cmd/takt-fake-assistant` использует public v1alpha2 request/result validators при работе как process wrapper, а его contract test повторно проверяет captured stdout через `ValidateTranscript`. Нативные Pi/OpenCode adapters не являются v1alpha2 process wrappers и поэтому не должны искусственно прогоняться через этот kit.
+`internal/testsupport/cmd/takt-fake-assistant` использует public v1alpha2 request/result validators при работе как process wrapper, а его contract test повторно проверяет captured stdout через `ValidateTranscript`. Bundled Pi/OpenCode extension adapters не являются v1alpha2 process wrappers и поэтому не должны искусственно прогоняться через этот kit.
 
 Conformance kit видит только протокольный transcript stdout и поэтому **не может** доказать соответствие OS process exit status полю `result.exit_code`; это отдельно проверяет process-host contract test. Conformance kit дополняет, а не заменяет product-specific smoke test: возможность `resume`, pre-execution tool control или read-only режима считается поддержанной только после фактической проверки хоста. Пример и матрица возможностей находятся в `examples/agent-session-adapters/README.md`.
 
@@ -357,7 +357,7 @@ takt compatibility check --config .takt/config.yaml
 takt compatibility check --config .takt/config.yaml --live
 ```
 
-Session adapter compatibility не равна host-control compatibility. Built-in Pi/OpenCode contract fixtures проверяют transport/parser semantics, но bundled host extensions остаются `guarded` до live conformance на pinned host version. `takt-assistant/v1alpha1` сохраняется для чтения старых wrappers и помечен deprecated для новых интеграций; целевой process protocol — `v1alpha2`.
+Session adapter compatibility не равна host-control compatibility. Bundled Pi/OpenCode extension contract fixtures проверяют transport/parser semantics, но bundled host extensions остаются `guarded` до live conformance на pinned host version. `takt-assistant/v1alpha1` сохраняется для чтения старых wrappers и помечен deprecated для новых интеграций; целевой process protocol — `v1alpha2`.
 
 ## 14. Reference Qwen Code wrapper — v0.1.49
 

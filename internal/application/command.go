@@ -8,6 +8,7 @@ import (
 
 	"takt/internal/command"
 	cfgpkg "takt/internal/config"
+	"takt/internal/runcontrol"
 	"takt/internal/runtime"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -87,5 +88,5 @@ func (s *CommandService) Run(ctx context.Context, request CommandRunRequest) (*s
 	if runErr != nil {
 		return nil, runErr
 	}
-	return durablePublicRun(s.stateStore, state)
+	return runcontrol.DurablePublicRun(s.stateStore, state)
 }

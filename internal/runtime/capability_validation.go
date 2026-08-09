@@ -13,18 +13,17 @@ import (
 // ValidateCapabilities resolves the effective assistant and node policy for all
 // command/prompt nodes before a Run is created. Governed child workflows are
 // checked recursively with inherited policy bounds.
-func ValidateCapabilities(wf *spec.Workflow, cfg *spec.Config, workflowPath string, resolver command.Resolver) error {
+func ValidateCapabilities(wf *spec.Workflow, cfg *spec.Config, workflowPath string, resolver command.Resolver, assistants assistant.Resolver) error {
 	if wf == nil || cfg == nil {
 		return fmt.Errorf("workflow and config are required")
 	}
-	return validateCapabilitiesRecursive(wf, cfg, workflowPath, resolver, assistant.Policy{}, map[string]bool{}, 0)
+	return validateCapabilitiesRecursive(wf, cfg, workflowPath, resolver, assistants, assistant.Policy{}, map[string]bool{}, 0)
 }
 
-func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflowPath string, resolver command.Resolver, inherited assistant.Policy, stack map[string]bool, depth int) error {
+func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflowPath string, resolver command.Resolver, assistants assistant.Resolver, inherited assistant.Policy, stack map[string]bool, depth int) error {
 	if depth > 16 {
 		return fmt.Errorf("capability validation exceeds governed workflow depth 16")
 	}
-	factory := assistant.Factory{Config: cfg}
 	for _, node := range wf.Nodes {
 		if node.Command != "" || node.Prompt != "" {
 			assistantName := node.Assistant
@@ -51,7 +50,7 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 					_ = assistant.RequiredCapabilities(policy)
 				}
 			} else {
-				adapter, err := factory.Resolve(assistantName)
+				adapter, err := assistants.Resolve(assistantName)
 				if err != nil {
 					return fmt.Errorf("node %q: %w", node.ID, err)
 				}
@@ -61,7 +60,7 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 			}
 		}
 		if node.LoopGroup != nil {
-			if err := validateCapabilitiesRecursive(&spec.Workflow{Defaults: wf.Defaults, Nodes: node.LoopGroup.Nodes}, cfg, workflowPath, resolver, inherited, stack, depth); err != nil {
+			if err := validateCapabilitiesRecursive(&spec.Workflow{Defaults: wf.Defaults, Nodes: node.LoopGroup.Nodes}, cfg, workflowPath, resolver, assistants, inherited, stack, depth); err != nil {
 				return fmt.Errorf("loop_group %q: %w", node.ID, err)
 			}
 		}
@@ -98,7 +97,7 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 		childResolver := resolver
 		childResolver.Dirs = append(workflow.CommandDirsForDefinition(childPath), childResolver.Dirs...)
 		stack[childPath] = true
-		err = validateCapabilitiesRecursive(child, cfg, childPath, childResolver, childPolicy, stack, depth+1)
+		err = validateCapabilitiesRecursive(child, cfg, childPath, childResolver, assistants, childPolicy, stack, depth+1)
 		delete(stack, childPath)
 		if err != nil {
 			return fmt.Errorf("node %q child workflow %q: %w", node.ID, child.Metadata.Name, err)

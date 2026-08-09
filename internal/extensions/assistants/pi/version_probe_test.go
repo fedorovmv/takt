@@ -1,4 +1,4 @@
-package assistant
+package pi
 
 import (
 	"context"
@@ -21,17 +21,6 @@ func TestPiVersionProbeHasIndependentTimeout(t *testing.T) {
 	_, err := probePiVersionWithTimeout(context.Background(), bin, t.TempDir(), os.Environ(), 25*time.Millisecond)
 	assertProbeTimedOut(t, err, time.Since(started))
 }
-
-func TestOpenCodeVersionProbeHasIndependentTimeout(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture")
-	}
-	bin := writeSleepingVersionProbe(t)
-	started := time.Now()
-	_, err := probeOpenCodeVersionWithTimeout(context.Background(), bin, t.TempDir(), os.Environ(), 25*time.Millisecond)
-	assertProbeTimedOut(t, err, time.Since(started))
-}
-
 func writeSleepingVersionProbe(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "probe")
@@ -40,7 +29,6 @@ func writeSleepingVersionProbe(t *testing.T) string {
 	}
 	return path
 }
-
 func assertProbeTimedOut(t *testing.T, err error, elapsed time.Duration) {
 	t.Helper()
 	if err == nil {

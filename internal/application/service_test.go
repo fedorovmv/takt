@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"takt/internal/runcontrol"
 	"takt/internal/store"
 )
 
@@ -92,7 +93,7 @@ assistants:
 		t.Fatal(err)
 	}
 	state := &store.RunState{ID: "run-specific-config", Status: store.RunRunning, ConfigPath: runConfig, Workspace: workspace, ExecutionWorkspace: workspace, Output: secret, Nodes: map[string]*store.NodeState{"n": {Status: store.NodeCompleted, Output: secret}}, Approvals: map[string]string{}}
-	if err := commitRedacted(service.ConfigPath, service.RunService.store, state, store.Event{Type: "test", Data: map[string]any{"value": secret}}); err != nil {
+	if err := runcontrol.CommitRedacted(service.ConfigPath, service.RunService.store, state, store.Event{Type: "test", Data: map[string]any{"value": secret}}); err != nil {
 		t.Fatal(err)
 	}
 	persisted, err := (store.FS{Workspace: workspace}).Load(state.ID)
@@ -119,7 +120,7 @@ func TestCommitRedactedFailsClosedWhenRunConfigCannotLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := &store.RunState{ID: "run-redact-missing-config", Status: store.RunRunning, ConfigPath: filepath.Join(workspace, "missing.yaml"), Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}
-	err = commitRedacted(service.ConfigPath, service.RunService.store, state, store.Event{Type: "test"})
+	err = runcontrol.CommitRedacted(service.ConfigPath, service.RunService.store, state, store.Event{Type: "test"})
 	if err == nil || !strings.Contains(err.Error(), "load persistence redaction config") {
 		t.Fatalf("unexpected error: %v", err)
 	}

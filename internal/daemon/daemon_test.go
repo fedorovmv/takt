@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"takt/internal/application"
+	"takt/internal/externalworker"
 	"takt/internal/store"
 )
 
@@ -206,7 +207,7 @@ nodes:
 	}
 	claimDeadline := time.Now().Add(2 * time.Second)
 	for {
-		tasks, pendingErr := server.external.PendingExternal(started.RunID, false)
+		tasks, pendingErr := server.external.Pending(started.RunID, false)
 		if pendingErr == nil && len(tasks) == 1 {
 			break
 		}
@@ -215,7 +216,7 @@ nodes:
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if _, err := server.external.ClaimExternal(application.ExternalClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "idle-worker"}); err != nil {
+	if _, err := server.external.Claim(externalworker.ClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "idle-worker"}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(4 * time.Second)

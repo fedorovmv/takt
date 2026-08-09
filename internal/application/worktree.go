@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"takt/internal/gitworktree"
+	"takt/internal/runcontrol"
 	"takt/internal/store"
 )
 
@@ -68,7 +69,7 @@ func (s *WorktreeService) List(ctx context.Context) ([]WorktreeListEntry, error)
 }
 
 func (s *WorktreeService) Remove(ctx context.Context, runID string, force bool) (*store.RunState, error) {
-	release, err := acquireRunLock(s.store, runID)
+	release, err := runcontrol.AcquireLock(s.store, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +106,7 @@ func (s *WorktreeService) Remove(ctx context.Context, runID string, force bool) 
 	if branchErr != nil {
 		wt.BranchCleanupError = branchErr.Error()
 	}
-	if err := commitRedacted("", s.store, state, store.Event{Type: "worktree.removed", Data: map[string]any{
+	if err := runcontrol.CommitRedacted("", s.store, state, store.Event{Type: "worktree.removed", Data: map[string]any{
 		"path": wt.Path, "branch": wt.Branch, "manual": true, "force": force,
 		"branch_removed": branchRemoved, "branch_cleanup_error": wt.BranchCleanupError,
 	}}); err != nil {

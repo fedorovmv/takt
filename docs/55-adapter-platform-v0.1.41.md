@@ -12,7 +12,7 @@
 - `takt adapter list|describe|doctor`;
 - durable `DomainOperationState` с capabilities, idempotency key, receipt и reconcile status;
 - preflight reconcile capability только для операций с `side_effect.mode: reconcile` и запрет blind retry после `unknown`;
-- `cmd/takt-fake-domain-adapter` и provider-neutral E2E `examples/adapter-platform`;
+- `internal/testsupport/cmd/takt-fake-domain-adapter` и provider-neutral E2E `examples/adapter-platform`;
 - схемы config/workflow/run state и `schemas/domain-adapter-protocol.schema.json`.
 
 ## Provider-neutral workflow
@@ -55,7 +55,7 @@ Adapter Platform не содержит готовых production credentials/pro
 
 ## Уточнения после ревью
 
-В `v0.1.42` kit получил общие fixture-файлы и используется contract test реального `cmd/takt-fake-assistant`, а не только собственными unit tests. Transcript validator не видит OS process exit status и поэтому не подменяет host-проверку соответствия process exit code полю `result.exit_code`.
+В `v0.1.42` kit получил общие fixture-файлы и используется contract test реального `internal/testsupport/cmd/takt-fake-assistant`, а не только собственными unit tests. Transcript validator не видит OS process exit status и поэтому не подменяет host-проверку соответствия process exit code полю `result.exit_code`.
 
 ## Reference SCM implementation — v0.1.49
 

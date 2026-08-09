@@ -21,25 +21,62 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 	if definition == nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "script", Err: fmt.Errorf("missing script definition")}
 	}
-	workingDir := r.workspace
-	if definition.WorkingDir != "" {
-		rendered, err := renderTemplate(definition.WorkingDir, state, local, feedback, artifactsDir)
-		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render script working_directory", Err: err}
-		}
-		resolved, err := r.resolveExecutionPath(rendered)
-		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve script working_directory", Err: err}
-		}
-		workingDir = resolved
+	workingDir, err := r.scriptWorkingDir(definition, state, local, feedback, artifactsDir)
+	if err != nil {
+		return execResult{}, err
+	}
+	if strings.TrimSpace(definition.Runtime) == "validation" {
+		return r.runValidationCommands(ctx, state, node, local, feedback, artifactsDir, workingDir)
+	}
+	args, err := renderScriptArgs(definition.Args, state, local, feedback, artifactsDir)
+	if err != nil {
+		return execResult{}, err
 	}
 	policy := localsandbox.Policy{}
 	if node.Sandbox != nil {
 		policy = localsandbox.Policy{Enforcement: node.Sandbox.Enforcement, Filesystem: node.Sandbox.Filesystem, Network: node.Sandbox.Network}
 	}
+	cmd, sandboxState, err := r.buildScriptCommandWithPolicy(ctx, definition, state, local, feedback, artifactsDir, workingDir, args, policy)
+	if err != nil {
+		return execResult{Sandbox: sandboxState}, err
+	}
+	if err := r.configureScriptCommand(cmd, definition, state, node, local, feedback, artifactsDir, workingDir); err != nil {
+		return execResult{Sandbox: sandboxState}, err
+	}
+	return runScriptCommand(ctx, cmd, sandboxState)
+}
+
+func (r *Runner) scriptWorkingDir(definition *spec.ScriptSpec, state *store.RunState, local map[string]store.NodeState, feedback, artifactsDir string) (string, error) {
+	if definition.WorkingDir == "" {
+		return r.workspace, nil
+	}
+	rendered, err := renderTemplate(definition.WorkingDir, state, local, feedback, artifactsDir)
+	if err != nil {
+		return "", &execution.Error{Kind: execution.KindInternal, Op: "render script working_directory", Err: err}
+	}
+	resolved, err := r.resolveExecutionPath(rendered)
+	if err != nil {
+		return "", &execution.Error{Kind: execution.KindInternal, Op: "resolve script working_directory", Err: err}
+	}
+	return resolved, nil
+}
+
+func renderScriptArgs(values []string, state *store.RunState, local map[string]store.NodeState, feedback, artifactsDir string) ([]string, error) {
+	args := make([]string, len(values))
+	for index, value := range values {
+		rendered, err := renderTemplate(value, state, local, feedback, artifactsDir)
+		if err != nil {
+			return nil, &execution.Error{Kind: execution.KindInternal, Op: "render script argument", Err: err}
+		}
+		args[index] = rendered
+	}
+	return args, nil
+}
+
+func (r *Runner) buildScriptCommandWithPolicy(ctx context.Context, definition *spec.ScriptSpec, state *store.RunState, local map[string]store.NodeState, feedback, artifactsDir, workingDir string, args []string, policy localsandbox.Policy) (*exec.Cmd, *store.SandboxState, error) {
 	var sandboxState *store.SandboxState
-	newCommand := func(name string, args ...string) (*exec.Cmd, error) {
-		cmd, decision, err := localsandbox.CommandContext(ctx, workingDir, policy, name, args...)
+	newCommand := func(name string, commandArgs ...string) (*exec.Cmd, error) {
+		cmd, decision, err := localsandbox.CommandContext(ctx, workingDir, policy, name, commandArgs...)
 		sandboxState = &store.SandboxState{Requested: decision.Requested, Status: decision.Status, Backend: decision.Backend, Reason: decision.Reason}
 		if err != nil {
 			return nil, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "OS sandbox", Err: err}
@@ -47,97 +84,75 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		return cmd, nil
 	}
 
-	args := make([]string, len(definition.Args))
-	for index, value := range definition.Args {
-		rendered, err := renderTemplate(value, state, local, feedback, artifactsDir)
+	resolvePath := func(op string) (string, error) {
+		rendered, err := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
 		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render script argument", Err: err}
+			return "", &execution.Error{Kind: execution.KindInternal, Op: "render " + op + " path", Err: err}
 		}
-		args[index] = rendered
+		path, err := r.resolveExecutionPath(rendered)
+		if err != nil {
+			return "", &execution.Error{Kind: execution.KindInternal, Op: "resolve " + op, Err: err}
+		}
+		return path, nil
 	}
+	inline := func(op string) (string, error) {
+		rendered, err := renderTemplate(definition.Inline, state, local, feedback, artifactsDir)
+		if err != nil {
+			return "", &execution.Error{Kind: execution.KindInternal, Op: "render " + op + " inline script", Err: err}
+		}
+		return rendered, nil
+	}
+
 	var cmd *exec.Cmd
 	var err error
-	runtimeName := strings.TrimSpace(definition.Runtime)
-	switch runtimeName {
+	switch strings.TrimSpace(definition.Runtime) {
 	case "command":
-		renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
-		if renderErr != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render command script path", Err: renderErr}
-		}
-		path, err := r.resolveExecutionPath(renderedPath)
-		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve command script", Err: err}
+		path, pathErr := resolvePath("command script")
+		if pathErr != nil {
+			return nil, sandboxState, pathErr
 		}
 		cmd, err = newCommand(path, args...)
-		if err != nil {
-			return execResult{Sandbox: sandboxState}, err
-		}
 	case "python":
 		if definition.Inline != "" {
-			inline, renderErr := renderTemplate(definition.Inline, state, local, feedback, artifactsDir)
-			if renderErr != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render python inline script", Err: renderErr}
+			body, bodyErr := inline("python")
+			if bodyErr != nil {
+				return nil, sandboxState, bodyErr
 			}
-			cmd, err = newCommand("python3", append([]string{"-c", inline}, args...)...)
-			if err != nil {
-				return execResult{Sandbox: sandboxState}, err
-			}
+			cmd, err = newCommand("python3", append([]string{"-c", body}, args...)...)
 		} else {
-			renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
-			if renderErr != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render python script path", Err: renderErr}
-			}
-			path, err := r.resolveExecutionPath(renderedPath)
-			if err != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve python script", Err: err}
+			path, pathErr := resolvePath("python script")
+			if pathErr != nil {
+				return nil, sandboxState, pathErr
 			}
 			cmd, err = newCommand("python3", append([]string{path}, args...)...)
-			if err != nil {
-				return execResult{Sandbox: sandboxState}, err
-			}
 		}
 	case "node":
 		if definition.Inline != "" {
-			inline, renderErr := renderTemplate(definition.Inline, state, local, feedback, artifactsDir)
-			if renderErr != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render node inline script", Err: renderErr}
+			body, bodyErr := inline("node")
+			if bodyErr != nil {
+				return nil, sandboxState, bodyErr
 			}
-			cmd, err = newCommand("node", append([]string{"-e", inline}, args...)...)
-			if err != nil {
-				return execResult{Sandbox: sandboxState}, err
-			}
+			cmd, err = newCommand("node", append([]string{"-e", body}, args...)...)
 		} else {
-			renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
-			if renderErr != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render node script path", Err: renderErr}
-			}
-			path, err := r.resolveExecutionPath(renderedPath)
-			if err != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve node script", Err: err}
+			path, pathErr := resolvePath("node script")
+			if pathErr != nil {
+				return nil, sandboxState, pathErr
 			}
 			cmd, err = newCommand("node", append([]string{path}, args...)...)
-			if err != nil {
-				return execResult{Sandbox: sandboxState}, err
-			}
 		}
 	case "go":
-		renderedPath, renderErr := renderTemplate(definition.Path, state, local, feedback, artifactsDir)
-		if renderErr != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render go script path", Err: renderErr}
-		}
-		path, err := r.resolveExecutionPath(renderedPath)
-		if err != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve go script", Err: err}
+		path, pathErr := resolvePath("go script")
+		if pathErr != nil {
+			return nil, sandboxState, pathErr
 		}
 		cmd, err = newCommand("go", append([]string{"run", path}, args...)...)
-		if err != nil {
-			return execResult{Sandbox: sandboxState}, err
-		}
-	case "validation":
-		return r.runValidationCommands(ctx, state, node, local, feedback, artifactsDir, workingDir)
 	default:
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "script", Err: fmt.Errorf("unsupported script runtime %q", runtimeName)}
+		return nil, sandboxState, &execution.Error{Kind: execution.KindInternal, Op: "script", Err: fmt.Errorf("unsupported script runtime %q", definition.Runtime)}
 	}
+	return cmd, sandboxState, err
+}
+
+func (r *Runner) configureScriptCommand(cmd *exec.Cmd, definition *spec.ScriptSpec, state *store.RunState, node spec.Node, local map[string]store.NodeState, feedback, artifactsDir, workingDir string) error {
 	execution.ConfigureCommand(cmd)
 	cmd.Dir = workingDir
 	cmd.Env = append([]string(nil), os.Environ()...)
@@ -149,22 +164,26 @@ func (r *Runner) runScript(ctx context.Context, state *store.RunState, node spec
 		"TAKT_ARTIFACTS_DIR="+artifactsDir,
 	)
 	if r.redactor == nil && len(definition.Env) > 0 {
-		return execResult{Sandbox: sandboxState}, &execution.Error{Kind: execution.KindInternal, Op: "resolve script environment", Err: fmt.Errorf("redactor dependency is required")}
+		return &execution.Error{Kind: execution.KindInternal, Op: "resolve script environment", Err: fmt.Errorf("redactor dependency is required")}
 	}
 	for key, value := range definition.Env {
 		rendered, err := renderTemplate(value, state, local, feedback, artifactsDir)
 		if err != nil {
-			return execResult{Sandbox: sandboxState}, &execution.Error{Kind: execution.KindInternal, Op: "render script environment", Err: err}
+			return &execution.Error{Kind: execution.KindInternal, Op: "render script environment", Err: err}
 		}
 		resolved, err := r.redactor.Resolve(rendered)
 		if err != nil {
-			return execResult{Sandbox: sandboxState}, &execution.Error{Kind: execution.KindProtocol, Op: "resolve script secret", Err: err}
+			return &execution.Error{Kind: execution.KindProtocol, Op: "resolve script secret", Err: err}
 		}
 		cmd.Env = append(cmd.Env, key+"="+resolved)
 	}
+	return nil
+}
+
+func runScriptCommand(ctx context.Context, cmd *exec.Cmd, sandboxState *store.SandboxState) (execResult, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err = cmd.Run()
+	err := cmd.Run()
 	result := execResult{Output: strings.TrimSpace(stdout.String()), Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: 0, Sandbox: sandboxState}
 	if err == nil {
 		return result, nil

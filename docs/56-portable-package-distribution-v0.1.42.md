@@ -91,7 +91,7 @@ trusted_keys:
 ## Исправления Adapter Platform v0.1.41
 
 - `sdk/agentadapter` теперь содержит публичные request/result/envelope типы и validators, включая `attempt >= 1`, обязательные идентификаторы и ограничения policy;
-- conformance fixtures находятся в `sdk/agentadapter/testdata/v1alpha2`; `cmd/takt-fake-assistant` сам использует public SDK validators для v1alpha2 request/result, а его process contract дополнительно проверяет captured stdout тем же `ValidateTranscript`;
+- conformance fixtures находятся в `sdk/agentadapter/testdata/v1alpha2`; `internal/testsupport/cmd/takt-fake-assistant` сам использует public SDK validators для v1alpha2 request/result, а его process contract дополнительно проверяет captured stdout тем же `ValidateTranscript`;
 - transcript conformance явно не проверяет OS process exit code: соответствие process exit status и `result.exit_code` остаётся обязанностью host/process contract test;
 - `adapter doctor` выполняет дополнительную диагностику configured mappings/reconcile capabilities, а `list|describe|doctor` имеют CLI-тесты;
 - расширено покрытие `sdk/agentadapter` и `sdk/domainadapter`;

@@ -652,8 +652,20 @@ Takt сохраняет существующий функционал, но не
 
 `internal/tooling` содержит evaluation и compatibility machinery. Их CLI сохраняется, но tooling не входит в execution/application graph стабильного runtime.
 
-Commodity infrastructure не реализуется внутри Takt без предметной причины. Самописный YAML parser удалён в пользу `go.yaml.in/yaml/v3`; Takt сохраняет только adapter, обеспечивающий собственные JSON-tag/strict-field diagnostics. `takt-schema-subset/v1` остаётся отдельным случаем, потому что он является намеренно ограниченным публичным dialect, а не попыткой реализовать общий JSON Schema.
+Commodity infrastructure не реализуется внутри Takt без предметной причины. Самописный YAML parser удалён в пользу `go.yaml.in/yaml/v3`; Takt сохраняет только adapter, обеспечивающий собственные JSON-tag/strict-field diagnostics. `takt-schema-subset/v1` остаётся Takt-specific публичным dialect, но начиная с ADR-089 instance validation этого dialect также выполняет upstream Draft 2020-12 validator; Takt владеет subset policy, а не общим schema engine.
 
 Отдельный `make journeys` проверяет стабильные user-facing сценарии через настоящий CLI. Внутренний contract suite и user journey gate являются разными гарантиями: первый доказывает correctness механизмов, второй — пригодность основного пользовательского пути.
 
 **Причина.** После architecture hardening стало видно, что общий размер репозитория отражает несколько разных классов функциональности. Дальнейшее дробление одного application package не решало бы проблему стабильности. Односторонние module boundaries позволяют сохранять возможности, не заставляя experimental/evaluation/package evolution менять core, а использование зрелых общих библиотек уменьшает поддерживаемый Takt-specific код.
+
+## ADR-089. Stable core owns Takt contracts, while commodity validators, provider adapters and test fixtures stay outside it
+
+**Статус:** принято.
+
+`takt-schema-subset/v1` остаётся Takt-specific публичной границей: Takt определяет разрешённые types/keywords и проверяет subset definition. Исполнение JSON Schema instance validation делегируется поддерживаемому Draft 2020-12 validator `github.com/santhosh-tekuri/jsonschema/v6`; отдельный production или test-only JSON Schema runtime внутри Takt запрещён. Аналогично ADR-088 для YAML, собственный код сохраняется только там, где он выражает контракт Takt.
+
+Stable `internal/assistant` определяет provider-neutral session/process/capability contracts и логический выбор `coding-agent`. Конкретные Pi/OpenCode реализации являются extensions и подключаются composition root'ом. Preflight capability validation получает injected assistant resolver и поэтому использует ровно тот provider graph, который будет использовать execution, не создавая второй скрытый factory.
+
+Test fixture binaries `takt-fake-*` принадлежат `internal/testsupport/cmd`, а не product `cmd/`. Пользовательские transport surfaces обязаны явно обозначать experimental функции: доступность команды или MCP tool не означает stable compatibility guarantee.
+
+**Причина.** После modularization `v0.1.55` оставались три формы ложной принадлежности к core: собственный JSON Schema execution, provider-specific Pi/OpenCode implementation в stable assistant package и test executables в product `cmd`. Они увеличивали поддерживаемый код и визуальную поверхность ядра без предметной ценности. Делегирование commodity semantics upstream-библиотеке, provider injection и отдельный testsupport boundary уменьшают связность, сохраняя весь существующий функционал и KISS/YAGNI.

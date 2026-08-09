@@ -1,4 +1,4 @@
-package assistant
+package pi
 
 import (
 	"context"

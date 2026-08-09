@@ -16,6 +16,7 @@ import (
 	"takt/internal/authoring"
 	cfgpkg "takt/internal/config"
 	"takt/internal/profile"
+	"takt/internal/runcontrol"
 	"takt/internal/runtime"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -160,7 +161,7 @@ func (s *RunService) Start(ctx context.Context, request StartRequest) (*StartRes
 		if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 			return nil, runErr
 		}
-		public, err := durablePublicRun(s.store, state)
+		public, err := runcontrol.DurablePublicRun(s.store, state)
 		if err != nil {
 			return nil, err
 		}
@@ -189,7 +190,7 @@ func (s *RunService) Start(ctx context.Context, request StartRequest) (*StartRes
 			// exists. Even an immediate terminal failure is observed through run.get,
 			// attention and notifications instead of racing the start RPC response.
 			if outcome.state != nil {
-				public, loadErr := durablePublicRun(runStore, outcome.state)
+				public, loadErr := runcontrol.DurablePublicRun(runStore, outcome.state)
 				if loadErr != nil {
 					return nil, loadErr
 				}
@@ -252,7 +253,7 @@ func (s *RunService) prepareStart(ctx context.Context, request StartRequest) (*p
 	if err := workflow.ValidateReferences(wf, cfg, runner.CommandResolver()); err != nil {
 		return nil, err
 	}
-	if err := runtime.ValidateCapabilities(wf, cfg, wfPath, runner.CommandResolver()); err != nil {
+	if err := runtime.ValidateCapabilities(wf, cfg, wfPath, runner.CommandResolver(), runner.AssistantResolver()); err != nil {
 		return nil, fmt.Errorf("capability validation: %w", err)
 	}
 	diagnostics := authoring.Analyze(wf, runner.CommandResolver())
@@ -331,17 +332,21 @@ func newRunID() (string, error) {
 	return "run-" + hex.EncodeToString(raw[:]), nil
 }
 
-func durablePublicRun(st interface {
-	Load(string) (*store.RunState, error)
-}, state *store.RunState) (*store.RunState, error) {
-	if state == nil {
-		return nil, nil
-	}
-	persisted, err := st.Load(state.ID)
+// Continue resumes an already-loaded durable Run using the same execution graph
+// as ordinary Run lifecycle operations. It is a narrow port for sibling stable
+// use cases such as external workers.
+func (s *RunService) Continue(ctx context.Context, state *store.RunState) (*store.RunState, error) {
+	runner, err := s.runnerForState(state)
 	if err != nil {
 		return nil, err
 	}
-	return persisted.PublicView(), nil
+	return runner.Resume(ctx, state)
+}
+
+// ResumeParents propagates a child terminal/waiting transition through its
+// governed parent chain without exposing RunStore or Runner internals.
+func (s *RunService) ResumeParents(ctx context.Context, child *store.RunState) (*store.RunState, error) {
+	return s.resumeParentChain(ctx, s.store, child)
 }
 
 func (s *RunService) GetRun(runID string) (*store.RunState, error) {
@@ -357,7 +362,7 @@ func (s *RunService) GetRun(runID string) (*store.RunState, error) {
 
 func (s *RunService) Resume(ctx context.Context, runID string) (*store.RunState, error) {
 	st := s.store
-	release, err := acquireRunLock(st, runID)
+	release, err := runcontrol.AcquireLock(st, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +379,7 @@ func (s *RunService) Resume(ctx context.Context, runID string) (*store.RunState,
 	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 		return nil, runErr
 	}
-	return durablePublicRun(st, state)
+	return runcontrol.DurablePublicRun(st, state)
 }
 
 func (s *RunService) Answer(ctx context.Context, runID, requestedNodeID, value string) (*store.RunState, error) {
@@ -383,7 +388,7 @@ func (s *RunService) Answer(ctx context.Context, runID, requestedNodeID, value s
 	if err != nil {
 		return nil, err
 	}
-	release, err := acquireRunLock(st, target.ID)
+	release, err := runcontrol.AcquireLock(st, target.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -414,7 +419,7 @@ func (s *RunService) Answer(ctx context.Context, runID, requestedNodeID, value s
 	}
 	target.Status = store.RunRunning
 	target.Waiting = nil
-	if err := commitRedacted(s.configPath, st, target, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true}}); err != nil {
+	if err := runcontrol.CommitRedacted(s.configPath, st, target, store.Event{Type: "approval.answered", NodeID: nodeID, Data: map[string]any{"value_captured": true}}); err != nil {
 		_ = release()
 		return nil, err
 	}
@@ -427,7 +432,7 @@ func (s *RunService) Answer(ctx context.Context, runID, requestedNodeID, value s
 	if cascadeErr != nil && !errors.Is(cascadeErr, runtime.ErrWaiting) && !errors.Is(cascadeErr, runtime.ErrPaused) {
 		return nil, cascadeErr
 	}
-	return durablePublicRun(st, root)
+	return runcontrol.DurablePublicRun(st, root)
 }
 
 func resolveApprovalTarget(st RunStore, runID, requestedNodeID string) (*store.RunState, string, error) {
@@ -470,7 +475,7 @@ func resolveApprovalTarget(st RunStore, runID, requestedNodeID string) (*store.R
 func (s *RunService) resumeParentChain(ctx context.Context, st RunStore, child *store.RunState) (*store.RunState, error) {
 	current := child
 	for current != nil && current.ParentRunID != "" {
-		release, err := acquireRunLock(st, current.ParentRunID)
+		release, err := runcontrol.AcquireLock(st, current.ParentRunID)
 		if err != nil {
 			return current, err
 		}
@@ -546,7 +551,7 @@ func (s *RunService) Cancel(ctx context.Context, runID, reason string) (any, err
 		return nil, err
 	}
 	if state.Status == store.RunWaiting {
-		release, lockErr := acquireRunLock(st, state.ID)
+		release, lockErr := runcontrol.AcquireLock(st, state.ID)
 		if lockErr != nil {
 			return nil, lockErr
 		}
@@ -564,7 +569,7 @@ func (s *RunService) Cancel(ctx context.Context, runID, reason string) (any, err
 		}
 		root, cascadeErr := s.resumeParentChain(ctx, st, state)
 		if cascadeErr == nil || errors.Is(cascadeErr, runtime.ErrWaiting) {
-			return durablePublicRun(st, root)
+			return runcontrol.DurablePublicRun(st, root)
 		}
 		return nil, cascadeErr
 	}
@@ -597,7 +602,7 @@ func (s *RunService) cancelRunTree(st RunStore, state *store.RunState, reason st
 	if state.Status != store.RunWaiting {
 		return nil
 	}
-	release, err := acquireRunLock(st, state.ID)
+	release, err := runcontrol.AcquireLock(st, state.ID)
 	if err != nil {
 		return err
 	}

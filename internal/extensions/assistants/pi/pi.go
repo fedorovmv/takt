@@ -1,4 +1,4 @@
-package assistant
+package pi
 
 import (
 	"bufio"
@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	core "takt/internal/assistant"
 	"takt/internal/execution"
 	"takt/internal/spec"
 )
@@ -88,12 +89,12 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		limit = defaultPiOutputLimit
 	}
 	var limitOnce sync.Once
-	budget := &outputBudget{limit: limit, onTruncate: func() {
+	budget := core.NewOutputBudget(limit, func() {
 		if p.onOutputTruncated != nil {
 			p.onOutputTruncated()
 		}
 		limitOnce.Do(cancel)
-	}}
+	})
 	stdout := newLimitedBuffer(budget)
 	stderr := newLimitedBuffer(budget)
 
@@ -895,4 +896,13 @@ func (p Pi) CapabilityDeclaration() CapabilityDeclaration {
 		Capabilities: p.Capabilities(), EventTypes: []string{EventSessionStarted, EventSessionResumed, EventMessage, EventUsage, EventDiagnostic, EventCompleted, EventFailed},
 		SessionEvents: true, UsageEvents: true,
 	}
+}
+
+// ProbeVersion checks the configured Pi CLI without starting an agent session.
+func ProbeVersion(ctx context.Context, assistantSpec spec.AssistantSpec, workspace string) (string, error) {
+	binary := strings.TrimSpace(assistantSpec.Binary)
+	if binary == "" {
+		binary = "pi"
+	}
+	return probePiVersion(ctx, binary, workspace, piEnvironment(assistantSpec, Request{Workspace: workspace, Attempt: 1}))
 }

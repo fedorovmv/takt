@@ -319,7 +319,7 @@ nodes:
 
 Передаёт assistant встроенный prompt.
 
-Для `command`, `prompt` и `script` можно задать проверяемый JSON-контракт `output_format`. `input.schema` и `output_format` используют один версионированный контракт `takt-schema-subset/v1`, **не полный JSON Schema**. Поддерживаются `type`, `description`, `properties`, `required`, строковый `enum`, `items`, `minItems/maxItems/uniqueItems`, `minLength/maxLength/pattern`, `minimum/maximum`, `minProperties/maxProperties` и boolean `additionalProperties`. `$ref`, `oneOf/anyOf/allOf`, `const/default/format` и schema-valued `additionalProperties` не поддерживаются. Runtime принимает ровно одно JSON-значение и сохраняет канонический компактный JSON. Нарушение контракта завершает узел ошибкой `protocol`. Машиночитаемая граница доступна через `takt compatibility schema`.
+Для `command`, `prompt` и `script` можно задать проверяемый JSON-контракт `output_format`. `input.schema` и `output_format` используют один версионированный контракт `takt-schema-subset/v1`, **не полный JSON Schema**. Takt проверяет допустимый subset при authoring, а семантику проверки JSON-значения выполняет `github.com/santhosh-tekuri/jsonschema/v6` в режиме Draft 2020-12; собственного JSON Schema runtime в Takt нет. Поддерживаются `type`, `description`, `properties`, `required`, строковый `enum`, `items`, `minItems/maxItems/uniqueItems`, `minLength/maxLength/pattern`, `minimum/maximum`, `minProperties/maxProperties` и boolean `additionalProperties`. `$ref`, `oneOf/anyOf/allOf`, `const/default/format` и schema-valued `additionalProperties` не поддерживаются. Runtime принимает ровно одно JSON-значение и сохраняет канонический компактный JSON. Нарушение контракта завершает узел ошибкой `protocol`. Машиночитаемая граница доступна через `takt compatibility schema`.
 
 ```yaml
 - id: classify
@@ -367,7 +367,7 @@ nodes:
 
 До запуска assistant runtime вычисляет эффективную политику, проверяет `Adapter.Capabilities()`, сохраняет её в `NodeState.policy` и передаёт adapter. Неподдерживаемая capability завершает узел до запуска процесса. Для governed child Run поле `workflow.policy` задаёт inherited upper bound. Allowlist и skills пересекаются, deny/requirements объединяются, а более строгая sandbox-политика наследуется. Файлы MCP и локальные skills входят в fingerprint.
 
-Для `command/prompt` это assistant-enforced contract, а не OS sandbox. `process` обязан объявить поддерживаемые capabilities в config и получает политику через `takt-assistant/v1alpha1`/`v1alpha2` и `TAKT_POLICY_JSON`. Pi поддерживает tool policy, path skills и read-only tool restriction. OpenCode получает permission/MCP config через `OPENCODE_CONFIG_CONTENT`; локальные path skills дополнительно внедряются в prompt. Network deny не объявляется встроенными Pi/OpenCode и потому отклоняется до запуска.
+Для `command/prompt` это assistant-enforced contract, а не OS sandbox. `process` обязан объявить поддерживаемые capabilities в config и получает политику через `takt-assistant/v1alpha1`/`v1alpha2` и `TAKT_POLICY_JSON`. Pi поддерживает tool policy, path skills и read-only tool restriction. OpenCode получает permission/MCP config через `OPENCODE_CONFIG_CONTENT`; локальные path skills дополнительно внедряются в prompt. Network deny не объявляется bundled Pi/OpenCode extensions и потому отклоняется до запуска.
 
 Реальный локальный OS wrapper доступен только для `bash` и `script`, которыми Takt управляет напрямую:
 

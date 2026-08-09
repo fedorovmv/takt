@@ -16,6 +16,7 @@ import (
 
 	"takt/internal/assistant"
 	"takt/internal/execution"
+	assistantpi "takt/internal/extensions/assistants/pi"
 	"takt/internal/spec"
 	"takt/internal/store"
 	"takt/internal/workflow"
@@ -689,7 +690,7 @@ func TestProtocolAssistantResumesSessionAcrossRetry(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", binary, "./cmd/takt-fake-assistant")
+	build := exec.Command("go", "build", "-o", binary, "./internal/testsupport/cmd/takt-fake-assistant")
 	build.Dir = root
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build fake assistant: %v: %s", err, output)
@@ -741,7 +742,7 @@ func TestPiOverflowContextStateIntegration(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", binary, "./cmd/takt-fake-pi")
+	build := exec.Command("go", "build", "-o", binary, "./internal/testsupport/cmd/takt-fake-pi")
 	build.Dir = root
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build fake Pi: %v: %s", err, output)
@@ -788,7 +789,7 @@ func TestPiOverflowContextStateIntegration(t *testing.T) {
 				Nodes:      []spec.Node{{ID: "agent", Prompt: "run"}},
 			}
 			cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "openai", ID: "fake-model"}}}
-			adapter := assistant.NewPi(spec.AssistantSpec{
+			adapter := assistantpi.NewPi(spec.AssistantSpec{
 				Type: "pi", Binary: binary, Args: []string{"--fake-case", tt.caseName},
 				ProjectTrust: "approve", MaxOutputBytes: 1024,
 			}).WithOutputTruncatedObserver(onTruncate)
@@ -825,7 +826,7 @@ func TestPiAssistantResumesSessionAcrossRetry(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", binary, "./cmd/takt-fake-pi")
+	build := exec.Command("go", "build", "-o", binary, "./internal/testsupport/cmd/takt-fake-pi")
 	build.Dir = root
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build fake Pi: %v: %s", err, output)
@@ -898,7 +899,7 @@ func TestOpenCodeAssistantResumesSessionAcrossRetry(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", binary, "./cmd/takt-fake-opencode")
+	build := exec.Command("go", "build", "-o", binary, "./internal/testsupport/cmd/takt-fake-opencode")
 	build.Dir = root
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build fake OpenCode: %v: %s", err, output)
@@ -971,7 +972,7 @@ func TestOpenCodeTimeoutPreservesProviderDiagnostics(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", binary, "./cmd/takt-fake-opencode")
+	build := exec.Command("go", "build", "-o", binary, "./internal/testsupport/cmd/takt-fake-opencode")
 	build.Dir = root
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build fake OpenCode: %v: %s", err, output)

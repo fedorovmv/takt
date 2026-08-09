@@ -78,7 +78,7 @@ LOC используется только как индикатор связно
 
 Таким образом Takt больше не сопровождает YAML lexer/parser, block scalars, anchors и общую YAML grammar.
 
-`internal/schemasubset` пока сохраняется: это не общий JSON Schema parser, а намеренно ограниченный публичный dialect `takt-schema-subset/v1`, зафиксированный ADR-078. Его замена на generic validator допустима только при сохранении этой contract boundary.
+`internal/schemasubset` сохраняет намеренно ограниченный публичный dialect `takt-schema-subset/v1`, зафиксированный ADR-078. Начиная с `v0.1.56`, сама instance validation делегирована upstream Draft 2020-12 validator; Takt продолжает владеть только subset contract boundary.
 
 ## User journey gate
 

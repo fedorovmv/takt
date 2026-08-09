@@ -42,7 +42,7 @@ func (s *AuthoringService) ValidateWorkflow(selector, configOverride string, war
 	if err := workflow.ValidateReferences(wf, cfg, runner.CommandResolver()); err != nil {
 		return nil, err
 	}
-	if err := runtime.ValidateCapabilities(wf, cfg, wfPath, runner.CommandResolver()); err != nil {
+	if err := runtime.ValidateCapabilities(wf, cfg, wfPath, runner.CommandResolver(), runner.AssistantResolver()); err != nil {
 		return nil, fmt.Errorf("capability validation: %w", err)
 	}
 	diagnostics := authoring.Analyze(wf, runner.CommandResolver())

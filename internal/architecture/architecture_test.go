@@ -159,10 +159,10 @@ func requireRunnerFieldsPrivate(t *testing.T, root string) {
 	t.Fatal("runtime.Runner declaration not found")
 }
 
-func requireServiceFieldsPrivate(t *testing.T, root string) {
+func requireServiceFieldsPrivate(t *testing.T, root, rel string) {
 	t.Helper()
 	fset := token.NewFileSet()
-	dir := filepath.Join(root, "internal", "application")
+	dir := filepath.Join(root, rel)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -309,6 +309,16 @@ func TestArchitectureBoundaries(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "internal", "yamlmini")); !os.IsNotExist(err) {
 		t.Fatalf("hand-written YAML parser must stay removed; YAML syntax belongs to the upstream module")
 	}
+	if matches, err := filepath.Glob(filepath.Join(root, "cmd", "takt-fake-*")); err != nil {
+		t.Fatal(err)
+	} else if len(matches) != 0 {
+		t.Fatalf("test fixtures must not be product commands; move them under internal/testsupport/cmd: %v", matches)
+	}
+	for _, providerFile := range []string{"pi.go", "opencode.go"} {
+		if _, err := os.Stat(filepath.Join(root, "internal", "assistant", providerFile)); !os.IsNotExist(err) {
+			t.Fatalf("provider-specific assistant %s must stay outside stable assistant core", providerFile)
+		}
+	}
 
 	cmdImports := packageImports(t, root, "cmd/takt")
 	allowed := map[string]bool{"context": true, "fmt": true, "os": true, "os/signal": true, "syscall": true, "takt/internal/cli": true}
@@ -325,8 +335,11 @@ func TestArchitectureBoundaries(t *testing.T) {
 		"takt/internal/apperror", "takt/internal/application", "takt/internal/bootstrap",
 		"takt/internal/daemon", "takt/internal/mcp", "takt/internal/version",
 		"takt/internal/experimental/dynamicflow", "takt/internal/experimental/learning",
-		"takt/internal/extensions", "takt/internal/maintenance", "takt/internal/tooling")
+		"takt/internal/extensions", "takt/internal/externalworker", "takt/internal/maintenance", "takt/internal/tooling")
 	applicationSource := productionSource(t, root, "internal/application")
+	if strings.Contains(applicationSource, "type ExternalService") {
+		t.Error("external worker/tool lifecycle must stay in internal/externalworker, not regrow inside application")
+	}
 	for _, forbidden := range []string{"store.FS{", "dynamicplan.Store{", "hostcontrol.Store{", "notification.Dispatcher{", "learning.Manager{", "packagedist.New(", "type Context struct", "dynamicMu", "hostMu"} {
 		if strings.Contains(applicationSource, forbidden) {
 			t.Errorf("application must receive infrastructure through narrow ports; found %q", forbidden)
@@ -349,14 +362,15 @@ func TestArchitectureBoundaries(t *testing.T) {
 		t.Errorf("CLI must propagate caller context; only the compatibility Run wrapper may create Background (count=%d)", count)
 	}
 	requireRunnerFieldsPrivate(t, root)
-	requireServiceFieldsPrivate(t, root)
+	requireServiceFieldsPrivate(t, root, "internal/application")
+	requireServiceFieldsPrivate(t, root, "internal/externalworker")
 	requireAcyclicApplicationServices(t, root)
 	requireExplicitApplicationBackground(t, root)
 
 	forbidImports(t, root, "internal/application",
 		"takt/internal/cli", "takt/internal/mcp", "takt/internal/daemon", "takt/internal/appapi", "takt/internal/bootstrap",
 		"takt/internal/experimental", "takt/internal/tooling", "takt/internal/extensions")
-	for _, stable := range []string{"internal/application", "internal/profile", "internal/runtime", "internal/workflow", "internal/store", "internal/config"} {
+	for _, stable := range []string{"internal/application", "internal/assistant", "internal/externalworker", "internal/runcontrol", "internal/profile", "internal/runtime", "internal/workflow", "internal/store", "internal/config"} {
 		forbidImports(t, root, stable, "takt/internal/experimental", "takt/internal/tooling", "takt/internal/extensions")
 	}
 	forbidImports(t, root, "internal/appapi",
@@ -365,6 +379,17 @@ func TestArchitectureBoundaries(t *testing.T) {
 		"takt/internal/cli", "takt/internal/daemon", "takt/internal/runtime", "takt/internal/tooling/evaluation", "takt/internal/extensions/notification")
 	forbidImports(t, root, "internal/daemon",
 		"takt/internal/cli", "takt/internal/runtime", "takt/internal/tooling/evaluation", "takt/internal/extensions/notification")
+
+	schemaImports := packageImports(t, root, "internal/schemasubset")
+	if !schemaImports["github.com/santhosh-tekuri/jsonschema/v6"] {
+		t.Error("schemasubset must delegate JSON Schema execution to the upstream Draft 2020-12 validator")
+	}
+	schemaSource := productionSource(t, root, "internal/schemasubset")
+	for _, forbidden := range []string{"func validateValue(", "func uniquenessKey(", "func jsonNumberIsInteger("} {
+		if strings.Contains(schemaSource, forbidden) {
+			t.Errorf("schemasubset must own subset policy, not a second JSON Schema runtime; found %q", forbidden)
+		}
+	}
 }
 
 func TestShellSmokeBudget(t *testing.T) {

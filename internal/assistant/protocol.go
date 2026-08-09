@@ -129,7 +129,7 @@ func buildProtocolRequest(ctx context.Context, req Request, assistantSpec spec.A
 	}
 }
 
-func effectiveSession(mode, id string) (string, string) {
+func EffectiveSession(mode, id string) (string, string) {
 	if mode == "" {
 		mode = "fresh"
 	}
@@ -138,6 +138,8 @@ func effectiveSession(mode, id string) (string, string) {
 	}
 	return mode, id
 }
+
+func effectiveSession(mode, id string) (string, string) { return EffectiveSession(mode, id) }
 
 func encodeProtocolRequest(req ProtocolRequest) ([]byte, error) {
 	b, err := json.Marshal(req)

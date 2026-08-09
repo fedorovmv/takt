@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.56-alpha
+
+- Feature freeze завершён codebase-hygiene проходом: функции не удалялись и публичные Workflow/Run/SDK operation names не расширялись.
+- `takt-schema-subset/v1` сохраняет Takt-specific subset policy, а instance validation теперь делегирован `github.com/santhosh-tekuri/jsonschema/v6` Draft 2020-12; собственный production/test JSON Schema runtime удалён.
+- Fake assistant/code/domain/Pi/OpenCode binaries перенесены из product `cmd/` в `internal/testsupport/cmd`; E2E по-прежнему собирает их под историческими именами.
+- Pi/OpenCode implementations перенесены из stable `internal/assistant` в `internal/extensions/assistants`; provider-neutral factory получает их через bootstrap injection.
+- Capability preflight использует injected assistant resolver, а logical `coding-agent` configuration validation больше не зависит от provider implementation.
+- Декомпозированы стабильные hotspots process v1alpha2, script execution и governed child Run без изменения durable/wire semantics.
+- External worker/tool lifecycle вынесен из `internal/application` в `internal/externalworker`; общие durable lock/redaction/reload helpers централизованы в `internal/runcontrol`, application уменьшен примерно до 2,2 тыс. production-строк.
+- CLI help разделяет stable/extensions/experimental/tooling; MCP Dynamic Flow и Host Control явно маркируются Experimental, compatibility matrix отражает тот же статус.
+- Architecture gate закрепляет отсутствие fake product commands, provider-specific assistant code в core и собственного JSON Schema engine.
+- Добавлены ADR-089 и `docs/70-codebase-hygiene-stabilization-v0.1.56.md`; Takt skill обновлён до 0.38.0.
+
 ## v0.1.55-alpha
 
 - Feature freeze продолжен: существующий функционал физически разделён на stable core, `internal/extensions`, `internal/experimental` и `internal/tooling` без удаления CLI/MCP возможностей.

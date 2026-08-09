@@ -782,3 +782,19 @@ func TestPrintErrorJSONUsesStableEnvelope(t *testing.T) {
 		t.Fatalf("unexpected CLI error envelope: %s", raw)
 	}
 }
+
+func TestUsageSeparatesStableExperimentalAndToolingCommands(t *testing.T) {
+	err := usage()
+	if err == nil {
+		t.Fatal("usage must return the command help error")
+	}
+	text := err.Error()
+	for _, section := range []string{"stable:", "extensions:", "experimental:", "tooling:"} {
+		if !strings.Contains(text, section) {
+			t.Fatalf("usage is missing %q section: %s", section, text)
+		}
+	}
+	if !strings.Contains(text, "experimental: task plan execute steer host learn") {
+		t.Fatalf("dynamic flow must be visibly experimental: %s", text)
+	}
+}

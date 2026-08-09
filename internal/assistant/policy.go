@@ -56,7 +56,7 @@ func RequiredCapabilities(policy Policy) []string {
 	return out
 }
 
-func mergeCapabilities(base, extra []string) []string {
+func MergeCapabilities(base, extra []string) []string {
 	set := map[string]bool{}
 	for _, values := range [][]string{base, extra} {
 		for _, value := range values {
@@ -72,3 +72,5 @@ func mergeCapabilities(base, extra []string) []string {
 	sort.Strings(out)
 	return out
 }
+
+func mergeCapabilities(base, extra []string) []string { return MergeCapabilities(base, extra) }

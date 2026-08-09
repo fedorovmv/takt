@@ -14,8 +14,10 @@ import (
 	"takt/internal/experimental/hostcontrol"
 	experimentallearning "takt/internal/experimental/learning"
 	"takt/internal/extensions"
+	assistantproviders "takt/internal/extensions/assistants"
 	"takt/internal/extensions/blockcatalog"
 	"takt/internal/extensions/notification"
+	"takt/internal/externalworker"
 	"takt/internal/maintenance"
 	"takt/internal/profile"
 	"takt/internal/redact"
@@ -31,6 +33,7 @@ type App struct {
 	Workspace    string
 	ConfigPath   string
 	Core         *application.Services
+	External     *externalworker.Service
 	Extensions   *extensions.Services
 	Experimental *dynamicflow.Services
 	Learning     *experimentallearning.Service
@@ -75,7 +78,7 @@ func New(workspace, configPath string) (*App, error) {
 		deps := runtime.Dependencies{
 			Commands:   runtime.NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
 			Store:      store.FS{Workspace: def.ControlWorkspace},
-			Assistants: assistant.Factory{Config: def.Config},
+			Assistants: assistant.Factory{Config: def.Config, Providers: assistantproviders.Factories()},
 			Adapters:   domainadapter.Factory{Config: def.Config},
 			Redactor:   redact.NewFromConfig(def.Config),
 		}
@@ -88,6 +91,7 @@ func New(workspace, configPath string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	external := externalworker.New(core.Workspace, core.RunService, store.FS{Workspace: core.Workspace})
 
 	ext := &extensions.Services{
 		Adapters:      extensions.NewAdapter(core.ConfigPath, adapterFactory),
@@ -107,10 +111,10 @@ func New(workspace, configPath string) (*App, error) {
 		Evaluation:    tooling.NewEvaluation(evaluationEngine{}),
 		Compatibility: tooling.NewCompatibility(core.Workspace, core.ConfigPath),
 	}
-	maint := maintenance.New(dynamic.PlanService, core.ExternalService, func() (int, error) {
+	maint := maintenance.New(dynamic.PlanService, external, func() (int, error) {
 		items, err := ext.Notifications.Dispatch()
 		return len(items), err
 	})
 	api := appapi.New(appapi.Dependencies{Core: core, Dynamic: dynamic, Blocks: ext.Blocks, Notifications: ext.Notifications})
-	return &App{Workspace: core.Workspace, ConfigPath: core.ConfigPath, Core: core, Extensions: ext, Experimental: dynamic, Learning: learn, Tooling: tools, Maintenance: maint, API: api}, nil
+	return &App{Workspace: core.Workspace, ConfigPath: core.ConfigPath, Core: core, External: external, Extensions: ext, Experimental: dynamic, Learning: learn, Tooling: tools, Maintenance: maint, API: api}, nil
 }

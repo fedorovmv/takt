@@ -87,7 +87,6 @@ type Services struct {
 	AuthoringService *AuthoringService
 	WorktreeService  *WorktreeService
 	CommandService   *CommandService
-	ExternalService  *ExternalService
 }
 
 type RunService struct {
@@ -103,12 +102,6 @@ type RunService struct {
 }
 
 type CatalogService struct{ workspace string }
-
-type ExternalService struct {
-	workspace string
-	runs      *RunService
-	store     RunStore
-}
 
 func NewWithDependencies(workspace, configPath string, deps Dependencies) (*Services, error) {
 	absWorkspace, err := filepath.Abs(workspace)
@@ -145,11 +138,10 @@ func NewWithDependencies(workspace, configPath string, deps Dependencies) (*Serv
 	authoringService := &AuthoringService{workspace: absWorkspace, runnerFactory: deps.RunnerFactory}
 	worktrees := &WorktreeService{workspace: absWorkspace, store: deps.RunStore}
 	commands := &CommandService{workspace: absWorkspace, configPath: absConfig, runnerFactory: deps.RunnerFactory, stateStore: deps.RunStore}
-	external := &ExternalService{workspace: absWorkspace, runs: run, store: deps.RunStore}
 
 	return &Services{
 		Workspace: absWorkspace, ConfigPath: absConfig,
 		RunService: run, CatalogService: catalog, AuthoringService: authoringService,
-		WorktreeService: worktrees, CommandService: commands, ExternalService: external,
+		WorktreeService: worktrees, CommandService: commands,
 	}, nil
 }

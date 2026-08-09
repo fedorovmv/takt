@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"takt/internal/runcontrol"
 	"takt/internal/runtime"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -382,7 +383,7 @@ func (s *RunService) Pause(ctx context.Context, runID string) (*PauseResult, err
 			continue
 		}
 		if state.Status == store.RunWaiting {
-			release, lockErr := acquireRunLock(st, id)
+			release, lockErr := runcontrol.AcquireLock(st, id)
 			if lockErr != nil {
 				return nil, lockErr
 			}
@@ -393,7 +394,7 @@ func (s *RunService) Pause(ctx context.Context, runID string) (*PauseResult, err
 				state.Status = store.RunPaused
 				state.PausedAt = &now
 				state.PauseRequested = false
-				loadErr = commitRedacted(s.configPath, st, state, store.Event{Type: "run.paused", Data: map[string]any{"from": store.RunWaiting}})
+				loadErr = runcontrol.CommitRedacted(s.configPath, st, state, store.Event{Type: "run.paused", Data: map[string]any{"from": store.RunWaiting}})
 			}
 			_ = release()
 			if loadErr != nil {
@@ -438,7 +439,7 @@ func (s *RunService) ResumePaused(ctx context.Context, runID string, detached bo
 		}
 	}
 	if state.PausedFrom == store.RunWaiting && state.Waiting != nil && state.Waiting.Kind != "child_run" {
-		release, lockErr := acquireRunLock(st, state.ID)
+		release, lockErr := runcontrol.AcquireLock(st, state.ID)
 		if lockErr != nil {
 			return nil, lockErr
 		}
@@ -447,7 +448,7 @@ func (s *RunService) ResumePaused(ctx context.Context, runID string, detached bo
 			state.Status = store.RunWaiting
 			state.PausedAt = nil
 			state.PausedFrom = ""
-			err = commitRedacted(s.configPath, st, state, store.Event{Type: "run.resumed", Data: map[string]any{"to": store.RunWaiting}})
+			err = runcontrol.CommitRedacted(s.configPath, st, state, store.Event{Type: "run.resumed", Data: map[string]any{"to": store.RunWaiting}})
 		}
 		_ = release()
 		if err != nil {
@@ -456,7 +457,7 @@ func (s *RunService) ResumePaused(ctx context.Context, runID string, detached bo
 		if err := s.setOwningPlanStatus(ctx, runID, "waiting", ""); err != nil {
 			return nil, err
 		}
-		return durablePublicRun(st, state)
+		return runcontrol.DurablePublicRun(st, state)
 	}
 	if err := s.setOwningPlanStatus(ctx, runID, "running", ""); err != nil {
 		return nil, err
@@ -464,7 +465,7 @@ func (s *RunService) ResumePaused(ctx context.Context, runID string, detached bo
 	if detached {
 		detached := detachedContext(ctx)
 		go func() { _, _ = s.Resume(detached, runID) }()
-		return durablePublicRun(st, state)
+		return runcontrol.DurablePublicRun(st, state)
 	}
 	return s.Resume(ctx, runID)
 }
@@ -500,7 +501,7 @@ func (s *RunService) Abandon(ctx context.Context, runID, reason string) (any, er
 			return nil, err
 		}
 		if state.Status == store.RunWaiting || state.Status == store.RunPaused {
-			release, lockErr := acquireRunLock(st, id)
+			release, lockErr := runcontrol.AcquireLock(st, id)
 			if lockErr != nil {
 				return nil, lockErr
 			}
@@ -551,7 +552,7 @@ func runTreeIDs(st RunStore, root *store.RunState) ([]string, error) {
 
 func (s *RunService) Retry(ctx context.Context, request RetryRequest) (*store.RunState, error) {
 	st := s.store
-	release, err := acquireRunLock(st, request.RunID)
+	release, err := runcontrol.AcquireLock(st, request.RunID)
 	if err != nil {
 		return nil, err
 	}
@@ -628,7 +629,7 @@ func (s *RunService) Retry(ctx context.Context, request RetryRequest) (*store.Ru
 	if err := st.ClearAbandon(state.ID); err != nil {
 		return nil, err
 	}
-	if err := commitRedacted(s.configPath, st, state, store.Event{Type: "run.retry_requested", NodeID: target, Data: map[string]any{"reset_nodes": sortedKeys(reset)}}); err != nil {
+	if err := runcontrol.CommitRedacted(s.configPath, st, state, store.Event{Type: "run.retry_requested", NodeID: target, Data: map[string]any{"reset_nodes": sortedKeys(reset)}}); err != nil {
 		return nil, err
 	}
 	if err := s.setOwningPlanStatus(ctx, state.ID, "running", ""); err != nil {
@@ -646,13 +647,13 @@ func (s *RunService) Retry(ctx context.Context, request RetryRequest) (*store.Ru
 				_, _ = s.resumeParentChain(detached, st, result)
 			}
 		}()
-		return durablePublicRun(st, state)
+		return runcontrol.DurablePublicRun(st, state)
 	}
 	result, runErr := runner.Resume(ctx, state)
 	if runErr != nil && !errors.Is(runErr, runtime.ErrWaiting) && !errors.Is(runErr, runtime.ErrPaused) {
 		return nil, runErr
 	}
-	return durablePublicRun(st, result)
+	return runcontrol.DurablePublicRun(st, result)
 }
 
 func failedNodeID(state *store.RunState, nodes []spec.Node) string {
@@ -754,7 +755,7 @@ func (s *RunService) ForkRun(ctx context.Context, request RunForkRequest) (*Star
 	}
 	forked.ForkedFromRunID = state.ID
 	forked.ForkSourceFingerprint = runForkFingerprint(state)
-	if err := commitRedacted("", st, forked, store.Event{Type: "run.forked", Data: map[string]any{"source_run_id": state.ID, "source_fingerprint": forked.ForkSourceFingerprint}}); err != nil {
+	if err := runcontrol.CommitRedacted("", st, forked, store.Event{Type: "run.forked", Data: map[string]any{"source_run_id": state.ID, "source_fingerprint": forked.ForkSourceFingerprint}}); err != nil {
 		return nil, err
 	}
 	started.State = forked.PublicView()
@@ -832,7 +833,7 @@ func (s *RunService) recoverInterruptedRuns(ctx context.Context, detached bool) 
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].depth > candidates[j].depth })
 	for _, item := range candidates {
 		state := item.state
-		release, lockErr := acquireRunLock(st, state.ID)
+		release, lockErr := runcontrol.AcquireLock(st, state.ID)
 		if lockErr != nil {
 			result.Skipped[state.ID] = lockErr.Error()
 			continue
@@ -896,7 +897,7 @@ func (s *RunService) recoverRunState(st RunStore, state *store.RunState) error {
 	state.LastRecoveredAt = &now
 	state.ExecutorPID = os.Getpid()
 	state.HeartbeatAt = &now
-	return commitRedacted(s.configPath, st, state, store.Event{Type: "run.recovered", Data: map[string]any{"recovery_count": state.RecoveryCount, "reason": "executor_lost"}})
+	return runcontrol.CommitRedacted(s.configPath, st, state, store.Event{Type: "run.recovered", Data: map[string]any{"recovery_count": state.RecoveryCount, "reason": "executor_lost"}})
 }
 
 func (s *RunService) continueRecoveredRun(runID string) {

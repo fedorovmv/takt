@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"context"
 	"testing"
 
 	"takt/internal/spec"
@@ -27,13 +28,16 @@ func TestCodingAgentFallsBackToLegacyOpenCode(t *testing.T) {
 	factory := Factory{Config: &spec.Config{Assistants: map[string]spec.AssistantSpec{
 		"opencode": {Type: "opencode", Binary: "opencode"},
 		"pi":       {Type: "pi", Binary: "pi"},
-	}}}
+	}}, Providers: map[string]ProviderFactory{
+		"opencode": func(spec.AssistantSpec) Adapter { return defaultTestAdapter("opencode") },
+		"pi":       func(spec.AssistantSpec) Adapter { return defaultTestAdapter("pi") },
+	}}
 	adapter, err := factory.Resolve("coding-agent")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := adapter.(OpenCode); !ok {
-		t.Fatalf("adapter type = %T", adapter)
+	if got, ok := adapter.(defaultTestAdapter); !ok || got != "opencode" {
+		t.Fatalf("adapter = %T %v", adapter, adapter)
 	}
 }
 
@@ -46,3 +50,8 @@ func TestCodingAgentRejectsAmbiguousConfiguration(t *testing.T) {
 		t.Fatal("expected ambiguous coding-agent resolution to fail")
 	}
 }
+
+type defaultTestAdapter string
+
+func (a defaultTestAdapter) Run(context.Context, Request) (Result, error) { return Result{}, nil }
+func (a defaultTestAdapter) Capabilities() []string                       { return nil }

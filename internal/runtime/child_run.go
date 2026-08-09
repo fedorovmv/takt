@@ -33,149 +33,189 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 	if definition.FanOut != nil {
 		return r.runChildWorkflowFanOut(ctx, state, node, local, feedback, artifacts)
 	}
+	childPath, childWorkflow, err := r.loadChildWorkflow(definition)
+	if err != nil {
+		return execResult{}, err
+	}
+	nodeState := state.Nodes[node.ID]
+	childState, err := r.ensureChildRunLink(state, node.ID, nodeState, childWorkflow, childPath)
+	if err != nil {
+		return execResult{}, err
+	}
+	childControlWorkspace, err := r.resolveChildControlWorkspace(definition.Repository)
+	if err != nil {
+		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child repository", Err: err}
+	}
+	childRunner := r.childRunner(childWorkflow, childPath, childControlWorkspace)
+	childState, runErr := r.startOrResumeChild(ctx, state, node, nodeState, childState, childRunner, childWorkflow, childControlWorkspace, local, feedback, artifacts)
+	captureChildRunMetadata(nodeState, childState, childControlWorkspace)
+	return r.finishChildRun(state, node.ID, nodeState, childWorkflow, definition.OutputNode, childState, runErr)
+}
+
+func (r *Runner) loadChildWorkflow(definition *spec.WorkflowRunSpec) (string, *spec.Workflow, error) {
 	childPath := definition.Path
 	if !filepath.IsAbs(childPath) {
 		childPath = filepath.Join(filepath.Dir(r.workflowPath), childPath)
 	}
 	childPath, err := filepath.Abs(childPath)
 	if err != nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child workflow", Err: err}
+		return "", nil, &execution.Error{Kind: execution.KindInternal, Op: "resolve child workflow", Err: err}
 	}
 	childWorkflow, err := workflow.Load(childPath)
 	if err != nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "load child workflow", Err: err}
+		return "", nil, &execution.Error{Kind: execution.KindInternal, Op: "load child workflow", Err: err}
 	}
+	if err := validateChildOutput(childWorkflow, childPath, definition.OutputNode); err != nil {
+		return "", nil, err
+	}
+	return childPath, childWorkflow, nil
+}
 
-	if strings.TrimSpace(definition.OutputNode) != "" {
-		found := false
-		for _, childNode := range childWorkflow.Nodes {
-			if childNode.ID == definition.OutputNode && !childNode.Hidden && childNode.PublicParent == "" {
-				found = true
-				break
-			}
+func validateChildOutput(childWorkflow *spec.Workflow, childPath, outputNode string) error {
+	if strings.TrimSpace(outputNode) == "" {
+		if singleTerminalNode(childWorkflow.Nodes) == "" {
+			return &execution.Error{Kind: execution.KindInternal, Op: "resolve child output", Err: fmt.Errorf("child workflow %s has multiple terminal nodes; set output_node", childPath)}
 		}
-		if !found {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child output", Err: fmt.Errorf("output_node %q does not exist in %s", definition.OutputNode, childPath)}
-		}
-	} else if singleTerminalNode(childWorkflow.Nodes) == "" {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child output", Err: fmt.Errorf("child workflow %s has multiple terminal nodes; set output_node", childPath)}
+		return nil
 	}
+	for _, childNode := range childWorkflow.Nodes {
+		if childNode.ID == outputNode && !childNode.Hidden && childNode.PublicParent == "" {
+			return nil
+		}
+	}
+	return &execution.Error{Kind: execution.KindInternal, Op: "resolve child output", Err: fmt.Errorf("output_node %q does not exist in %s", outputNode, childPath)}
+}
 
-	nodeState := state.Nodes[node.ID]
-	childState, loadErr := loadCurrentChildRun(r.store, nodeState.ChildRunID)
-	if loadErr != nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "load child run", Err: loadErr}
-	}
-	if nodeState.ChildRunID == "" || (nodeState.Attempts > 1 && childState != nil && terminalRunStatus(childState.Status) && childState.Status != store.RunCompleted) {
-		previousID := nodeState.ChildRunID
-		childID, idErr := newID()
-		if idErr != nil {
-			return execResult{}, idErr
-		}
-		nodeState.ChildRunID = childID
-		nodeState.ChildRunIDs = appendUniqueString(nodeState.ChildRunIDs, childID)
-		state.ChildRunIDs = appendUniqueString(state.ChildRunIDs, childID)
-		eventType := "child_run.linked"
-		data := map[string]any{
-			"child_run_id":  childID,
-			"workflow":      childWorkflow.Metadata.Name,
-			"workflow_path": childPath,
-			"attempt":       nodeState.Attempts,
-		}
-		if previousID != "" {
-			eventType = "child_run.restarted"
-			data["previous_child_run_id"] = previousID
-		}
-		if err := r.commit(state, eventType, node.ID, data); err != nil {
-			return execResult{}, err
-		}
-		childState = nil
-	}
-
-	childControlWorkspace, err := r.resolveChildControlWorkspace(definition.Repository)
+func (r *Runner) ensureChildRunLink(state *store.RunState, nodeID string, nodeState *store.NodeState, childWorkflow *spec.Workflow, childPath string) (*store.RunState, error) {
+	childState, err := loadCurrentChildRun(r.store, nodeState.ChildRunID)
 	if err != nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child repository", Err: err}
+		return nil, &execution.Error{Kind: execution.KindInternal, Op: "load child run", Err: err}
 	}
-	childRunner := r.childRunner(childWorkflow, childPath, childControlWorkspace)
-	if childState == nil {
-		input, renderErr := renderTemplate(definition.Input, state, local, feedback, artifacts)
-		if renderErr != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render child workflow input", Err: renderErr}
-		}
-		input, renderErr = ValidateWorkflowInput(input, childWorkflow.Input)
-		if renderErr != nil {
-			return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "validate child workflow input", Err: renderErr}
-		}
-		options := StartOptions{RunID: nodeState.ChildRunID, ParentRunID: state.ID, ParentNodeID: node.ID}
-		childPolicy := r.inheritedPolicy
-		if definition.Policy != nil {
-			resolvedPolicy, policyErr := resolvePolicyFields(*definition.Policy, r.workflowPath)
-			if policyErr != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child policy", Err: policyErr}
-			}
-			childPolicy, policyErr = mergePolicies(childPolicy, resolvedPolicy)
-			if policyErr != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "merge child policy", Err: policyErr}
-			}
-		}
-		if len(assistant.RequiredCapabilities(childPolicy)) > 0 {
-			options.InheritedPolicy = &childPolicy
-		}
-		switch definition.Isolation {
-		case "":
-			// Use the child workflow's own worktree policy.
-		case "inherit":
-			value := false
-			options.Worktree = &value
-			childRunner.SetExecutionWorkspace(r.workspace)
-		case "none":
-			value := false
-			options.Worktree = &value
-			childRunner.SetExecutionWorkspace(childControlWorkspace)
-		case "worktree":
-			value := true
-			options.Worktree = &value
-		}
-		childState, err = childRunner.StartWithOptions(ctx, input, options)
-	} else {
+	needsNew := nodeState.ChildRunID == "" || (nodeState.Attempts > 1 && childState != nil && terminalRunStatus(childState.Status) && childState.Status != store.RunCompleted)
+	if !needsNew {
+		return childState, nil
+	}
+	previousID := nodeState.ChildRunID
+	childID, err := newID()
+	if err != nil {
+		return nil, err
+	}
+	nodeState.ChildRunID = childID
+	nodeState.ChildRunIDs = appendUniqueString(nodeState.ChildRunIDs, childID)
+	state.ChildRunIDs = appendUniqueString(state.ChildRunIDs, childID)
+	eventType := "child_run.linked"
+	data := map[string]any{"child_run_id": childID, "workflow": childWorkflow.Metadata.Name, "workflow_path": childPath, "attempt": nodeState.Attempts}
+	if previousID != "" {
+		eventType = "child_run.restarted"
+		data["previous_child_run_id"] = previousID
+	}
+	if err := r.commit(state, eventType, nodeID, data); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func (r *Runner) startOrResumeChild(ctx context.Context, state *store.RunState, node spec.Node, nodeState *store.NodeState, childState *store.RunState, childRunner *Runner, childWorkflow *spec.Workflow, childControlWorkspace string, local map[string]store.NodeState, feedback, artifacts string) (*store.RunState, error) {
+	if childState != nil {
 		childRunner.SetStartOptions(StartOptionsFromState(childState))
 		if childState.ExecutionWorkspace != "" {
 			childRunner.SetExecutionWorkspace(childState.ExecutionWorkspace)
 		}
-		childState, err = childRunner.Resume(ctx, childState)
+		return childRunner.Resume(ctx, childState)
 	}
+	input, err := renderTemplate(node.WorkflowRun.Input, state, local, feedback, artifacts)
+	if err != nil {
+		return nil, &execution.Error{Kind: execution.KindInternal, Op: "render child workflow input", Err: err}
+	}
+	input, err = ValidateWorkflowInput(input, childWorkflow.Input)
+	if err != nil {
+		return nil, &execution.Error{Kind: execution.KindProtocol, Op: "validate child workflow input", Err: err}
+	}
+	options, err := r.childStartOptions(node, nodeState.ChildRunID, state.ID)
+	if err != nil {
+		return nil, err
+	}
+	configureChildIsolation(childRunner, node.WorkflowRun.Isolation, childControlWorkspace, r.workspace, &options)
+	return childRunner.StartWithOptions(ctx, input, options)
+}
 
-	captureChildRunMetadata(nodeState, childState, childControlWorkspace)
-	if errors.Is(err, ErrPaused) || (childState != nil && childState.Status == store.RunPaused) {
-		return childExecResult(childWorkflow, childState, definition.OutputNode), ErrPaused
+func (r *Runner) childStartOptions(node spec.Node, childRunID, parentRunID string) (StartOptions, error) {
+	options := StartOptions{RunID: childRunID, ParentRunID: parentRunID, ParentNodeID: node.ID}
+	childPolicy := r.inheritedPolicy
+	if node.WorkflowRun.Policy != nil {
+		resolved, err := resolvePolicyFields(*node.WorkflowRun.Policy, r.workflowPath)
+		if err != nil {
+			return StartOptions{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child policy", Err: err}
+		}
+		childPolicy, err = mergePolicies(childPolicy, resolved)
+		if err != nil {
+			return StartOptions{}, &execution.Error{Kind: execution.KindInternal, Op: "merge child policy", Err: err}
+		}
 	}
-	if errors.Is(err, ErrWaiting) || childState.Status == store.RunWaiting {
+	if len(assistant.RequiredCapabilities(childPolicy)) > 0 {
+		options.InheritedPolicy = &childPolicy
+	}
+	return options, nil
+}
+
+func configureChildIsolation(childRunner *Runner, isolation, childControlWorkspace, parentWorkspace string, options *StartOptions) {
+	switch isolation {
+	case "":
+		// Use the child workflow's own worktree policy.
+	case "inherit":
+		value := false
+		options.Worktree = &value
+		childRunner.SetExecutionWorkspace(parentWorkspace)
+	case "none":
+		value := false
+		options.Worktree = &value
+		childRunner.SetExecutionWorkspace(childControlWorkspace)
+	case "worktree":
+		value := true
+		options.Worktree = &value
+	}
+}
+
+func (r *Runner) finishChildRun(state *store.RunState, nodeID string, nodeState *store.NodeState, childWorkflow *spec.Workflow, outputNode string, childState *store.RunState, runErr error) (execResult, error) {
+	result := childExecResult(childWorkflow, childState, outputNode)
+	if errors.Is(runErr, ErrPaused) || (childState != nil && childState.Status == store.RunPaused) {
+		return result, ErrPaused
+	}
+	if errors.Is(runErr, ErrWaiting) || (childState != nil && childState.Status == store.RunWaiting) {
+		if childState == nil {
+			return result, &execution.Error{Kind: execution.KindInternal, Op: "child run", Err: fmt.Errorf("waiting child state is missing")}
+		}
 		message := fmt.Sprintf("child run %s is waiting", childState.ID)
 		if childState.Waiting != nil && childState.Waiting.Message != "" {
 			message = childState.Waiting.Message
 		}
 		state.Status = store.RunWaiting
-		state.Waiting = &store.WaitingState{NodeID: node.ID, Message: message, Kind: "child_run", ChildRunID: childState.ID}
+		state.Waiting = &store.WaitingState{NodeID: nodeID, Message: message, Kind: "child_run", ChildRunID: childState.ID}
 		nodeState.Status = store.NodeWaiting
-		if commitErr := r.commit(state, "child_run.waiting", node.ID, map[string]any{"child_run_id": childState.ID, "message": message}); commitErr != nil {
-			return execResult{}, commitErr
+		if err := r.commit(state, "child_run.waiting", nodeID, map[string]any{"child_run_id": childState.ID, "message": message}); err != nil {
+			return execResult{}, err
 		}
 		return execResult{}, ErrWaiting
 	}
-	if err != nil {
+	if runErr != nil {
 		kind := execution.KindExit
 		if childState != nil && childState.Status == store.RunCancelled {
 			kind = execution.KindCancelled
 		}
-		return childExecResult(childWorkflow, childState, definition.OutputNode), &execution.Error{Kind: kind, ExitCode: 1, Op: "child run " + nodeState.ChildRunID, Err: err}
+		return result, &execution.Error{Kind: kind, ExitCode: 1, Op: "child run " + nodeState.ChildRunID, Err: runErr}
 	}
-	if childState.Status != store.RunCompleted {
-		return childExecResult(childWorkflow, childState, definition.OutputNode), &execution.Error{Kind: execution.KindInternal, Op: "child run", Err: fmt.Errorf("child run %s has non-terminal status %s", childState.ID, childState.Status)}
+	if childState == nil || childState.Status != store.RunCompleted {
+		status := ""
+		id := nodeState.ChildRunID
+		if childState != nil {
+			status, id = childState.Status, childState.ID
+		}
+		return result, &execution.Error{Kind: execution.KindInternal, Op: "child run", Err: fmt.Errorf("child run %s has non-terminal status %s", id, status)}
 	}
-	if commitErr := r.commit(state, "child_run.completed", node.ID, map[string]any{"child_run_id": childState.ID, "usage": childState.Usage}); commitErr != nil {
-		return execResult{}, commitErr
+	if err := r.commit(state, "child_run.completed", nodeID, map[string]any{"child_run_id": childState.ID, "usage": childState.Usage}); err != nil {
+		return execResult{}, err
 	}
-	return childExecResult(childWorkflow, childState, definition.OutputNode), nil
+	return result, nil
 }
 
 func (r *Runner) resolveChildControlWorkspace(repository string) (string, error) {

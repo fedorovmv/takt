@@ -41,9 +41,9 @@ for check in \
   "README.md|Скилл для настройки Takt" \
   "skills/takt/SKILL.md|name: takt" \
   "skills/takt/README.md|Takt authoring skill" \
-  "skills/takt/VERSION|0.37.0" \
-  "VERSION|0.1.55-alpha" \
-  "internal/version/version.go|0.1.55-alpha" \
+  "skills/takt/VERSION|0.38.0" \
+  "VERSION|0.1.56-alpha" \
+  "internal/version/version.go|0.1.56-alpha" \
   "skills/takt/SKILL.md|Узел определяет ровно одно действие" \
   "skills/takt/SKILL.md|takt validate" \
   "skills/takt/SKILL.md|Human-reviewed Learning Loop" \
@@ -141,6 +141,8 @@ for check in \
   "ARCHITECTURE_DECISIONS.md|ADR-086" \
   "ARCHITECTURE_DECISIONS.md|ADR-087" \
   "ARCHITECTURE_DECISIONS.md|ADR-088" \
+  "ARCHITECTURE_DECISIONS.md|ADR-089" \
+  "docs/70-codebase-hygiene-stabilization-v0.1.56.md|Codebase Hygiene & Stabilization" \
   "docs/69-core-stabilization-modularization-v0.1.55.md|Core Stabilization & Modularization" \
   "docs/68-architecture-hardening-v0.1.54.md|Architecture Hardening" \
   "docs/67-go-native-test-architecture-v0.1.53.md|Go-native Test Architecture" \

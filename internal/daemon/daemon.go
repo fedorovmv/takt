@@ -21,6 +21,7 @@ import (
 	"takt/internal/appapi"
 	"takt/internal/application"
 	"takt/internal/bootstrap"
+	"takt/internal/externalworker"
 	"takt/internal/maintenance"
 	"takt/internal/mcp"
 	"takt/internal/store"
@@ -90,7 +91,7 @@ type Options struct {
 
 type Server struct {
 	runs        *application.RunService
-	external    *application.ExternalService
+	external    *externalworker.Service
 	maintenance *maintenance.Service
 	api         *appapi.Registry
 	mcps        map[mcp.Surface]*mcp.Server
@@ -117,9 +118,9 @@ func New(options Options) (*Server, error) {
 	if options.ErrOut == nil {
 		options.ErrOut = os.Stderr
 	}
-	server := &Server{runs: core.RunService, external: core.ExternalService, maintenance: app.Maintenance, api: app.API, paths: paths, errOut: options.ErrOut, stop: make(chan struct{}), mcps: map[mcp.Surface]*mcp.Server{}}
+	server := &Server{runs: core.RunService, external: app.External, maintenance: app.Maintenance, api: app.API, paths: paths, errOut: options.ErrOut, stop: make(chan struct{}), mcps: map[mcp.Surface]*mcp.Server{}}
 	for _, surface := range []mcp.Surface{mcp.SurfaceAll, mcp.SurfaceAgent, mcp.SurfaceHost, mcp.SurfaceWorker, mcp.SurfaceOperator} {
-		server.mcps[surface] = mcp.NewWithDependencies(mcp.Dependencies{API: app.API, Plans: app.Experimental.PlanService, External: core.ExternalService, Maintenance: app.Maintenance}, nil, nil, options.ErrOut, surface)
+		server.mcps[surface] = mcp.NewWithDependencies(mcp.Dependencies{API: app.API, Plans: app.Experimental.PlanService, External: app.External, Maintenance: app.Maintenance}, nil, nil, options.ErrOut, surface)
 	}
 	server.metadata = Metadata{API: APIRevision, PID: os.Getpid(), Workspace: app.Workspace, Socket: paths.Socket, StartedAt: time.Now().UTC(), Version: version.Value}
 	return server, nil

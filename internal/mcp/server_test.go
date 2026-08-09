@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"takt/internal/experimental/dynamicflow"
 	"takt/internal/experimental/dynamicplan"
 	"takt/internal/extensions/notification"
+	"takt/internal/externalworker"
 	"takt/internal/profile"
 	"takt/internal/store"
 	"takt/internal/testsupport/appfixture"
@@ -24,7 +26,7 @@ import (
 func testDependencies(f *appfixture.Fixture) Dependencies {
 	return Dependencies{
 		API:   appapi.New(appapi.Dependencies{Core: f.Core, Dynamic: f.Dynamic, Blocks: f.Extensions.Blocks, Notifications: f.Extensions.Notifications}),
-		Plans: f.Dynamic.PlanService, External: f.Core.ExternalService, Maintenance: f.Maintenance,
+		Plans: f.Dynamic.PlanService, External: f.External, Maintenance: f.Maintenance,
 	}
 }
 
@@ -83,6 +85,9 @@ func TestAgentSurfaceExposesOnlyCompactTaskAPI(t *testing.T) {
 	for i, tool := range tools {
 		if tool.Name != want[i] {
 			t.Fatalf("agent tool[%d] = %s, want %s", i, tool.Name, want[i])
+		}
+		if !strings.HasPrefix(tool.Description, "Experimental: ") {
+			t.Fatalf("agent Dynamic Flow tool must disclose experimental stability: %#v", tool)
 		}
 	}
 	denied := server.callTool(context.Background(), callParams{Name: "takt.run.list", Arguments: map[string]any{}})
@@ -357,7 +362,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	tasks := pendingValue.(map[string]any)["tasks"].([]application.ExternalTask)
+	tasks := pendingValue.(map[string]any)["tasks"].([]externalworker.Task)
 	if len(tasks) != 1 || tasks[0].NodeID != "delegated" {
 		t.Fatalf("tasks = %#v", tasks)
 	}
@@ -370,7 +375,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	claimed := claimedValue.(*application.ExternalTask)
+	claimed := claimedValue.(*externalworker.Task)
 	if claimed.ClaimToken == "" {
 		t.Fatal("claim token is empty")
 	}
@@ -481,7 +486,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := firstValue.(*application.ExternalTask)
+	first := firstValue.(*externalworker.Task)
 	failedValue, err := server.executeTool(context.Background(), "takt.node.fail", map[string]any{"run_id": runID, "node_id": "delegated", "claim_token": first.ClaimToken, "exit_code": 7, "error_code": "exit", "error": "temporary provider failure"})
 	if err != nil {
 		t.Fatal(err)
@@ -494,7 +499,7 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := secondValue.(*application.ExternalTask)
+	second := secondValue.(*externalworker.Task)
 	if second.ClaimToken == first.ClaimToken || second.Attempt != 2 {
 		t.Fatalf("claim was not renewed: first=%#v second=%#v", first, second)
 	}
@@ -548,13 +553,13 @@ nodes:
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := firstValue.(*application.ExternalTask)
+	first := firstValue.(*externalworker.Task)
 	time.Sleep(10 * time.Millisecond)
 	secondValue, err := server.executeTool(context.Background(), "takt.node.claim", map[string]any{"run_id": runID, "node_id": "delegated", "worker_id": "worker-2", "lease_ms": 60000})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := secondValue.(*application.ExternalTask)
+	second := secondValue.(*externalworker.Task)
 	if second.ClaimToken == first.ClaimToken || second.ClaimedBy != "worker-2" {
 		t.Fatalf("lease was not reclaimed: first=%#v second=%#v", first, second)
 	}

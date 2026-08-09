@@ -1,6 +1,14 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.55-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.56-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+
+## Codebase hygiene — выполнено в v0.1.56
+
+- JSON Schema instance validation делегирован `jsonschema/v6`; `schemasubset` хранит только публичную subset policy.
+- Pi/OpenCode реализации отделены от stable assistant core и подключаются как extensions через bootstrap.
+- test fixture binaries вынесены из product `cmd/`.
+- process v1alpha2, script execution и governed child Run декомпозированы без изменения контрактов.
+- CLI/MCP/compatibility surface явно отличают experimental Dynamic Flow/Host Control от stable core.
 
 ## Модульная стабильность — реализовано в v0.1.55
 
@@ -10,7 +18,7 @@
 - Dynamic Flow, evidence routing, Host Control и Learning Loop находятся в `internal/experimental`;
 - Package Distribution, Block Catalog и Notifications — в `internal/extensions`;
 - evaluation и compatibility — в `internal/tooling`;
-- `internal/application` уменьшен примерно с 6,8 тыс. до 3,5 тыс. production-строк без удаления use cases;
+- `internal/application` уменьшен примерно с 6,8 тыс. до 2,2 тыс. production-строк без удаления use cases; внешний worker/tool lifecycle выделен в `internal/externalworker`, а общие durable lock/redaction helpers — в `internal/runcontrol`;
 - самописный YAML parser удалён; YAML syntax делегирован `go.yaml.in/yaml/v3`, Takt сохраняет только strict JSON-shaped contract adapter;
 - `make journeys` отдельно проверяет четыре стабильных пользовательских сценария через настоящий CLI.
 

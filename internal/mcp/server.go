@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"takt/internal/appapi"
-	"takt/internal/application"
 	"takt/internal/experimental/dynamicflow"
+	"takt/internal/externalworker"
 	"takt/internal/maintenance"
 	"takt/internal/version"
 )
@@ -28,7 +28,7 @@ const (
 type Server struct {
 	api         *appapi.Registry
 	plans       *dynamicflow.PlanService
-	external    *application.ExternalService
+	external    *externalworker.Service
 	maintenance *maintenance.Service
 	in          io.Reader
 	out         io.Writer
@@ -77,7 +77,7 @@ type callParams struct {
 type Dependencies struct {
 	API         *appapi.Registry
 	Plans       *dynamicflow.PlanService
-	External    *application.ExternalService
+	External    *externalworker.Service
 	Maintenance *maintenance.Service
 }
 
@@ -421,7 +421,7 @@ func allTools() []tool {
 	})
 	readOnly := map[string]any{"readOnlyHint": true, "destructiveHint": false}
 	mutating := map[string]any{"readOnlyHint": false}
-	return []tool{
+	result := []tool{
 		{Name: "takt.task.start", Title: "Start a managed Takt task", Description: "Route a natural-language task or a configured structured task source to a specialized workflow, the stable simple-reliable template, or bounded dynamic composition. Provide goal, or source + source_ref. By default returns a preview; go=true confirms and starts it.", InputSchema: object(map[string]any{"goal": stringProp("Natural-language task; mutually exclusive with source"), "source": stringProp("Configured structured task source"), "source_ref": stringProp("External reference for source"), "profile": stringProp("Installed profile, defaults to code"), "go": boolProp("Confirm the preview and start immediately")}), Annotations: mutating},
 		{Name: "takt.task.status", Title: "Get managed task status", Description: "Read a compact task view by plan_id or run_id, including whether user input is needed.", InputSchema: object(map[string]any{"reference": stringProp("Plan or Run ID")}, "reference"), Annotations: readOnly},
 		{Name: "takt.task.respond", Title: "Respond to a managed task", Description: "Approve, answer, steer, pause, resume, continue or retry a task without exposing the internal state machine.", InputSchema: object(map[string]any{"reference": stringProp("Plan or Run ID"), "action": map[string]any{"type": "string", "enum": []string{"go", "continue", "answer", "steer", "pause", "resume", "retry"}}, "message": stringProp("Answer or steering text when required"), "node_id": stringProp("Optional waiting or failed node")}, "reference", "action"), Annotations: mutating},
@@ -536,6 +536,19 @@ func allTools() []tool {
 		{Name: "takt.node.complete", Title: "Complete external Takt node", Description: "Submit a successful external result and continue the normal Takt retry, output, hook, artifact and parent/child lifecycle.", InputSchema: externalSubmissionSchema(object, stringProp, integerProp), Annotations: mutating},
 		{Name: "takt.node.fail", Title: "Fail external Takt node", Description: "Submit an external failure and continue normal retry and failure handling.", InputSchema: externalSubmissionSchema(object, stringProp, integerProp), Annotations: mutating},
 	}
+	for i := range result {
+		if experimentalTool(result[i].Name) {
+			result[i].Description = "Experimental: " + result[i].Description
+		}
+	}
+	return result
+}
+
+func experimentalTool(name string) bool {
+	return strings.HasPrefix(name, "takt.task.") ||
+		strings.HasPrefix(name, "takt.host.") ||
+		name == "takt.plan" || strings.HasPrefix(name, "takt.plan.") ||
+		name == "takt.execute" || name == "takt.run.steer"
 }
 
 func tools(surface Surface) []tool {

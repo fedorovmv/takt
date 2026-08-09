@@ -19,11 +19,7 @@ import (
 	agentadaptersdk "takt/sdk/agentadapter"
 )
 
-var (
-	fakeAssistantBinary string
-	fakePiBinary        string
-	fakeOpenCodeBinary  string
-)
+var fakeAssistantBinary string
 
 func TestMain(m *testing.M) {
 	root, err := moduleRoot()
@@ -38,28 +34,10 @@ func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
 		fakeAssistantBinary += ".exe"
 	}
-	cmd := exec.Command("go", "build", "-o", fakeAssistantBinary, "./cmd/takt-fake-assistant")
+	cmd := exec.Command("go", "build", "-o", fakeAssistantBinary, "./internal/testsupport/cmd/takt-fake-assistant")
 	cmd.Dir = root
 	if output, err := cmd.CombinedOutput(); err != nil {
 		panic("build fake assistant: " + err.Error() + ": " + string(output))
-	}
-	fakePiBinary = filepath.Join(dir, "takt-fake-pi")
-	if runtime.GOOS == "windows" {
-		fakePiBinary += ".exe"
-	}
-	cmd = exec.Command("go", "build", "-o", fakePiBinary, "./cmd/takt-fake-pi")
-	cmd.Dir = root
-	if output, err := cmd.CombinedOutput(); err != nil {
-		panic("build fake Pi: " + err.Error() + ": " + string(output))
-	}
-	fakeOpenCodeBinary = filepath.Join(dir, "takt-fake-opencode")
-	if runtime.GOOS == "windows" {
-		fakeOpenCodeBinary += ".exe"
-	}
-	cmd = exec.Command("go", "build", "-o", fakeOpenCodeBinary, "./cmd/takt-fake-opencode")
-	cmd.Dir = root
-	if output, err := cmd.CombinedOutput(); err != nil {
-		panic("build fake OpenCode: " + err.Error() + ": " + string(output))
 	}
 	code := m.Run()
 	_ = os.RemoveAll(dir)

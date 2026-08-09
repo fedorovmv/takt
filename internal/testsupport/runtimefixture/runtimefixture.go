@@ -4,6 +4,7 @@ import (
 	"takt/internal/assistant"
 	"takt/internal/command"
 	"takt/internal/domainadapter"
+	assistantproviders "takt/internal/extensions/assistants"
 	"takt/internal/redact"
 	"takt/internal/runtime"
 	"takt/internal/spec"
@@ -18,7 +19,7 @@ func Dependencies(def runtime.Definition) runtime.Dependencies {
 	return runtime.Dependencies{
 		Commands:   runtime.NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
 		Store:      store.FS{Workspace: def.ControlWorkspace},
-		Assistants: assistant.Factory{Config: def.Config},
+		Assistants: assistant.Factory{Config: def.Config, Providers: assistantproviders.Factories()},
 		Adapters:   domainadapter.Factory{Config: def.Config},
 		Redactor:   redact.NewFromConfig(def.Config),
 	}

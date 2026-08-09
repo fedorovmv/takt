@@ -46,7 +46,7 @@ func mcpCmd(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	deps := mcp.Dependencies{API: app.API, Plans: app.Experimental.PlanService, External: app.Core.ExternalService, Maintenance: app.Maintenance}
+	deps := mcp.Dependencies{API: app.API, Plans: app.Experimental.PlanService, External: app.External, Maintenance: app.Maintenance}
 	return mcp.NewWithDependencies(deps, os.Stdin, os.Stdout, os.Stderr, surface).ServeStdio(ctx)
 }
 

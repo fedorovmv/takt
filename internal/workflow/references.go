@@ -112,8 +112,8 @@ func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg 
 }
 
 func assistantConfigured(cfg *spec.Config, name string) bool {
-	_, err := (assistant.Factory{Config: cfg}).Resolve(name)
-	return err == nil
+	_, _, ok := assistant.ResolveConfigured(name, cfg)
+	return ok
 }
 
 // CommandDirsForDefinition returns command directories beside a workflow and

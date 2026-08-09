@@ -105,7 +105,7 @@ func TestStructuredOutputFailureIsProtocolError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected structured output failure")
 	}
-	if state.Nodes["route"].ErrorCode != "protocol" || !strings.Contains(state.Nodes["route"].Error, "not in enum") {
+	if state.Nodes["route"].ErrorCode != "protocol" || !strings.Contains(state.Nodes["route"].Error, "JSON Schema validation failed") {
 		t.Fatalf("unexpected node state: %+v", state.Nodes["route"])
 	}
 }
@@ -175,7 +175,7 @@ func TestStructuredOutputRetryPolicyPassesValidationFeedback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prompts) != 2 || !strings.Contains(prompts[1], "not in enum") {
+	if len(prompts) != 2 || !strings.Contains(prompts[1], "JSON Schema validation failed") {
 		t.Fatalf("validation feedback was not passed to retry: %#v", prompts)
 	}
 	node := state.Nodes["route"]
@@ -186,10 +186,10 @@ func TestStructuredOutputRetryPolicyPassesValidationFeedback(t *testing.T) {
 
 func TestOutputFormatArrayCardinalityAndUniqueness(t *testing.T) {
 	format := &spec.OutputFormat{Type: "array", MinItems: 1, UniqueItems: true, Items: &spec.OutputFormat{Type: "string"}}
-	if _, err := validateAndNormalizeOutput(`[]`, format); err == nil || !strings.Contains(err.Error(), "at least 1") {
+	if _, err := validateAndNormalizeOutput(`[]`, format); err == nil || !strings.Contains(err.Error(), "JSON Schema validation failed") {
 		t.Fatalf("expected minItems error, got %v", err)
 	}
-	if _, err := validateAndNormalizeOutput(`["code","code"]`, format); err == nil || !strings.Contains(err.Error(), "duplicates") {
+	if _, err := validateAndNormalizeOutput(`["code","code"]`, format); err == nil || !strings.Contains(err.Error(), "JSON Schema validation failed") {
 		t.Fatalf("expected uniqueItems error, got %v", err)
 	}
 	if got, err := validateAndNormalizeOutput(`["code","security"]`, format); err != nil || got != `["code","security"]` {

@@ -8,6 +8,7 @@ import (
 
 	"takt/internal/assistant"
 	"takt/internal/domainadapter"
+	assistantproviders "takt/internal/extensions/assistants"
 	"takt/internal/schemasubset"
 	"takt/internal/spec"
 	"takt/internal/version"
@@ -99,8 +100,8 @@ func CurrentMatrix() Matrix {
 			{Transport: "process", Protocol: tasksource.ProtocolV1Alpha1, Support: "supported-alpha", Verification: "public-sdk+github-issue-reference-e2e", Notes: []string{"Task source resolution happens before Router/Dynamic Takt and is distinct from domain operations inside workflows."}},
 		},
 		MCPSurfaces: []MCPSurfacePolicy{
-			{Surface: "agent", Support: "stable-candidate", Notes: "Five public takt.task.* operations remain the compact coding-agent surface."},
-			{Surface: "host", Support: "supported-alpha", Notes: "Host-control integration surface; subject to host conformance."},
+			{Surface: "agent", Support: "experimental", Notes: "Five public takt.task.* operations remain available as the compact Dynamic Flow coding-agent surface; they do not define stable core compatibility."},
+			{Surface: "host", Support: "experimental", Notes: "Host-control integration surface; subject to live host conformance and allowed to evolve independently of stable core."},
 			{Surface: "worker", Support: "supported-alpha", Notes: "External executor/tool lifecycle surface."},
 			{Surface: "operator", Support: "supported-alpha", Notes: "Advanced local operations; not the default coding-agent surface."},
 		},
@@ -180,7 +181,7 @@ func Check(ctx context.Context, cfg *spec.Config, options CheckOptions) CheckRep
 			check.Support = policy.Support
 			check.Capabilities = append([]string(nil), policy.Capabilities...)
 		}
-		resolved, err := (assistant.Factory{Config: cfg}).Resolve(name)
+		resolved, err := (assistant.Factory{Config: cfg, Providers: assistantproviders.Factories()}).Resolve(name)
 		if err != nil {
 			check.Problems = append(check.Problems, err.Error())
 		} else {
@@ -194,7 +195,7 @@ func Check(ctx context.Context, cfg *spec.Config, options CheckOptions) CheckRep
 			check.Warnings = append(check.Warnings, "configured component uses a deprecated compatibility contract")
 		}
 		if options.Live && (value.Type == "pi" || value.Type == "opencode") {
-			versionText, probeErr := assistant.ProbeConfiguredVersion(ctx, value, options.Workspace)
+			versionText, probeErr := assistantproviders.ProbeVersion(ctx, value, options.Workspace)
 			if probeErr != nil {
 				check.Problems = append(check.Problems, "version probe: "+probeErr.Error())
 			} else {

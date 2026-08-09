@@ -9,7 +9,7 @@ import (
 
 type PlanAdvancer interface{ AdvanceDynamicPlans(context.Context) error }
 type ExternalExpirer interface {
-	ExpireIdleExternal(context.Context, time.Time) ([]string, error)
+	ExpireIdle(context.Context, time.Time) ([]string, error)
 }
 
 type Result struct {
@@ -35,7 +35,7 @@ func (s *Service) Tick(ctx context.Context, now time.Time) (*Result, error) {
 	if err := s.plans.AdvanceDynamicPlans(ctx); err != nil {
 		failures = append(failures, "advance plans: "+err.Error())
 	}
-	expired, err := s.external.ExpireIdleExternal(ctx, now.UTC())
+	expired, err := s.external.ExpireIdle(ctx, now.UTC())
 	if err != nil {
 		failures = append(failures, "expire external: "+err.Error())
 	}
