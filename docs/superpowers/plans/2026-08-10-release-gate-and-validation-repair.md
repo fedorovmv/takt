@@ -28,13 +28,13 @@
 - Consumes: the existing Go 1.23 module declaration and pinned direct dependencies.
 - Produces: a module graph that `go vet` and `go test` can load without requesting edits.
 
-- [ ] **Step 1: Confirm the clean-checkout failure**
+- [x] **Step 1: Confirm the clean-checkout failure**
 
 Run: `go vet ./...`
 
 Expected: FAIL with the missing `gopkg.in/check.v1` checksum diagnostic.
 
-- [ ] **Step 2: Let the Go toolchain normalize the graph**
+- [x] **Step 2: Let the Go toolchain normalize the graph**
 
 Run: `go mod tidy`
 
@@ -46,13 +46,13 @@ require golang.org/x/text v0.14.0 // indirect
 
 and `gopkg.in/check.v1` module/content checksums in `go.sum`.
 
-- [ ] **Step 3: Verify module loading**
+- [x] **Step 3: Verify module loading**
 
 Run: `go vet ./...`
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit the module repair**
+- [x] **Step 4: Commit the module repair**
 
 ```bash
 git add go.mod go.sum
@@ -71,7 +71,7 @@ git commit -m "fix: restore Go module graph"
 - Consumes: `yamlcodec.Unmarshal(data []byte, out any) error`.
 - Produces: the same function signature with exactly-one-document enforcement.
 
-- [ ] **Step 1: Add failing regressions and align folded YAML semantics**
+- [x] **Step 1: Add failing regressions and align folded YAML semantics**
 
 Add to `internal/yamlcodec/yamlcodec_test.go`:
 
@@ -111,13 +111,13 @@ Change the existing folded expectation to:
 wantFolded := "first second\nthird\n"
 ```
 
-- [ ] **Step 2: Run the focused tests red**
+- [x] **Step 2: Run the focused tests red**
 
 Run: `go test ./internal/yamlcodec -run 'TestRejects(AdditionalDocuments|InvalidTrailingJSON)' -count=1`
 
 Expected: FAIL because both decoders currently ignore trailing input after the first value.
 
-- [ ] **Step 3: Enforce one decoded value**
+- [x] **Step 3: Enforce one decoded value**
 
 Add `io` to `internal/yamlcodec/yamlcodec.go`. After the first JSON decode, add:
 
@@ -147,13 +147,13 @@ if err := dec.Decode(&extra); err != io.EOF {
 }
 ```
 
-- [ ] **Step 4: Run the package tests green**
+- [x] **Step 4: Run the package tests green**
 
 Run: `go test ./internal/yamlcodec -count=1`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the strict document boundary**
+- [x] **Step 5: Commit the strict document boundary**
 
 ```bash
 git add internal/yamlcodec/yamlcodec.go internal/yamlcodec/yamlcodec_test.go
@@ -172,7 +172,7 @@ git commit -m "fix: reject trailing workflow documents"
 - Consumes: `whenexpr.Validate(expr string) error` and the existing literal syntax.
 - Produces: early validation errors for unmatched quote delimiters without new operators or escape rules.
 
-- [ ] **Step 1: Add malformed literals to the invalid contract table**
+- [x] **Step 1: Add malformed literals to the invalid contract table**
 
 Append to the existing `invalid` slice in `TestConstitutionAllowsOnlySmallGateLanguage`:
 
@@ -182,13 +182,13 @@ Append to the existing `invalid` slice in `TestConstitutionAllowsOnlySmallGateLa
 `inputs.input == "mismatched'`,
 ```
 
-- [ ] **Step 2: Run the focused test red**
+- [x] **Step 2: Run the focused test red**
 
 Run: `go test ./internal/whenexpr -run '^TestConstitutionAllowsOnlySmallGateLanguage$' -count=1`
 
 Expected: FAIL because the malformed expressions are currently accepted.
 
-- [ ] **Step 3: Require matching outer quote delimiters**
+- [x] **Step 3: Require matching outer quote delimiters**
 
 Replace the first branch of `literal` with:
 
@@ -203,13 +203,13 @@ if strings.ContainsAny(value, `"'`) {
 
 Keep the existing whitespace and parentheses checks unchanged.
 
-- [ ] **Step 4: Run the package tests green**
+- [x] **Step 4: Run the package tests green**
 
 Run: `go test ./internal/whenexpr ./internal/workflow -count=1`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the `when` validation repair**
+- [x] **Step 5: Commit the `when` validation repair**
 
 ```bash
 git add internal/whenexpr/whenexpr.go internal/whenexpr/whenexpr_test.go
@@ -227,13 +227,13 @@ git commit -m "fix: reject malformed when literals"
 - Consumes: `scripts/test-host-integrations-typescript.sh` and its existing `TAKT_REQUIRE_TYPESCRIPT`/`TSC` inputs.
 - Produces: a CI release gate that cannot silently skip host-integration compilation.
 
-- [ ] **Step 1: Verify the existing fail-closed script behavior**
+- [x] **Step 1: Verify the existing fail-closed script behavior**
 
 Run: `TAKT_REQUIRE_TYPESCRIPT=1 TSC=/path/that/does/not/exist ./scripts/test-host-integrations-typescript.sh`
 
 Expected: FAIL because a required compiler cannot be executed. The GitHub Actions YAML is configuration; its final execution is the authoritative wiring test, so no source-grep regression is added.
 
-- [ ] **Step 2: Install and require the pinned compiler in GitHub Actions**
+- [x] **Step 2: Install and require the pinned compiler in GitHub Actions**
 
 Add before the release-gate step:
 
@@ -252,7 +252,7 @@ Add to the release-gate step:
           TAKT_REQUIRE_TYPESCRIPT: "1"
 ```
 
-- [ ] **Step 3: Exercise the required smoke with an isolated pinned compiler**
+- [x] **Step 3: Exercise the required smoke with an isolated pinned compiler**
 
 Run:
 
@@ -264,7 +264,7 @@ TAKT_REQUIRE_TYPESCRIPT=1 TSC="$audit_ts/node_modules/.bin/tsc" ./scripts/test-h
 
 Expected: `coding-agent host integrations TypeScript: PASS`.
 
-- [ ] **Step 4: Commit the CI enforcement and corrected plan**
+- [x] **Step 4: Commit the CI enforcement and corrected plan**
 
 ```bash
 git add .github/workflows/ci.yml docs/superpowers/plans/2026-08-10-release-gate-and-validation-repair.md
@@ -287,7 +287,7 @@ git commit -m "ci: require host TypeScript smoke"
 - Consumes: the completed code/CI changes and their verification output.
 - Produces: accurate release metadata and a manifest covering the final tracked tree.
 
-- [ ] **Step 1: Update release documentation**
+- [x] **Step 1: Update release documentation**
 
 Add concise `v0.1.57-alpha` bullets stating:
 
@@ -298,7 +298,7 @@ Add concise `v0.1.57-alpha` bullets stating:
 
 Record the final commands and exact outcomes in a dated addendum at the top of `TEST_RESULTS.md`. Do not rewrite historical release evidence.
 
-- [ ] **Step 2: Run formatting and focused checks**
+- [x] **Step 2: Run formatting and focused checks**
 
 Run:
 
@@ -310,7 +310,7 @@ go test ./internal/yamlcodec ./internal/whenexpr ./internal/workflow ./internal/
 
 Expected: PASS.
 
-- [ ] **Step 3: Run full correctness and race gates**
+- [x] **Step 3: Run full correctness and race gates**
 
 Run:
 
@@ -321,19 +321,19 @@ go test -race ./... -count=1
 
 Expected: PASS.
 
-- [ ] **Step 4: Run docs, build, journeys, and external verification**
+- [x] **Step 4: Run docs, build, journeys, and external verification**
 
 Run:
 
 ```bash
 ./scripts/check-docs.sh
-go build ./cmd/takt
+go build -o bin/takt ./cmd/takt
 go test ./tests/e2e -run '^TestUserJourney' -count=1
 ```
 
 Expected: PASS.
 
-- [ ] **Step 5: Regenerate the release manifest mechanically**
+- [x] **Step 5: Regenerate the release manifest mechanically**
 
 Regenerate `MANIFEST.sha256` from every file except `.git/**`, `bin/**`, and the manifest itself, sorted by repository-relative path, using SHA-256. Then run:
 
@@ -343,7 +343,7 @@ Regenerate `MANIFEST.sha256` from every file except `.git/**`, `bin/**`, and the
 
 Expected: PASS with the new design and plan files included.
 
-- [ ] **Step 6: Run the aggregate release gates**
+- [x] **Step 6: Run the aggregate release gates**
 
 Run:
 
@@ -354,14 +354,14 @@ make check
 
 Expected: PASS. The local TypeScript step may print `SKIP`; the separate required smoke from Task 4 must already have printed `PASS`.
 
-- [ ] **Step 7: Commit release metadata and manifest**
+- [x] **Step 7: Commit release metadata and manifest**
 
 ```bash
 git add CHANGELOG.md docs/05-implementation-status.md TEST_RESULTS.md MANIFEST.sha256 docs/superpowers
 git commit -m "docs: record release gate repair"
 ```
 
-- [ ] **Step 8: Confirm the final tree**
+- [x] **Step 8: Confirm the final tree**
 
 Run: `git status --short`
 

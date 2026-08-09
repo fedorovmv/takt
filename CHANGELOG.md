@@ -2,6 +2,8 @@
 
 ## v0.1.57-alpha
 
+- Post-audit repair restored the clean-checkout Go module graph, single-document YAML/JSON authoring, and malformed quoted `when` rejection.
+- GitHub Actions now installs pinned TypeScript 5.7.2 and requires host-integration compilation; local Go-only checks may still skip it when the compiler is absent.
 - Feature freeze сохранён: новых Workflow/Run/CLI/MCP возможностей не добавлено; релиз фиксирует три architecture contracts после сравнения с идеологическим родителем Archon.
 - Принята конституция языка workflow: **YAML координирует. Код вычисляет. Агент принимает решения.** `when` централизован в `internal/whenexpr`, валидируется до Run и остаётся намеренно ограничен `==`, `!=`, `&&`, `||` без incremental expression creep.
 - Bundled assistant integrations объявляют `ProviderRegistration`; immutable provider registry собирается единственным production composition root в `internal/bootstrap`, без global mutable registry или `init()` registration.

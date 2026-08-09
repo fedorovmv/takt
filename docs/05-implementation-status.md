@@ -2,6 +2,12 @@
 
 Статус после `v0.1.57-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
+## Post-audit repair
+
+- clean-checkout module graph восстановлен через `go mod tidy`;
+- YAML/JSON authoring принимает ровно один документ, а malformed quoted `when` отклоняется до Run;
+- GitHub Actions устанавливает TypeScript 5.7.2 и требует host-integration compiler smoke; локальный Go-only gate сохраняет явный `SKIP`, если compiler не установлен.
+
 ## Architecture contracts — выполнено в v0.1.57
 
 - конституция языка workflow закрепляет границу «YAML координирует; код вычисляет; агент принимает решения» и запрет incremental expression creep;

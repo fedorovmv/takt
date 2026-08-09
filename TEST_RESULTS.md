@@ -1,5 +1,18 @@
 # Takt v0.1.57-alpha — TEST RESULTS
 
+## Post-audit repair — 2026-08-10
+
+PASS на ветке `fix/release-gate-validation`:
+
+- `go mod tidy` восстановил обязательные indirect module/checksum records, после чего `go vet ./...` завершился успешно;
+- новые `yamlcodec` regressions сначала воспроизвели принятие второго JSON/YAML document и invalid trailing JSON, затем прошли после single-document fix;
+- новые `whenexpr` regressions сначала воспроизвели принятие unterminated/mismatched quoted literals, затем прошли после delimiter validation;
+- `go test ./... -count=1` прошёл для всех пакетов и полного `tests/e2e`;
+- `go test -race ./... -count=1` прошёл непрерывным aggregate запуском;
+- required TypeScript smoke прошёл с изолированно установленным `typescript@5.7.2`; CI устанавливает ту же pinned версию и выставляет `TAKT_REQUIRE_TYPESCRIPT=1`;
+- `make check` прошёл с обязательным TypeScript smoke, documentation и manifest gates;
+- `./scripts/verify.sh` прошёл полностью и завершился `verification: PASS`.
+
 Release theme: **Architecture Contracts**. Product capabilities and the external `takt/v1alpha1` Workflow/Config API were intentionally not expanded.
 
 ## Architecture contracts
