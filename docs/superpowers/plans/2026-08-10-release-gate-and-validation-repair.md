@@ -221,36 +221,19 @@ git commit -m "fix: reject malformed when literals"
 ### Task 4: Require pinned TypeScript compilation in CI
 
 **Files:**
-- Modify: `internal/architecture/architecture_test.go`
 - Modify: `.github/workflows/ci.yml`
 
 **Interfaces:**
 - Consumes: `scripts/test-host-integrations-typescript.sh` and its existing `TAKT_REQUIRE_TYPESCRIPT`/`TSC` inputs.
 - Produces: a CI release gate that cannot silently skip host-integration compilation.
 
-- [ ] **Step 1: Add a failing architecture contract**
+- [ ] **Step 1: Verify the existing fail-closed script behavior**
 
-At the end of `TestShellSmokeBudget`, read `.github/workflows/ci.yml` and require:
+Run: `TAKT_REQUIRE_TYPESCRIPT=1 TSC=/path/that/does/not/exist ./scripts/test-host-integrations-typescript.sh`
 
-```go
-ci, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
-if err != nil {
-	t.Fatal(err)
-}
-for _, required := range []string{"actions/setup-node@v4", "npm install --global typescript@5.7.2", `TAKT_REQUIRE_TYPESCRIPT: "1"`} {
-	if !strings.Contains(string(ci), required) {
-		t.Errorf("CI TypeScript gate is missing %q", required)
-	}
-}
-```
+Expected: FAIL because a required compiler cannot be executed. The GitHub Actions YAML is configuration; its final execution is the authoritative wiring test, so no source-grep regression is added.
 
-- [ ] **Step 2: Run the architecture test red**
-
-Run: `go test ./internal/architecture -run '^TestShellSmokeBudget$' -count=1`
-
-Expected: FAIL for all three missing CI requirements.
-
-- [ ] **Step 3: Install and require the pinned compiler in GitHub Actions**
+- [ ] **Step 2: Install and require the pinned compiler in GitHub Actions**
 
 Add before the release-gate step:
 
@@ -269,13 +252,7 @@ Add to the release-gate step:
           TAKT_REQUIRE_TYPESCRIPT: "1"
 ```
 
-- [ ] **Step 4: Run the architecture contract green**
-
-Run: `go test ./internal/architecture -run '^TestShellSmokeBudget$' -count=1`
-
-Expected: PASS.
-
-- [ ] **Step 5: Exercise the required smoke with an isolated pinned compiler**
+- [ ] **Step 3: Exercise the required smoke with an isolated pinned compiler**
 
 Run:
 
@@ -287,10 +264,10 @@ TAKT_REQUIRE_TYPESCRIPT=1 TSC="$audit_ts/node_modules/.bin/tsc" ./scripts/test-h
 
 Expected: `coding-agent host integrations TypeScript: PASS`.
 
-- [ ] **Step 6: Commit the CI enforcement**
+- [ ] **Step 4: Commit the CI enforcement and corrected plan**
 
 ```bash
-git add .github/workflows/ci.yml internal/architecture/architecture_test.go
+git add .github/workflows/ci.yml docs/superpowers/plans/2026-08-10-release-gate-and-validation-repair.md
 git commit -m "ci: require host TypeScript smoke"
 ```
 
