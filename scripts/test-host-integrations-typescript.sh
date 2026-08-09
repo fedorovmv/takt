@@ -26,11 +26,13 @@ cat > "$TMP/tsconfig.json" <<EOF2
     "moduleResolution": "NodeNext",
     "strict": true,
     "skipLibCheck": false,
-    "noEmit": true
+    "rootDir": "$ROOT/integrations/coding-agent-host-control",
+    "outDir": "$TMP/out"
   },
   "files": [
     "$ROOT/integrations/coding-agent-host-control/contracts/pi-0.73.1.d.ts",
     "$ROOT/integrations/coding-agent-host-control/contracts/opencode-1.18.14.d.ts",
+    "$ROOT/integrations/coding-agent-host-control/contracts/opencode-blocking-contract.mts",
     "$ROOT/integrations/coding-agent-host-control/contracts/opencode-entrypoint-contract.mts",
     "$ROOT/integrations/coding-agent-host-control/pi/index.ts",
     "$ROOT/integrations/coding-agent-host-control/opencode/index.ts"
@@ -38,4 +40,36 @@ cat > "$TMP/tsconfig.json" <<EOF2
 }
 EOF2
 "$TSC" -p "$TMP/tsconfig.json"
+cat > "$TMP/takt" <<'EOF2'
+#!/bin/sh
+case "$*" in
+  *"daemon start"*)
+    exit 0
+    ;;
+  *"host begin"*"-- goal --workspace"*)
+    printf '%s\n' '{"ok":false,"error":{"message":"common flags leaked into goal"}}'
+    exit 1
+    ;;
+  *"host begin"*)
+    printf '%s\n' '{"ok":true,"result":{"session":{"id":"host","status":"preview","plan_id":"plan"},"plan":{"preview":"preview marker"}}}'
+    exit 0
+    ;;
+  *"--host-session tool-contract"*)
+    printf '%s\n' '{"ok":true,"result":{"session":{"id":"host","status":"preview","plan_id":"plan"},"plan":{}}}'
+    exit 0
+    ;;
+  *"host guard-tool"*)
+    printf '%s\n' '{"ok":true,"result":{"allowed":false,"reason":"policy denied"}}'
+    exit 0
+    ;;
+esac
+printf '%s\n' '{"ok":false,"error":{"message":"not found"}}'
+exit 1
+EOF2
+chmod +x "$TMP/takt"
+mkdir "$TMP/workspace"
+(
+  cd "$TMP/workspace"
+  PATH="$TMP:$PATH" node "$TMP/out/contracts/opencode-blocking-contract.mjs"
+)
 echo 'coding-agent host integrations TypeScript: PASS'

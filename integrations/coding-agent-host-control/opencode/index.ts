@@ -24,7 +24,9 @@ function unwrap<T>(stdout: string): T {
 }
 
 async function takt<T>(cwd: string, args: string[]): Promise<T> {
-  const { stdout } = await execFileAsync("takt", [...args, "--workspace", cwd, "--daemon", "--json"], { maxBuffer: 16 * 1024 * 1024 })
+  const separator = args.indexOf("--")
+  const at = separator < 0 ? args.length : separator
+  const { stdout } = await execFileAsync("takt", [...args.slice(0, at), "--workspace", cwd, "--daemon", "--json", ...args.slice(at)], { maxBuffer: 16 * 1024 * 1024 })
   return unwrap<T>(stdout)
 }
 
@@ -36,6 +38,11 @@ function textOf(value: unknown): string {
     return textOf(v.text ?? v.content ?? v.parts ?? "")
   }
   return ""
+}
+
+function block(message: string): never {
+  process.stderr.write(`Takt: ${message}\n`)
+  throw new Error(message)
 }
 
 function active(session: Session | undefined): session is Session {
@@ -109,13 +116,13 @@ const taktHostControl: Plugin = async (ctx: PluginInput): Promise<Hooks> => {
     try {
       view = await find(sessionID)
     } catch (error) {
-      throw error
+      block(String(error))
     }
 
     if (input.startsWith(MARKER)) {
-      if (view && active(view.session)) throw new Error(`Takt already controls plan ${view.session.plan_id}`)
+      if (view && active(view.session)) block(`Takt already controls plan ${view.session.plan_id}`)
       const goal = input.slice(MARKER.length).trim()
-      if (!goal) throw new Error("Usage: /takt <task>")
+      if (!goal) block("Usage: /takt <task>")
       await execFileAsync("takt", ["daemon", "start", "--workspace", cwd], { maxBuffer: 4 * 1024 * 1024 })
       const result = await takt<Begin>(cwd, [
         "host", "begin", "--host", "opencode", "--host-session", sessionID,
@@ -124,16 +131,16 @@ const taktHostControl: Plugin = async (ctx: PluginInput): Promise<Hooks> => {
       ])
       sessions.set(sessionID, result.session)
       await saveCache(cwd, sessionID, result.session)
-      throw new Error(`${result.plan.preview}\n\nRun /takt-confirm to start. The main LLM was not invoked.`)
+      block(`${result.plan.preview}\n\nRun /takt-confirm to start. The main LLM was not invoked.`)
     }
 
     if (input === "TAKT_RUNS") {
       const result = await takt<unknown>(cwd, ["runs", "--active", "--root-only", "--limit", "50"])
-      throw new Error(JSON.stringify(result, null, 2))
+      block(JSON.stringify(result, null, 2))
     }
     if (input === "TAKT_ATTENTION") {
       const result = await takt<unknown>(cwd, ["attention"])
-      throw new Error(JSON.stringify(result, null, 2))
+      block(JSON.stringify(result, null, 2))
     }
     if (input === "TAKT_HOST_RESULT") {
       let runID = view?.plan.record?.current_run_id
@@ -141,43 +148,43 @@ const taktHostControl: Plugin = async (ctx: PluginInput): Promise<Hooks> => {
         const recent = await takt<RunList>(cwd, ["runs", "--root-only", "--limit", "1"])
         runID = recent.runs?.[0]?.id
       }
-      if (!runID) throw new Error("No Takt execution run is available")
+      if (!runID) block("No Takt execution run is available")
       const result = await takt<unknown>(cwd, ["run", "summary", runID])
-      throw new Error(JSON.stringify(result, null, 2))
+      block(JSON.stringify(result, null, 2))
     }
     if (!view || !active(view.session)) return
     if (input === "TAKT_HOST_CONFIRM") {
       view = await takt<View>(cwd, ["host", "confirm", view.session.id, "--confirm"])
       sessions.set(sessionID, view.session)
       await saveCache(cwd, sessionID, view.session)
-      throw new Error(`Takt plan ${view.session.plan_id} started with status ${view.session.status}. The main LLM was not invoked.`)
+      block(`Takt plan ${view.session.plan_id} started with status ${view.session.status}. The main LLM was not invoked.`)
     }
-    if (input === "TAKT_HOST_STATUS") throw new Error(JSON.stringify(view.plan, null, 2))
+    if (input === "TAKT_HOST_STATUS") block(JSON.stringify(view.plan, null, 2))
     if (input === "TAKT_HOST_PAUSE") {
       const runID = view.plan.record?.current_run_id
-      if (!runID) throw new Error("No active Takt execution run")
+      if (!runID) block("No active Takt execution run")
       const result = await takt<unknown>(cwd, ["run", "pause", runID])
-      throw new Error(JSON.stringify(result, null, 2))
+      block(JSON.stringify(result, null, 2))
     }
     if (input === "TAKT_HOST_RESUME") {
       const runID = view.plan.record?.current_run_id
-      if (!runID) throw new Error("No paused Takt execution run")
+      if (!runID) block("No paused Takt execution run")
       const result = await takt<unknown>(cwd, ["run", "resume", runID])
-      throw new Error(JSON.stringify(result, null, 2))
+      block(JSON.stringify(result, null, 2))
     }
     if (input === "TAKT_HOST_RELEASE") {
       await takt(cwd, ["host", "release", view.session.id])
       sessions.delete(sessionID)
       disconnected.delete(sessionID)
       await clearCache(cwd, sessionID)
-      throw new Error("Takt managed mode released. Repeat the user request to run it normally.")
+      block("Takt managed mode released. Repeat the user request to run it normally.")
     }
     try {
       await takt(cwd, ["steer", view.session.plan_id, "--", input])
-      throw new Error("Input routed to the active Takt checkpoint; the main LLM was not invoked.")
+      block("Input routed to the active Takt checkpoint; the main LLM was not invoked.")
     } catch (error) {
       if (String(error).includes("Input routed to")) throw error
-      throw new Error(`Takt rejected steering; input remains blocked and the main LLM was not invoked: ${String(error)}`)
+      block(`Takt rejected steering; input remains blocked and the main LLM was not invoked: ${String(error)}`)
     }
   }
 
@@ -187,17 +194,18 @@ const taktHostControl: Plugin = async (ctx: PluginInput): Promise<Hooks> => {
     try {
       view = await find(sessionID)
     } catch (error) {
-      throw error
+      block(String(error))
     }
     if (!view || !active(view.session)) return
-    if (disconnected.has(sessionID)) throw new Error("Takt daemon unavailable; managed mode is fail-closed")
+    if (disconnected.has(sessionID)) block("Takt daemon unavailable; managed mode is fail-closed")
+    let decision: Guard
     try {
-      const decision = await takt<Guard>(cwd, ["host", "guard-tool", view.session.id, "--tool", String(event.tool)])
-      if (!decision.allowed) throw new Error(decision.reason)
+      decision = await takt<Guard>(cwd, ["host", "guard-tool", view.session.id, "--tool", String(event.tool)])
     } catch (error) {
       disconnected.add(sessionID)
-      throw new Error(`Takt tool guard unavailable; managed mode is fail-closed: ${String(error)}`)
+      block(`Takt tool guard unavailable; managed mode is fail-closed: ${String(error)}`)
     }
+    if (!decision.allowed) block(decision.reason)
   }
 
   return {

@@ -25,7 +25,9 @@ function unwrap<T>(stdout: string): T {
 }
 
 async function takt<T>(cwd: string, args: string[]): Promise<T> {
-  const { stdout } = await execFileAsync("takt", [...args, "--workspace", cwd, "--daemon", "--json"], { maxBuffer: 16 * 1024 * 1024 })
+  const separator = args.indexOf("--")
+  const at = separator < 0 ? args.length : separator
+  const { stdout } = await execFileAsync("takt", [...args.slice(0, at), "--workspace", cwd, "--daemon", "--json", ...args.slice(at)], { maxBuffer: 16 * 1024 * 1024 })
   return unwrap<T>(stdout)
 }
 

@@ -47,4 +47,7 @@ declare module "node:path" {
   export function dirname(path: string): string
   export function join(...parts: string[]): string
 }
-declare const process: { cwd(): string }
+declare const process: {
+  cwd(): string
+  stderr: { write(chunk: string | Uint8Array): boolean }
+}
