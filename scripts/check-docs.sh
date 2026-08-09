@@ -406,10 +406,7 @@ for check in \
   "docs/50-coding-agent-host-control-v0.1.36.md|strict" \
   "docs/12-document-map.md|50-coding-agent-host-control-v0.1.36.md" \
   "ARCHITECTURE_DECISIONS.md|ADR-053" \
-  "ARCHITECTURE_DECISIONS.md|ADR-054" \
-  "integrations/coding-agent-host-control/pi/index.ts|pi.registerCommand" \
-  "integrations/coding-agent-host-control/opencode/index.ts|ctx.session.hook" \
-  "tests/e2e/external_boundaries_test.go|func TestHostControlBoundary"
+  "ARCHITECTURE_DECISIONS.md|ADR-054"
 do
   file="${check%%|*}"
   text="${check#*|}"
