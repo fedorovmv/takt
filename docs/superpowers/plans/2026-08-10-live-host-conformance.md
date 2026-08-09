@@ -92,7 +92,7 @@ git commit -m "test: cover live Pi resume"
 - Consumes: `OpenCode.Run(context.Context, assistant.Request) (assistant.Result, error)`.
 - Produces: `TestOpenCodeAdapterOptInSmoke`, подтверждающий fresh Session ID, version и exact resume.
 
-- [ ] **Step 1: Расширить opt-in test второй попыткой**
+- [x] **Step 1: Расширить opt-in test второй попыткой**
 
 После существующих fresh assertions добавить:
 
@@ -114,7 +114,7 @@ if !strings.Contains(resumed.Output, "TAKT_OPENCODE_RESUME_OK") || resumed.Sessi
 }
 ```
 
-- [ ] **Step 2: Запустить live test на том же model family**
+- [x] **Step 2: Запустить live test на том же model family**
 
 Run:
 
@@ -128,7 +128,7 @@ go test ./internal/extensions/assistants/opencode -run '^TestOpenCodeAdapterOptI
 
 Expected: PASS с OpenCode `1.18.14`, либо FAIL на конкретной NDJSON/session границе. При FAIL не подменять resume fresh-запуском: сохранить sanitized diagnostic, применить `superpowers:systematic-debugging`, добавить deterministic regression в `TestOpenCodeAdapterContract` и только затем менять `opencode.go`.
 
-- [ ] **Step 3: Проверить deterministic OpenCode contract**
+- [x] **Step 3: Проверить deterministic OpenCode contract**
 
 Run:
 
@@ -138,7 +138,7 @@ go test ./internal/extensions/assistants/opencode -count=1
 
 Expected: PASS; opt-in test SKIP без env.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/extensions/assistants/opencode/opencode_contract_test.go

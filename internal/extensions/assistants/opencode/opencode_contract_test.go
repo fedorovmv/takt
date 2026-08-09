@@ -303,6 +303,21 @@ func TestOpenCodeAdapterOptInSmoke(t *testing.T) {
 	if result.SessionID == "" || result.ResolvedModel == nil || result.ResolvedModel.Provider != provider || result.ResolvedModel.ID != model || result.Usage == nil {
 		t.Fatalf("OpenCode smoke did not expose execution identity/usage: %+v", result)
 	}
+	if result.AssistantVersion == "" {
+		t.Fatalf("OpenCode smoke did not expose version: %+v", result)
+	}
+	freshSessionID := result.SessionID
+	req.Attempt = 2
+	req.Prompt = "Reply with exactly: TAKT_OPENCODE_RESUME_OK"
+	req.SessionMode = "resume"
+	req.SessionID = freshSessionID
+	resumed, err := adapter.Run(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(resumed.Output, "TAKT_OPENCODE_RESUME_OK") || resumed.SessionID != freshSessionID || !resumed.Resumed {
+		t.Fatalf("OpenCode smoke did not resume exact session: fresh=%+v resumed=%+v", result, resumed)
+	}
 }
 
 func TestOpenCodePolicyConfig(t *testing.T) {
