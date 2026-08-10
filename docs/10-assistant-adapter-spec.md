@@ -361,7 +361,9 @@ takt compatibility check --config .takt/config.yaml
 takt compatibility check --config .takt/config.yaml --live
 ```
 
-Session adapter compatibility не равна host-control compatibility. Bundled Pi/OpenCode extension contract fixtures проверяют transport/parser semantics, но bundled host extensions остаются `guarded` до live conformance на pinned host version. `takt-assistant/v1alpha1` сохраняется для чтения старых wrappers и помечен deprecated для новых интеграций; целевой process protocol — `v1alpha2`.
+Session adapter compatibility не равна host-control compatibility. Live smoke с Pi `0.83.0` (`aihub/Qwen/Qwen3.6-27B`) и OpenCode `1.18.14` (`aihub-sbt/Qwen/Qwen3.6-27B`) подтвердил fresh/exact resume обоих adapters. Для host-control подтверждены Pi extension load/command interception и OpenCode plugin load/command/input/recovery; Pi input/tool/recovery/completion и OpenCode tool/completion остаются непроверенными. Поэтому bundled integrations сохраняют `guarded`, а `strict_allowed` остаётся `false`. `takt-assistant/v1alpha1` сохраняется для чтения старых wrappers и помечен deprecated для новых интеграций; целевой process protocol — `v1alpha2`.
+
+OpenCode `1.18.14` загружает plugin entrypoint как `Plugin(input) -> Promise<Hooks>` с hooks `chat.message` и `tool.execute.before`; TypeScript contract smoke проверяет assignability и runtime blocking bundled entrypoint. Headless host сохраняет намеренное прерывание hook как общий `UnknownError` в NDJSON, поэтому plugin до abort пишет точный Takt diagnostic в stderr. Для headless interception prompt передаётся через stdin; initial positional message может быть отправлен host до завершения загрузки external plugin и не является поддерживаемой guarded-границей.
 
 ## 14. Reference Qwen Code wrapper — v0.1.49
 

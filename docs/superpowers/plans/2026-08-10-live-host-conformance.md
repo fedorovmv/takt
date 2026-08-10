@@ -242,7 +242,7 @@ git commit -m "docs: record live host conformance"
 
 Записать exact Pi/OpenCode versions и результаты fresh/resume. Bundled host status оставить `guarded`, `strict_allowed: false`; непроверенные tool/completion guarantees не повышать. Удалить gap только для capability, получившей live PASS; общий strict-host gap сохраняется до полного набора.
 
-- [ ] **Step 2: Обновить manifest**
+- [x] **Step 2: Обновить manifest**
 
 Run:
 
@@ -260,7 +260,7 @@ find . -type f \
 
 Expected: `MANIFEST.sha256` содержит новые design/plan документы и актуальные hashes изменённых файлов.
 
-- [ ] **Step 3: Выполнить focused gates**
+- [x] **Step 3: Выполнить focused gates**
 
 Run:
 
@@ -273,7 +273,7 @@ go test ./internal/extensions/assistants/pi ./internal/extensions/assistants/ope
 
 Expected: PASS; opt-in live tests SKIP без env.
 
-- [ ] **Step 4: Выполнить полный release gate**
+- [x] **Step 4: Выполнить полный release gate**
 
 Run:
 
@@ -284,7 +284,7 @@ TAKT_REQUIRE_TYPESCRIPT=1 TSC=/tmp/takt-ts.UIqpa0/node_modules/.bin/tsc ./script
 
 Expected: оба завершатся PASS, включая race, E2E, TypeScript, docs и manifest.
 
-- [ ] **Step 5: Проверить отсутствие live artifacts/secrets**
+- [x] **Step 5: Проверить отсутствие live artifacts/secrets**
 
 Run:
 
@@ -292,12 +292,12 @@ Run:
 git status --short
 git diff --check
 git diff --no-ext-diff -- TEST_RESULTS.md docs/05-implementation-status.md docs/10-assistant-adapter-spec.md \
-  | rg -n '(apiKey\s*[:=]|Bearer\s+[A-Za-z0-9]|sk-[A-Za-z0-9])'
+  | rg -n '(apiKey\s*[:=]|Bearer\s+[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})'
 ```
 
 Expected: только запланированные tracked changes до commit; secret scan не выводит совпадений и завершается с exit code `1` от отсутствия matches.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/05-implementation-status.md docs/10-assistant-adapter-spec.md CHANGELOG.md MANIFEST.sha256

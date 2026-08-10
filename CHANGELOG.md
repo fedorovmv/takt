@@ -2,6 +2,10 @@
 
 ## v0.1.57-alpha
 
+- Live smoke на Qwen 3.6 27B подтвердил fresh/exact resume Pi `0.83.0` и OpenCode `1.18.14`; Pi command interception и OpenCode command/input/recovery проверены через реальные host entrypoints.
+- OpenCode host plugin приведён к API `Plugin(input) -> Promise<Hooks>` версии `1.18.14` и защищён TypeScript assignability/runtime contract; policy deny больше не считается transport outage, exact block diagnostic выводится в stderr, а common CLI flags у Pi/OpenCode ставятся до `--` и не попадают в goal.
+- `output_format` теперь добавляется к assistant prompt как точный JSON contract. После исправления Pi/OpenCode live routers на Qwen вернули валидный `TaskRoute` с первой попытки вместо protocol failure/fallback. Bundled host status остаётся `guarded`; `strict` и непроверенные tool/completion boundaries не заявляются.
+- Documentation gate больше не проверяет устаревшие TypeScript symbols через `grep`; host behavior проверяется Go E2E и обязательным TypeScript smoke.
 - Post-audit repair restored the clean-checkout Go module graph, single-document YAML/JSON authoring, and malformed quoted `when` rejection.
 - GitHub Actions now installs pinned TypeScript 5.7.2 and requires host-integration compilation; local Go-only checks may still skip it when the compiler is absent.
 - Feature freeze сохранён: новых Workflow/Run/CLI/MCP возможностей не добавлено; релиз фиксирует три architecture contracts после сравнения с идеологическим родителем Archon.

@@ -60,7 +60,7 @@ Dynamic Flow остаётся доступным и regression-tested, но сч
 - host-control core и Pi/OpenCode integrations;
 - MCP surfaces agent/host/worker/operator.
 
-Bundled Pi/OpenCode host integrations остаются `guarded`, пока command/input/tool/completion/recovery contract не подтверждён live smoke на конкретной версии host.
+Live smoke на Qwen 3.6 27B подтвердил adapter fresh/exact resume для Pi `0.83.0` и OpenCode `1.18.14`. Pi extension load и `/takt` command interception подтверждены; OpenCode plugin load, command/input interception и fail-closed durable recovery подтверждены. Найденные incompatibility/argv/diagnostic/tool-deny defects устранены; точный `output_format` теперь передаётся assistant, после чего оба live router вернули валидный `TaskRoute` с первой попытки без fallback. Bundled integrations остаются `guarded`: Pi input/tool/recovery/completion и OpenCode tool/completion не имеют live-доказательства, `strict` не заявляется.
 
 ## Dynamic Takt — реализовано
 
@@ -216,7 +216,7 @@ Deterministic fixture доказывает measurement correctness. Production q
 1. Live Route DSL production evidence.
 2. Go + Document production evaluation.
 3. Финальная v0.2/v1beta1 migration после production evidence; schema subset, field audit и compatibility matrix закрыты в v0.1.48.
-4. Live strict host conformance Pi/OpenCode.
+4. Live strict host conformance Pi/OpenCode: fresh/resume и часть guarded host capabilities подтверждены на Pi `0.83.0`/OpenCode `1.18.14`, но tool/completion и часть Pi boundaries остаются непроверенными.
 5. Live Qwen/GitHub smoke reference adapters с внешними credentials при внедрении; public SDK/reference implementations закрыты в v0.1.49–v0.1.50.
 6. Workflow graph/explain/scaffold и статический reject/revise contract.
 
