@@ -48,7 +48,9 @@ Live outputs пишутся только под `.takt/evals/`; реализац
 Обе стратегии используют логическое имя модели `go-model`:
 
 - Pi: provider `aihub`, model `Qwen/Qwen3.6-27B`;
-- OpenCode: provider `aihub-sbt`, model `Qwen/Qwen3.6-27B`, agent `build`, explicit `auto_approve: true` только для доверенного benchmark workspace.
+- OpenCode: доступный host alias `aihub-proxy`, model `Qwen/Qwen3.6-27B`, agent `build`, explicit `auto_approve: true` только для доверенного benchmark workspace.
+
+OpenCode запускается с собственным флагом `--pure`, поэтому пользовательские plugins, включая `oh-my-opencode-slim`, не участвуют в benchmark. Оба agent-node задают явный `skills: []`; существующая Takt policy передаёт в OpenCode запрет skill tool. Таким образом, agent использует только штатный tool loop OpenCode под политикой Takt, без внешних plugins/skills. Глобальная пользовательская конфигурация OpenCode не изменяется и не копируется в репозиторий.
 
 Отчёт фиксирует requested/resolved model по фактически доступным событиям. Для OpenCode нельзя заявлять наблюдаемость provider-side routing, если NDJSON сообщает только запрошенную CLI model.
 
@@ -79,6 +81,8 @@ Validator собирается вне копируемого workspace и пер
 6. Для каждого воспроизводимого дефекта Takt сначала добавить regression test в фактическую общую точку, затем внести минимальный fix и повторить затронутый case.
 
 Model failure или невалидная реализация являются benchmark outcome и не останавливают остальные cases. Подготовка workspace, недоступный host, повреждённый quality envelope или ошибка записи отчёта являются infrastructure failure и останавливают соответствующую matrix.
+
+OpenCode smoke дополнительно проверяет фактический argv с `--pure`, отсутствие загрузки внешних plugins в host log и запрет skill tool из Takt policy. Недоступность provider endpoint не считается результатом качества модели.
 
 ## Неизвестные и ограничители
 
