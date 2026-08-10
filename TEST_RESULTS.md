@@ -1,5 +1,21 @@
 # Takt v0.1.57-alpha — TEST RESULTS
 
+## Go production-shaped benchmark smoke — 2026-08-10
+
+Первый live-срез использовал пять изолированных Go-задач, внешний validator `gofmt + go test + race + vet` и `repeat=1`. Это measurement smoke, а не статистически устойчивый benchmark и не обезличенные production-данные.
+
+| Host / strategy | success@1 | final success | attempts to valid | average time to valid | Input / output tokens |
+|---|---:|---:|---:|---:|---:|
+| Pi 0.83.0 / direct | 0.80 | 0.80 | 1.0 | 47,484 ms | 232,502 / 6,248 |
+| Pi 0.83.0 / feedback repair | 0.80 | 1.00 | 1.2 | 46,071 ms | 283,856 / 6,952 |
+| OpenCode 1.18.14 / direct | 0.40 | 0.40 | 1.0 | 26,055 ms | 256,993 / 2,351 |
+| OpenCode 1.18.14 / feedback repair | 0.00 | 0.80 | 2.5 | 50,213 ms | 695,198 / 4,084 |
+
+- Pi использовал requested/resolved `aihub/Qwen/Qwen3.6-27B`; repair восстановил terminal-precedence case одним exact resume.
+- OpenCode использовал requested CLI model `aihub-sbt/Qwen/Qwen3.6-27B`; provider-side routing отдельно не наблюдался. Четыре cases были восстановлены с exact resume, protocol-case исчерпал три попытки без production change и остался корректным model outcome `SCOPE_INVALID`.
+- Оба matrix report завершились `passed: true`; infrastructure, quality-envelope, workspace-isolation и usage-attribution errors не обнаружены.
+- Adapter сообщил cost `0`; этот smoke не используется для экономического вывода. Полные `repeat=3` матрицы выполняются отдельно.
+
 ## Live host conformance — 2026-08-10
 
 Обе live-проверки использовали Qwen 3.6 27B; credentials, provider configuration и Session ID не сохранялись.
