@@ -1,0 +1,56 @@
+apiVersion: takt/v1alpha1
+kind: Workflow
+metadata:
+  name: go-benchmark-feedback-repair
+  description: Coding-agent с bounded deterministic feedback repair
+
+defaults:
+  assistant: coding-agent
+  model: go-model
+  session: resume
+
+nodes:
+  - id: implement
+    timeout: 15m
+    prompt: |
+      Создай или исправь решение Go-задачи в текущей рабочей области.
+
+      Задача:
+      ${input}
+
+      Диагностика предыдущей попытки:
+      ${feedback}
+
+      Исправляй только разрешённый production package. Не изменяй go.mod,
+      *_test.go, соседние packages и benchmark metadata. Проверь результат
+      указанной в задаче командой go test.
+    attempts:
+      max: 3
+    hooks:
+      after_node:
+        - id: validate-go-change
+          bash: |
+            mkdir -p .takt
+            cat > .takt/evaluation-case.md <<'TAKT_GO_CASE'
+            ${input}
+            TAKT_GO_CASE
+            "$TAKT_GO_BENCHMARK_VALIDATOR" \
+              --case-file .takt/evaluation-case.md \
+              --baseline "$TAKT_GO_BENCHMARK_BASELINE" \
+              --workspace .
+          on_failure:
+            action: retry
+            session: resume
+
+  - id: full-validation
+    depends_on: [implement]
+    timeout: 10m
+    bash: |
+      mkdir -p .takt
+      cat > .takt/evaluation-case.md <<'TAKT_GO_CASE'
+      ${input}
+      TAKT_GO_CASE
+      "$TAKT_GO_BENCHMARK_VALIDATOR" \
+        --case-file .takt/evaluation-case.md \
+        --baseline "$TAKT_GO_BENCHMARK_BASELINE" \
+        --workspace .

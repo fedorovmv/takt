@@ -1,0 +1,26 @@
+apiVersion: takt/evaluation/v1alpha1
+kind: EvaluationMatrix
+metadata:
+  name: go-production-shaped-pi
+
+benchmark:
+  id: go-production-shaped-5-v1
+  baseline_strategy: baseline-direct
+  cases: cases
+  case_manifest: cases.yaml
+  workspace_template: workspace
+  repeat: 3
+  quality_node: full-validation
+  generation_node: implement
+  validator:
+    id: takt-go-benchmark-validator
+    version: "1"
+    path: validator
+
+strategies:
+  - id: baseline-direct
+    workflow: strategies/baseline-direct.yaml
+    config: config.pi.yaml
+  - id: feedback-repair
+    workflow: strategies/feedback-repair.yaml
+    config: config.pi.yaml

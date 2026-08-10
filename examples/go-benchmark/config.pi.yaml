@@ -1,0 +1,19 @@
+apiVersion: takt/v1alpha1
+kind: Config
+
+default_assistant: pi
+
+models:
+  go-model:
+    provider: aihub
+    id: Qwen/Qwen3.6-27B
+
+assistants:
+  pi:
+    type: pi
+    binary: pi
+    session_dir: .takt/pi-sessions
+    project_trust: approve
+    env:
+      NODE_OPTIONS: --use-system-ca
+    max_output_bytes: 10485760

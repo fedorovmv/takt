@@ -1,4 +1,5 @@
 /bin/
 **/.takt/runs/
+examples/**/.takt/
 examples/**/route.yaml
 examples/**/counter.txt

@@ -1,0 +1,17 @@
+apiVersion: takt/v1alpha1
+kind: Config
+
+default_assistant: opencode
+
+models:
+  go-model:
+    provider: aihub-sbt
+    id: Qwen/Qwen3.6-27B
+
+assistants:
+  opencode:
+    type: opencode
+    binary: opencode
+    agent: build
+    auto_approve: true
+    max_output_bytes: 10485760
