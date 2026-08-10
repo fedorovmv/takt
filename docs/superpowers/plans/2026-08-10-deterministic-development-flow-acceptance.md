@@ -30,7 +30,7 @@
 - Produces: JSON `{"status":"ready|failed","base_commit":"...","changed_files":[],"outside_allowed":[]}`; exit `0` for ready, `3` for scope drift, `2` for invalid input or Git error.
 - Internal functions: `execute(args []string) (report, error)`, `validatePathspec(string) error`, `gitOutput(dir string, args ...string) ([]byte,error)`, `changedPaths`, `splitNUL`, and `difference`.
 
-- [ ] **Step 1: Write failing tests for pathspec and Git-state behavior.**
+- [x] **Step 1: Write failing tests for pathspec and Git-state behavior.**
 
   Build a temporary Git repository with a `main` base commit and exercise the tool through `go run internal/profile/builtin/code/tools/scope-check.go`, asserting:
 
@@ -40,19 +40,19 @@
   - a rename is reported as both old and new paths because `--no-renames` is used;
   - `../escape` and `:(exclude)app.txt` return exit `2` without invoking a permissive matcher.
 
-- [ ] **Step 2: Run the focused test and verify it fails.**
+- [x] **Step 2: Run the focused test and verify it fails.**
 
   Run `go test ./internal/profile -run ScopeCheck -count=1`; expect failure because the tool does not exist.
 
-- [ ] **Step 3: Implement the smallest standalone Go tool.**
+- [x] **Step 3: Implement the smallest standalone Go tool.**
 
   Decode strict JSON from the single argv rendered by `script.args`, reject empty/leading-colon/absolute/volume/`..` pathspecs, resolve `git merge-base HEAD <base_branch>`, collect changed and matched NUL-delimited paths with the exact Git commands above, sort/deduplicate, compute `outside_allowed`, and emit the report. Treat Git errors and malformed input as exit `2`; emit the drift report and exit `3` when `outside_allowed` is non-empty. Do not inspect `$ARTIFACTS_DIR`.
 
-- [ ] **Step 4: Run the focused test and the profile contract.**
+- [x] **Step 4: Run the focused test and the profile contract.**
 
   Run `go test ./internal/profile -run ScopeCheck -count=1` and `go test ./internal/profile -count=1`; both must pass.
 
-- [ ] **Step 5: Commit the scope checker.**
+- [x] **Step 5: Commit the scope checker.**
 
   Run `git add internal/profile/builtin/code/tools/scope-check.go internal/profile/scope_check_test.go && git commit -m "feat: add deterministic git scope gate"`.
 
@@ -68,23 +68,23 @@
 - Produces: exact `REVIEW_BLOCK_ACCEPTED` child output only after deterministic post-review validation and an existing `review-report.md` artifact.
 - Fixture controls: `FAKE_REVIEW_CHANGES_REQUIRED=1` makes `review-synthesis` return `REVIEW_CHANGES_REQUIRED`; `FAKE_BLOCK_PHASE=review-fix` returns `REVIEW_FIX_REQUIRES_DECISION`.
 
-- [ ] **Step 1: Add failing E2E scenarios.**
+- [x] **Step 1: Add failing E2E scenarios.**
 
   Extend the deep code workflow fixture with: a happy review, `validation_commands:["false"]` (must fail before publication), and `FAKE_REVIEW_CHANGES_REQUIRED=1` plus `FAKE_BLOCK_PHASE=review-fix` (must fail the child gate). Assert persisted node status, gate diagnostic, required artifact, and fake PR count.
 
-- [ ] **Step 2: Run the focused E2E test and verify the new cases expose the gap.**
+- [x] **Step 2: Run the focused E2E test and verify the new cases expose the gap.**
 
   Run `go test ./tests/e2e -run 'DeepCodeWorkflow|ReviewBlock' -count=1`; the unresolved-review case must currently complete or skip instead of producing a failed Run.
 
-- [ ] **Step 3: Add fixture modes without changing production semantics.**
+- [x] **Step 3: Add fixture modes without changing production semantics.**
 
   In the fake agent, branch on `FAKE_REVIEW_CHANGES_REQUIRED` for `review-synthesis`, add `REVIEW_FIX_REQUIRES_DECISION` to `blockedCodeFor`, and preserve normal artifact creation. Keep `FAKE_BLOCK_PHASE` behavior for all other phases.
 
-- [ ] **Step 4: Add post-review validation and a terminal bash gate.**
+- [x] **Step 4: Add post-review validation and a terminal bash gate.**
 
   Append `script.runtime: validation` node `post-review-validation-commands` after `synthesize`/`fixes`, with typed `validation-command-report` and `$ARTIFACTS_DIR/post-review-validation-commands.json`. Add `review-acceptance-gate` with `trigger_rule: all_done` that requires scope ready, `REVIEW_APPROVED` or `REVIEW_CHANGES_REQUIRED` plus `REVIEW_FIXES_APPLIED`, `validate.code == VALIDATION_PASSED`, post-review validation ready, and the review-report artifact path to exist. Emit `REVIEW_BLOCK_ACCEPTED` on success and exit `1` otherwise.
 
-- [ ] **Step 5: Run focused E2E and commit.**
+- [x] **Step 5: Run focused E2E and commit.**
 
   Run `go test ./tests/e2e -run 'DeepCodeWorkflow|ReviewBlock' -count=1`; then commit with `git add internal/profile/builtin/code/workflows/review-block.yaml internal/testsupport/cmd/takt-fake-code-agent/main.go tests/e2e/external_boundaries_test.go && git commit -m "feat: gate review block completion"`.
 
@@ -100,23 +100,23 @@
 - Produces: exact `WORKFLOW_ACCEPTED` root output only when all required evidence is present.
 - Fixture controls: `FAKE_OMIT_ARTIFACT_PHASE`, `FAKE_EXTRA_CHANGE_PATH`, `FAKE_BLOCK_PHASE=pr-finalize` (`PR_CREATE_FAILED`), and `FAKE_BLOCK_PHASE=workflow-final-summary` (`WORKFLOW_INCOMPLETE`).
 
-- [ ] **Step 1: Add the failing acceptance matrix.**
+- [x] **Step 1: Add the failing acceptance matrix.**
 
   Add E2E cases for happy `safe_success`, omitted plan artifact, false deterministic validation, early blocked implementation, extra `docs/extra.md`, blocked PR creation, unresolved review, and incomplete summary. Assert the Run classification (`completed` only for happy), exact gate failure for safe stops, unchanged control checkout, required artifacts, and fake PR count (`0` before PR gates; `1` for review/summary failures).
 
-- [ ] **Step 2: Run the matrix and verify tail cases are unsafe today.**
+- [x] **Step 2: Run the matrix and verify tail cases are unsafe today.**
 
   Run `go test ./tests/e2e -run TestPlanToPRAcceptance -count=1`; PR/review/summary failure cases must demonstrate the current completed/skipped-node hole before workflow changes.
 
-- [ ] **Step 3: Extend the fake agent for deterministic fixture outcomes.**
+- [x] **Step 3: Extend the fake agent for deterministic fixture outcomes.**
 
   Omit the requested artifact when `FAKE_OMIT_ARTIFACT_PHASE` matches the phase, write `docs/extra.md` in the isolated workspace for `FAKE_EXTRA_CHANGE_PATH=docs/extra.md`, map blocked `pr-finalize` to `PR_CREATE_FAILED` and blocked `workflow-final-summary` to `WORKFLOW_INCOMPLETE`, and keep all default happy-path behavior unchanged.
 
-- [ ] **Step 4: Make the workflow input and gates explicit.**
+- [x] **Step 4: Make the workflow input and gates explicit.**
 
   Add required `allowed_paths` with `minItems: 1` and `uniqueItems: true`. Add a `scope-check` Go script node after `validation-gate`, before `create-pr`, and a second scope node after review fixes. Add `pr-result-gate` requiring `create-pr.status == ready`, `create-pr.code == PR_READY`, and the PR artifact. Remove the old review `when`; make review depend on the PR gate. Make summary depend on review and the second scope gate. Add `acceptance-gate` with `trigger_rule: all_done` requiring confirmed plan, ready implementation, initial or recovered validation, mandatory typed artifacts, PR_READY, `REVIEW_BLOCK_ACCEPTED`, `WORKFLOW_COMPLETE`, and both scope reports. Emit `WORKFLOW_ACCEPTED`; otherwise exit `1`.
 
-- [ ] **Step 5: Run focused acceptance tests and commit.**
+- [x] **Step 5: Run focused acceptance tests and commit.**
 
   Run `gofmt -w internal/testsupport/cmd/takt-fake-code-agent/main.go tests/e2e/external_boundaries_test.go`, then `go test ./tests/e2e -run TestPlanToPRAcceptance -count=1`; commit with `git add internal/profile/builtin/code/workflows/plan-to-pr.yaml internal/testsupport/cmd/takt-fake-code-agent/main.go tests/e2e/external_boundaries_test.go && git commit -m "feat: enforce plan to pr acceptance gates"`.
 
@@ -136,23 +136,23 @@
 - Consumes: The `allowed_paths` input and `plan-to-pr` acceptance output from Task 3.
 - Produces: User-facing documentation that says the router selects `plan-to-pr` only for complete JSON input and never infers scope; profile version `0.17.0`.
 
-- [ ] **Step 1: Add/adjust documentation contract assertions.**
+- [x] **Step 1: Add/adjust documentation contract assertions.**
 
   Add a Go contract assertion for profile version `0.17.0`, documented `allowed_paths`, and the complete-input routing rule before changing the docs.
 
-- [ ] **Step 2: Run the focused contract and verify it fails.**
+- [x] **Step 2: Run the focused contract and verify it fails.**
 
   Run `go test ./tests/e2e -run 'CodeProfileCatalogContract|Route' -count=1`; expect failure against the old version/documentation.
 
-- [ ] **Step 3: Update only current docs and version.**
+- [x] **Step 3: Update only current docs and version.**
 
   Document `base_branch`, non-magic repository-relative Git pathspecs, required scope input, deterministic gates, bounded fake-SCM guarantee, and `safe_success|safe_stop|unsafe_success`. Update the profile version to `0.17.0`, root current-version references, implementation status, changelog, and `TEST_RESULTS.md`. Do not edit historical `docs/38` or older release records.
 
-- [ ] **Step 4: Make router selection fail closed.**
+- [x] **Step 4: Make router selection fail closed.**
 
   Update `route-workflow.md` so `plan-to-pr` is eligible only when the original JSON contains repository, plan_path, base_branch, draft_pr, validation_commands, and non-empty unique allowed_paths; otherwise return `assist` and do not infer a scope list. Keep `workflow.yaml` input forwarding unchanged for complete inputs.
 
-- [ ] **Step 5: Run focused contracts and commit.**
+- [x] **Step 5: Run focused contracts and commit.**
 
   Run `go test ./tests/e2e -run 'CodeProfileCatalogContract|Route' -count=1`; commit with `git add internal/profile/builtin/code/commands/route-workflow.md internal/profile/builtin/code/README.md internal/profile/builtin/code/VERSION README.md docs/03-specification.md docs/05-implementation-status.md CHANGELOG.md TEST_RESULTS.md tests/e2e && git commit -m "docs: publish deterministic plan to pr contract"`.
 
@@ -161,7 +161,7 @@
 **Files:**
 - Modify: only files required by formatting or generated contract output.
 
-- [ ] **Step 1: Format and run all required checks.**
+- [x] **Step 1: Format and run all required checks.**
 
   Run:
 
@@ -176,10 +176,10 @@
 
   With the installed TypeScript compiler, `./scripts/test-host-integrations-typescript.sh` must report `PASS`; no documentation grep gate is expected.
 
-- [ ] **Step 2: Inspect the final persisted evidence.**
+- [x] **Step 2: Inspect the final persisted evidence.**
 
   Run `git diff --check`, `git status --short`, and the focused acceptance test once more. Confirm the working tree is clean except for intentional generated/build outputs ignored by Git, then record exact commands and outcomes in `TEST_RESULTS.md`.
 
-- [ ] **Step 3: Commit verification evidence.**
+- [x] **Step 3: Commit verification evidence.**
 
   Commit any intentional test-results-only update with `git add TEST_RESULTS.md && git commit -m "test: record deterministic acceptance evidence"`; otherwise leave the previous focused commits unchanged.
