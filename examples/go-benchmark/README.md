@@ -11,7 +11,7 @@ Benchmark отвечает на один вопрос: получает ли wor
 - validator разрешает менять только production `.go` целевого package, запрещает изменения тестов и запускает gofmt, test, race и vet;
 - успех учитывается только при `quality_node_status=completed && valid=true`.
 
-Pi запрашивает `aihub/Qwen/Qwen3.6-27B`. В установленном OpenCode provider `aihub` отсутствует, поэтому OpenCode использует доступный host alias `aihub-proxy/Qwen/Qwen3.6-27B`. Совпадение model ID не доказывает одинаковую provider-side маршрутизацию, пока host events не публикуют её отдельно.
+Pi запрашивает `aihub/Qwen/Qwen3.6-27B`, OpenCode — прямой provider `aihub-sbt/Qwen/Qwen3.6-27B`. Provider-side маршрутизация не считается наблюдаемой, пока host events не публикуют её отдельно.
 
 OpenCode запускается с `--pure`, а agent-node задаёт `skills: []`. Внешние OpenCode plugins не загружаются, skill tool запрещён политикой Takt; глобальная пользовательская конфигурация не изменяется.
 

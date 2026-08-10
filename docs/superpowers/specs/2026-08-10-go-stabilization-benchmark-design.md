@@ -48,7 +48,7 @@ Live outputs пишутся только под `.takt/evals/`; реализац
 Обе стратегии используют логическое имя модели `go-model`:
 
 - Pi: provider `aihub`, model `Qwen/Qwen3.6-27B`;
-- OpenCode: доступный host alias `aihub-proxy`, model `Qwen/Qwen3.6-27B`, agent `build`, explicit `auto_approve: true` только для доверенного benchmark workspace.
+- OpenCode: прямой provider `aihub-sbt`, model `Qwen/Qwen3.6-27B`, agent `build`, explicit `auto_approve: true` только для доверенного benchmark workspace.
 
 OpenCode запускается с собственным флагом `--pure`, поэтому пользовательские plugins, включая `oh-my-opencode-slim`, не участвуют в benchmark. Оба agent-node задают явный `skills: []`; существующая Takt policy передаёт в OpenCode запрет skill tool. Таким образом, agent использует только штатный tool loop OpenCode под политикой Takt, без внешних plugins/skills. Глобальная пользовательская конфигурация OpenCode не изменяется и не копируется в репозиторий.
 

@@ -12,7 +12,7 @@
 
 - Do not add a new runner, scheduler, public YAML/JSON field, dependency, or `scripts/test-*.sh`.
 - Keep the corpus labelled `production-shaped`; it is not anonymized production data.
-- Pi model is `aihub/Qwen/Qwen3.6-27B`; installed OpenCode exposes the requested model through `aihub-proxy/Qwen/Qwen3.6-27B`.
+- Pi model is `aihub/Qwen/Qwen3.6-27B`; OpenCode model is `aihub-sbt/Qwen/Qwen3.6-27B`.
 - OpenCode uses only `opencode run --format json`; its provider-side routing is not claimed observable beyond the requested CLI model.
 - OpenCode benchmark runs with `--pure`; both agent nodes declare `skills: []`, so external plugins and skills cannot affect the run.
 - Text from the assistant is never success evidence; success is only `quality_node_status=completed && valid=true`.
@@ -316,7 +316,7 @@ OpenCode config:
 ```yaml
 default_assistant: opencode
 models:
-  go-model: {provider: aihub-proxy, id: Qwen/Qwen3.6-27B}
+  go-model: {provider: aihub-sbt, id: Qwen/Qwen3.6-27B}
 assistants:
   opencode:
     type: opencode
@@ -422,7 +422,7 @@ Expected: matrix report is written even when individual model outcomes are inval
 
 Run: `TAKT_BENCH_HOST=opencode TAKT_REPEAT=1 ./examples/go-benchmark/run.sh`
 
-Expected: same measurement contract as Pi; requested model is `aihub-proxy/Qwen/Qwen3.6-27B`.
+Expected: same measurement contract as Pi; requested model is `aihub-sbt/Qwen/Qwen3.6-27B`.
 
 - [ ] **Step 5: Classify smoke failures without broad fixes**
 
