@@ -2,7 +2,7 @@
 
 ## Статус и цель
 
-Дизайн подтверждён пользователем 2026-08-10. Цель — получить первые воспроизводимые live-свидетельства качества Go user journey на Pi и OpenCode с Qwen 3.6 27B, а каждый обнаруженный дефект Takt превращать в regression test и минимальный root-cause fix.
+Дизайн подтверждён пользователем 2026-08-10. Цель — получить первые воспроизводимые live-свидетельства качества Go user journey на Pi и OpenCode с Qwen-моделями, а каждый обнаруженный дефект Takt превращать в regression test и минимальный root-cause fix. После сравнительного прогона текущим OpenCode default выбран Qwen3-Coder-Next со штатными tool calls; Qwen 3.6 сохранён как диагностический evidence.
 
 Срез не меняет runtime заранее. Существующий `takt eval benchmark` уже предоставляет repeat, fingerprints, pairwise comparison, usage, time-to-valid и fail-closed quality contract; новый runner не нужен.
 
@@ -48,7 +48,7 @@ Live outputs по умолчанию пишутся в `${TMPDIR:-/tmp}/takt-go-
 Обе стратегии используют логическое имя модели `go-model`:
 
 - Pi: provider `aihub`, model `Qwen/Qwen3.6-27B`;
-- OpenCode: прямой provider `aihub-sbt`, model `Qwen/Qwen3.6-27B`, agent `build`, explicit `auto_approve: true` только для доверенного benchmark workspace.
+- OpenCode: прямой provider `aihub-sbt`, model `Qwen/Qwen3-Coder-Next`, agent `build`, explicit `auto_approve: true` только для доверенного benchmark workspace. Qwen 3.6 direct/proxy остаётся сохранённым диагностическим evidence, но не текущим benchmark default из-за нестабильного tool protocol.
 
 OpenCode запускается с собственным флагом `--pure`, поэтому пользовательские plugins, включая `oh-my-opencode-slim`, не участвуют в benchmark. Оба agent-node задают явный `skills: []`; существующая Takt policy передаёт в OpenCode запрет skill tool. Таким образом, agent использует только штатный tool loop OpenCode под политикой Takt, без внешних plugins/skills. Глобальная пользовательская конфигурация OpenCode не изменяется и не копируется в репозиторий.
 

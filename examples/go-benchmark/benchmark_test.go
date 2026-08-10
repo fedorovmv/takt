@@ -90,8 +90,8 @@ func TestOpenCodeBenchmarkRunsPureWithoutSkills(t *testing.T) {
 		t.Fatalf("OpenCode args = %v, want [--pure]", assistant.Args)
 	}
 	model := cfg.Models["go-model"]
-	if model.Provider != "aihub-sbt" || model.ID != "Qwen/Qwen3.6-27B" {
-		t.Fatalf("OpenCode model = %s/%s, want aihub-sbt/Qwen/Qwen3.6-27B", model.Provider, model.ID)
+	if model.Provider != "aihub-sbt" || model.ID != "Qwen/Qwen3-Coder-Next" {
+		t.Fatalf("OpenCode model = %s/%s, want aihub-sbt/Qwen/Qwen3-Coder-Next", model.Provider, model.ID)
 	}
 	for _, path := range []string{"strategies/baseline-direct.yaml", "strategies/feedback-repair.yaml"} {
 		wf, err := workflow.Load(path)

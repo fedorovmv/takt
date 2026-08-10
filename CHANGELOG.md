@@ -3,7 +3,7 @@
 ## v0.1.57-alpha
 
 - Добавлен пятизадачный production-shaped Go benchmark с внешним `gofmt/test/race/vet` validator и direct/feedback-repair стратегиями. Default output вынесен из Git-root в `${TMPDIR:-/tmp}/takt-go-benchmark/evals` и закреплён поведенческим Go-тестом.
-- Pi `repeat=3` дал `14/15 → 15/15` с одним exact resume. OpenCode через прямой `aihub-sbt`, `--pure` и `skills: []` дал `0/5 → 5/5` в isolated smoke, но `0/15 → 0/15` в полном прогоне без настоящих NDJSON `tool_use`; противоречащий результат сохранён без подгоняющего перезапуска.
+- Pi/Qwen 3.6 `repeat=3` дал `14/15 → 15/15` с одним exact resume. OpenCode/Qwen3-Coder-Next дал direct `15/15` и repair `13/15 → 15/15` с двумя exact resume после `GOFMT_FAILED`. Сохранённый OpenCode/Qwen 3.6 evidence хуже: direct `0/15 → 0/15`, proxy `0/15 → 6/15` до исправления SSE transport defect и post-fix smoke `0/5 → 0/5` без tool calls; влияние compact rewrite не заявляется.
 - `attempts_exhausted` больше не затирает output, Session ID и `resumed` последней фактической execution; regression покрывает exhausted hook retry.
 - Live smoke на Qwen 3.6 27B подтвердил fresh/exact resume Pi `0.83.0` и OpenCode `1.18.14`; Pi command interception и OpenCode command/input/recovery проверены через реальные host entrypoints.
 - OpenCode host plugin приведён к API `Plugin(input) -> Promise<Hooks>` версии `1.18.14` и защищён TypeScript assignability/runtime contract; policy deny больше не считается transport outage, exact block diagnostic выводится в stderr, а common CLI flags у Pi/OpenCode ставятся до `--` и не попадают в goal.

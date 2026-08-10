@@ -136,7 +136,7 @@ Provider-specific adapters не встроены в runtime. `v0.1.49` доба�
 
 Deterministic fixture доказывает measurement correctness. Production quality требует реальных cases/models.
 
-Первый live Go-срез на пяти production-shaped cases выполнен с Qwen 3.6 27B. Pi `repeat=3` дал direct `14/15` и repair `14/15 → 15/15` с одним exact resume. OpenCode через прямой `aihub-sbt` дал repair `0/5 → 5/5` в isolated smoke, но полный `repeat=3` — `0/15 → 0/15`: event stream не содержал настоящих `tool_use`, хотя exact resume выполнялся. Поэтому measurement path подтверждён, но устойчивое преимущество OpenCode repair не заявляется. Время provider не используется для вывода; production-shaped evidence не закрывает production evaluation.
+Первый live Go-срез на пяти production-shaped cases выполнен с моделями Qwen. Pi/Qwen 3.6 `repeat=3` дал direct `14/15` и repair `14/15 → 15/15` с одним exact resume. Текущий OpenCode/Qwen3-Coder-Next дал direct `15/15` и repair `13/15 → 15/15`: два `GOFMT_FAILED` восстановлены exact resume, failed executions отсутствуют, все cases stable-valid. Сохранённый OpenCode/Qwen 3.6 evidence заметно хуже: прямой `aihub-sbt` дал `0/15 → 0/15`, `aihub-proxy` до исправления SSE — `0/15 → 6/15`, а post-fix smoke без transport failures — `0/5 → 0/5` из-за отсутствия tool calls. Measurement path подтверждён; влияние compact rewrite и преимущество repair при уже валидном direct не заявляются. Время provider не используется для вывода; production-shaped evidence не закрывает production evaluation.
 
 ## Предметные поставки
 

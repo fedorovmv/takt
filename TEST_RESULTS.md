@@ -8,16 +8,27 @@ Live-срез использовал пять изолированных Go-за
 |---|---|---:|---:|---:|---:|
 | Pi 0.83.0, repeat=3 | direct | 14/15 (0.9333) | 14/15 (0.9333) | 1.0 | 458,463 / 19,285 |
 | Pi 0.83.0, repeat=3 | feedback repair | 14/15 (0.9333) | 15/15 (1.0) | 1.0667 | 508,946 / 20,627 |
-| OpenCode 1.18.14, isolated smoke repeat=1 | direct | 0/5 | 0/5 | — | 46,533 / 592 |
-| OpenCode 1.18.14, isolated smoke repeat=1 | feedback repair | 0/5 | 5/5 (1.0) | 3.0 | 582,522 / 7,412 |
-| OpenCode 1.18.14, repeat=3 | direct | 0/15 | 0/15 | — | 139,554 / 1,091 |
-| OpenCode 1.18.14, repeat=3 | feedback repair | 0/15 | 0/15 | — | 433,960 / 1,856 |
+| OpenCode 1.18.14, direct Coder-Next repeat=1 | direct | 5/5 (1.0) | 5/5 (1.0) | 1.0 | 322,333 / 4,663 |
+| OpenCode 1.18.14, direct Coder-Next repeat=1 | feedback repair | 5/5 (1.0) | 5/5 (1.0) | 1.0 | 280,694 / 3,844 |
+| OpenCode 1.18.14, direct Coder-Next repeat=3 | direct | 15/15 (1.0) | 15/15 (1.0) | 1.0 | 901,816 / 13,800 |
+| OpenCode 1.18.14, direct Coder-Next repeat=3 | feedback repair | 13/15 (0.8667) | 15/15 (1.0) | 1.1333 | 1,016,817 / 14,197 |
+| OpenCode 1.18.14, direct Qwen 3.6, isolated repeat=1 | direct | 0/5 | 0/5 | — | 46,533 / 592 |
+| OpenCode 1.18.14, direct Qwen 3.6, isolated repeat=1 | feedback repair | 0/5 | 5/5 (1.0) | 3.0 | 582,522 / 7,412 |
+| OpenCode 1.18.14, direct Qwen 3.6, repeat=3 | direct | 0/15 | 0/15 | — | 139,554 / 1,091 |
+| OpenCode 1.18.14, direct Qwen 3.6, repeat=3 | feedback repair | 0/15 | 0/15 | — | 433,960 / 1,856 |
+| OpenCode 1.18.14, `aihub-proxy`, repeat=3 before SSE fix | direct | 0/15 | 0/15 | — | 130,380 / 1,216 |
+| OpenCode 1.18.14, `aihub-proxy`, repeat=3 before SSE fix | feedback repair | 0/15 | 6/15 (0.4) | 3.0 | 694,805 / 7,720 |
+| OpenCode 1.18.14, `aihub-proxy`, post-SSE-fix repeat=1 | direct | 0/5 | 0/5 | — | 46,568 / 717 |
+| OpenCode 1.18.14, `aihub-proxy`, post-SSE-fix repeat=1 | feedback repair | 0/5 | 0/5 | — | 145,067 / 1,411 |
 
 - Pi использовал `aihub/Qwen/Qwen3.6-27B`. Единственный `GOFMT_FAILED` в `01-cli-separator`, repeat 3 был восстановлен одним exact resume; repair получил пять stable-valid cases.
-- OpenCode запускался как `opencode run --format json ... --model aihub-sbt/Qwen/Qwen3.6-27B --pure` с `skills: []`. Smoke и полный прогон имеют одинаковые matrix, strategy и benchmark fingerprints; provider-side routing сверх requested CLI model не наблюдается.
-- В OpenCode smoke третьи попытки дали настоящие `tool_use` и исправили 5/5 cases. В полном `repeat=3` ответы завершались текстом или псевдо-разметкой инструмента без NDJSON `tool_use`; production-файлы не менялись, и validator корректно вернул `SCOPE_INVALID`. Все 15 repair nodes сохранили exact resume, но исчерпали три попытки.
-- Противоречащий smoke полный прогон не перезапускался до желаемого результата. Поэтому устойчивое преимущество repair для OpenCode не заявляется; authoritative repeat=3 evidence отрицательное.
-- Все три matrix report завершились `passed: true`, fingerprints стратегий внутри matrix совпали по benchmark identity, исходный template остался неизменным. Adapter сообщил cost `0`; экономический вывод не делается.
+- Текущий OpenCode benchmark использует прямой `aihub-sbt/Qwen/Qwen3-Coder-Next`. Smoke дал `5/5 → 5/5`; единственный полный `repeat=3` — `15/15 → 15/15`, пять stable-valid cases, `0` failed executions. В repair два `GOFMT_FAILED` (`01-cli-separator`, repeats 2 и 3) восстановлены exact resume; остальные 13 outcomes были valid с первой попытки.
+- Прямой OpenCode-контур использовал `aihub-sbt/Qwen/Qwen3.6-27B`; его isolated smoke и полный прогон имеют одинаковые matrix, strategy и benchmark fingerprints. В smoke третьи попытки дали настоящие `tool_use` и исправили 5/5 cases, а в полном `repeat=3` все 15 repair outcomes остались невалидными.
+- Экспериментальный OpenCode/Qwen 3.6 proxy-контур использовал `aihub-proxy/Qwen/Qwen3.6-27B`. В полном proxy `repeat=3` direct дал `0/15`, repair — `6/15`; все шесть успехов появились на третьей попытке, `04-terminal-precedence` был valid `3/3`, а `03-exact-resume` и `05-persistence-error` — invalid `3/3`.
+- Все 43 tool calls полного proxy-прогона были native `chatcmpl-tool-*`; schema-validated compact rewrite не сработал ни разу. Неуспехи без tool calls содержали stop/text/HTML, но не полный безопасно восстанавливаемый вызов.
+- Proxy `repeat=3` обнаружил три transport failure вида `JSON chunk + [DONE]` без SSE-разделителя и один внешний `Unauthorized`. После узкого исправления SSE отдельный repeat=1 выполнил 20 OpenCode executions без parse/adapter/provider failure; все `0/5 → 0/5` остались честными `SCOPE_INVALID/attempts_exhausted` без tool calls.
+- Полный repeat=3 после transport fix не перезапускался ради улучшения quality result; post-fix repeat=1 является диагностикой исправленного transport, а не заменой matrix evidence. Устойчивое преимущество repair для OpenCode не заявляется.
+- Все сохранённые matrix reports завершились `passed: true`, fingerprints стратегий внутри matrix совпали по benchmark identity, исходный template остался неизменным. Adapter сообщил cost `0`; экономический вывод не делается.
 
 ## Live host conformance — 2026-08-10
 

@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add and run a five-case production-shaped Go benchmark comparing direct and deterministic-repair strategies on Pi and OpenCode with Qwen 3.6 27B.
+**Goal:** Add and run a five-case production-shaped Go benchmark comparing direct and deterministic-repair strategies on Pi/Qwen 3.6 and OpenCode/Qwen3-Coder-Next.
 
 **Architecture:** Reuse `takt eval benchmark` unchanged. A nested stdlib-only Go module contains five intentionally failing packages; an external Go validator selects the package declared by the case, rejects out-of-scope/test changes, then emits the existing `takt-validation/v1alpha1` envelope after gofmt/test/race/vet. Static workflow matrices run the same direct and repair strategies separately for Pi and OpenCode.
 
-**Tech Stack:** Go 1.23+, Takt `takt/evaluation/v1alpha1`, Bash only as the opt-in live launcher, Pi 0.83.0, OpenCode 1.18.14, Qwen 3.6 27B.
+**Tech Stack:** Go 1.23+, Takt `takt/evaluation/v1alpha1`, Bash only as the opt-in live launcher, Pi 0.83.0 with Qwen 3.6 27B, OpenCode 1.18.14 with Qwen3-Coder-Next.
 
 ## Global Constraints
 
 - Do not add a new runner, scheduler, public YAML/JSON field, dependency, or `scripts/test-*.sh`.
 - Keep the corpus labelled `production-shaped`; it is not anonymized production data.
-- Pi model is `aihub/Qwen/Qwen3.6-27B`; OpenCode model is `aihub-sbt/Qwen/Qwen3.6-27B`.
+- Pi model is `aihub/Qwen/Qwen3.6-27B`; OpenCode model is `aihub-sbt/Qwen/Qwen3-Coder-Next`.
 - OpenCode uses only `opencode run --format json`; its provider-side routing is not claimed observable beyond the requested CLI model.
 - OpenCode benchmark runs with `--pure`; both agent nodes declare `skills: []`, so external plugins and skills cannot affect the run.
 - Benchmark output and copied workspaces default to `${TMPDIR:-/tmp}/takt-go-benchmark/evals`, outside the parent Git repository.
@@ -75,7 +75,7 @@ No production Go package is scheduled for modification. Such a change is added o
 - Produces: five packages selected by the exact headers `Benchmark-Package: ./internal/<name>`.
 - Produces: one failing test contour per package; the root Takt module must remain green because `workspace/go.mod` is a nested module.
 
-- [ ] **Step 1: Create the nested module and intentionally faulty production functions**
+- [x] **Step 1: Create the nested module and intentionally faulty production functions**
 
 Use these exact public seams:
 
@@ -109,7 +109,7 @@ Seed one root defect in each implementation:
 - `Classify` returns overflow before checking deadline/cancellation;
 - `Complete` ignores `Repository.Commit` errors.
 
-- [ ] **Step 2: Add focused tests that express the correct contracts**
+- [x] **Step 2: Add focused tests that express the correct contracts**
 
 The tests must include these assertions:
 
@@ -131,7 +131,7 @@ wantArgs := []string{"host", "begin", "--workspace", "/tmp/work", "--json", "--"
 
 Use realistic OpenCode records with top-level `type`, `sessionID`, nested `part.id`, `part.type=step-finish`, and `part.tokens.input/output`.
 
-- [ ] **Step 3: Add the five Markdown cases and manifest labels**
+- [x] **Step 3: Add the five Markdown cases and manifest labels**
 
 Each case starts with exactly one allowlisted header, for example:
 
@@ -145,7 +145,7 @@ Benchmark-Package: ./internal/cliargs
 
 `cases.yaml` uses `source: production-shaped` for every case and categories `cli`, `protocol`, `session`, `lifecycle`, `persistence`.
 
-- [ ] **Step 4: Verify every seeded package fails for its intended reason**
+- [x] **Step 4: Verify every seeded package fails for its intended reason**
 
 Run from `examples/go-benchmark/workspace`:
 
@@ -160,13 +160,13 @@ done
 
 Expected: all five commands fail on their package contract, not on compilation or missing dependencies.
 
-- [ ] **Step 5: Verify the main repository still passes its existing package discovery**
+- [x] **Step 5: Verify the main repository still passes its existing package discovery**
 
 Run: `go test ./... -count=1`
 
 Expected: PASS; the nested intentionally failing module is not part of the root module.
 
-- [ ] **Step 6: Commit the corpus**
+- [x] **Step 6: Commit the corpus**
 
 ```bash
 git add examples/go-benchmark/cases.yaml examples/go-benchmark/cases examples/go-benchmark/workspace
@@ -187,7 +187,7 @@ git commit -m "test: add production-shaped Go benchmark corpus"
 - Consumes: `--case-file`, `--baseline`, `--workspace`.
 - Produces: one strict `takt-validation/v1alpha1` JSON object on stdout and exit `0` only for `valid=true`.
 
-- [ ] **Step 1: Write validator tests first**
+- [x] **Step 1: Write validator tests first**
 
 Define a testable seam:
 
@@ -206,13 +206,13 @@ Tests must:
 5. modify a neighboring package and prove scope validation fails;
 6. decode stdout and assert exactly one JSON value with the required protocol/type/valid/checks/diagnostics fields.
 
-- [ ] **Step 2: Run the tests and observe the expected compile failure**
+- [x] **Step 2: Run the tests and observe the expected compile failure**
 
 Run: `go test ./examples/go-benchmark/validator -count=1`
 
 Expected: FAIL because `validate`, `run`, and the result types do not exist.
 
-- [ ] **Step 3: Implement only the validator needed by the tests**
+- [x] **Step 3: Implement only the validator needed by the tests**
 
 Use stdlib packages only. The implementation must:
 
@@ -235,7 +235,7 @@ var allowedPackages = map[string]struct{}{
 - calculate `valid` from all checks and emit codes `SCOPE_INVALID`, `GOFMT_FAILED`, `GO_TEST_FAILED`, `GO_RACE_FAILED`, or `GO_VET_FAILED`;
 - return exit `1` for a validly encoded negative result and exit `2` only for validator usage/internal failure.
 
-- [ ] **Step 4: Run validator tests and static analysis**
+- [x] **Step 4: Run validator tests and static analysis**
 
 Run:
 
@@ -248,7 +248,7 @@ go vet ./examples/go-benchmark/validator
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the validator**
+- [x] **Step 5: Commit the validator**
 
 ```bash
 git add examples/go-benchmark/validator
@@ -275,7 +275,7 @@ git commit -m "feat: add deterministic Go benchmark validator"
 - Consumes env: `TAKT_GO_BENCHMARK_VALIDATOR`, `TAKT_GO_BENCHMARK_BASELINE`, `TAKT_BENCH_HOST`, `TAKT_REPEAT`, `TAKT_BENCH_OUTPUT`.
 - Produces: `${TMPDIR:-/tmp}/takt-go-benchmark/evals/<host>/benchmark.json` and immutable strategy reports.
 
-- [ ] **Step 1: Add the two workflows**
+- [x] **Step 1: Add the two workflows**
 
 Both workflows use `assistant: coding-agent`, `model: go-model`, generation node `implement`, and quality node `full-validation`.
 
@@ -294,7 +294,7 @@ TAKT_GO_CASE
 
 `baseline-direct` uses `session: fresh`, one attempt, and no hook. `feedback-repair` uses `session: resume`, `attempts.max: 3`, includes `${feedback}` in the prompt, and retries on validator hook failure with `session: resume`.
 
-- [ ] **Step 2: Add exact Pi and OpenCode configs**
+- [x] **Step 2: Add exact Pi and OpenCode configs**
 
 Pi config:
 
@@ -317,7 +317,7 @@ OpenCode config:
 ```yaml
 default_assistant: opencode
 models:
-  go-model: {provider: aihub-sbt, id: Qwen/Qwen3.6-27B}
+  go-model: {provider: aihub-sbt, id: Qwen/Qwen3-Coder-Next}
 assistants:
   opencode:
     type: opencode
@@ -330,7 +330,7 @@ assistants:
 
 Both full files include `apiVersion: takt/v1alpha1` and `kind: Config`.
 
-- [ ] **Step 3: Add one matrix per host**
+- [x] **Step 3: Add one matrix per host**
 
 Each matrix uses:
 
@@ -352,7 +352,7 @@ benchmark:
 
 Define only `baseline-direct` and `feedback-repair`; point both strategies at the host-specific config. Do not add gates before baseline evidence.
 
-- [ ] **Step 4: Add the opt-in launcher and ignore output**
+- [x] **Step 4: Add the opt-in launcher and ignore output**
 
 `run.sh` must:
 
@@ -367,7 +367,7 @@ Define only `baseline-direct` and `feedback-repair`; point both strategies at th
 
 Add `examples/**/.takt/` to `.gitignore`.
 
-- [ ] **Step 5: Validate static definitions without live model calls**
+- [x] **Step 5: Validate static definitions without live model calls**
 
 Run:
 
@@ -382,7 +382,7 @@ go test ./internal/tooling/evaluation ./examples/go-benchmark/validator -count=1
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the benchmark wiring**
+- [x] **Step 6: Commit the benchmark wiring**
 
 ```bash
 git add .gitignore examples/go-benchmark/strategies examples/go-benchmark/config.*.yaml examples/go-benchmark/matrix.*.yaml examples/go-benchmark/run.sh
@@ -398,11 +398,11 @@ git commit -m "feat: wire Go strategy benchmark"
 - Create: `examples/go-benchmark/README.md`
 - Modify after evidence: `TEST_RESULTS.md`
 
-- [ ] **Step 1: Document requirements, commands and evidence limits**
+- [x] **Step 1: Document requirements, commands and evidence limits**
 
 State explicitly that the corpus is production-shaped, direct and repair are compared within each host, `auto_approve` is limited to the trusted copied fixture, outputs are local, and OpenCode resolved provider routing is not observable unless its event stream exposes it.
 
-- [ ] **Step 2: Verify installed host versions and clean environment**
+- [x] **Step 2: Verify installed host versions and clean environment**
 
 Run:
 
@@ -414,25 +414,25 @@ git status --short
 
 Expected: Pi `0.83.0`, OpenCode `1.18.14`, no uncommitted files outside this task.
 
-- [ ] **Step 3: Run Pi smoke**
+- [x] **Step 3: Run Pi smoke**
 
 Run: `TAKT_BENCH_HOST=pi TAKT_REPEAT=1 ./examples/go-benchmark/run.sh`
 
 Expected: matrix report is written even when individual model outcomes are invalid. Any matrix infrastructure error is investigated before continuing.
 
-- [ ] **Step 4: Run OpenCode smoke**
+- [x] **Step 4: Run OpenCode smoke**
 
 Run: `TAKT_BENCH_HOST=opencode TAKT_REPEAT=1 ./examples/go-benchmark/run.sh`
 
-Expected: same measurement contract as Pi; requested model is `aihub-sbt/Qwen/Qwen3.6-27B`.
+Expected: same measurement contract as Pi; requested model is `aihub-sbt/Qwen/Qwen3-Coder-Next`.
 
-- [ ] **Step 5: Classify smoke failures without broad fixes**
+- [x] **Step 5: Classify smoke failures without broad fixes**
 
 - Invalid code or exhausted repair attempts: benchmark outcome; do not change Takt.
 - Missing credentials/model/CLI: external blocker; preserve no secret-bearing raw output.
 - Wrong workspace, lost feedback/resume, malformed report or misattributed usage: Takt defect; add a focused Go regression test before the minimal shared fix, then rerun only the affected smoke.
 
-- [ ] **Step 6: Record exact smoke evidence and commit docs**
+- [x] **Step 6: Record exact smoke evidence and commit docs**
 
 Add versions, requested models, matrix status, infrastructure failures and explicit limitations to `TEST_RESULTS.md`. Do not claim quality statistics from a run that did not write a valid report.
 
@@ -458,7 +458,7 @@ git commit -m "docs: record Go benchmark smoke"
 - Consumes: existing `AssistantSpec.Args`, node `skills` policy and OpenCode `--pure` flag.
 - Produces: parsed OpenCode config with `Args == []string{"--pure"}` and both `implement` nodes with an explicit empty skill allowlist.
 
-- [ ] **Step 1: Add the failing benchmark contract test**
+- [x] **Step 1: Add the failing benchmark contract test**
 
 Extend `examples/go-benchmark/benchmark_test.go`:
 
@@ -487,13 +487,13 @@ func TestOpenCodeBenchmarkRunsPureWithoutSkills(t *testing.T) {
 
 Add imports `slices` and `takt/internal/config`.
 
-- [ ] **Step 2: Run the test and verify RED**
+- [x] **Step 2: Run the test and verify RED**
 
 Run: `go test ./examples/go-benchmark -run '^TestOpenCodeBenchmarkRunsPureWithoutSkills$' -count=1`
 
 Expected: FAIL because OpenCode args do not yet contain `--pure`.
 
-- [ ] **Step 3: Apply the minimal configuration change**
+- [x] **Step 3: Apply the minimal configuration change**
 
 Add to the OpenCode assistant:
 
@@ -509,7 +509,7 @@ skills: []
 
 Do not add a new Takt field or modify the user's global OpenCode config.
 
-- [ ] **Step 4: Verify GREEN and static workflow validity**
+- [x] **Step 4: Verify GREEN and static workflow validity**
 
 Run:
 
@@ -521,7 +521,7 @@ bin/takt validate examples/go-benchmark/strategies/feedback-repair.yaml --config
 
 Expected: PASS; the live command is `opencode run ... --pure`, which OpenCode accepts as its subcommand flag.
 
-- [ ] **Step 5: Commit the isolation change**
+- [x] **Step 5: Commit the isolation change**
 
 ```bash
 git add examples/go-benchmark/benchmark_test.go examples/go-benchmark/config.opencode.yaml examples/go-benchmark/strategies examples/go-benchmark/README.md
@@ -545,7 +545,7 @@ git commit -m "fix: isolate OpenCode benchmark host"
 - Consumes: `NodeState` aggregate compatibility fields and durable `executions` history.
 - Produces: `attempts_exhausted` terminal state that keeps output, Session ID and `resumed` from the final factual execution.
 
-- [ ] **Step 1: Add and run the failing runtime regression**
+- [x] **Step 1: Add and run the failing runtime regression**
 
 Add `TestExhaustedHookRetriesPreserveLastExecution` using a two-attempt resumed mock assistant and an always-failing `after_node` retry hook. Assert the failed node keeps `SessionID == "session"`, `Resumed == true` and `Output == "attempt-2"`.
 
@@ -553,11 +553,11 @@ Run: `go test ./internal/runtime -run '^TestExhaustedHookRetriesPreserveLastExec
 
 Expected: FAIL because `finishNodeFailure(..., execResult{})` clears the aggregate fields.
 
-- [ ] **Step 2: Remove the synthetic result overwrite**
+- [x] **Step 2: Remove the synthetic result overwrite**
 
 Remove the unused `execResult` parameter from `finishNodeFailure` and its three callers. Do not change retry scheduling, execution records or terminal classification.
 
-- [ ] **Step 3: Verify the focused contour**
+- [x] **Step 3: Verify the focused contour**
 
 Run:
 
@@ -568,7 +568,7 @@ go test -race ./internal/runtime -count=1
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit the root-cause fix**
+- [x] **Step 4: Commit the root-cause fix**
 
 ```bash
 git add internal/runtime/attempt.go internal/runtime/runner.go internal/runtime/runner_test.go docs/09-runtime-semantics.md docs/29-benchmark-metric-semantics-v0.1.15.md
@@ -586,21 +586,21 @@ git commit -m "fix: preserve exhausted retry execution state"
 - Conditional product test/fix: exact shared package identified by a reproduced defect
 - Modify after evidence: `TEST_RESULTS.md`, `docs/05-implementation-status.md`, `docs/13-evaluation-plan.md`, `CHANGELOG.md`
 
-- [ ] **Step 1: Run Pi full matrix**
+- [x] **Step 1: Run Pi full matrix**
 
 Run: `TAKT_BENCH_HOST=pi TAKT_REPEAT=3 ./examples/go-benchmark/run.sh`
 
-- [ ] **Step 2: Run an isolated OpenCode smoke**
+- [x] **Step 2: Run an isolated OpenCode smoke**
 
 Run: `TAKT_BENCH_HOST=opencode TAKT_REPEAT=1 ./examples/go-benchmark/run.sh`
 
 While the host process is active, verify its argv contains `--pure`. Inspect only log lines created after the smoke start and require no external plugin load. If the provider endpoint is unreachable, keep the partial report as an infrastructure blocker and do not manufacture quality statistics.
 
-- [ ] **Step 3: Run OpenCode full matrix after a healthy smoke**
+- [x] **Step 3: Run OpenCode full matrix after a healthy smoke**
 
 Run: `TAKT_BENCH_HOST=opencode TAKT_REPEAT=3 ./examples/go-benchmark/run.sh`
 
-- [ ] **Step 4: Inspect reports using the existing report data**
+- [x] **Step 4: Inspect reports using the existing report data**
 
 Record per host and strategy:
 
@@ -610,7 +610,7 @@ Record per host and strategy:
 - retry/resume counts, execution identity and router/provider limitations;
 - diagnostic fingerprints for invalid results.
 
-- [ ] **Step 5: Apply the defect protocol only when evidence points to Takt**
+- [x] **Step 5: Apply the defect protocol only when evidence points to Takt**
 
 For each candidate defect:
 
@@ -624,7 +624,7 @@ For each candidate defect:
 
 If a fact requires a public contract, durable semantics or component-boundary change, stop and return to the design gate instead of patching it silently.
 
-- [ ] **Step 6: Record factual evidence**
+- [x] **Step 6: Record factual evidence**
 
 Update status/evaluation docs and changelog with actual corpus size, host/model identities, metrics, limitations and any fixes. Keep the synthetic/production distinction explicit.
 

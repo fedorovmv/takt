@@ -6,7 +6,7 @@ default_assistant: opencode
 models:
   go-model:
     provider: aihub-sbt
-    id: Qwen/Qwen3.6-27B
+    id: Qwen/Qwen3-Coder-Next
 
 assistants:
   opencode:
