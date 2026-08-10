@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Удалены `MANIFEST.sha256` и отдельный `verify-manifest.sh` gate; `make check`
+  и `scripts/verify.sh` больше не поддерживают дублирующий checksum-манифест.
+
 ## v0.1.57-alpha
 
 - Добавлен пятизадачный production-shaped Go benchmark с внешним `gofmt/test/race/vet` validator и direct/feedback-repair стратегиями. Default output вынесен из Git-root в `${TMPDIR:-/tmp}/takt-go-benchmark/evals` и закреплён поведенческим Go-тестом.

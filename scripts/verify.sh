@@ -51,5 +51,4 @@ go build -o bin/takt ./cmd/takt
   --warnings-as-errors \
   --json >/dev/null
 
-./scripts/verify-manifest.sh
 echo 'verification: PASS'

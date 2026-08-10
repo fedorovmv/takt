@@ -57,7 +57,7 @@ PASS на ветке `fix/release-gate-validation`:
 - `go test ./... -count=1` прошёл для всех пакетов и полного `tests/e2e`;
 - `go test -race ./... -count=1` прошёл непрерывным aggregate запуском;
 - required TypeScript smoke прошёл с изолированно установленным `typescript@5.7.2`; CI устанавливает ту же pinned версию и выставляет `TAKT_REQUIRE_TYPESCRIPT=1`;
-- `make check` прошёл с обязательным TypeScript smoke, documentation и manifest gates;
+- `make check` прошёл с обязательным TypeScript smoke и documentation gate;
 - `./scripts/verify.sh` прошёл полностью и завершился `verification: PASS`.
 
 Release theme: **Architecture Contracts**. Product capabilities and the external `takt/v1alpha1` Workflow/Config API were intentionally not expanded.
@@ -146,7 +146,6 @@ The candidate ZIP was extracted into a new directory and checked independently o
 
 - `VERSION=0.1.57-alpha`, authoring skill `0.39.0`;
 - `bin/` absent before verification;
-- manifest PASS with 628 tracked files;
 - documentation gate PASS;
 - no `/mnt/data` sandbox path or local dependency `replace` in the release tree;
 - `go vet ./...` and `go build ./...` PASS under the sandbox-only external modfile described above;
