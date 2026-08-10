@@ -1,0 +1,23 @@
+apiVersion: takt/evaluation/v1alpha1
+kind: CaseManifest
+cases:
+  01-cli-separator:
+    category: cli
+    difficulty: medium
+    source: production-shaped
+  02-opencode-events:
+    category: protocol
+    difficulty: hard
+    source: production-shaped
+  03-exact-resume:
+    category: session
+    difficulty: medium
+    source: production-shaped
+  04-terminal-precedence:
+    category: lifecycle
+    difficulty: medium
+    source: production-shaped
+  05-persistence-error:
+    category: persistence
+    difficulty: easy
+    source: production-shaped
