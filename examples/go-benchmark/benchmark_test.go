@@ -1,13 +1,67 @@
 package gobenchmark
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"takt/internal/config"
 	"takt/internal/spec"
 	"takt/internal/workflow"
 )
+
+func TestBenchmarkDefaultOutputIsOutsideRepository(t *testing.T) {
+	sandbox := t.TempDir()
+	root := filepath.Join(sandbox, "repo")
+	example := filepath.Join(root, "examples", "go-benchmark")
+	bin := filepath.Join(root, "bin")
+	fakeBin := filepath.Join(root, "fake-bin")
+	tmp := filepath.Join(sandbox, "tmp")
+	for _, dir := range []string{example, bin, fakeBin, tmp} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	runScript, err := os.ReadFile("run.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runPath := filepath.Join(example, "run.sh")
+	if err := os.WriteFile(runPath, runScript, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fakeBin, "go"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	capture := filepath.Join(root, "takt-args")
+	if err := os.WriteFile(filepath.Join(bin, "takt"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CAPTURE_PATH\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(runPath)
+	cmd.Env = append(os.Environ(),
+		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"TMPDIR="+tmp,
+		"TAKT_BENCH_OUTPUT=",
+		"TAKT_BENCH_HOST=opencode",
+		"CAPTURE_PATH="+capture,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("run benchmark launcher: %v\n%s", err, output)
+	}
+	args, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(tmp, "takt-go-benchmark", "evals", "opencode")
+	if !strings.Contains(string(args), "--output\n"+want+"\n") {
+		t.Fatalf("takt args = %q, want external output %q", args, want)
+	}
+}
 
 func TestStrategiesUseIdenticalImplementationPrompt(t *testing.T) {
 	baseline, err := workflow.Load("strategies/baseline-direct.yaml")

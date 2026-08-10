@@ -35,6 +35,6 @@ TAKT_BENCH_HOST=opencode TAKT_REPEAT=1 ./examples/go-benchmark/run.sh
 TAKT_BENCH_HOST=all TAKT_REPEAT=3 ./examples/go-benchmark/run.sh
 ```
 
-`TAKT_BENCH_HOST` принимает `pi`, `opencode` или `all`. Результаты пишутся в `examples/go-benchmark/.takt/evals/<host>`; путь можно заменить через `TAKT_BENCH_OUTPUT`.
+`TAKT_BENCH_HOST` принимает `pi`, `opencode` или `all`. По умолчанию результаты пишутся в `${TMPDIR:-/tmp}/takt-go-benchmark/evals/<host>` вне Git-репозитория; путь можно заменить через `TAKT_BENCH_OUTPUT`, но для OpenCode он также должен оставаться вне родительского Git-root.
 
 OpenCode `auto_approve` включён явно и только для копии доверенного benchmark workspace. Live output, Session ID и credentials не коммитятся. Невалидное решение модели является результатом benchmark; ошибка подготовки workspace, запуска host или validation envelope — ошибкой измерительного контура.

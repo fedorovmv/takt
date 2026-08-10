@@ -15,6 +15,7 @@
 - Pi model is `aihub/Qwen/Qwen3.6-27B`; OpenCode model is `aihub-sbt/Qwen/Qwen3.6-27B`.
 - OpenCode uses only `opencode run --format json`; its provider-side routing is not claimed observable beyond the requested CLI model.
 - OpenCode benchmark runs with `--pure`; both agent nodes declare `skills: []`, so external plugins and skills cannot affect the run.
+- Benchmark output and copied workspaces default to `${TMPDIR:-/tmp}/takt-go-benchmark/evals`, outside the parent Git repository.
 - Text from the assistant is never success evidence; success is only `quality_node_status=completed && valid=true`.
 - Run `repeat=1` before `repeat=3`; do not add cost gates before the first full baseline.
 - Any Takt product fix starts with a Go regression test at the shared root cause. Do not refactor unrelated code.
@@ -272,7 +273,7 @@ git commit -m "feat: add deterministic Go benchmark validator"
 **Interfaces:**
 
 - Consumes env: `TAKT_GO_BENCHMARK_VALIDATOR`, `TAKT_GO_BENCHMARK_BASELINE`, `TAKT_BENCH_HOST`, `TAKT_REPEAT`, `TAKT_BENCH_OUTPUT`.
-- Produces: `examples/go-benchmark/.takt/evals/<host>/benchmark.json` and immutable strategy reports.
+- Produces: `${TMPDIR:-/tmp}/takt-go-benchmark/evals/<host>/benchmark.json` and immutable strategy reports.
 
 - [ ] **Step 1: Add the two workflows**
 
@@ -360,6 +361,7 @@ Define only `baseline-direct` and `feedback-repair`; point both strategies at th
 - export its path and the canonical baseline workspace path;
 - accept `TAKT_BENCH_HOST=pi|opencode|all` with `all` as default;
 - accept `TAKT_REPEAT` with `1` as the safe default;
+- default `TAKT_BENCH_OUTPUT` to `${TMPDIR:-/tmp}/takt-go-benchmark/evals`, outside the repository, while preserving an explicit override;
 - call `bin/takt eval benchmark <matrix> --repeat "$TAKT_REPEAT" --output <host-dir> --replace --json`;
 - remove only its own `mktemp` directory on exit.
 
@@ -579,8 +581,8 @@ git commit -m "fix: preserve exhausted retry execution state"
 
 **Files:**
 
-- Local only: `examples/go-benchmark/.takt/evals/pi/**`
-- Local only: `examples/go-benchmark/.takt/evals/opencode/**`
+- Local only: `${TMPDIR:-/tmp}/takt-go-benchmark/evals/pi/**`
+- Local only: `${TMPDIR:-/tmp}/takt-go-benchmark/evals/opencode/**`
 - Conditional product test/fix: exact shared package identified by a reproduced defect
 - Modify after evidence: `TEST_RESULTS.md`, `docs/05-implementation-status.md`, `docs/13-evaluation-plan.md`, `CHANGELOG.md`
 

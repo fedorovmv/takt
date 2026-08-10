@@ -37,7 +37,7 @@ Corpus помечается `production-shaped`, а не production: реаль�
 - Pi/OpenCode config и matrix definitions;
 - один `run.sh` для сборки валидатора и запуска выбранного host либо обоих hosts.
 
-Live outputs пишутся только под `.takt/evals/`; реализация добавляет этот путь в `.gitignore`, поэтому отчёты и session artifacts не входят в manifest или release archive.
+Live outputs по умолчанию пишутся в `${TMPDIR:-/tmp}/takt-go-benchmark/evals`, вне Git-репозитория. Это не даёт OpenCode подняться от скопированного workspace к родительскому Git-root и изменить исходный template. `TAKT_BENCH_OUTPUT` сохраняется как override, но для OpenCode также должен указывать вне репозитория; отчёты и session artifacts не входят в manifest или release archive.
 
 ## Стратегии и модели
 

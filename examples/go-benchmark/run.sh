@@ -6,7 +6,7 @@ example="$root/examples/go-benchmark"
 
 : "${TAKT_BENCH_HOST:=all}"
 : "${TAKT_REPEAT:=1}"
-: "${TAKT_BENCH_OUTPUT:=$example/.takt/evals}"
+: "${TAKT_BENCH_OUTPUT:=${TMPDIR:-/tmp}/takt-go-benchmark/evals}"
 
 [[ -x "$root/bin/takt" ]] || { echo "build bin/takt first" >&2; exit 1; }
 [[ "$TAKT_REPEAT" =~ ^[1-9][0-9]*$ ]] || { echo "TAKT_REPEAT must be >= 1" >&2; exit 1; }
