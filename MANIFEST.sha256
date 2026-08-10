@@ -90,6 +90,7 @@ f1fd714f46b9208224133667bd15ff0262da0ffdfc8c7e07365b3abfc44c3747  docs/71-canoni
 8d77f9bc0caad0fa55b2de11d6847ab9b208a1a80b29b328f30427909adcc379  docs/proposals/001-simple-reliable-agent-neutral-takt.md
 bfdc5914a09b03666d92af6469a1ef897999d1ee5d483cd2ed82b41fd09a0429  docs/superpowers/plans/2026-08-10-live-host-conformance.md
 3cfa2b47c57599e7c9f2f67ae6bfd9197b60e18f1a3e43f2323145cf088fe4bf  docs/superpowers/plans/2026-08-10-release-gate-and-validation-repair.md
+aa8fb7c46d072c8bef574e971574e43e617b39444b6f7b2847ba343385a3e74e  docs/superpowers/specs/2026-08-10-go-stabilization-benchmark-design.md
 4c9cf9b3b1906cc902ea78f308578fed8f459e98bbf1988ecb6d74dd02e54c41  docs/superpowers/specs/2026-08-10-live-host-conformance-design.md
 e201c1de80d660f92bb2a587d08a7def5d714634ed8695b1b24545d0f18278e3  docs/superpowers/specs/2026-08-10-release-gate-and-validation-repair-design.md
 6c59ed77343b653c620a9a4b904d6e455f053d2598915469cfeca1ddd3b508ee  examples/adapter-platform/README.md
