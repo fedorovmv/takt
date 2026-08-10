@@ -5,13 +5,14 @@ default_assistant: opencode
 
 models:
   go-model:
-    provider: aihub-sbt
+    provider: aihub-proxy
     id: Qwen/Qwen3.6-27B
 
 assistants:
   opencode:
     type: opencode
     binary: opencode
+    args: [--pure]
     agent: build
     auto_approve: true
     max_output_bytes: 10485760

@@ -12,6 +12,7 @@ defaults:
 nodes:
   - id: implement
     timeout: 15m
+    skills: []
     prompt: |
       Выполни Go-задачу в текущей рабочей области.
 

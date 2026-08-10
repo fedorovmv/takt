@@ -2,6 +2,8 @@
 
 Этот opt-in benchmark сравнивает один прямой coding-agent вызов с bounded feedback repair на пяти небольших Go-задачах. Задачи основаны на фактических классах дефектов Takt, но являются `production-shaped`, а не обезличенными production-данными.
 
+Benchmark отвечает на один вопрос: получает ли workflow изменение, которое проходит независимый Go validator. Он не сравнивает «интеллект» моделей: `feedback-repair` намеренно получает до трёх попыток и проверяет пользу дополнительного цикла `agent → validator → feedback → resume`.
+
 ## Что проверяется
 
 - `baseline-direct`: один fresh turn, затем независимый validator;
@@ -9,7 +11,11 @@
 - validator разрешает менять только production `.go` целевого package, запрещает изменения тестов и запускает gofmt, test, race и vet;
 - успех учитывается только при `quality_node_status=completed && valid=true`.
 
-Pi использует `aihub/Qwen/Qwen3.6-27B`. OpenCode использует запрошенную CLI model `aihub-sbt/Qwen/Qwen3.6-27B`; provider-side routing не считается наблюдаемым, если NDJSON не публикует его отдельно.
+Pi запрашивает `aihub/Qwen/Qwen3.6-27B`. В установленном OpenCode provider `aihub` отсутствует, поэтому OpenCode использует доступный host alias `aihub-proxy/Qwen/Qwen3.6-27B`. Совпадение model ID не доказывает одинаковую provider-side маршрутизацию, пока host events не публикуют её отдельно.
+
+OpenCode запускается с `--pure`, а agent-node задаёт `skills: []`. Внешние OpenCode plugins не загружаются, skill tool запрещён политикой Takt; глобальная пользовательская конфигурация не изменяется.
+
+Стратегии выполняются последовательно в порядке matrix: сначала `baseline-direct`, затем `feedback-repair`. Runner не чередует их и не нормализует результаты по времени или нагрузке провайдера. Отчёт сохраняет сырые outcomes каждого `case × repeat`.
 
 ## Запуск
 
