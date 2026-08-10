@@ -1,5 +1,22 @@
 # Takt v0.1.57-alpha — TEST RESULTS
 
+## Live host conformance — 2026-08-10
+
+Обе live-проверки использовали Qwen 3.6 27B; credentials, provider configuration и Session ID не сохранялись.
+
+| Host | Version | Adapter fresh | Adapter resume | Extension load | Command | Input | Tool | Recovery | Completion |
+|---|---|---|---|---|---|---|---|---|---|
+| Pi | 0.83.0 | PASS | PASS | PASS | PASS | NOT VERIFIED | NOT VERIFIED | NOT VERIFIED | NOT VERIFIED |
+| OpenCode | 1.18.14 | PASS | PASS | PASS | PASS | PASS | NOT VERIFIED | PASS | NOT VERIFIED |
+
+- Pi adapter: `NODE_OPTIONS=--use-system-ca`, provider `aihub`, model `Qwen/Qwen3.6-27B`; fresh attempt returned version/Session ID, resume preserved the exact Session ID, and the real extension displayed the `/takt` preview/confirmation before any main-model response.
+- OpenCode adapter: provider `aihub-sbt`, model `Qwen/Qwen3.6-27B`, agent `build`; fresh attempt returned version/Session ID and resume preserved the exact Session ID.
+- OpenCode `1.18.14` loads plugins through `Plugin(input) -> Promise<Hooks>`. The entrypoint is compiler-checked against that contract; live `chat.message` interception created a durable `preview/guarded` session, blocked subsequent input, remained fail-closed while the daemon was unavailable and recovered through durable `host find` after restart.
+- OpenCode headless mode keeps the intentional abort as generic `UnknownError` in NDJSON, while the plugin now writes the exact Takt preview/block reason to stderr before aborting. The live stdin smoke confirmed the diagnostic and absence of main-model text. Initial positional `opencode run <message>` is not a supported interception path because the host may submit it before external plugins settle; adapter and headless contract prompts use stdin.
+- The first live routers exposed that `output_format` was validated but not sent to bundled assistants. Runtime now appends the exact contract to the prompt; both OpenCode and Pi returned a valid `TaskRoute` on attempt 1 without `router_fallback`.
+- Reproduced implementation defects were fixed: obsolete OpenCode registrar API, policy deny misclassified as transport outage, common CLI flags appended after `--`, hidden headless diagnostics, and a stale `check-docs.sh` source assertion. TypeScript runtime/assignability contracts and Go regressions cover them.
+- Bundled integrations remain `guarded`: no live evidence was obtained for OpenCode tool/completion blocking or for Pi input/tool/recovery/completion blocking.
+
 ## Post-audit repair — 2026-08-10
 
 PASS на ветке `fix/release-gate-validation`:

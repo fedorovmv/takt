@@ -9,9 +9,9 @@
     "typescript": "5.7.2"
   },
   "taktHostCompatibility": {
-    "api": "opencode-v2-beta",
+    "api": "opencode-1.18.14",
     "verified": false,
     "enforcement": "guarded",
-    "note": "Pin and live-smoke the target OpenCode build before enabling this plugin in a corporate image. No strict capability is declared until model-dispatch cancellation is verified against that exact build."
+    "note": "Command/input interception and recovery are live-smoked on 1.18.14; tool/completion blocking remain unverified, so strict is not declared."
   }
 }

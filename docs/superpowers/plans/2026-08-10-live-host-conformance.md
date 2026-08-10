@@ -156,7 +156,7 @@ git commit -m "test: cover live OpenCode resume"
 - Consumes: Pi `--extension`, OpenCode `OPENCODE_CONFIG_CONTENT.plugin`, `takt host.*` daemon API.
 - Produces: versioned capability table with `PASS`, `FAIL` or `NOT VERIFIED` for command/input/tool/completion/recovery.
 
-- [ ] **Step 1: Проверить загрузку Pi extension на фактической версии**
+- [x] **Step 1: Проверить загрузку Pi extension на фактической версии**
 
 Run из repository root:
 
@@ -169,21 +169,21 @@ pi --extension integrations/coding-agent-host-control/pi/index.ts \
 
 Expected: process загружает extension без type/API error и выводит marker. Это доказывает только extension load на Pi `0.83.0`, не blocking hooks.
 
-- [ ] **Step 2: Проверить загрузку OpenCode plugin на фактической версии**
+- [x] **Step 2: Проверить загрузку OpenCode plugin на фактической версии**
 
 Run с абсолютным file URL текущего `index.ts`:
 
 ```bash
 TAKT_OPENCODE_PLUGIN_URL="file://$(pwd)/integrations/coding-agent-host-control/opencode/index.ts"
-OPENCODE_CONFIG_CONTENT="{\"plugin\":[\"$TAKT_OPENCODE_PLUGIN_URL\"]}" \
-opencode run --format json --dir "$(pwd)" \
-  --model aihub-sbt/Qwen/Qwen3.6-27B \
-  "Reply with exactly: TAKT_OPENCODE_PLUGIN_LOAD_OK"
+printf '%s\n' "Reply with exactly: TAKT_OPENCODE_PLUGIN_LOAD_OK" | \
+  OPENCODE_CONFIG_CONTENT="{\"plugin\":[\"$TAKT_OPENCODE_PLUGIN_URL\"]}" \
+  opencode run --format json --dir "$(pwd)" \
+    --model aihub-sbt/Qwen/Qwen3.6-27B
 ```
 
 Expected: NDJSON stream завершается успешно с marker и без plugin API error. Это доказывает только plugin load на OpenCode `1.18.14`.
 
-- [ ] **Step 3: Проверить command interception в disposable workspace**
+- [x] **Step 3: Проверить command interception в disposable workspace**
 
 Создать workspace через `mktemp -d`, выполнить `bin/takt init code --dir <workspace> --json`, механически заменить три model provider/ID в созданном `.takt/config.yaml` на `aihub-sbt` + `Qwen/Qwen3.6-27B`, добавить repository `bin` в `PATH` и запустить daemon. Затем:
 
@@ -192,7 +192,7 @@ Expected: NDJSON stream завершается успешно с marker и бе�
 
 Expected: command interception PASS только при наблюдаемом preview и durable host session. Temporary workspace path и host session artifacts не копировать в repository.
 
-- [ ] **Step 4: Проверить guarded boundaries без завышения результата**
+- [x] **Step 4: Проверить guarded boundaries без завышения результата**
 
 На созданной active host session проверить:
 
@@ -204,7 +204,7 @@ Expected: command interception PASS только при наблюдаемом p
 
 Expected: ни одна capability не получает PASS по source inspection или deterministic fixture; только по наблюдаемому live host event.
 
-- [ ] **Step 5: Записать sanitized evidence**
+- [x] **Step 5: Записать sanitized evidence**
 
 Добавить в `TEST_RESULTS.md` таблицу:
 
@@ -217,7 +217,7 @@ Expected: ни одна capability не получает PASS по source inspec
 
 Заменить каждое значение фактическим результатом и кратко перечислить exact commands/models. Не включать raw provider configuration, credentials, Session ID или абсолютные user paths.
 
-- [ ] **Step 6: Commit evidence**
+- [x] **Step 6: Commit evidence**
 
 ```bash
 git add TEST_RESULTS.md integrations/coding-agent-host-control/pi/index.ts integrations/coding-agent-host-control/opencode/index.ts
@@ -238,7 +238,7 @@ git commit -m "docs: record live host conformance"
 - Consumes: evidence table из Task 3.
 - Produces: документация, которая не смешивает adapter smoke и strict host conformance.
 
-- [ ] **Step 1: Обновить только доказанные статусы**
+- [x] **Step 1: Обновить только доказанные статусы**
 
 Записать exact Pi/OpenCode versions и результаты fresh/resume. Bundled host status оставить `guarded`, `strict_allowed: false`; непроверенные tool/completion guarantees не повышать. Удалить gap только для capability, получившей live PASS; общий strict-host gap сохраняется до полного набора.
 
