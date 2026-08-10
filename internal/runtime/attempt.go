@@ -73,7 +73,7 @@ func (r *Runner) runBeforeAttemptHooks(ctx context.Context, state *store.RunStat
 		}
 		return true, nil
 	case "fail":
-		return false, r.finishNodeFailure(state, node.ID, "hook_failed", fmt.Errorf("before_node hook failed: %s", feedback), execResult{})
+		return false, r.finishNodeFailure(state, node.ID, "hook_failed", fmt.Errorf("before_node hook failed: %s", feedback))
 	default:
 		return false, nil
 	}
@@ -190,7 +190,7 @@ func (r *Runner) finishSuccessfulAttempt(ctx context.Context, state *store.RunSt
 			return attemptRetry, nil
 		}
 		if decision == "fail" {
-			return attemptDone, r.finishNodeFailure(state, node.ID, "hook_failed", fmt.Errorf("%s hook failed: %s", phase.name, feedback), result)
+			return attemptDone, r.finishNodeFailure(state, node.ID, "hook_failed", fmt.Errorf("%s hook failed: %s", phase.name, feedback))
 		}
 	}
 	if err := attemptContextError(ctx, "node attempt"); err != nil {

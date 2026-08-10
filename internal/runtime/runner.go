@@ -676,7 +676,7 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 		}
 		return nil
 	}
-	return r.finishNodeFailure(state, node.ID, "attempts_exhausted", fmt.Errorf("node %q exhausted %d attempts; feedback: %s", node.ID, max, ns.Feedback), execResult{})
+	return r.finishNodeFailure(state, node.ID, "attempts_exhausted", fmt.Errorf("node %q exhausted %d attempts; feedback: %s", node.ID, max, ns.Feedback))
 }
 
 func (r *Runner) finishAttemptExecutionError(state *store.RunState, nodeID string, err error, result execResult) error {
@@ -1092,16 +1092,13 @@ func (r *Runner) finishNodeError(state *store.RunState, nodeID, code string, err
 	return r.commit(state, "node.errored", nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "usage": ns.Usage, "diagnostic": ns.Diagnostic})
 }
 
-func (r *Runner) finishNodeFailure(state *store.RunState, nodeID, code string, err error, result execResult) error {
+func (r *Runner) finishNodeFailure(state *store.RunState, nodeID, code string, err error) error {
 	ns := state.Nodes[nodeID]
 	ns.Status = store.NodeFailed
 	ns.ErrorCode = code
 	ns.Error = err.Error()
 	diagnostic := r.diagnosticFor(code, err, false)
 	ns.Diagnostic = &diagnostic
-	applyExecResult(ns, result)
-	mergeRunArtifacts(state, result.Artifacts)
-
 	state.CurrentNode = ""
 	state.CurrentNodes = nil
 	return r.commit(state, "node.failed", nodeID, map[string]any{"error": ns.Error, "code": ns.ErrorCode, "usage": ns.Usage, "diagnostic": ns.Diagnostic})

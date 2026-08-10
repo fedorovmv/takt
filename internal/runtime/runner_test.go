@@ -1074,6 +1074,37 @@ func TestRetryPreservesPerExecutionModelIdentityAndUsage(t *testing.T) {
 	}
 }
 
+func TestExhaustedHookRetriesPreserveLastExecution(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{
+		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "exhausted-resume"},
+		Defaults: spec.Defaults{Assistant: "demo", Model: "m", Session: "resume"},
+		Nodes: []spec.Node{{
+			ID: "agent", Prompt: "generate", Attempts: spec.AttemptsSpec{Max: 2},
+			Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
+				ID: "reject", Bash: `echo retry; exit 1`, OnFailure: spec.HookDecision{Action: "retry"},
+			}}},
+		}},
+	}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "model"}}}
+	calls := 0
+	adapter := adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
+		calls++
+		return assistant.Result{Output: fmt.Sprintf("attempt-%d", calls), SessionID: "session", Resumed: req.SessionID != ""}, nil
+	})
+	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil })
+	state, err := r.Start(context.Background(), "")
+	var runErr *RunFailedError
+	if !errors.As(err, &runErr) {
+		t.Fatalf("expected RunFailedError, got %v", err)
+	}
+	node := state.Nodes["agent"]
+	if node.SessionID != "session" || !node.Resumed || node.Output != "attempt-2" {
+		t.Fatalf("last execution was cleared on exhaustion: %+v", node)
+	}
+}
+
 func TestIndependentNodesRunInParallel(t *testing.T) {
 	dir := t.TempDir()
 	waitForPeer := func(self, peer string) string {

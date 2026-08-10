@@ -155,7 +155,7 @@ node.started
 - следующая попытка увеличивает счётчик;
 - остановка на approval уменьшает счётчик обратно и сохраняется отдельным transition.
 
-При исчерпании `attempts.max` узел становится `failed` с кодом `attempts_exhausted`.
+При исчерпании `attempts.max` узел становится `failed` с кодом `attempts_exhausted`. Агрегированные output, Session ID и `resumed` остаются результатом последней фактической попытки и не обнуляются синтетическим terminal transition.
 
 ## 7. Ошибки и `allow_failure`
 
