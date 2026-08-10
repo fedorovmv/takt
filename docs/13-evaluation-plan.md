@@ -177,3 +177,13 @@ Takt подтверждает ценность, если новая страте
 - pairwise baseline/candidate outcomes.
 
 Deterministic fake-agent scenario специально отделён от model-quality evaluation: он доказывает, что measurement path видит неправильный route и фактический `replace_remaining`.
+
+## 11. Go production-shaped live-срез — 2026-08-10
+
+Пять изолированных Go cases проверялись внешним validator `gofmt + go test + race + vet`. Default output вынесен в `${TMPDIR:-/tmp}/takt-go-benchmark/evals`, потому что OpenCode внутри родительского Git-root может выбрать корень repository вместо переданного workspace. Success по-прежнему требует `quality_node_status=completed && valid=true`.
+
+- Pi `0.83.0`, `aihub/Qwen/Qwen3.6-27B`, `repeat=3`: direct `14/15`, feedback repair `14/15 → 15/15`, один exact resume, среднее число попыток repair `1.0667`.
+- OpenCode `1.18.14`, requested CLI model `aihub-sbt/Qwen/Qwen3.6-27B`, `--pure`, `skills: []`: isolated smoke дал `0/5 → 5/5`, но полный `repeat=3` — `0/15 → 0/15`.
+- В полном OpenCode-прогоне adapter и resume работали, но модель не выдала NDJSON `tool_use`; текст и псевдо-разметка инструмента не изменили workspace, поэтому validator fail-closed вернул `SCOPE_INVALID`.
+
+OpenCode smoke и полный прогон имеют одинаковые matrix/strategy/benchmark fingerprints, но противоположный результат repair. Повторный запуск до желаемого результата не выполнялся. Этот evidence подтверждает измерительный контур и показывает межзапусковую нестабильность tool use; он не доказывает устойчивое преимущество стратегии. Метрики времени не используются из-за неравномерной загрузки provider, а provider-side routing не считается наблюдаемым сверх requested CLI model.

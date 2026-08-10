@@ -136,6 +136,8 @@ Provider-specific adapters не встроены в runtime. `v0.1.49` доба�
 
 Deterministic fixture доказывает measurement correctness. Production quality требует реальных cases/models.
 
+Первый live Go-срез на пяти production-shaped cases выполнен с Qwen 3.6 27B. Pi `repeat=3` дал direct `14/15` и repair `14/15 → 15/15` с одним exact resume. OpenCode через прямой `aihub-sbt` дал repair `0/5 → 5/5` в isolated smoke, но полный `repeat=3` — `0/15 → 0/15`: event stream не содержал настоящих `tool_use`, хотя exact resume выполнялся. Поэтому measurement path подтверждён, но устойчивое преимущество OpenCode repair не заявляется. Время provider не используется для вывода; production-shaped evidence не закрывает production evaluation.
+
 ## Предметные поставки
 
 - профиль `code` 0.16.0: 19 workflow и trusted block catalog;
@@ -214,7 +216,7 @@ Deterministic fixture доказывает measurement correctness. Production q
 ## Фактические незакрытые gaps
 
 1. Live Route DSL production evidence.
-2. Go + Document production evaluation.
+2. Обезличенная Go + Document production evaluation; первый Go production-shaped live-срез выполнен, но не заменяет production corpus.
 3. Финальная v0.2/v1beta1 migration после production evidence; schema subset, field audit и compatibility matrix закрыты в v0.1.48.
 4. Live strict host conformance Pi/OpenCode: fresh/resume и часть guarded host capabilities подтверждены на Pi `0.83.0`/OpenCode `1.18.14`, но tool/completion и часть Pi boundaries остаются непроверенными.
 5. Live Qwen/GitHub smoke reference adapters с внешними credentials при внедрении; public SDK/reference implementations закрыты в v0.1.49–v0.1.50.
