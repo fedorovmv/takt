@@ -12,8 +12,9 @@
 
 - Do not add a new runner, scheduler, public YAML/JSON field, dependency, or `scripts/test-*.sh`.
 - Keep the corpus labelled `production-shaped`; it is not anonymized production data.
-- Pi model is `aihub/Qwen/Qwen3.6-27B`; OpenCode model is `aihub-sbt/Qwen/Qwen3.6-27B`.
+- Pi model is `aihub/Qwen/Qwen3.6-27B`; installed OpenCode exposes the requested model through `aihub-proxy/Qwen/Qwen3.6-27B`.
 - OpenCode uses only `opencode run --format json`; its provider-side routing is not claimed observable beyond the requested CLI model.
+- OpenCode benchmark runs with `--pure`; both agent nodes declare `skills: []`, so external plugins and skills cannot affect the run.
 - Text from the assistant is never success evidence; success is only `quality_node_status=completed && valid=true`.
 - Run `repeat=1` before `repeat=3`; do not add cost gates before the first full baseline.
 - Any Takt product fix starts with a Go regression test at the shared root cause. Do not refactor unrelated code.
@@ -315,11 +316,12 @@ OpenCode config:
 ```yaml
 default_assistant: opencode
 models:
-  go-model: {provider: aihub-sbt, id: Qwen/Qwen3.6-27B}
+  go-model: {provider: aihub-proxy, id: Qwen/Qwen3.6-27B}
 assistants:
   opencode:
     type: opencode
     binary: opencode
+    args: [--pure]
     agent: build
     auto_approve: true
     max_output_bytes: 10485760
@@ -420,7 +422,7 @@ Expected: matrix report is written even when individual model outcomes are inval
 
 Run: `TAKT_BENCH_HOST=opencode TAKT_REPEAT=1 ./examples/go-benchmark/run.sh`
 
-Expected: same measurement contract as Pi; requested model is `aihub-sbt/Qwen/Qwen3.6-27B`.
+Expected: same measurement contract as Pi; requested model is `aihub-proxy/Qwen/Qwen3.6-27B`.
 
 - [ ] **Step 5: Classify smoke failures without broad fixes**
 
@@ -439,7 +441,141 @@ git commit -m "docs: record Go benchmark smoke"
 
 ---
 
-### Task 5: Run the three-repeat matrices and triage reproducible Takt defects
+### Task 5: Isolate OpenCode from external plugins and skills
+
+**Files:**
+
+- Modify: `examples/go-benchmark/benchmark_test.go`
+- Modify: `examples/go-benchmark/config.opencode.yaml`
+- Modify: `examples/go-benchmark/strategies/baseline-direct.yaml`
+- Modify: `examples/go-benchmark/strategies/feedback-repair.yaml`
+- Modify: `examples/go-benchmark/README.md`
+
+**Interfaces:**
+
+- Consumes: existing `AssistantSpec.Args`, node `skills` policy and OpenCode `--pure` flag.
+- Produces: parsed OpenCode config with `Args == []string{"--pure"}` and both `implement` nodes with an explicit empty skill allowlist.
+
+- [ ] **Step 1: Add the failing benchmark contract test**
+
+Extend `examples/go-benchmark/benchmark_test.go`:
+
+```go
+func TestOpenCodeBenchmarkRunsPureWithoutSkills(t *testing.T) {
+	cfg, err := config.Load("config.opencode.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assistant := cfg.Assistants["opencode"]
+	if !slices.Equal(assistant.Args, []string{"--pure"}) {
+		t.Fatalf("OpenCode args = %v, want [--pure]", assistant.Args)
+	}
+	for _, path := range []string{"strategies/baseline-direct.yaml", "strategies/feedback-repair.yaml"} {
+		wf, err := workflow.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		implement := nodeByID(t, wf.Nodes, "implement")
+		if implement.Skills == nil || len(*implement.Skills) != 0 {
+			t.Fatalf("%s implement skills = %#v, want explicit empty allowlist", path, implement.Skills)
+		}
+	}
+}
+```
+
+Add imports `slices` and `takt/internal/config`.
+
+- [ ] **Step 2: Run the test and verify RED**
+
+Run: `go test ./examples/go-benchmark -run '^TestOpenCodeBenchmarkRunsPureWithoutSkills$' -count=1`
+
+Expected: FAIL because OpenCode args do not yet contain `--pure`.
+
+- [ ] **Step 3: Apply the minimal configuration change**
+
+Add to the OpenCode assistant:
+
+```yaml
+args: [--pure]
+```
+
+Add to the `implement` node in both strategy workflows:
+
+```yaml
+skills: []
+```
+
+Do not add a new Takt field or modify the user's global OpenCode config.
+
+- [ ] **Step 4: Verify GREEN and static workflow validity**
+
+Run:
+
+```bash
+go test ./examples/go-benchmark -count=1
+bin/takt validate examples/go-benchmark/strategies/baseline-direct.yaml --config examples/go-benchmark/config.opencode.yaml --workspace examples/go-benchmark/workspace --json
+bin/takt validate examples/go-benchmark/strategies/feedback-repair.yaml --config examples/go-benchmark/config.opencode.yaml --workspace examples/go-benchmark/workspace --json
+```
+
+Expected: PASS; the live command is `opencode run ... --pure`, which OpenCode accepts as its subcommand flag.
+
+- [ ] **Step 5: Commit the isolation change**
+
+```bash
+git add examples/go-benchmark/benchmark_test.go examples/go-benchmark/config.opencode.yaml examples/go-benchmark/strategies examples/go-benchmark/README.md
+git commit -m "fix: isolate OpenCode benchmark host"
+```
+
+---
+
+### Task 6: Preserve the last execution when retries are exhausted
+
+**Files:**
+
+- Modify: `internal/runtime/runner_test.go`
+- Modify: `internal/runtime/runner.go`
+- Modify: `internal/runtime/attempt.go`
+- Modify: `docs/09-runtime-semantics.md`
+- Modify: `docs/29-benchmark-metric-semantics-v0.1.15.md`
+
+**Interfaces:**
+
+- Consumes: `NodeState` aggregate compatibility fields and durable `executions` history.
+- Produces: `attempts_exhausted` terminal state that keeps output, Session ID and `resumed` from the final factual execution.
+
+- [ ] **Step 1: Add and run the failing runtime regression**
+
+Add `TestExhaustedHookRetriesPreserveLastExecution` using a two-attempt resumed mock assistant and an always-failing `after_node` retry hook. Assert the failed node keeps `SessionID == "session"`, `Resumed == true` and `Output == "attempt-2"`.
+
+Run: `go test ./internal/runtime -run '^TestExhaustedHookRetriesPreserveLastExecution$' -count=1`
+
+Expected: FAIL because `finishNodeFailure(..., execResult{})` clears the aggregate fields.
+
+- [ ] **Step 2: Remove the synthetic result overwrite**
+
+Remove the unused `execResult` parameter from `finishNodeFailure` and its three callers. Do not change retry scheduling, execution records or terminal classification.
+
+- [ ] **Step 3: Verify the focused contour**
+
+Run:
+
+```bash
+go test ./internal/runtime -run '^(TestExhaustedHookRetriesPreserveLastExecution|TestRetryPreservesPerExecutionModelIdentityAndUsage|TestHookRetry)$' -count=1
+go test -race ./internal/runtime -count=1
+```
+
+Expected: PASS.
+
+- [ ] **Step 4: Commit the root-cause fix**
+
+```bash
+git add internal/runtime/attempt.go internal/runtime/runner.go internal/runtime/runner_test.go docs/09-runtime-semantics.md docs/29-benchmark-metric-semantics-v0.1.15.md
+git commit -m "fix: preserve exhausted retry execution state"
+```
+
+---
+
+### Task 7: Run the three-repeat matrices and triage reproducible Takt defects
 
 **Files:**
 
@@ -452,11 +588,17 @@ git commit -m "docs: record Go benchmark smoke"
 
 Run: `TAKT_BENCH_HOST=pi TAKT_REPEAT=3 ./examples/go-benchmark/run.sh`
 
-- [ ] **Step 2: Run OpenCode full matrix**
+- [ ] **Step 2: Run an isolated OpenCode smoke**
+
+Run: `TAKT_BENCH_HOST=opencode TAKT_REPEAT=1 ./examples/go-benchmark/run.sh`
+
+While the host process is active, verify its argv contains `--pure`. Inspect only log lines created after the smoke start and require no external plugin load. If the provider endpoint is unreachable, keep the partial report as an infrastructure blocker and do not manufacture quality statistics.
+
+- [ ] **Step 3: Run OpenCode full matrix after a healthy smoke**
 
 Run: `TAKT_BENCH_HOST=opencode TAKT_REPEAT=3 ./examples/go-benchmark/run.sh`
 
-- [ ] **Step 3: Inspect reports using the existing report data**
+- [ ] **Step 4: Inspect reports using the existing report data**
 
 Record per host and strategy:
 
@@ -466,7 +608,7 @@ Record per host and strategy:
 - retry/resume counts, execution identity and router/provider limitations;
 - diagnostic fingerprints for invalid results.
 
-- [ ] **Step 4: Apply the defect protocol only when evidence points to Takt**
+- [ ] **Step 5: Apply the defect protocol only when evidence points to Takt**
 
 For each candidate defect:
 
@@ -480,13 +622,13 @@ For each candidate defect:
 
 If a fact requires a public contract, durable semantics or component-boundary change, stop and return to the design gate instead of patching it silently.
 
-- [ ] **Step 5: Record factual evidence**
+- [ ] **Step 6: Record factual evidence**
 
 Update status/evaluation docs and changelog with actual corpus size, host/model identities, metrics, limitations and any fixes. Keep the synthetic/production distinction explicit.
 
 ---
 
-### Task 6: Final verification, manifest and completion commit
+### Task 8: Final verification, manifest and completion commit
 
 **Files:**
 
