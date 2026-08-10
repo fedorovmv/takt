@@ -163,9 +163,11 @@ result requires:
 - a fresh `script.runtime: validation` pass after optional review fixes.
 
 `REVIEW_NO_FIXES_REQUIRED` is not sufficient after
-`REVIEW_CHANGES_REQUIRED`. The terminal gate publishes one structured accepted
-result as the governed child output; parent `plan-to-pr` checks that result,
-not merely child terminality or the existence of summary prose.
+`REVIEW_CHANGES_REQUIRED`. The terminal bash gate publishes the exact sentinel
+`REVIEW_BLOCK_ACCEPTED` as the governed child output; parent `plan-to-pr` checks
+that result, not merely child terminality or the existence of summary prose.
+Inline bash does not support `output_format`, so the deterministic sentinel is
+used instead of adding a generic runtime feature for a profile-local gate.
 
 ### Draft PR boundary
 
@@ -273,7 +275,7 @@ Implementation follows TDD and the repository's release gate:
 1. Add each failing E2E scenario before its minimal production change.
 2. Run focused tests while implementing.
 3. Run `gofmt`, `go test ./... -count=1`, `go test -race ./... -count=1`,
-   `go vet ./...`, documentation checks, `make check` and `scripts/verify.sh`.
+   `go vet ./...`, `make check` and `scripts/verify.sh`.
 4. Update implementation status, changelog, test results and affected workflow
    contract documentation only for behavior actually delivered.
 

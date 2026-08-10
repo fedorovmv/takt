@@ -2,6 +2,14 @@
 
 Статус после `v0.1.57-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
+## Deterministic Development Flow Acceptance — реализовано после v0.1.57
+
+- профиль `code` 0.17.0 требует user-owned `allowed_paths` для `plan-to-pr`;
+- native Git pathspec scope gate проверяет actual tracked/untracked state до draft PR и после review fixes;
+- PR, review и summary domain results закрыты workflow-level gates без новой runtime-абстракции;
+- Go E2E классифицирует happy path как `safe_success`, а missing artifact, false validation, blocked implementation, scope drift, blocked PR, unresolved review и incomplete summary — как `safe_stop`;
+- remote PR receipt/reconcile по-прежнему не заявляется: E2E сверяет assistant evidence с fake SCM.
+
 ## Post-audit repair
 
 - clean-checkout module graph восстановлен через `go mod tidy`;
@@ -140,7 +148,7 @@ Deterministic fixture доказывает measurement correctness. Production q
 
 ## Предметные поставки
 
-- профиль `code` 0.16.0: 19 workflow и trusted block catalog;
+- профиль `code` 0.17.0: 19 workflow, deterministic `plan-to-pr` acceptance и trusted block catalog;
 - Route DSL examples/eval corpus;
 - authoring skill;
 - multi-repo/reference fake adapters.

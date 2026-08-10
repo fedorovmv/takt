@@ -217,3 +217,61 @@ nodes:
     output_mime: text/markdown
     output_path: $ARTIFACTS_DIR/validation-report.md
     trigger_rule: all_done
+  - id: post-review-validation-commands
+    depends_on:
+      - synthesize
+      - fixes
+      - validate
+    when: nodes.scope.output.status == "ready"
+    trigger_rule: all_done
+    script:
+      runtime: validation
+    allow_failure: true
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [ready, failed]
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              command:
+                type: string
+              exit_code:
+                type: integer
+              stdout:
+                type: string
+              stderr:
+                type: string
+            required: [command, exit_code]
+      required: [status, results]
+    output_type: validation-command-report
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/post-review-validation-commands.json
+  - id: review-acceptance-gate
+    depends_on:
+      - scope
+      - synthesize
+      - fixes
+      - validate
+      - post-review-validation-commands
+    trigger_rule: all_done
+    bash: |
+      review_decision=false
+      if [ "${nodes.synthesize.output.code?}" = "REVIEW_APPROVED" ]; then
+        review_decision=true
+      fi
+      if [ "${nodes.synthesize.output.code?}" = "REVIEW_CHANGES_REQUIRED" ] && [ "${nodes.fixes.output.code?}" = "REVIEW_FIXES_APPLIED" ]; then
+        review_decision=true
+      fi
+      if [ "${nodes.scope.output.status?}" = "ready" ] && [ "$review_decision" = true ] && [ "${nodes.validate.output.status?}" = "ready" ] && [ "${nodes.validate.output.code?}" = "VALIDATION_PASSED" ] && [ "${nodes.post-review-validation-commands.output.status?}" = "ready" ] && [ -f "$ARTIFACTS_DIR/review-report.md" ]; then
+        printf 'REVIEW_BLOCK_ACCEPTED'
+        exit 0
+      fi
+      printf 'REVIEW_BLOCK_REJECTED'
+      exit 1

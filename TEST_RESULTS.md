@@ -1,5 +1,20 @@
 # Takt v0.1.57-alpha — TEST RESULTS
 
+## Deterministic Development Flow Acceptance — 2026-08-10
+
+Focused PASS on `code:plan-to-pr` profile 0.17.0:
+
+- `go test ./internal/profile -run ScopeCheck -count=1`: native Git pathspec
+  matching, NUL-delimited tracked/untracked paths, rename source/destination,
+  artifact report persistence and unsafe path rejection;
+- `go test ./tests/e2e -run '^TestPlanToPRAcceptance$' -count=1`: one
+  `safe_success` and seven `safe_stop` scenarios with zero `unsafe_success`;
+- the oracle checked persisted node states, typed artifact checksums/content,
+  child review acceptance, fake SCM PR count and unchanged control checkout.
+
+The fake SCM proves the fixture boundary only. Provider-independent remote PR
+receipt/reconciliation is not claimed.
+
 ## Go production-shaped benchmark — 2026-08-10
 
 Live-срез использовал пять изолированных Go-задач и внешний validator `gofmt + go test + race + vet`. Это production-shaped corpus, а не обезличенные production-данные. Workspaces создавались вне Git-репозитория; метрики времени не интерпретируются из-за неравномерной загрузки provider.

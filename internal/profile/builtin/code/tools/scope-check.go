@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,8 +14,12 @@ import (
 )
 
 type input struct {
-	BaseBranch  string   `json:"base_branch"`
-	AllowedPath []string `json:"allowed_paths"`
+	Repository         string   `json:"repository"`
+	PlanPath           string   `json:"plan_path"`
+	BaseBranch         string   `json:"base_branch"`
+	DraftPR            bool     `json:"draft_pr"`
+	ValidationCommands []string `json:"validation_commands"`
+	AllowedPath        []string `json:"allowed_paths"`
 }
 
 type report struct {
@@ -29,16 +34,19 @@ type scopeDriftError struct{}
 func (scopeDriftError) Error() string { return "changes outside allowed_paths" }
 
 func main() {
-	var request input
-	decoder := json.NewDecoder(os.Stdin)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil {
-		fail(fmt.Errorf("decode input: %w", err))
-	}
-	result, err := execute(os.Args[1:], request)
+	args := os.Args[1:]
+	result, err := execute(args)
 	if result.Status != "" {
-		if encodeErr := json.NewEncoder(os.Stdout).Encode(result); encodeErr != nil {
+		encoded, encodeErr := json.Marshal(result)
+		if encodeErr != nil {
 			fail(encodeErr)
+		}
+		encoded = append(encoded, '\n')
+		if writeErr := os.WriteFile(args[1], encoded, 0o644); writeErr != nil {
+			fail(fmt.Errorf("write scope report: %w", writeErr))
+		}
+		if _, writeErr := os.Stdout.Write(encoded); writeErr != nil {
+			fail(writeErr)
 		}
 	}
 	if err == nil {
@@ -51,9 +59,18 @@ func main() {
 	fail(err)
 }
 
-func execute(args []string, request input) (report, error) {
-	if len(args) != 0 {
-		return report{}, fmt.Errorf("unexpected arguments")
+func execute(args []string) (report, error) {
+	if len(args) != 2 || args[1] == "" {
+		return report{}, fmt.Errorf("expected JSON input and output path arguments")
+	}
+	var request input
+	decoder := json.NewDecoder(strings.NewReader(args[0]))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		return report{}, fmt.Errorf("decode input: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return report{}, fmt.Errorf("decode input: trailing JSON value")
 	}
 	if request.BaseBranch == "" {
 		return report{}, fmt.Errorf("base_branch is required")
@@ -104,7 +121,8 @@ func validatePathspec(pathspec string) error {
 	if strings.HasPrefix(pathspec, ":") {
 		return fmt.Errorf("invalid allowed path %q: Git magic is not allowed", pathspec)
 	}
-	if filepath.IsAbs(pathspec) || filepath.VolumeName(pathspec) != "" || strings.HasPrefix(pathspec, "/") || strings.HasPrefix(pathspec, `\\`) {
+	windowsVolume := len(pathspec) >= 2 && pathspec[1] == ':' && ((pathspec[0] >= 'a' && pathspec[0] <= 'z') || (pathspec[0] >= 'A' && pathspec[0] <= 'Z'))
+	if filepath.IsAbs(pathspec) || filepath.VolumeName(pathspec) != "" || windowsVolume || strings.HasPrefix(pathspec, "/") || strings.HasPrefix(pathspec, `\\`) {
 		return fmt.Errorf("invalid allowed path %q: path must be repository-relative", pathspec)
 	}
 	for _, segment := range strings.FieldsFunc(pathspec, func(r rune) bool { return r == '/' || r == '\\' }) {

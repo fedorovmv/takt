@@ -23,12 +23,20 @@ input:
           type: string
         minItems: 1
         uniqueItems: true
+      allowed_paths:
+        type: array
+        items:
+          type: string
+          minLength: 1
+        minItems: 1
+        uniqueItems: true
     required:
       - repository
       - plan_path
       - base_branch
       - draft_pr
       - validation_commands
+      - allowed_paths
 defaults:
   assistant: coding-agent
   model: implementation
@@ -381,16 +389,44 @@ nodes:
       - revalidate
     trigger_rule: all_done
     bash: |
-      if { [ "${nodes.validation-commands.output.status}" = "ready" ] && [ "${nodes.validate.output.status}" = "ready" ]; } || { [ "${nodes.revalidation-commands.output.status?}" = "ready" ] && [ "${nodes.revalidate.output.status?}" = "ready" ]; }; then
+      if { [ "${nodes.validation-commands.output.status?}" = "ready" ] && [ "${nodes.validate.output.status?}" = "ready" ]; } || { [ "${nodes.revalidation-commands.output.status?}" = "ready" ] && [ "${nodes.revalidate.output.status?}" = "ready" ]; }; then
         exit 0
       fi
       printf 'validation failed: initial=%s recovery=%s revalidate=%s
-      '   '${nodes.validate.output.code}' '${nodes.recover.output.code?}' '${nodes.revalidate.output.code?}' >&2
+      '   '${nodes.validate.output.code?}' '${nodes.recover.output.code?}' '${nodes.revalidate.output.code?}' >&2
       exit 1
+  - id: scope-check
+    depends_on:
+      - validation-gate
+    script:
+      runtime: go
+      path: ../tools/scope-check.go
+      args: ['${input}', '$ARTIFACTS_DIR/scope-report.json']
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [ready, failed]
+        base_commit:
+          type: string
+        changed_files:
+          type: array
+          items:
+            type: string
+        outside_allowed:
+          type: array
+          items:
+            type: string
+      required: [status, base_commit, changed_files, outside_allowed]
+    output_type: scope-report
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/scope-report.json
   - id: create-pr
     command: pr-finalize
     depends_on:
-      - validation-gate
+      - scope-check
     output_format:
       type: object
       additionalProperties: false
@@ -429,18 +465,58 @@ nodes:
     output_type: pr-metadata
     output_mime: application/json
     output_path: $ARTIFACTS_DIR/pr.json
-  - id: review
+  - id: pr-result-gate
     depends_on:
       - create-pr
-    when: nodes.create-pr.output.status == "ready"
+    trigger_rule: all_done
+    bash: |
+      if [ "${nodes.create-pr.output.status?}" = "ready" ] && [ "${nodes.create-pr.output.code?}" = "PR_READY" ] && [ -f "$ARTIFACTS_DIR/pr.json" ]; then
+        printf 'PR_RESULT_ACCEPTED'
+        exit 0
+      fi
+      printf 'PR_RESULT_REJECTED'
+      exit 1
+  - id: review
+    depends_on:
+      - pr-result-gate
     workflow:
       path: review-block.yaml
       input: ${input}
       isolation: inherit
+  - id: scope-check-after-review
+    depends_on:
+      - review
+    when: nodes.review.output == "REVIEW_BLOCK_ACCEPTED"
+    script:
+      runtime: go
+      path: ../tools/scope-check.go
+      args: ['${input}', '$ARTIFACTS_DIR/scope-after-review.json']
+    output_format:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [ready, failed]
+        base_commit:
+          type: string
+        changed_files:
+          type: array
+          items:
+            type: string
+        outside_allowed:
+          type: array
+          items:
+            type: string
+      required: [status, base_commit, changed_files, outside_allowed]
+    output_type: scope-report
+    output_mime: application/json
+    output_path: $ARTIFACTS_DIR/scope-after-review.json
   - id: summary
     command: workflow-final-summary
     depends_on:
       - review
+      - scope-check-after-review
     model: review
     output_format:
       type: object
@@ -477,6 +553,32 @@ nodes:
     output_type: workflow-summary
     output_mime: text/markdown
     output_path: $ARTIFACTS_DIR/summary.md
+  - id: acceptance-gate
+    depends_on:
+      - confirm-plan
+      - implement
+      - validation-gate
+      - scope-check
+      - pr-result-gate
+      - review
+      - scope-check-after-review
+      - summary
+    trigger_rule: all_done
+    bash: |
+      initial_validation=false
+      if [ "${nodes.validation-commands.output.status?}" = "ready" ] && [ "${nodes.validate.output.status?}" = "ready" ] && [ "${nodes.validate.output.code?}" = "VALIDATION_PASSED" ]; then
+        initial_validation=true
+      fi
+      recovered_validation=false
+      if [ "${nodes.revalidation-commands.output.status?}" = "ready" ] && [ "${nodes.revalidate.output.status?}" = "ready" ] && [ "${nodes.revalidate.output.code?}" = "VALIDATION_PASSED" ]; then
+        recovered_validation=true
+      fi
+      if [ "${nodes.confirm-plan.output.status?}" = "ready" ] && [ "${nodes.confirm-plan.output.code?}" = "PLAN_CONFIRMED" ] && [ "${nodes.implement.output.status?}" = "ready" ] && [ "${nodes.implement.output.code?}" = "PLAN_IMPLEMENTED" ] && { [ "$initial_validation" = true ] || [ "$recovered_validation" = true ]; } && [ "${nodes.scope-check.output.status?}" = "ready" ] && [ "${nodes.pr-result-gate.output?}" = "PR_RESULT_ACCEPTED" ] && [ "${nodes.review.output?}" = "REVIEW_BLOCK_ACCEPTED" ] && [ "${nodes.scope-check-after-review.output.status?}" = "ready" ] && [ "${nodes.summary.output.status?}" = "ready" ] && [ "${nodes.summary.output.code?}" = "WORKFLOW_COMPLETE" ] && [ -f "$ARTIFACTS_DIR/git-state.json" ] && [ -f "$ARTIFACTS_DIR/plan-confirmation.md" ] && [ -f "$ARTIFACTS_DIR/implementation-report.md" ] && [ -f "$ARTIFACTS_DIR/validation-report.md" ] && [ -f "$ARTIFACTS_DIR/scope-report.json" ] && [ -f "$ARTIFACTS_DIR/scope-after-review.json" ] && [ -f "$ARTIFACTS_DIR/pr.json" ] && [ -f "$ARTIFACTS_DIR/summary.md" ]; then
+        printf 'WORKFLOW_ACCEPTED'
+        exit 0
+      fi
+      printf 'WORKFLOW_REJECTED'
+      exit 1
 worktree:
   enabled: true
   cleanup: on_success

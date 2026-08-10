@@ -30,7 +30,7 @@ Available workflows:
 Routing rules:
 
 1. Prefer a specialized workflow whenever its input is present.
-2. Requests mentioning an existing plan use plan-to-pr or feature-development; choose plan-to-pr when review/PR readiness is expected.
+2. Select plan-to-pr only when the original user input is a complete JSON object containing repository, plan_path, base_branch, draft_pr, validation_commands, and a non-empty unique allowed_paths array. Never infer `allowed_paths`; for an incomplete plan-to-PR request, otherwise select `assist`.
 3. Requests mentioning a GitHub issue to fix use fix-github-issue; use issue-review-full when comprehensive review is requested.
 4. PR review requests use smart-pr-review unless the user explicitly asks for exhaustive/comprehensive review.
 5. Use piv-loop for guided development with checkpoints; use interactive-prd only when the deliverable is a PRD.

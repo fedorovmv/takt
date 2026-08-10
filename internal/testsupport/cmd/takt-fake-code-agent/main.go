@@ -58,7 +58,14 @@ func main() {
 			}
 			evidence = []string{strings.TrimSpace(string(out))}
 		case "issue-implementation", "plan-implementation", "piv-implementation":
-			if err := os.WriteFile(filepath.Join(mustWorkspace(), "app.txt"), []byte("implemented by "+phase+"\n"), 0o644); err != nil {
+			path := "app.txt"
+			if extra := strings.TrimSpace(os.Getenv("FAKE_EXTRA_CHANGE_PATH")); extra != "" {
+				path = extra
+			}
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(mustWorkspace(), path)), 0o755); err != nil {
+				fail(err)
+			}
+			if err := os.WriteFile(filepath.Join(mustWorkspace(), path), []byte("implemented by "+phase+"\n"), 0o644); err != nil {
 				fail(err)
 			}
 		case "change-validation":
@@ -85,6 +92,12 @@ func main() {
 				}
 			}
 		}
+		if phase == "review-synthesis" && os.Getenv("FAKE_REVIEW_CHANGES_REQUIRED") == "1" {
+			code, summary = "REVIEW_CHANGES_REQUIRED", "fixture requested review fixes"
+		}
+		if phase == "review-fix" && os.Getenv("FAKE_REVIEW_CHANGES_REQUIRED") == "1" {
+			code, summary = "REVIEW_FIXES_APPLIED", "fixture applied review fixes"
+		}
 	}
 
 	if artifactPath == "" {
@@ -98,8 +111,10 @@ func main() {
 		artifactContent, _ = json.MarshalIndent(map[string]any{"phase": phase, "status": status, "code": code, "evidence": evidence}, "", "  ")
 		artifactContent = append(artifactContent, '\n')
 	}
-	if err := os.WriteFile(artifactPath, artifactContent, 0o644); err != nil {
-		fail(err)
+	if os.Getenv("FAKE_OMIT_ARTIFACT_PHASE") != phase {
+		if err := os.WriteFile(artifactPath, artifactContent, 0o644); err != nil {
+			fail(err)
+		}
 	}
 	cp := checkpoint{Status: status, Code: code, Summary: summary, Evidence: evidence, ArtifactPath: artifactPath}
 	if phase == "review-perspective" {
@@ -214,46 +229,50 @@ func codeFor(phase string) string {
 
 func blockedCodeFor(phase string) string {
 	return map[string]string{
-		"git-prepare":          "GIT_DIRTY",
-		"issue-intake":         "ISSUE_INPUT_AMBIGUOUS",
-		"issue-root-cause":     "ROOT_CAUSE_UNCONFIRMED",
-		"issue-reproduction":   "ISSUE_NOT_REPRODUCED",
-		"issue-fix-plan":       "PLAN_CONTRACT_UNRESOLVED",
-		"issue-implementation": "IMPLEMENTATION_BLOCKED",
-		"idea-research":        "IDEA_SCOPE_AMBIGUOUS",
-		"idea-plan":            "IDEA_PLAN_CONTRACT_UNRESOLVED",
-		"plan-intake":          "PLAN_SCOPE_AMBIGUOUS",
-		"plan-implementation":  "PLAN_IMPLEMENTATION_BLOCKED",
-		"change-validation":    "VALIDATION_FAILED",
-		"workflow-recovery":    "RECOVERY_REQUIRES_HUMAN",
-		"review-intake":        "REVIEW_SCOPE_EMPTY",
-		"piv-exploration":      "EXPLORATION_NEEDS_DECISION",
-		"piv-plan":             "PIV_PLAN_NEEDS_DECISION",
-		"piv-implementation":   "PIV_IMPLEMENTATION_BLOCKED",
-		"ralph-prepare":        "RALPH_SCOPE_AMBIGUOUS",
-		"ralph-story":          "RALPH_STORY_BLOCKED",
+		"git-prepare":            "GIT_DIRTY",
+		"issue-intake":           "ISSUE_INPUT_AMBIGUOUS",
+		"issue-root-cause":       "ROOT_CAUSE_UNCONFIRMED",
+		"issue-reproduction":     "ISSUE_NOT_REPRODUCED",
+		"issue-fix-plan":         "PLAN_CONTRACT_UNRESOLVED",
+		"issue-implementation":   "IMPLEMENTATION_BLOCKED",
+		"idea-research":          "IDEA_SCOPE_AMBIGUOUS",
+		"idea-plan":              "IDEA_PLAN_CONTRACT_UNRESOLVED",
+		"plan-intake":            "PLAN_SCOPE_AMBIGUOUS",
+		"plan-implementation":    "PLAN_IMPLEMENTATION_BLOCKED",
+		"change-validation":      "VALIDATION_FAILED",
+		"workflow-recovery":      "RECOVERY_REQUIRES_HUMAN",
+		"pr-finalize":            "PR_CREATE_FAILED",
+		"workflow-final-summary": "WORKFLOW_INCOMPLETE",
+		"review-intake":          "REVIEW_SCOPE_EMPTY",
+		"review-fix":             "REVIEW_FIX_REQUIRES_DECISION",
+		"piv-exploration":        "EXPLORATION_NEEDS_DECISION",
+		"piv-plan":               "PIV_PLAN_NEEDS_DECISION",
+		"piv-implementation":     "PIV_IMPLEMENTATION_BLOCKED",
+		"ralph-prepare":          "RALPH_SCOPE_AMBIGUOUS",
+		"ralph-story":            "RALPH_STORY_BLOCKED",
 	}[phase]
 }
 
 func finalizeGit() error {
 	workspace := mustWorkspace()
-	commands := [][]string{{"git", "add", "app.txt", "recovered.txt"}, {"git", "commit", "-m", "fixture implementation"}, {"git", "push", "-u", "origin", "HEAD"}}
+	paths := []string{"app.txt"}
+	if _, err := os.Stat(filepath.Join(workspace, "recovered.txt")); err == nil {
+		paths = append(paths, "recovered.txt")
+	}
+	if extra := strings.TrimSpace(os.Getenv("FAKE_EXTRA_CHANGE_PATH")); extra != "" {
+		paths = append(paths, extra)
+	}
+	add := append([]string{"git", "add"}, paths...)
+	commands := [][]string{add, {"git", "commit", "-m", "fixture implementation"}, {"git", "push", "-u", "origin", "HEAD"}}
 	for _, argv := range commands {
 		cmd := exec.Command(argv[0], argv[1:]...)
 		cmd.Dir = workspace
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			if argv[1] == "add" && strings.Contains(string(out), "pathspec") { // recovered.txt is optional
-				cmd = exec.Command("git", "add", "app.txt")
-				cmd.Dir = workspace
-				out, err = cmd.CombinedOutput()
-			}
-			if err != nil && argv[1] == "commit" && strings.Contains(string(out), "nothing to commit") {
+			if argv[1] == "commit" && strings.Contains(string(out), "nothing to commit") {
 				continue
 			}
-			if err != nil {
-				return fmt.Errorf("%s: %s", strings.Join(argv, " "), strings.TrimSpace(string(out)))
-			}
+			return fmt.Errorf("%s: %s", strings.Join(argv, " "), strings.TrimSpace(string(out)))
 		}
 	}
 	return nil

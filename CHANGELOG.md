@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `code:plan-to-pr` получил обязательный user-owned `allowed_paths`, native Git
+  scope checks до draft PR и после review, а также fail-closed PR/review/summary
+  gates. Go E2E покрывает один `safe_success` и семь `safe_stop` outcomes.
 - Удалены `MANIFEST.sha256` и отдельный `verify-manifest.sh` gate; `make check`
   и `scripts/verify.sh` больше не поддерживают дублирующий checksum-манифест.
 - Удалён `scripts/check-docs.sh`: hardcoded hashes и проверки наличия отдельных

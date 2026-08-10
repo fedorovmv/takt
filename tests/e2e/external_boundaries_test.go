@@ -420,6 +420,209 @@ assistants:
 	}
 }
 
+func TestPlanToPRAcceptance(t *testing.T) {
+	cases := []struct {
+		name       string
+		env        []string
+		validation []string
+		wantStatus string
+		wantPR     string
+		wantNodes  map[string]string
+	}{
+		{name: "happy", validation: []string{"test -s app.txt"}, wantStatus: "completed", wantPR: "1", wantNodes: map[string]string{"git-prepare": "completed", "confirm-plan": "completed", "implement": "completed", "validation-commands": "completed", "validate": "completed", "validation-gate": "completed", "scope-check": "completed", "create-pr": "completed", "pr-result-gate": "completed", "review": "completed", "scope-check-after-review": "completed", "summary": "completed", "acceptance-gate": "completed"}},
+		{name: "missing artifact", env: []string{"FAKE_OMIT_ARTIFACT_PHASE=plan-intake"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "0", wantNodes: map[string]string{"confirm-plan": "errored"}},
+		{name: "false validation", validation: []string{"false"}, wantStatus: "failed", wantPR: "0", wantNodes: map[string]string{"validation-gate": "failed"}},
+		{name: "blocked implementation", env: []string{"FAKE_BLOCK_PHASE=plan-implementation"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "0", wantNodes: map[string]string{"validation-gate": "failed"}},
+		{name: "scope drift", env: []string{"FAKE_EXTRA_CHANGE_PATH=docs/extra.md"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "0", wantNodes: map[string]string{"scope-check": "failed"}},
+		{name: "blocked PR", env: []string{"FAKE_BLOCK_PHASE=pr-finalize"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "0", wantNodes: map[string]string{"pr-result-gate": "failed"}},
+		{name: "unresolved review", env: []string{"FAKE_REVIEW_CHANGES_REQUIRED=1", "FAKE_BLOCK_PHASE=review-fix"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "1", wantNodes: map[string]string{"review": "failed", "acceptance-gate": "failed"}},
+		{name: "incomplete summary", env: []string{"FAKE_BLOCK_PHASE=workflow-final-summary"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "1", wantNodes: map[string]string{"acceptance-gate": "failed"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newPlanToPRFixture(t, tc.validation)
+			env := append(fixture.env, tc.env...)
+			result := takt(t, env, "run", "code:plan-to-pr", "--workspace", fixture.project, "--input", fixture.input, "--json")
+			var state map[string]any
+			if tc.wantStatus == "completed" {
+				if result.Err != nil {
+					t.Fatalf("happy run failed: %v state=%#v", result.Err, persistedPlanToPRState(t, fixture.project))
+				}
+				state = resultObject(t, result.RequireSuccess(t).JSON(t))
+				if !strings.Contains(fmt.Sprint(state["output"]), "WORKFLOW_ACCEPTED") {
+					t.Fatalf("accepted output=%#v", state["output"])
+				}
+			} else {
+				result.RequireFailure(t)
+				state = persistedPlanToPRState(t, fixture.project)
+			}
+			if state["status"] != tc.wantStatus {
+				t.Fatalf("status=%#v want=%s state=%#v", state["status"], tc.wantStatus, state)
+			}
+			for nodeID, want := range tc.wantNodes {
+				nodes := state["nodes"].(map[string]any)
+				node, ok := nodes[nodeID].(map[string]any)
+				if !ok || node["status"] != want {
+					t.Fatalf("node %s=%#v want=%s", nodeID, node, want)
+				}
+			}
+			prCount := "0"
+			if data, err := os.ReadFile(filepath.Join(fixture.ghState, "pr-count")); err == nil {
+				prCount = strings.TrimSpace(string(data))
+			}
+			if prCount != tc.wantPR {
+				t.Fatalf("PR count=%s want=%s", prCount, tc.wantPR)
+			}
+			if tc.name == "happy" {
+				requireArtifactTypes(t, state, map[string]int{"git-state": 1, "plan-confirmation": 1, "implementation-report": 1, "validation-command-report": 1, "validation-report": 1, "scope-report": 2, "pr-metadata": 1, "workflow-summary": 1})
+				requireNodeArtifactContains(t, state, "scope-check", `"changed_files":["app.txt"]`, `"outside_allowed":[]`)
+				review := persistedWorkflowState(t, fixture.project, "review-block.yaml", true)
+				if review["status"] != "completed" || review["output"] != "REVIEW_BLOCK_ACCEPTED" {
+					t.Fatalf("review child=%#v", review)
+				}
+				requireArtifactTypes(t, review, map[string]int{"review-scope": 1, "review-report": 1, "validation-report": 1, "validation-command-report": 1})
+			}
+			if tc.name == "unresolved review" {
+				review := persistedWorkflowState(t, fixture.project, "review-block.yaml", true)
+				node := review["nodes"].(map[string]any)["review-acceptance-gate"].(map[string]any)
+				if review["status"] != "failed" || node["status"] != "failed" {
+					t.Fatalf("unresolved review child=%#v", review)
+				}
+			}
+			requireFileContains(t, filepath.Join(fixture.project, "app.txt"), "initial")
+		})
+	}
+}
+
+type planToPRFixture struct {
+	project string
+	ghState string
+	env     []string
+	input   string
+}
+
+func newPlanToPRFixture(t *testing.T, validation []string) planToPRFixture {
+	t.Helper()
+	tmp := t.TempDir()
+	project := filepath.Join(tmp, "project")
+	remote := filepath.Join(tmp, "remote.git")
+	fakeBin := filepath.Join(tmp, "bin")
+	ghState := filepath.Join(tmp, "gh-state")
+	for _, dir := range []string{project, fakeBin, ghState} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	copyFile(t, filepath.Join(repoRoot, "scripts", "fixtures", "fake-gh"), filepath.Join(fakeBin, "gh"), 0o755)
+	git(t, tmp, "init", "--bare", remote)
+	git(t, tmp, "init", "-b", "main", project)
+	git(t, project, "config", "user.name", "Takt Fixture")
+	git(t, project, "config", "user.email", "takt@example.test")
+	writeFile(t, project, "app.txt", "initial\n")
+	writeFile(t, project, "PLAN.md", "# Fixture plan\n\nImplement app.txt and validate it.\n")
+	takt(t, nil, "init", "code", "--dir", project, "--json").RequireSuccess(t)
+	fakeAgent := binary(t, "takt-fake-code-agent")
+	writeFile(t, project, ".takt/config.yaml", fmt.Sprintf(`apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: opencode
+models:
+  routing:
+    provider: fixture
+    id: routing
+  implementation:
+    provider: fixture
+    id: implementation
+  review:
+    provider: fixture
+    id: review
+assistants:
+  opencode:
+    type: process
+    argv: [%s]
+    capabilities: [tool_policy, skills, sandbox_filesystem]
+`, fakeAgent))
+	git(t, project, "add", ".")
+	git(t, project, "commit", "-m", "fixture baseline")
+	git(t, project, "remote", "add", "origin", remote)
+	git(t, project, "push", "-u", "origin", "main")
+	inputPath := writeFile(t, tmp, "plan-to-pr.json", fmt.Sprintf(`{"repository":"acme/repo","plan_path":"PLAN.md","base_branch":"main","draft_pr":true,"validation_commands":%s,"allowed_paths":["app.txt"]}`, mustJSON(t, validation)))
+	return planToPRFixture{project: project, ghState: ghState, env: []string{"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"), "FAKE_GH_STATE_DIR=" + ghState}, input: inputPath}
+}
+
+func persistedPlanToPRState(t *testing.T, project string) map[string]any {
+	t.Helper()
+	return persistedWorkflowState(t, project, "plan-to-pr.yaml", false)
+}
+
+func persistedWorkflowState(t *testing.T, project, workflow string, child bool) map[string]any {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(project, ".takt", "runs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(project, ".takt", "runs", entry.Name(), "state.json")
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			continue
+		}
+		var state map[string]any
+		if json.Unmarshal(data, &state) != nil || !strings.Contains(fmt.Sprint(state["workflow_path"]), workflow) {
+			continue
+		}
+		parent, hasParent := state["parent_run_id"].(string)
+		if child == (hasParent && parent != "") {
+			return state
+		}
+	}
+	t.Fatalf("workflow state %s child=%v not found in %s", workflow, child, project)
+	return nil
+}
+
+func requireArtifactTypes(t *testing.T, state map[string]any, expected map[string]int) {
+	t.Helper()
+	for _, raw := range state["artifacts"].([]any) {
+		artifact := raw.(map[string]any)
+		typ := stringField(t, artifact, "type")
+		if expected[typ] > 0 {
+			expected[typ]--
+		}
+		if len(stringField(t, artifact, "sha256")) != 64 {
+			t.Fatalf("artifact has invalid checksum: %#v", artifact)
+		}
+		if _, err := os.Stat(stringField(t, artifact, "path")); err != nil {
+			t.Fatalf("artifact is not persisted: %v", err)
+		}
+	}
+	for typ, count := range expected {
+		if count != 0 {
+			t.Fatalf("missing %d artifact(s) of type %s", count, typ)
+		}
+	}
+}
+
+func requireNodeArtifactContains(t *testing.T, state map[string]any, nodeID string, needles ...string) {
+	t.Helper()
+	node := state["nodes"].(map[string]any)[nodeID].(map[string]any)
+	artifacts := node["artifacts"].([]any)
+	if len(artifacts) != 1 {
+		t.Fatalf("node %s artifacts=%#v", nodeID, artifacts)
+	}
+	requireFileContains(t, stringField(t, artifacts[0].(map[string]any), "path"), needles...)
+}
+
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 func TestHostIntegrationSourceContract(t *testing.T) {
 	piPath := filepath.Join(repoRoot, "integrations", "coding-agent-host-control", "pi", "index.ts")
 	opencodePath := filepath.Join(repoRoot, "integrations", "coding-agent-host-control", "opencode", "index.ts")

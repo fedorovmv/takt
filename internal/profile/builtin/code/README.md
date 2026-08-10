@@ -1,4 +1,4 @@
-# Takt code profile 0.16.0
+# Takt code profile 0.17.0
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -44,6 +44,32 @@ The router is an ordinary root Run in the control checkout. It returns schema-va
 
 The comprehensive review uses `foreach.parallel` to schedule five independent review perspectives concurrently. `foreach.parallel: true` uses the same scheduler for parallel fan-out. Interactive workflow loops can pause on approval and resume the active iteration; the approval answer is cleared before the next iteration so each round obtains new human input.
 
+## Deterministic plan-to-PR acceptance
+
+`code:plan-to-pr` requires a complete JSON input:
+
+```json
+{
+  "repository": "acme/service",
+  "plan_path": "PLAN.md",
+  "base_branch": "main",
+  "draft_pr": true,
+  "validation_commands": ["make check"],
+  "allowed_paths": ["internal/service/**", "tests/service/**"]
+}
+```
+
+`allowed_paths` contains non-magic, repository-relative Git pathspecs. Empty,
+absolute, parent-escaping, volume-prefixed and leading-`:` magic pathspecs are
+rejected. Takt checks the actual tracked and untracked Git state after initial
+validation and again after review fixes. Draft PR creation, review and the final
+summary each have deterministic completion gates; the root Run completes with
+the exact output `WORKFLOW_ACCEPTED` only when all required evidence is present.
+
+This proves the local workflow gates and persisted artifacts. The current
+assistant-driven `gh` phase does not provide provider-independent remote receipt
+or reconciliation; the E2E suite cross-checks it against fake SCM state.
+
 ## Configuration
 
 The installed `.takt/config.yaml` contains three model aliases:
@@ -73,4 +99,3 @@ Routing and decision nodes use explicit empty tool/skill allowlists. Review agen
 ## Script and artifact usage
 
 The review perspective list is produced by the deterministic `tools/review-perspectives` script and stored as the `review-perspectives` JSON artifact. PIV, idea-to-PR and interactive PRD workflows register their accepted plan/PRD files as typed artifacts. Inspect them with `takt artifacts <run-id> --recursive`; downstream governed runs receive artifact references while provenance remains attached to the producing child Run.
-

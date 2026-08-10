@@ -80,7 +80,7 @@ func TestScopeCheckRejectsUnsafePathspecs(t *testing.T) {
 		t.Fatalf("build scope-check: %v\n%s", err, output)
 	}
 	repo := newScopeRepo(t, map[string]string{"app.txt": "initial\n"})
-	for _, pathspec := range []string{"../escape", ":(exclude)app.txt"} {
+	for _, pathspec := range []string{"../escape", ":(exclude)app.txt", `C:\escape`} {
 		t.Run(pathspec, func(t *testing.T) {
 			_, exit, stderr := runScopeCheck(t, tool, repo, []string{pathspec})
 			if exit != 2 || !strings.Contains(stderr, "invalid allowed path") {
@@ -121,9 +121,9 @@ func runScopeCheck(t *testing.T, tool, repo string, allowed []string) (scopeRepo
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(tool)
+	reportPath := filepath.Join(t.TempDir(), "scope-report.json")
+	cmd := exec.Command(tool, string(input), reportPath)
 	cmd.Dir = repo
-	cmd.Stdin = bytes.NewReader(input)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err = cmd.Run()
@@ -139,6 +139,13 @@ func runScopeCheck(t *testing.T, tool, repo string, allowed []string) (scopeRepo
 	if stdout.Len() > 0 {
 		if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
 			t.Fatalf("decode report %q: %v", stdout.String(), err)
+		}
+		persisted, err := os.ReadFile(reportPath)
+		if err != nil {
+			t.Fatalf("read persisted report: %v", err)
+		}
+		if !bytes.Equal(stdout.Bytes(), persisted) {
+			t.Fatalf("persisted report differs from stdout: %q != %q", persisted, stdout.Bytes())
 		}
 	}
 	return report, exit, stderr.String()

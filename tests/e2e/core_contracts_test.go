@@ -162,11 +162,14 @@ func TestCodeProfileCatalogContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(version)) != "0.16.0" {
+	if strings.TrimSpace(string(version)) != "0.17.0" {
 		t.Fatalf("profile version=%q", version)
 	}
 	requireFileContains(t, filepath.Join(base, "profile.yaml"), "router:", "block_packages:", "format: markdown", "preserve_path: true")
 	requireFileContains(t, filepath.Join(base, "workflow.yaml"), "name: code-router", "allowed_tools: []", "output_format:", "workflow:", "retry_on: [protocol]")
+	requireFileContains(t, filepath.Join(base, "workflows", "plan-to-pr.yaml"), "allowed_paths:", "scope-check", "PR_RESULT_ACCEPTED", "WORKFLOW_ACCEPTED")
+	requireFileContains(t, filepath.Join(base, "commands", "route-workflow.md"), "Never infer `allowed_paths`", "otherwise select `assist`")
+	requireFileContains(t, filepath.Join(base, "README.md"), "`allowed_paths`", "WORKFLOW_ACCEPTED")
 	workflows := []string{"assist", "fix-github-issue", "create-issue", "issue-review-full", "piv-loop", "idea-to-pr", "plan-to-pr", "feature-development", "adversarial-dev", "smart-pr-review", "comprehensive-pr-review", "validate-pr", "architect", "refactor-safely", "interactive-prd", "ralph-dag", "workflow-builder", "remotion-generate", "resolve-conflicts"}
 	for _, name := range workflows {
 		takt(t, nil, "validate", "code:"+name, "--workspace", project, "--json").RequireSuccess(t)

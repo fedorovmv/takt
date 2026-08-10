@@ -26,7 +26,7 @@
 - Create: `internal/profile/scope_check_test.go`
 
 **Interfaces:**
-- Consumes: JSON stdin `{"base_branch":"main","allowed_paths":["app.txt","docs/**"]}` and the current Takt worktree.
+- Consumes: rendered JSON argv `{"base_branch":"main","allowed_paths":["app.txt","docs/**"]}`, an artifact output-path argv, and the current Takt worktree.
 - Produces: JSON `{"status":"ready|failed","base_commit":"...","changed_files":[],"outside_allowed":[]}`; exit `0` for ready, `3` for scope drift, `2` for invalid input or Git error.
 - Internal functions: `execute(args []string) (report, error)`, `validatePathspec(string) error`, `gitOutput(dir string, args ...string) ([]byte,error)`, `changedPaths`, `splitNUL`, and `difference`.
 
@@ -46,7 +46,7 @@
 
 - [ ] **Step 3: Implement the smallest standalone Go tool.**
 
-  Decode strict JSON from stdin, reject empty/leading-colon/absolute/volume/`..` pathspecs, resolve `git merge-base HEAD <base_branch>`, collect changed and matched NUL-delimited paths with the exact Git commands above, sort/deduplicate, compute `outside_allowed`, and emit the report. Treat Git errors and malformed input as exit `2`; emit the drift report and exit `3` when `outside_allowed` is non-empty. Do not inspect `$ARTIFACTS_DIR`.
+  Decode strict JSON from the single argv rendered by `script.args`, reject empty/leading-colon/absolute/volume/`..` pathspecs, resolve `git merge-base HEAD <base_branch>`, collect changed and matched NUL-delimited paths with the exact Git commands above, sort/deduplicate, compute `outside_allowed`, and emit the report. Treat Git errors and malformed input as exit `2`; emit the drift report and exit `3` when `outside_allowed` is non-empty. Do not inspect `$ARTIFACTS_DIR`.
 
 - [ ] **Step 4: Run the focused test and the profile contract.**
 
@@ -65,7 +65,7 @@
 
 **Interfaces:**
 - Consumes: Existing review child input and outputs from `scope`, `synthesize`, `fixes`, and `validate`.
-- Produces: `review-block` output `{"status":"ready","code":"REVIEW_BLOCK_ACCEPTED"}` only after deterministic post-review validation and an existing `review-report.md` artifact.
+- Produces: exact `REVIEW_BLOCK_ACCEPTED` child output only after deterministic post-review validation and an existing `review-report.md` artifact.
 - Fixture controls: `FAKE_REVIEW_CHANGES_REQUIRED=1` makes `review-synthesis` return `REVIEW_CHANGES_REQUIRED`; `FAKE_BLOCK_PHASE=review-fix` returns `REVIEW_FIX_REQUIRES_DECISION`.
 
 - [ ] **Step 1: Add failing E2E scenarios.**
@@ -97,7 +97,7 @@
 
 **Interfaces:**
 - Consumes: Required `allowed_paths`, existing validation gate, scope-check tool, governed `review-block` result, and typed phase artifacts.
-- Produces: `workflow-acceptance` output `{"status":"ready","code":"WORKFLOW_ACCEPTED"}` only when all required evidence is present.
+- Produces: exact `WORKFLOW_ACCEPTED` root output only when all required evidence is present.
 - Fixture controls: `FAKE_OMIT_ARTIFACT_PHASE`, `FAKE_EXTRA_CHANGE_PATH`, `FAKE_BLOCK_PHASE=pr-finalize` (`PR_CREATE_FAILED`), and `FAKE_BLOCK_PHASE=workflow-final-summary` (`WORKFLOW_INCOMPLETE`).
 
 - [ ] **Step 1: Add the failing acceptance matrix.**

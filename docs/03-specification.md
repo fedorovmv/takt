@@ -137,7 +137,28 @@ adapters:
 
 Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`/`maxItems`, `uniqueItems`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `minProperties`/`maxProperties`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
 
-Это используется шестью основными процессами профиля `code` 0.16.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+Это используется шестью основными процессами профиля `code` 0.17.0: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+
+### Детерминированный контракт `code:plan-to-pr`
+
+`code:plan-to-pr` требует поля `repository`, `plan_path`, `base_branch`,
+`draft_pr`, непустой `validation_commands` и непустой уникальный
+`allowed_paths`. Последний содержит repository-relative non-magic Git pathspec:
+leading `:`, absolute/volume-prefixed пути, пустые значения и сегмент `..`
+запрещены.
+
+Scope gate сравнивает фактические изменения с merge-base `HEAD` и
+`base_branch`. Tracked/staged/worktree пути читаются через
+`git diff --name-only -z --no-renames`, untracked — через
+`git ls-files --others --exclude-standard -z`; matching выполняет Git. Gate
+работает после deterministic validation и повторно после review fixes.
+
+Draft PR создаётся только после validation/scope gates. Затем отдельные
+deterministic gates требуют `PR_READY`, принятый review block, повторную
+validation/scope-проверку и `WORKFLOW_COMPLETE`. Успешный root Run заканчивается
+exact output `WORKFLOW_ACCEPTED`; любой отсутствующий artifact или доменный
+неуспех даёт failed Run. Это не является независимым подтверждением remote PR:
+assistant/`gh` receipt остаётся фазовым evidence без SCM reconcile.
 
 ## 3.1. Внешний исполнитель AI-узла
 
