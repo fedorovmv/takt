@@ -2,8 +2,7 @@
 
 ## Status and objective
 
-Originally approved by the user on 2026-08-10. Revised after factual review;
-implementation remains gated on review of these clarifications.
+Approved by the user after factual review on 2026-08-10.
 
 The first stabilization target is the product value of Takt as a user-owned,
 deterministic development process. The reference workflow is `code:plan-to-pr`.
@@ -246,9 +245,8 @@ failure is not needed to make the deterministic acceptance valid.
 
 ## Design unknowns gate
 
-**Status: CONDITIONAL. Confidence: medium.** The technical choices below are
-closed in the text, but implementation remains gated on re-review of this
-revision.
+**Status: READY. Confidence: medium.** The P0/P1 choices are closed; confidence
+will be raised only by the focused E2E evidence produced by implementation.
 
 | ID | Priority | Resolution |
 |---|---|---|
