@@ -155,7 +155,7 @@ printf '%s\n' '{"apiVersion":"takt-task-source/v1alpha1","kind":"ResolveResponse
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\ntask_sources:\n  fixture:\n    transport: process\n    argv: ["+adapterPath+"]\n    timeout: 2s\n")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\ntask_sources:\n  fixture:\n    transport: process\n    argv: ["+adapterPath+"]\n")
 	service, err := newTestServices(workspace, configPath)
 	if err != nil {
 		t.Fatal(err)
