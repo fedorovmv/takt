@@ -88,6 +88,7 @@ e74d37361ad0d1ef0d2b152181a9fad4e42b6678ddc3dc33a1366fd9e7822c61  docs/68-archit
 f1fd714f46b9208224133667bd15ff0262da0ffdfc8c7e07365b3abfc44c3747  docs/71-canonical-operation-contracts.generated.md
 62a021414c3d2ce845a7d43f3cd418d050673505b740966473cd47bca021d320  docs/72-architecture-contracts-v0.1.57.md
 8d77f9bc0caad0fa55b2de11d6847ab9b208a1a80b29b328f30427909adcc379  docs/proposals/001-simple-reliable-agent-neutral-takt.md
+aabf61b126e306fbf772d3d2a35f7b0a14e4e9583e732e1575e39e8862df6f09  docs/superpowers/plans/2026-08-10-go-stabilization-benchmark.md
 bfdc5914a09b03666d92af6469a1ef897999d1ee5d483cd2ed82b41fd09a0429  docs/superpowers/plans/2026-08-10-live-host-conformance.md
 3cfa2b47c57599e7c9f2f67ae6bfd9197b60e18f1a3e43f2323145cf088fe4bf  docs/superpowers/plans/2026-08-10-release-gate-and-validation-repair.md
 aa8fb7c46d072c8bef574e971574e43e617b39444b6f7b2847ba343385a3e74e  docs/superpowers/specs/2026-08-10-go-stabilization-benchmark-design.md
