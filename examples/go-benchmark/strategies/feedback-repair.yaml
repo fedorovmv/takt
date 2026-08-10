@@ -18,12 +18,11 @@ nodes:
       Задача:
       ${input}
 
-      Диагностика предыдущей попытки:
-      ${feedback}
-
       Исправляй только разрешённый production package. Не изменяй go.mod,
       *_test.go, соседние packages и benchmark metadata. Проверь результат
       указанной в задаче командой go test.
+
+      ${feedback}
     attempts:
       max: 3
     hooks:
