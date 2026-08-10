@@ -110,7 +110,6 @@ PASS on the final working tree after the architecture-contract changes:
 - `internal/architecture`;
 - `internal/assistant`, bundled provider extensions and tooling compatibility/evaluation;
 - `internal/whenexpr`, `internal/workflow`, `internal/runtime`, `internal/appapi`, `internal/mcp`;
-- `./scripts/check-docs.sh`;
 - `./scripts/test-host-integrations-typescript.sh`.
 
 Race PASS in bounded groups for the changed contour:

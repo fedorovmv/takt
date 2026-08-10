@@ -1,6 +1,6 @@
 GO_TEST_P ?= 8
 
-.PHONY: build test race vet fmt docs contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract architecture-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract host-integration-typescript simple-reliable-contract evidence-routing-contract e2e journeys smoke check demo
+.PHONY: build test race vet fmt contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract architecture-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract host-integration-typescript simple-reliable-contract evidence-routing-contract e2e journeys smoke check demo
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -16,9 +16,6 @@ vet:
 
 fmt:
 	gofmt -w cmd internal sdk reference tests
-
-docs:
-	./scripts/check-docs.sh
 
 # Go-native contract suites. These aliases are kept for developer muscle memory,
 # but the canonical full contract command is `go test ./...`.
@@ -145,7 +142,7 @@ journeys:
 
 smoke: host-integration-typescript
 
-check: fmt vet test journeys race build smoke docs
+check: fmt vet test journeys race build smoke
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml

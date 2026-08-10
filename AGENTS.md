@@ -69,7 +69,6 @@ gofmt -w cmd internal sdk reference tests
 go test ./... -count=1
 go test -race ./... -count=1
 go vet ./...
-./scripts/check-docs.sh
 ```
 
 Полный релизный шлюз:

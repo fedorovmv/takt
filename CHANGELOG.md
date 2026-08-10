@@ -4,6 +4,9 @@
 
 - Удалены `MANIFEST.sha256` и отдельный `verify-manifest.sh` gate; `make check`
   и `scripts/verify.sh` больше не поддерживают дублирующий checksum-манифест.
+- Удалён `scripts/check-docs.sh`: hardcoded hashes и проверки наличия отдельных
+  строк не являются проверкой корректности документации; продуктовые контракты
+  остаются в Go-тестах.
 
 ## v0.1.57-alpha
 

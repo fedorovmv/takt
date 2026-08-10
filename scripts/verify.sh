@@ -15,8 +15,6 @@ go build -o bin/takt ./cmd/takt
 # The only shell smoke is the cross-language TypeScript compiler boundary.
 ./scripts/test-host-integrations-typescript.sh
 
-./scripts/check-docs.sh
-
 ./bin/takt validate examples/route-dsl/workflow.yaml \
   --config examples/route-dsl/config.yaml \
   --workspace examples/route-dsl \
