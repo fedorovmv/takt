@@ -15,6 +15,19 @@ Focused PASS on `code:plan-to-pr` profile 0.17.0:
 The fake SCM proves the fixture boundary only. Provider-independent remote PR
 receipt/reconciliation is not claimed.
 
+Full release verification PASS after the acceptance changes:
+
+- `gofmt -w cmd internal sdk reference tests`;
+- `go test ./... -count=1`;
+- `go test -race ./... -count=1`;
+- `go vet ./...`;
+- `make check`;
+- `./scripts/verify.sh` with TypeScript compiler smoke `PASS`.
+
+The MCP detached-plan cleanup test uses a 15-second condition budget because
+the previous 5-second budget was crossed only by full package-level contention;
+the focused test remains fast and deterministic.
+
 ## Go production-shaped benchmark — 2026-08-10
 
 Live-срез использовал пять изолированных Go-задач и внешний validator `gofmt + go test + race + vet`. Это production-shaped corpus, а не обезличенные production-данные. Workspaces создавались вне Git-репозитория; метрики времени не интерпретируются из-за неравномерной загрузки provider.

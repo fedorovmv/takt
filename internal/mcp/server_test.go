@@ -637,7 +637,7 @@ func TestHostRunAndNotificationToolsThroughMCP(t *testing.T) {
 	// host.confirm is intentionally detached. This unit test has no daemon
 	// monitor, so drive the same durable plan reconciler explicitly until the
 	// detached Run reaches a stable plan boundary before TempDir cleanup.
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for {
 		if err := service.Dynamic.PlanService.AdvanceDynamicPlans(context.Background()); err != nil {
 			t.Fatal(err)
