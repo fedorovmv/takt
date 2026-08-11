@@ -91,27 +91,38 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 			}
 		}
 	}
+	nodeState := state.Nodes[node.ID]
 	sessionMode := node.Context
 	if sessionMode == "" {
 		sessionMode = "fresh"
 	}
-	sessionID := state.Nodes[node.ID].SessionID
-	if sessionMode == "fresh" && !state.Nodes[node.ID].Resumed {
-		sessionID = ""
-	}
-	if state.Nodes[node.ID].Resumed && sessionID != "" {
-		sessionMode = "resume"
-	}
-	if r.loopFreshContextForNode(node.ID) {
-		// fresh_context is the loop-level override: the iteration must not
-		// resume an upstream shared session.
-		sessionMode, sessionID = "fresh", ""
-	} else if node.Context == "shared" {
-		source, err := r.sharedSessionSource(state, local, node, assistantName, modelName)
-		if err != nil {
-			return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindProtocol, Op: "resolve shared session", Err: err}
+	sessionID := nodeState.SessionID
+	if nodeState.Attempts > 1 {
+		// Retry policy owns continuity within an iteration. A retry with a
+		// retained session resumes it; a retry whose session was cleared starts
+		// fresh instead of falling back to context: shared.
+		if sessionID != "" {
+			sessionMode = "resume"
+		} else {
+			sessionMode = "fresh"
 		}
-		sessionMode, sessionID = "resume", source
+	} else {
+		if sessionMode == "fresh" && !nodeState.Resumed {
+			sessionID = ""
+		}
+		if nodeState.Resumed && sessionID != "" {
+			sessionMode = "resume"
+		}
+		if r.loopFreshContextForNode(state, node.ID) {
+			// fresh_context applies only to the first attempt of iteration N>1.
+			sessionMode, sessionID = "fresh", ""
+		} else if node.Context == "shared" {
+			source, err := r.sharedSessionSource(state, local, node, assistantName, modelName)
+			if err != nil {
+				return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindProtocol, Op: "resolve shared session", Err: err}
+			}
+			sessionMode, sessionID = "resume", source
+		}
 	}
 	renderedPrompt, err := renderTemplate(prompt, state, local, feedback, artifacts)
 	if err != nil {
@@ -131,8 +142,12 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 	}, nil
 }
 
-func (r *Runner) loopFreshContextForNode(nodeID string) bool {
-	if r.workflow == nil {
+func (r *Runner) loopFreshContextForNode(state *store.RunState, nodeID string) bool {
+	if r.workflow == nil || state == nil {
+		return false
+	}
+	nodeState := state.Nodes[nodeID]
+	if nodeState == nil || nodeState.Attempts != 1 {
 		return false
 	}
 	var visit func([]spec.Node) bool
@@ -143,7 +158,8 @@ func (r *Runner) loopFreshContextForNode(nodeID string) bool {
 			}
 			for _, child := range parent.LoopGroup.Nodes {
 				if child.ID == nodeID {
-					return parent.LoopGroup.FreshContext
+					parentState := state.Nodes[parent.ID]
+					return parentState != nil && parentState.LoopIteration > 1 && parent.LoopGroup.FreshContext
 				}
 			}
 			if visit(parent.LoopGroup.Nodes) {

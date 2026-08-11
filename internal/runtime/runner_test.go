@@ -181,7 +181,11 @@ func TestLoopFreshContextOverridesSharedChild(t *testing.T) {
 	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
 		return adapterFunc(func(_ context.Context, request assistant.Request) (assistant.Result, error) {
 			requests = append(requests, request)
-			return assistant.Result{Output: request.NodeID, SessionID: request.NodeID + "-session", ExitCode: 0}, nil
+			sessionID := request.NodeID + "-session"
+			if request.SessionID != "" {
+				sessionID = request.SessionID
+			}
+			return assistant.Result{Output: request.NodeID, SessionID: sessionID, ExitCode: 0}, nil
 		}), nil
 	})
 	state, err := r.Start(context.Background(), "")
@@ -191,10 +195,49 @@ func TestLoopFreshContextOverridesSharedChild(t *testing.T) {
 	if state.Status != store.RunCompleted || len(requests) != 4 {
 		t.Fatalf("unexpected loop result: status=%s requests=%d", state.Status, len(requests))
 	}
+	var targetRequests []assistant.Request
 	for _, request := range requests {
-		if request.NodeID == "target" && (request.SessionMode != "fresh" || request.SessionID != "") {
-			t.Fatalf("fresh_context did not override shared context: %+v", request)
+		if request.NodeID == "target" {
+			targetRequests = append(targetRequests, request)
 		}
+	}
+	if len(targetRequests) != 2 {
+		t.Fatalf("target requests = %+v", targetRequests)
+	}
+	if targetRequests[0].SessionMode != "resume" || targetRequests[0].SessionID != "source-session" {
+		t.Fatalf("iteration 1 did not preserve shared context: %+v", targetRequests[0])
+	}
+	if targetRequests[1].SessionMode != "fresh" || targetRequests[1].SessionID != "" {
+		t.Fatalf("fresh_context did not apply to iteration 2: %+v", targetRequests[1])
+	}
+}
+
+func TestLoopFreshContextDoesNotOverrideRetrySession(t *testing.T) {
+	zero := 0
+	wf := &spec.Workflow{Name: "fresh-retry", Nodes: []spec.Node{{
+		ID: "loop",
+		LoopGroup: &spec.LoopGroupSpec{
+			MaxIterations: 2,
+			FreshContext:  true,
+			Nodes: []spec.Node{
+				{ID: "source", Prompt: "source", Provider: "demo", Model: "m"},
+				{ID: "target", DependsOn: []string{"source"}, Prompt: "target", Provider: "demo", Model: "m", Context: "shared", Executor: "external", Attempts: spec.AttemptsSpec{Max: 2, RetrySession: "reuse"}},
+			},
+			Until: spec.UntilSpec{Node: "target", ExitCode: &zero},
+		},
+	}}}
+	r := New(wf, &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}}, "wf", "cfg", t.TempDir())
+	state := &store.RunState{Nodes: map[string]*store.NodeState{
+		"loop":   {LoopIteration: 2},
+		"source": {SessionID: "source-session", Status: store.NodeCompleted},
+		"target": {Attempts: 2, SessionID: "iteration-session", Status: store.NodeRunning},
+	}}
+	resolved, err := r.resolveAssistantNode(state, wf.Nodes[0].LoopGroup.Nodes[1], nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.SessionMode != "resume" || resolved.SessionID != "iteration-session" {
+		t.Fatalf("retry session was overridden by fresh_context: mode=%q id=%q", resolved.SessionMode, resolved.SessionID)
 	}
 }
 

@@ -134,6 +134,38 @@ func TestShellSurfaceTracksCommentsHeredocsAndNestedSubstitutions(t *testing.T) 
 	}
 }
 
+func TestShellSurfaceDoesNotTreatSingleQuotedCommandSyntaxAsSubstitution(t *testing.T) {
+	literal := "x='$('"
+	if got, err := flowref.Render(literal, flowref.Shell, nil); err != nil || got != literal {
+		t.Fatalf("single-quoted shell literal = %q, err=%v", got, err)
+	}
+
+	source := "x='$('\nprintf \"%s\" \"$build.output\""
+	if _, err := flowref.Render(source, flowref.Shell, func(flowref.Reference) (string, bool) {
+		return "$(touch pwned)", true
+	}); err == nil {
+		t.Fatal("reference after single-quoted $(: literal was accepted as safe")
+	}
+}
+
+func TestShellSurfaceTracksCasePatternParentheses(t *testing.T) {
+	literal := `echo "$(case x in
+  x) printf ok ;;
+esac)"`
+	if got, err := flowref.Render(literal, flowref.Shell, nil); err != nil || got != literal {
+		t.Fatalf("case shell syntax changed: got=%q err=%v", got, err)
+	}
+
+	source := `echo "$(case x in
+  x) printf "%s" "$build.output" ;;
+esac)"`
+	if _, err := flowref.Render(source, flowref.Shell, func(flowref.Reference) (string, bool) {
+		return "$(touch pwned)", true
+	}); err == nil {
+		t.Fatal("reference inside case command substitution was accepted as safe")
+	}
+}
+
 func TestShellSurfacePreservesNativeVariablesAndResolvesBareTaktVariables(t *testing.T) {
 	seen := map[string]int{}
 	got, err := flowref.Render(`printf '%s %s %s %s %s %s' "$PATH" "${PATH}" "$?" "$((1 + 1))" "$(true)" $BASE_BRANCH`, flowref.Shell, func(ref flowref.Reference) (string, bool) {

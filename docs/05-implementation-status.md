@@ -14,8 +14,9 @@
   текущая документация проверяется inventory-тестом.
 - shell lexer fail-closed учитывает комментарии, heredoc и вложенные
   command substitutions; root `fresh_context`/`until_bash` отклоняются,
-  `fresh_context` переопределяет shared session, а expanded loop paths не
-  дублируют parent namespace.
+  `fresh_context` переопределяет shared session только на первой попытке
+  итерации `N > 1`, а retry session определяется `attempts.retry_session`; case
+  patterns и expanded loop paths не дублируют parent namespace.
 
 ## Deterministic Development Flow Acceptance — реализовано после v0.1.57
 

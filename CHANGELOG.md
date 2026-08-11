@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Уточнены shell-контексты для single-quoted `$(` и `case` pattern без
+  рассинхронизации quote-state; `fresh_context` теперь действует только на
+  первую попытку итерации `N > 1`, а retry продолжает управляться
+  `attempts.retry_session`.
+
 - Закрыты дополнительные REQUEST CHANGES: shell lexer учитывает комментарии,
   heredoc и вложенные command substitutions; `cancel` синхронизирован с
   loop-child schema; запрещены root `fresh_context`/`until_bash`, а

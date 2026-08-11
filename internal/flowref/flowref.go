@@ -370,10 +370,17 @@ func renderGeneric(source string, surface Surface, resolve func(Reference) (stri
 }
 
 type shellFrame struct {
-	kind    byte // root, command substitution, arithmetic substitution, or backtick
-	quote   byte
-	parens  int
-	comment bool
+	kind        byte // root, command substitution, arithmetic substitution, or backtick
+	quote       byte
+	parens      int
+	comment     bool
+	word        string
+	casePending bool
+	caseStack   []shellCaseState
+}
+
+type shellCaseState struct {
+	pattern bool
 }
 
 type shellHeredoc struct {
@@ -407,6 +414,35 @@ func (l *shellLexer) pop() {
 	if len(l.frames) > 1 {
 		l.frames = l.frames[:len(l.frames)-1]
 	}
+}
+
+func (f *shellFrame) finishShellWord() {
+	if f.word == "" {
+		return
+	}
+	switch f.word {
+	case "case":
+		f.casePending = true
+	case "in":
+		if f.casePending {
+			f.caseStack = append(f.caseStack, shellCaseState{pattern: true})
+			f.casePending = false
+		}
+	case "esac":
+		if len(f.caseStack) > 0 {
+			f.caseStack = f.caseStack[:len(f.caseStack)-1]
+		}
+		f.casePending = false
+	}
+	f.word = ""
+}
+
+func isShellWordByte(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' || strings.ContainsRune("_-.=/:", rune(value))
+}
+
+func (f *shellFrame) casePattern() bool {
+	return len(f.caseStack) > 0 && f.caseStack[len(f.caseStack)-1].pattern
 }
 
 func (l *shellLexer) addHeredoc(value shellHeredoc) {
@@ -450,18 +486,23 @@ func renderShell(source string, resolve func(Reference) (string, bool)) (string,
 			continue
 		}
 		if source[i] == '\\' && frame.quote != '\'' && i+1 < len(source) {
+			if frame.quote == 0 {
+				frame.finishShellWord()
+			}
 			out.WriteByte(source[i])
 			out.WriteByte(source[i+1])
 			i += 2
 			continue
 		}
 		if source[i] == '#' && shellCommentStart(source, i, frame.quote) {
+			frame.finishShellWord()
 			frame.comment = true
 			out.WriteByte(source[i])
 			i++
 			continue
 		}
 		if source[i] == '"' && frame.quote != '\'' {
+			frame.finishShellWord()
 			if frame.quote == '"' {
 				frame.quote = 0
 			} else {
@@ -472,6 +513,7 @@ func renderShell(source string, resolve func(Reference) (string, bool)) (string,
 			continue
 		}
 		if source[i] == '\'' && frame.quote != '"' {
+			frame.finishShellWord()
 			if frame.quote == '\'' {
 				frame.quote = 0
 			} else {
@@ -482,6 +524,7 @@ func renderShell(source string, resolve func(Reference) (string, bool)) (string,
 			continue
 		}
 		if source[i] == '`' && frame.quote != '\'' {
+			frame.finishShellWord()
 			if frame.kind == 'b' {
 				lexer.pop()
 			} else {
@@ -491,6 +534,34 @@ func renderShell(source string, resolve func(Reference) (string, bool)) (string,
 			i++
 			continue
 		}
+		if frame.quote == 0 && isShellWordByte(source[i]) {
+			frame.word += string(source[i])
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
+		frame.finishShellWord()
+		if source[i] == ';' && frame.quote == 0 {
+			if len(frame.caseStack) > 0 && i+1 < len(source) && source[i+1] == ';' {
+				frame.caseStack[len(frame.caseStack)-1].pattern = true
+			}
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
+		if source[i] == ')' && frame.quote == 0 && frame.kind == 'c' {
+			if frame.casePattern() {
+				frame.caseStack[len(frame.caseStack)-1].pattern = false
+				out.WriteByte(source[i])
+				i++
+				continue
+			}
+			if len(frame.caseStack) > 0 && frame.parens <= 1 {
+				out.WriteByte(source[i])
+				i++
+				continue
+			}
+		}
 		if source[i] == ')' && frame.quote == 0 && (frame.kind == 'c' || frame.kind == 'a') {
 			frame.parens--
 			out.WriteByte(source[i])
@@ -498,6 +569,11 @@ func renderShell(source string, resolve func(Reference) (string, bool)) (string,
 			if frame.parens == 0 {
 				lexer.pop()
 			}
+			continue
+		}
+		if source[i] == '(' && frame.quote == 0 && frame.kind == 'c' && frame.casePattern() {
+			out.WriteByte(source[i])
+			i++
 			continue
 		}
 		if source[i] == '(' && frame.quote == 0 && (frame.kind == 'c' || frame.kind == 'a') {
@@ -516,12 +592,17 @@ func renderShell(source string, resolve func(Reference) (string, bool)) (string,
 			i++
 			continue
 		}
+		if frame.quote == '\'' && i+1 < len(source) && source[i+1] == '(' {
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
 		if i+1 < len(source) && source[i+1] == '$' {
 			out.WriteString("$$")
 			i += 2
 			continue
 		}
-		if i+1 < len(source) && source[i+1] == '(' {
+		if i+1 < len(source) && source[i+1] == '(' && frame.quote != '\'' {
 			if i+2 < len(source) && source[i+2] == '(' {
 				lexer.push('a', 2)
 				out.WriteString("$((")
@@ -588,6 +669,9 @@ func renderShell(source string, resolve func(Reference) (string, bool)) (string,
 			}
 			i = end
 			continue
+		}
+		if frame.kind == 'c' && len(frame.caseStack) > 0 {
+			return "", fmt.Errorf("Takt references are not supported inside shell case substitutions")
 		}
 		value, ok := "", false
 		if resolve != nil {
