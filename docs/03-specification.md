@@ -649,13 +649,13 @@ Approval ребёнка переводит родителя в `waiting` с `kin
     subworkflow:
       path: workflows/check.yaml
       inputs:
-        name: $FANOUT.item
+        name: $INPUTS.check
 ```
 
 Нужно задать ровно один источник: `items` или `items_from.path`. Путь вычисляется относительно содержащего workflow; файл должен содержать непустой массив верхнего уровня. Его исходные байты входят в fingerprint определения, поэтому изменение списка блокирует resume ранее начатого Run.
 
-Поддерживаются scalar и inline JSON objects. Для объекта доступны `$FANOUT.item`
-как JSON и `$FANOUT.item.<field>` для полей; `$FANOUT.index` содержит индекс с
+Поддерживаются scalar и inline JSON objects. Для объекта доступны `$INPUTS.check`
+как JSON и `$INPUTS.check.<field>` для полей; `$INPUTS.index` содержит индекс с
 нуля. При `parallel: false` каждая итерация зависит от предыдущей; при
 `parallel: true` все итерации зависят от общего gate и могут выполняться
 конкурентно. Публичный output всегда является JSON-массивом результатов в

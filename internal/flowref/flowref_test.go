@@ -78,6 +78,12 @@ func TestShellSurfacePreservesPositionalParameters(t *testing.T) {
 	}
 }
 
+func TestShellSurfaceRejectsTrailingDollarWithoutPanicking(t *testing.T) {
+	if _, err := flowref.Render("$", flowref.Shell, nil); err == nil {
+		t.Fatal("trailing dollar accepted")
+	}
+}
+
 func TestShellSurfaceRejectsReferencesAnywhereInDoubleQuotes(t *testing.T) {
 	for _, source := range []string{
 		`echo "$build.output"`,
@@ -89,6 +95,40 @@ func TestShellSurfaceRejectsReferencesAnywhereInDoubleQuotes(t *testing.T) {
 			_, err := flowref.Render(source, flowref.Shell, func(flowref.Reference) (string, bool) { return "value", true })
 			if err == nil {
 				t.Fatalf("double-quoted Takt reference accepted: %s", source)
+			}
+		})
+	}
+}
+
+func TestShellSurfaceTracksCommentsHeredocsAndNestedSubstitutions(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+	}{
+		{
+			name:   "comment quote cannot desynchronize later command",
+			source: "# \"\nprintf \"%s\" \"$build.output\"",
+		},
+		{
+			name:   "nested command substitution keeps its own quotes",
+			source: `printf '%s' "$(printf '%s' "$build.output")"`,
+		},
+		{
+			name:   "backtick substitution keeps its own quotes",
+			source: "printf '%s' \"`printf '%s' \"$build.output\"`\"",
+		},
+		{
+			name:   "heredoc expansion is not a safe substitution surface",
+			source: "cat <<EOF\n$build.output\nEOF",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := flowref.Render(tc.source, flowref.Shell, func(flowref.Reference) (string, bool) {
+				return "$(touch pwned)", true
+			})
+			if err == nil {
+				t.Fatalf("unsafe shell reference accepted: %s", tc.source)
 			}
 		})
 	}

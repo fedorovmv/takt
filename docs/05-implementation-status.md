@@ -12,6 +12,10 @@
   конкурентное использование;
 - schema разрешает `cancel`/`context: shared` только в loop body, а
   текущая документация проверяется inventory-тестом.
+- shell lexer fail-closed учитывает комментарии, heredoc и вложенные
+  command substitutions; root `fresh_context`/`until_bash` отклоняются,
+  `fresh_context` переопределяет shared session, а expanded loop paths не
+  дублируют parent namespace.
 
 ## Deterministic Development Flow Acceptance — реализовано после v0.1.57
 

@@ -1,5 +1,11 @@
 # Takt v0.1.57-alpha — TEST RESULTS
 
+## REQUEST CHANGES follow-up — 2026-08-12
+
+Focused regressions cover shell comments/heredoc/nested substitutions, loop-child
+schema `cancel`, explicit root `fresh_context: false`, fresh-over-shared session
+precedence, expanded loop canonical paths and static `foreach` documentation.
+
 ## Archon-first A0/A1 contract slice — 2026-08-11
 
 PASS (deterministic local/fake-host boundary):

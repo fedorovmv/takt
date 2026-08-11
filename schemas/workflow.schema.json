@@ -851,6 +851,11 @@
         },
         {
           "required": [
+            "cancel"
+          ]
+        },
+        {
+          "required": [
             "script"
           ]
         },

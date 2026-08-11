@@ -324,7 +324,7 @@ nodes:
       subworkflow:
         path: workflows/check.yaml
         inputs:
-          name: $FANOUT.item
+          name: $INPUTS.check
 ```
 
 `subworkflow` и `foreach` разворачиваются до запуска в обычный DAG, включая дочерний DAG `loop_group`. Публичные ID `implementation` и `checks` остаются доступными для зависимостей и шаблонов, а внутренние ID скрыты из CLI-состояния. `foreach` принимает inline `items` или `items_from.path`, поддерживает `parallel: true` и возвращает JSON-массив результатов в порядке элементов; Markdown-планы Takt не преобразует во внутренний список задач.

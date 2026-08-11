@@ -43,6 +43,24 @@ func TestPublishedSchemasValidateCompatibilityPayloads(t *testing.T) {
 	}
 }
 
+func TestWorkflowSchemaAllowsCancelLoopChildAction(t *testing.T) {
+	compiled := compilePublishedSchemaForTest(t, "workflow.schema.json")
+	value := jsonValueForTest(t, map[string]any{
+		"name": "loop-cancel",
+		"nodes": []any{map[string]any{
+			"id": "repair",
+			"loop_group": map[string]any{
+				"max_iterations": 1,
+				"nodes":          []any{map[string]any{"id": "stop", "cancel": "stop"}},
+				"until":          map[string]any{"node": "stop", "exit_code": 0},
+			},
+		}},
+	})
+	if err := compiled.Validate(value); err != nil {
+		t.Fatalf("loop child cancel action rejected by published schema: %v", err)
+	}
+}
+
 func TestSchemaSubsetMetaSchemaMatchesDescription(t *testing.T) {
 	schema := readSchemaObjectForTest(t, "schema-subset-v1.schema.json")
 	defs, ok := schema["$defs"].(map[string]any)

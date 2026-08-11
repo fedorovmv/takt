@@ -227,6 +227,13 @@ func isNativeShellVariable(value string) bool {
 // Render resolves all Takt references in source in one pass. Substituted
 // values are never scanned again.
 func Render(source string, surface Surface, resolve func(Reference) (string, bool)) (string, error) {
+	if surface == Shell {
+		return renderShell(source, resolve)
+	}
+	return renderGeneric(source, surface, resolve)
+}
+
+func renderGeneric(source string, surface Surface, resolve func(Reference) (string, bool)) (string, error) {
 	var out strings.Builder
 	var quote byte
 	for i := 0; i < len(source); {
@@ -360,6 +367,365 @@ func Render(source string, surface Surface, resolve func(Reference) (string, boo
 		i = end
 	}
 	return out.String(), nil
+}
+
+type shellFrame struct {
+	kind    byte // root, command substitution, arithmetic substitution, or backtick
+	quote   byte
+	parens  int
+	comment bool
+}
+
+type shellHeredoc struct {
+	bodyStart  int
+	bodyEnd    int
+	contentEnd int
+}
+
+type shellLexer struct {
+	frames   []shellFrame
+	heredocs []shellHeredoc
+}
+
+func newShellLexer() *shellLexer {
+	return &shellLexer{frames: []shellFrame{{kind: 'r'}}}
+}
+
+func (l *shellLexer) frame() *shellFrame {
+	return &l.frames[len(l.frames)-1]
+}
+
+func (l *shellLexer) quote() byte {
+	return l.frame().quote
+}
+
+func (l *shellLexer) push(kind byte, parens int) {
+	l.frames = append(l.frames, shellFrame{kind: kind, parens: parens})
+}
+
+func (l *shellLexer) pop() {
+	if len(l.frames) > 1 {
+		l.frames = l.frames[:len(l.frames)-1]
+	}
+}
+
+func (l *shellLexer) addHeredoc(value shellHeredoc) {
+	if value.bodyStart < 0 {
+		return
+	}
+	l.heredocs = append(l.heredocs, value)
+}
+
+func (l *shellLexer) takeHeredoc(start int) (shellHeredoc, bool) {
+	for index, value := range l.heredocs {
+		if value.bodyStart != start {
+			continue
+		}
+		l.heredocs = append(l.heredocs[:index], l.heredocs[index+1:]...)
+		return value, true
+	}
+	return shellHeredoc{}, false
+}
+
+func renderShell(source string, resolve func(Reference) (string, bool)) (string, error) {
+	var out strings.Builder
+	lexer := newShellLexer()
+	for i := 0; i < len(source); {
+		if heredoc, ok := lexer.takeHeredoc(i); ok {
+			if err := validateHeredocBody(source[heredoc.bodyStart:heredoc.contentEnd]); err != nil {
+				return "", err
+			}
+			out.WriteString(source[heredoc.bodyStart:heredoc.bodyEnd])
+			i = heredoc.bodyEnd
+			continue
+		}
+
+		frame := lexer.frame()
+		if frame.comment {
+			out.WriteByte(source[i])
+			if source[i] == '\n' {
+				frame.comment = false
+			}
+			i++
+			continue
+		}
+		if source[i] == '\\' && frame.quote != '\'' && i+1 < len(source) {
+			out.WriteByte(source[i])
+			out.WriteByte(source[i+1])
+			i += 2
+			continue
+		}
+		if source[i] == '#' && shellCommentStart(source, i, frame.quote) {
+			frame.comment = true
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
+		if source[i] == '"' && frame.quote != '\'' {
+			if frame.quote == '"' {
+				frame.quote = 0
+			} else {
+				frame.quote = '"'
+			}
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
+		if source[i] == '\'' && frame.quote != '"' {
+			if frame.quote == '\'' {
+				frame.quote = 0
+			} else {
+				frame.quote = '\''
+			}
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
+		if source[i] == '`' && frame.quote != '\'' {
+			if frame.kind == 'b' {
+				lexer.pop()
+			} else {
+				lexer.push('b', 0)
+			}
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
+		if source[i] == ')' && frame.quote == 0 && (frame.kind == 'c' || frame.kind == 'a') {
+			frame.parens--
+			out.WriteByte(source[i])
+			i++
+			if frame.parens == 0 {
+				lexer.pop()
+			}
+			continue
+		}
+		if source[i] == '(' && frame.quote == 0 && (frame.kind == 'c' || frame.kind == 'a') {
+			frame.parens++
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
+		if source[i] == '<' && i+1 < len(source) && source[i+1] == '<' && frame.quote == 0 {
+			if heredoc, ok := parseHeredoc(source, i); ok {
+				lexer.addHeredoc(heredoc)
+			}
+		}
+		if source[i] != '$' {
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
+		if i+1 < len(source) && source[i+1] == '$' {
+			out.WriteString("$$")
+			i += 2
+			continue
+		}
+		if i+1 < len(source) && source[i+1] == '(' {
+			if i+2 < len(source) && source[i+2] == '(' {
+				lexer.push('a', 2)
+				out.WriteString("$((")
+				i += 3
+			} else {
+				lexer.push('c', 1)
+				out.WriteString("$(")
+				i += 2
+			}
+			continue
+		}
+		if i+1 < len(source) && source[i+1] == '{' {
+			if end, ok := nativeBracedShellVariable(source, i); ok {
+				out.WriteString(source[i:end])
+				i = end
+				continue
+			}
+			return "", fmt.Errorf("legacy braced references are not supported")
+		}
+		end := referenceEnd(source, i+1)
+		if end == i+1 {
+			if i+1 < len(source) && (source[i+1] == '?' || source[i+1] == '!' || source[i+1] == '#' || source[i+1] == '@' || source[i+1] == '*' || (source[i+1] >= '0' && source[i+1] <= '9')) {
+				out.WriteString(source[i : i+2])
+				i += 2
+				continue
+			}
+			return "", fmt.Errorf("invalid reference at byte %d", i)
+		}
+		token := source[i:end]
+		ref, err := Parse(token, Shell)
+		if err != nil {
+			if isPreservedShellToken(token, source, i, end) {
+				out.WriteString(token)
+				i = end
+				continue
+			}
+			return "", err
+		}
+		if frame.kind == 'a' {
+			return "", fmt.Errorf("Takt references are not supported inside shell arithmetic")
+		}
+		if ref.Kind != KindBare && frame.quote == '"' {
+			return "", fmt.Errorf("shell reference %s must not be double quoted", token)
+		}
+		if ref.Kind == KindBare {
+			value, ok := "", false
+			if resolve != nil {
+				value, ok = resolve(ref)
+			}
+			if !ok {
+				if ref.Default != "" {
+					value, ok = ref.Default, true
+				} else if ref.Optional {
+					value, ok = "", true
+				}
+			}
+			if !ok {
+				return "", fmt.Errorf("unresolved reference %q", token)
+			}
+			if ref.Optional || ref.Default != "" {
+				out.WriteString(shellQuote(value))
+			} else {
+				out.WriteString(token)
+			}
+			i = end
+			continue
+		}
+		value, ok := "", false
+		if resolve != nil {
+			value, ok = resolve(ref)
+		}
+		if !ok || (value == "" && ref.Default != "") {
+			if ref.Default != "" {
+				value, ok = ref.Default, true
+			} else if ref.Optional {
+				value, ok = "", true
+			}
+		}
+		if !ok {
+			return "", fmt.Errorf("unresolved reference %q", token)
+		}
+		if frame.quote == '\'' {
+			value = shellEscapeSingleQuoted(value)
+		} else {
+			value = shellQuote(value)
+		}
+		out.WriteString(value)
+		i = end
+	}
+	return out.String(), nil
+}
+
+func shellCommentStart(source string, index int, quote byte) bool {
+	if quote != 0 || index == 0 {
+		return quote == 0
+	}
+	previous := source[index-1]
+	return unicode.IsSpace(rune(previous)) || strings.ContainsRune(";|&()<>", rune(previous))
+}
+
+func parseHeredoc(source string, operator int) (shellHeredoc, bool) {
+	headerEnd := strings.IndexByte(source[operator:], '\n')
+	if headerEnd < 0 {
+		return shellHeredoc{}, false
+	}
+	headerEnd += operator
+	index := operator + 2
+	stripTabs := false
+	if index < headerEnd && source[index] == '-' {
+		stripTabs = true
+		index++
+	}
+	for index < headerEnd && (source[index] == ' ' || source[index] == '\t') {
+		index++
+	}
+	if index >= headerEnd {
+		return shellHeredoc{}, false
+	}
+	var delimiter strings.Builder
+	if source[index] == '\'' || source[index] == '"' {
+		quote := source[index]
+		index++
+		for index < headerEnd && source[index] != quote {
+			delimiter.WriteByte(source[index])
+			index++
+		}
+		if index >= headerEnd {
+			return shellHeredoc{}, false
+		}
+		index++
+	} else {
+		for index < headerEnd && source[index] != ' ' && source[index] != '\t' {
+			delimiter.WriteByte(source[index])
+			index++
+		}
+	}
+	value := delimiter.String()
+	if value == "" {
+		return shellHeredoc{}, false
+	}
+	bodyStart := headerEnd + 1
+	for lineStart := bodyStart; lineStart <= len(source); {
+		lineEnd := strings.IndexByte(source[lineStart:], '\n')
+		if lineEnd < 0 {
+			lineEnd = len(source)
+		} else {
+			lineEnd += lineStart
+		}
+		line := source[lineStart:lineEnd]
+		compare := line
+		if stripTabs {
+			compare = strings.TrimLeft(compare, "\t")
+		}
+		if compare == value {
+			end := lineEnd
+			if end < len(source) {
+				end++
+			}
+			return shellHeredoc{bodyStart: bodyStart, bodyEnd: end, contentEnd: lineStart}, true
+		}
+		if lineEnd >= len(source) {
+			break
+		}
+		lineStart = lineEnd + 1
+	}
+	return shellHeredoc{bodyStart: bodyStart, bodyEnd: len(source), contentEnd: len(source)}, true
+}
+
+func validateHeredocBody(body string) error {
+	for index := 0; index < len(body); {
+		if body[index] != '$' {
+			index++
+			continue
+		}
+		if index+1 >= len(body) {
+			break
+		}
+		if body[index+1] == '$' {
+			index += 2
+			continue
+		}
+		if body[index+1] == '{' {
+			if end, ok := nativeBracedShellVariable(body, index); ok {
+				index = end
+				continue
+			}
+			return fmt.Errorf("shell Takt references are not supported in heredoc bodies")
+		}
+		end := referenceEnd(body, index+1)
+		if end == index+1 {
+			index++
+			continue
+		}
+		token := body[index:end]
+		if _, err := Parse(token, Shell); err == nil {
+			return fmt.Errorf("shell Takt references are not supported in heredoc bodies")
+		}
+		if isPreservedShellToken(token, body, index, end) {
+			index = end
+			continue
+		}
+		index++
+	}
+	return nil
 }
 
 // Scan returns references in source without resolving their values.

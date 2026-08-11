@@ -102,7 +102,11 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 	if state.Nodes[node.ID].Resumed && sessionID != "" {
 		sessionMode = "resume"
 	}
-	if node.Context == "shared" {
+	if r.loopFreshContextForNode(node.ID) {
+		// fresh_context is the loop-level override: the iteration must not
+		// resume an upstream shared session.
+		sessionMode, sessionID = "fresh", ""
+	} else if node.Context == "shared" {
 		source, err := r.sharedSessionSource(state, local, node, assistantName, modelName)
 		if err != nil {
 			return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindProtocol, Op: "resolve shared session", Err: err}
@@ -125,6 +129,30 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 		ModelName: modelName, Model: model, Policy: policy, Capabilities: capabilities,
 		SessionMode: sessionMode, SessionID: sessionID,
 	}, nil
+}
+
+func (r *Runner) loopFreshContextForNode(nodeID string) bool {
+	if r.workflow == nil {
+		return false
+	}
+	var visit func([]spec.Node) bool
+	visit = func(nodes []spec.Node) bool {
+		for _, parent := range nodes {
+			if parent.LoopGroup == nil {
+				continue
+			}
+			for _, child := range parent.LoopGroup.Nodes {
+				if child.ID == nodeID {
+					return parent.LoopGroup.FreshContext
+				}
+			}
+			if visit(parent.LoopGroup.Nodes) {
+				return true
+			}
+		}
+		return false
+	}
+	return visit(r.workflow.Nodes)
 }
 
 func (r *Runner) sharedSessionSource(state *store.RunState, local map[string]store.NodeState, node spec.Node, provider, model string) (string, error) {

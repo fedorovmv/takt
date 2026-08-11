@@ -227,12 +227,6 @@ func validateArchonA0Fields(node spec.Node) error {
 	if node.Context != "" && node.Context != "fresh" && node.Context != "shared" {
 		return fmt.Errorf("node %q context must be fresh or shared", node.ID)
 	}
-	if node.FreshContext {
-		return fmt.Errorf("node %q fresh_context is only valid inside loop or loop_group", node.ID)
-	}
-	if strings.TrimSpace(node.UntilBash) != "" {
-		return fmt.Errorf("node %q until_bash is only valid inside loop or loop_group", node.ID)
-	}
 	return nil
 }
 

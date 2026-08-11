@@ -3,6 +3,7 @@ package workflow
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"takt/internal/spec"
@@ -95,12 +96,15 @@ func TestArchonLoopChildAllowsCancelAndSharedContext(t *testing.T) {
 }
 
 func TestArchonRejectsContainerOnlyFieldsOnOrdinaryNodes(t *testing.T) {
-	for _, node := range []spec.Node{
-		{ID: "fresh", Bash: "true", FreshContext: true},
-		{ID: "predicate", Bash: "true", UntilBash: "true"},
-	} {
-		if err := Validate(&spec.Workflow{Name: "placement", Nodes: []spec.Node{node}}); err == nil {
-			t.Fatalf("unsupported field placement accepted for node %q", node.ID)
+	dir := t.TempDir()
+	for _, field := range []string{"fresh_context: false", "fresh_context: true", "until_bash: true"} {
+		path := filepath.Join(dir, strings.NewReplacer(" ", "", ":", "-").Replace(field)+".yaml")
+		raw := "name: placement\nnodes:\n  - id: node\n    bash: \"true\"\n    " + field + "\n"
+		if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(path); err == nil {
+			t.Fatalf("unsupported field placement accepted for %q", field)
 		}
 	}
 }

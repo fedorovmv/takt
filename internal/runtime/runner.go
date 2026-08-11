@@ -825,7 +825,7 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 				}
 			}
 			for _, child := range parent.LoopGroup.Nodes {
-				childState := &store.NodeState{Status: store.NodePending, Path: canonicalNodePath(parent.ID + "__" + child.ID), Hidden: child.Hidden, PublicParent: child.PublicParent}
+				childState := &store.NodeState{Status: store.NodePending, Path: loopChildNodePath(parent.ID, child), Hidden: child.Hidden, PublicParent: child.PublicParent}
 				if iteration > 1 && !parent.LoopGroup.FreshContext && previous != nil {
 					if prior, ok := previous[child.ID]; ok && prior.SessionID != "" && (child.Command != "" || child.Prompt != "") {
 						childState.SessionID = prior.SessionID
@@ -1543,6 +1543,15 @@ func canonicalNodePath(id string) string {
 		}
 	}
 	return path
+}
+
+func loopChildNodePath(parentID string, child spec.Node) string {
+	childID := child.ID
+	prefix := parentID + "__"
+	if child.PublicParent != parentID {
+		childID = prefix + childID
+	}
+	return canonicalNodePath(childID)
 }
 
 func shouldRetryAttempt(policy spec.AttemptsSpec, kind execution.Kind, attempt, max int) bool {

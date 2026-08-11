@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Закрыты дополнительные REQUEST CHANGES: shell lexer учитывает комментарии,
+  heredoc и вложенные command substitutions; `cancel` синхронизирован с
+  loop-child schema; запрещены root `fresh_context`/`until_bash`, а
+  `fresh_context` имеет приоритет над shared session. Исправлены canonical paths
+  expanded loop children и static `foreach` examples (`$INPUTS.<as>`).
+
 - Закрыты review-контракты Archon A1: redaction durable loop evidence и
   cancel metadata, quote-state shell rendering с fail-closed `BASE_BRANCH`,
   raw inline scripts через argv/env boundary, predicate snapshots/safe-stop,

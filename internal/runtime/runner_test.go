@@ -159,6 +159,45 @@ func TestLoopGroup(t *testing.T) {
 	}
 }
 
+func TestLoopFreshContextOverridesSharedChild(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	var requests []assistant.Request
+	wf := &spec.Workflow{Name: "fresh-shared", Nodes: []spec.Node{{
+		ID: "loop",
+		LoopGroup: &spec.LoopGroupSpec{
+			MaxIterations: 2,
+			FreshContext:  true,
+			Nodes: []spec.Node{
+				{ID: "source", Prompt: "source", Provider: "demo", Model: "m"},
+				{ID: "target", DependsOn: []string{"source"}, Prompt: "target", Provider: "demo", Model: "m", Context: "shared"},
+				{ID: "check", DependsOn: []string{"target"}, Bash: `n=0; test -f count && n=$(cat count); n=$((n+1)); echo -n $n > count; test $n -ge 2`, AllowFailure: true},
+			},
+			Until: spec.UntilSpec{Node: "check", ExitCode: &zero},
+		},
+	}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := New(wf, cfg, "wf", "cfg", dir)
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+		return adapterFunc(func(_ context.Context, request assistant.Request) (assistant.Result, error) {
+			requests = append(requests, request)
+			return assistant.Result{Output: request.NodeID, SessionID: request.NodeID + "-session", ExitCode: 0}, nil
+		}), nil
+	})
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunCompleted || len(requests) != 4 {
+		t.Fatalf("unexpected loop result: status=%s requests=%d", state.Status, len(requests))
+	}
+	for _, request := range requests {
+		if request.NodeID == "target" && (request.SessionMode != "fresh" || request.SessionID != "") {
+			t.Fatalf("fresh_context did not override shared context: %+v", request)
+		}
+	}
+}
+
 type failLoopStartStore struct {
 	store.Repository
 	crashed bool
@@ -683,6 +722,38 @@ func TestCancelInsideLoopPersistsCanonicalPathAndIteration(t *testing.T) {
 	}
 	if state.Status != store.RunCancelled || state.CancelNodePath != "/loop/stop" || state.CancelIteration != 1 || state.CancelReason != "operator stop" {
 		t.Fatalf("cancel metadata = %#v", state)
+	}
+}
+
+func TestExpandedLoopChildUsesSingleCanonicalParentPath(t *testing.T) {
+	dir := t.TempDir()
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	raw := `name: expanded-loop-path
+nodes:
+  - id: loop
+    loop_group:
+      max_iterations: 1
+      nodes:
+        - id: stop
+          cancel: stop
+      until:
+        node: stop
+        exit_code: 0
+`
+	if err := os.WriteFile(workflowPath, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := New(wf, &spec.Config{}, workflowPath, "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected cancel")
+	}
+	if state.CancelNodePath != "/loop/stop" {
+		t.Fatalf("expanded loop child path = %q, want /loop/stop", state.CancelNodePath)
 	}
 }
 

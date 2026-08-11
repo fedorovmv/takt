@@ -26,9 +26,7 @@ type Node struct {
 	TriggerRule  string            `json:"trigger_rule,omitempty"`
 	Provider     string            `json:"provider,omitempty"`
 	Context      string            `json:"context,omitempty"`
-	FreshContext bool              `json:"fresh_context,omitempty"`
 	Cancel       string            `json:"cancel,omitempty"`
-	UntilBash    string            `json:"until_bash,omitempty"`
 	Loop         *LoopSpec         `json:"loop,omitempty"`
 	Model        string            `json:"model,omitempty"`
 	Executor     string            `json:"executor,omitempty"`

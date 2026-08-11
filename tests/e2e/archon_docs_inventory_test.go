@@ -37,6 +37,9 @@ func TestArchonCurrentDocumentationInventory(t *testing.T) {
 					t.Errorf("%s contains legacy Workflow dialect %q in an executable snippet", path, forbidden)
 				}
 			}
+			if strings.Contains(block, "foreach:") && !strings.Contains(block, "fan_out:") && strings.Contains(block, "$FANOUT.") {
+				t.Errorf("%s uses governed fan-out variables in a static foreach example", path)
+			}
 		}
 	}
 }
