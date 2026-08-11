@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -9,8 +9,8 @@ Read AGENTS.md, the user request, and available artifacts such as `$ARTIFACTS_DI
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS
 
 Previous validation feedback:
 
-${feedback}
+$FEEDBACK

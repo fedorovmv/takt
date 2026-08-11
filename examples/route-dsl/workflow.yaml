@@ -1,38 +1,32 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-
-metadata:
-  name: generate-route
-  description: Демонстрация универсального agent workflow
-
-defaults:
-  assistant: demo
-  model: large
-  session: fresh
-
+---
 nodes:
-  - id: analyze
-    command: analyze-requirements
-
-  - id: build-cycle
-    depends_on: [analyze]
-    loop_group:
-      max_iterations: 3
-      nodes:
-        - id: implement
-          command: generate-route
-        - id: validate
-          depends_on: [implement]
-          allow_failure: true
-          bash: |
-            test -f route.yaml || printf '%s\n' 'route.yaml пока отсутствует; demo создаёт его детерминированно' > route.yaml
-            printf '%s\n' '{"valid":true}'
-      until:
-        node: validate
-        exit_code: 0
-
-  - id: approve-result
-    depends_on: [build-cycle]
-    approval:
-      message: Маршрут прошёл техническую проверку. Подтвердите результат.
-      capture_response: true
+- id: analyze
+  command: analyze-requirements
+- id: build-cycle
+  depends_on:
+  - analyze
+  loop_group:
+    max_iterations: 3
+    nodes:
+    - id: implement
+      command: generate-route
+    - id: validate
+      depends_on:
+      - implement
+      allow_failure: true
+      bash: |
+        test -f route.yaml || printf '%s\n' 'route.yaml пока отсутствует; demo создаёт его детерминированно' > route.yaml
+        printf '%s\n' '{"valid":true}'
+    until:
+      node: validate
+      exit_code: 0
+- id: approve-result
+  depends_on:
+  - build-cycle
+  approval:
+    message: Маршрут прошёл техническую проверку. Подтвердите результат.
+    capture_response: true
+name: generate-route
+description: Демонстрация универсального agent workflow
+provider: demo
+model: large

@@ -19,7 +19,14 @@ func ValidateReferences(wf *spec.Workflow, cfg *spec.Config, resolver command.Re
 	if cfg == nil {
 		return fmt.Errorf("config is required")
 	}
-	return validateReferencesRecursive(wf.Nodes, wf.Defaults, cfg, resolver, map[string]bool{}, 0)
+	defaults := wf.Defaults
+	if defaults.Assistant == "" {
+		defaults.Assistant = wf.Provider
+	}
+	if defaults.Model == "" {
+		defaults.Model = wf.Model
+	}
+	return validateReferencesRecursive(wf.Nodes, defaults, cfg, resolver, map[string]bool{}, 0)
 }
 
 func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg *spec.Config, resolver command.Resolver, stack map[string]bool, depth int) error {
@@ -28,13 +35,19 @@ func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg 
 	}
 	for _, n := range nodes {
 		assistantName, modelName := n.Assistant, n.Model
+		if assistantName == "" {
+			assistantName = n.Provider
+		}
 		if n.Command != "" {
 			cmd, err := resolver.Resolve(n.Command)
 			if err != nil {
 				return fmt.Errorf("node %q: %w", n.ID, err)
 			}
 			if assistantName == "" {
-				assistantName = cmd.Assistant
+				assistantName = cmd.Provider
+				if assistantName == "" {
+					assistantName = cmd.Assistant
+				}
 			}
 			if modelName == "" {
 				modelName = cmd.Model

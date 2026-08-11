@@ -1,19 +1,19 @@
 ---
 description: Создаёт или исправляет Route DSL
-assistant: demo
+provider: demo
 model: large
 ---
 
 Создай или исправь `route.yaml`.
 
 Техническое задание:
-$USER_MESSAGE
+$ARGUMENTS
 
 Анализ:
-${nodes.analyze.output}
+$analyze.output
 
 Ошибки предыдущей проверки:
-${feedback}
+$FEEDBACK
 
 Предыдущая итерация цикла:
-${loop.previous.validate.output}
+$LOOP_PREV.validate.output

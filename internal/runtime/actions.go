@@ -7,6 +7,7 @@ import (
 
 	"takt/internal/assistant"
 	"takt/internal/execution"
+	"takt/internal/flowref"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
@@ -26,11 +27,15 @@ func (r *Runner) actionContext(state *store.RunState, node spec.Node, loopPrevio
 }
 
 func (r *Runner) executeBashAction(ctx context.Context, state *store.RunState, node spec.Node, action actionContext) (execResult, error) {
-	rendered, err := renderTemplate(node.Bash, state, action.local, action.feedback, action.artifacts)
+	rendered, err := renderTemplateSurface(node.Bash, flowref.Shell, state, action.local, action.feedback, action.artifacts, nil)
 	if err != nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render bash node", Err: err}
 	}
-	return r.runBash(ctx, node, rendered)
+	env := map[string]string{"ARGUMENTS": state.Input, "FEEDBACK": action.feedback, "ARTIFACTS_DIR": action.artifacts}
+	if state.Worktree != nil {
+		env["BASE_BRANCH"] = state.Worktree.BaseRef
+	}
+	return r.runBashWithEnv(ctx, node, rendered, env)
 }
 
 func (r *Runner) executeScriptAction(ctx context.Context, state *store.RunState, node spec.Node, action actionContext) (execResult, error) {
@@ -63,6 +68,18 @@ func (r *Runner) executeApprovalAction(state *store.RunState, node spec.Node, ac
 		return execResult{}, err
 	}
 	return execResult{}, ErrWaiting
+}
+
+func (r *Runner) executeCancelAction(state *store.RunState, node spec.Node, action actionContext) (execResult, error) {
+	reason, err := renderTemplate(node.Cancel, state, action.local, action.feedback, action.artifacts)
+	if err != nil {
+		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render cancel reason", Err: err}
+	}
+	state.CancelRequested = true
+	state.CancelSource = "workflow"
+	state.CancelNodePath = node.ID
+	state.CancelReason = reason
+	return execResult{Output: reason, Stdout: reason, ExitCode: 0}, nil
 }
 
 func (r *Runner) executeInternalAction(ctx context.Context, state *store.RunState, node spec.Node) (execResult, error) {
@@ -140,6 +157,9 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 		}
 	}
 	result, err := adapter.Run(ctx, request)
+	if err == nil && resolved.SessionMode == "resume" && resolved.SessionID != "" && result.SessionID != resolved.SessionID {
+		err = &execution.Error{Kind: execution.KindProtocol, Op: "assistant resume", Err: fmt.Errorf("assistant returned session %q, requested %q", result.SessionID, resolved.SessionID)}
+	}
 	if errors.Is(context.Cause(ctx), ErrIdleTimeout) {
 		err = &execution.Error{Kind: execution.KindTimedOut, ExitCode: -1, Op: "assistant idle timeout", Err: ErrIdleTimeout}
 	}

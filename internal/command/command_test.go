@@ -5,16 +5,17 @@ import "testing"
 func TestParse(t *testing.T) {
 	src := `---
 description: Test
-assistant: demo
+provider: demo
 model: large
+argument-hint: <request>
 ---
-Hello $USER_MESSAGE
+Hello $ARGUMENTS
 `
 	c, err := Parse("x", "x.md", src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Assistant != "demo" || c.Model != "large" || c.Body != "Hello $USER_MESSAGE" {
+	if c.Provider != "demo" || c.Assistant != "demo" || c.Model != "large" || c.ArgumentHint != "<request>" || c.Body != "Hello $ARGUMENTS" {
 		t.Fatalf("unexpected: %+v", c)
 	}
 }

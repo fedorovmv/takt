@@ -1,6 +1,11 @@
 # Спецификация адаптеров исполнителей
 
-Статус: stable core содержит process-протокол v1alpha1/v1alpha2, capability declaration, нормализованный EventSink и переиспользуемый conformance kit. Pi RPC и OpenCode CLI поставляются как bundled extension adapters и покрыты отдельными контрактными наборами; их live host-conformance остаётся guarded.
+Статус: stable core содержит process-протокол v1alpha1/v1alpha2, capability
+declaration, нормализованный EventSink и переиспользуемый conformance kit.
+Pi RPC и OpenCode CLI поставляются как bundled extension adapters и покрыты
+отдельными контрактными наборами; их live host-conformance остаётся guarded.
+A1 runtime требует exact Session ID при resume и не подменяет failed resume
+fresh-сессией.
 
 ## 1. Назначение
 
@@ -8,7 +13,11 @@ Session adapter связывает Takt с готовым кодинг-аген�
 
 ## 1.1. Логический исполнитель
 
-Workflow профиля может использовать `assistant: coding-agent`. Runtime разрешает его через `default_assistant`, сохраняя один и тот же DAG при смене хоста. Универсальный `process` реализует stable core contract; bundled Pi/OpenCode extensions реализуют тот же `SessionAdapter`, но не входят в stable core dependency graph.
+Workflow профиля может использовать `provider: coding-agent`. Runtime разрешает
+его через существующий Config binding, сохраняя один и тот же DAG при смене
+хоста. Универсальный `process` реализует stable core contract; bundled
+Pi/OpenCode extensions реализуют тот же `SessionAdapter`, но не входят в stable
+core dependency graph.
 
 Для сторонних кодинг-агентов используется `takt-assistant/v1alpha2`. Takt передаёт нормализованный Request с моделью, workspace, fresh/resume session, политикой и limits и получает поток событий и один terminal Result. Готовая обёртка конкретного CLI является отдельным интеграционным пакетом; ядро Takt не зависит от Kiro CLI и не эмулирует tool loop стороннего агента.
 
@@ -184,14 +193,42 @@ TAKT_NATIVE_HOOKS_JSON
 
 - адаптер не использует предыдущий Session ID;
 - Result может вернуть новый Session ID;
-- retry с `session: fresh` очищает сохранённый ID.
+- retry с `attempts.retry_session: fresh` очищает сохранённый ID;
+- `fresh_context: true` очищает ID между loop iterations.
 
 ### resume
 
 - runtime передаёт сохранённый Session ID;
-- отсутствие ID на первой попытке трактуется как fresh;
-- если исполнитель не смог восстановить сессию, адаптер возвращает явный признак `resumed: false` либо ошибку согласно конфигурации;
-- тихий переход на fresh запрещён по умолчанию.
+- отсутствие ID допустимо только для первой попытки, когда запрошен `resume` как
+  default для ещё не созданной сессии;
+- если исполнитель не смог восстановить сессию или вернул другой ID, попытка
+  завершается `protocol`/`session_resume_failed`;
+- тихий переход на fresh запрещён всегда, включая retry и `context: shared`;
+- успешный resume обязан сохранить тот же Session ID в Result и durable
+  `ExecutionState`.
+
+### shared context и retry precedence
+
+`context: shared` runtime разрешает только для assistant node с единственным
+транзитивным upstream assistant ancestor того же provider/model и передаёт его
+Session ID как `resume`. Если ancestor отсутствует, неоднозначен или resume не
+подтверждён, node не запускается fresh.
+
+Для повторов действуют правила: `attempts.retry_session: fresh` очищает ID,
+`reuse` сохраняет прежний режим; hook `on_failure.session: resume` запрашивает
+exact resume. Approval внутри loop не создаёт новую попытку и продолжает ту же
+итерацию/session; следующая iteration наследует session только если
+`fresh_context: false`.
+
+## 6.1. Loop signal evidence
+
+Assistant adapter возвращает полный normalized output и `output_truncated`; он
+не объявляет успех loop сам. Runtime после terminal assistant result применяет
+`until.signal` matcher (один `<promise>NAME</promise>` или последняя непустая
+строка), сохраняет `matched_signal` либо `signal_diagnostic` (`signal_missing`
+или `signal_ambiguous`) и отклоняет truncated source как protocol failure.
+`until.requires` и `until_bash` остаются runtime/deterministic predicates:
+adapter не подменяет их текстом агента и не добавляет скрытый validator.
 
 ## 7. Нормализация ошибок
 
@@ -261,7 +298,8 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 
 1. `pi --version` проверяет доступность CLI и сохраняет версию в structured result;
 2. запускается RPC-процесс в workspace узла;
-3. `get_state` возвращает фактический Session ID и модель;
+3. `get_state` возвращает фактический Session ID и модель; при resume ID обязан
+   совпасть с запрошенным;
 4. `prompt` принимает полное задание через JSONL stdin;
 5. перед prompt снимается накопленная статистика `get_session_stats`;
 6. adapter ждёт `agent_settled`; события `agent_end` учитываются как отдельные низкоуровневые запуски и могут иметь `willRetry: true`;
@@ -273,6 +311,7 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 
 - выбор provider/model и thinking level;
 - `fresh` и проверенный `resume` через `--session`;
+- отказ mismatched/missing resume без fresh fallback;
 - timeout/cancellation вместе с process group;
 - приоритет `timed_out`/`cancelled` над одновременно обнаруженным output overflow;
 - общий race-safe лимит stdout/stderr;
@@ -295,6 +334,10 @@ opencode run --format json --dir <workspace> --model <provider>/<id> [--agent ..
 
 Prompt передаётся через stdin. Stdout трактуется как NDJSON event stream, stderr сохраняется только как диагностика. Takt собирает итоговый текст из `text`, usage и cost — как сумму уникальных `step_finish`, а события `error` классифицирует как отказ агента даже при нулевом OS exit code.
 
+При `--session` OpenCode должен вернуть тот же Session ID в event stream.
+Отсутствующий или другой ID — protocol failure; новый fresh запуск не
+подставляется автоматически.
+
 Если parent context завершился, adapter сохраняет raw stdout/stderr и извлекает краткие сообщения из stderr и доступных `error` events. Итоговый execution kind остаётся `timed_out` или `cancelled`, а provider-диагностика добавляется к ошибке и logical output. Scheduler обязан сохранять такую специализированную context-ошибку, а не заменять её общим сообщением `node attempt`.
 
 Поддержано:
@@ -302,6 +345,7 @@ Prompt передаётся через stdin. Stdout трактуется как
 - выбор model alias на уровне workflow, команды или узла;
 - `agent` и model `variant`; строковый `reasoning_effort` используется как fallback variant;
 - `fresh` и проверенный `resume` через `--session`;
+- exact Session ID check для resumed attempts без fresh fallback;
 - version probe, timeout/cancellation, общий stdout/stderr limit;
 - provider retry/connection diagnostics при timeout/cancellation без изменения execution kind;
 - per-attempt usage и cost;

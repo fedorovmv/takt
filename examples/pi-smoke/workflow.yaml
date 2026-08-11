@@ -1,15 +1,10 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: pi-smoke
-
-defaults:
-  assistant: pi
-  model: default
-  session: fresh
-
+---
 nodes:
-  - id: ask
-    prompt: |
-      Inspect the current workspace and reply with a short factual summary.
-    timeout: 5m
+- id: ask
+  prompt: 'Inspect the current workspace and reply with a short factual summary.
+
+'
+  timeout: 5m
+name: pi-smoke
+provider: pi
+model: default

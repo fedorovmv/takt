@@ -58,7 +58,7 @@ takt run code --workspace . --input docs/plan.md --json
     name: scm
     operation: change.create
     input: |
-      {"title":"${nodes.prepare.output.title}"}
+      {"title":$prepare.output.title}
   side_effect:
     mode: reconcile
 ```
@@ -172,29 +172,37 @@ takt block validate path/to/package.yaml
 
 ## Критичные правила
 
+- Workflow использует target root `name`, `description`, `provider`, `model`,
+  `nodes`; legacy `apiVersion/kind/metadata/defaults`, `${...}` и
+  frontmatter `assistant` отклоняются до Run. Не добавляй importer или второй
+  parser.
 - Узел определяет ровно одно действие: `command`, `prompt`, `bash`, `script`, `adapter`, `approval`, `loop_group`, `subworkflow`, `foreach` или `workflow`.
-- Приоритет assistant/model: узел → frontmatter Markdown-команды → `workflow.defaults`.
+- Приоритет provider/model: узел → frontmatter Markdown-команды → поля `workflow.provider`/`workflow.model`.
 - Имена моделей в workflow ссылаются на aliases из `config.models`, а не напрямую на provider ID.
-- `session: resume` требует реального сохранения Session ID; не подменяй неуспешный resume на fresh.
+- `context: shared` и межитерационный `fresh_context: false` требуют реального сохранения Session ID; не подменяй неуспешный resume на fresh.
 - OpenCode запускается через `opencode run --format json`; не парси TUI и не подменяй его собственный агентный цикл логикой Takt.
 - `auto_approve: true` для OpenCode используй только в доверенной рабочей директории.
 - Для исправления результата используй детерминированную проверку в hook и `on_failure.action: retry`.
 - Для transient `attempts.retry_on` можно добавить bounded `backoff` (`initial`, `multiplier`, `max`, `jitter`); cancellation и неизвестный side effect не превращай в обычный retry.
 - Секреты в process/script env передавай как `secret://ENV_NAME`, чтобы durable state/events/artifacts проходили через redaction; не вставляй literal secret в task input.
-- `${feedback}` содержит вывод неуспешных hooks предыдущей попытки.
+- `$FEEDBACK` содержит вывод неуспешных hooks предыдущей попытки.
 - Текст агента и наличие файла сами по себе не подтверждают успех; нужен bash-валидатор или другой детерминированный gate.
 - Approval оформляй отдельным узлом. Внутри `loop_group` он сохраняет активную итерацию и после `takt answer` продолжает её.
 - `loop_group.max_iterations` задавай в диапазоне `1..64`. Все завершённые итерации сохраняются в `loop_iterations[]`, а `loop_previous` остаётся snapshot последней итерации.
+- `until.signal` требует единственный signal, `until.requires` — явные
+  дополнительные evidence, `until_bash` — deterministic predicate с durable
+  stdout/stderr evidence; обрезанный output и missing/ambiguous signal не
+  считаются успехом.
 - Вложенные `loop_group` в `takt/v1alpha1` и целевом `v0.2` не поддерживаются. `subworkflow`, `foreach`, governed `workflow` и approval внутри `loop_group` разрешены.
 - `allow_failure: true` разрешает только штатный ненулевой exit code, но не timeout, cancellation или ошибку запуска.
-- Bash stdout/stderr сохраняются отдельно, а `${nodes.<id>.output}` содержит объединённый вывод. Script stdout/stderr также сохраняются раздельно; `output_format` меняет только нормализованный Output.
+- Bash stdout/stderr сохраняются отдельно, а `$<id>.output` содержит объединённый вывод. Script stdout/stderr также сохраняются раздельно; `output_format` меняет только нормализованный Output.
 - Validation envelope `takt-validation/v1alpha1` выводится только в stdout; логи валидатора идут в stderr.
 - Takt использует стандартный YAML parser `go.yaml.in/yaml/v3` и строгие публичные поля Takt. Для многострочного prompt или bash используй block scalar `|`.
 - Markdown-план не преобразуй в task AST ради `foreach`: используй явный `foreach.items` или `foreach.items_from.path` к YAML/JSON-массиву.
 - Неподдерживаемая capability должна завершать узел до вызова модели; не описывай ограничения только в prompt.
 - Для `command/prompt` filesystem/network policy остаётся assistant-enforced. Для локального `bash/script` используй `sandbox.enforcement: required|optional`, когда нужен реальный OS wrapper (`bwrap` Linux / `sandbox-exec` macOS); `required` должен fail-closed при отсутствии backend.
-- Значимые файлы публикуй через `output_type` и `output_path`; downstream использует `${nodes.<id>.artifacts.<type>.path}`, а не временный путь producer.
-- Обязательная шаблонная ссылка записывается `${path}` и должна разрешиться; отсутствие допускай только явно через `${path?}` или `${path:-default}`.
+- Значимые файлы публикуй через `output_type` и `output_path`; downstream использует `$<id>.artifacts.<type>.path`, а не временный путь producer.
+- Обязательная шаблонная ссылка записывается `$path` и должна разрешиться; отсутствие допускай только явно через `$path?` или `$path:-default`.
 - `takt validate` проверяет output/artifact references и adapter capabilities до Run; не откладывай эти ошибки до модели.
 - Не добавляй `system_prompt`, `user_prompt`, автоматический model fallback или иные поля, которых нет в текущем контракте.
 
@@ -207,11 +215,11 @@ takt block validate path/to/package.yaml
   subworkflow:
     path: workflows/review.yaml
     inputs:
-      plan: ${input}
+      plan: $ARGUMENTS
     output_node: result
 ```
 
-В подключённом workflow вход читается как `${inputs.plan}`. Если terminal-узел один, `output_node` можно не задавать. При нескольких terminal-узлах он обязателен.
+В подключённом workflow вход читается как `$INPUTS.plan`. Если terminal-узел один, `output_node` можно не задавать. При нескольких terminal-узлах он обязателен.
 
 `foreach` принимает inline-список или внешний YAML/JSON-массив; для независимых элементов включай `parallel: true`:
 
@@ -225,12 +233,12 @@ takt block validate path/to/package.yaml
     subworkflow:
       path: workflows/check.yaml
       inputs:
-        name: ${check}
+        name: $INPUTS.check
 ```
 
 Публичный узел `checks` завершается после всех итераций и возвращает JSON-массив outputs в порядке элементов, даже если параллельные ветви завершились иначе. Изменение внешнего списка меняет fingerprint.
 
-На контейнере можно задать `assistant`, `model` и `session` как defaults дочернего вызова. `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` задавай внутри дочернего workflow. Глубина композиции ограничена 16; рекурсивные ссылки отклоняются.
+На контейнере можно задать `provider`, `model` и `context` как defaults дочернего вызова. `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` задавай внутри дочернего workflow. Глубина композиции ограничена 16; рекурсивные ссылки отклоняются.
 
 Используй governed `workflow`, когда дочерний процесс должен быть отдельной управляемой единицей:
 
@@ -238,7 +246,7 @@ takt block validate path/to/package.yaml
 - id: implementation
   workflow:
     path: workflows/feature-development.yaml
-    input: ${input}
+    input: $ARGUMENTS
     output_node: summary
     isolation: inherit
 ```
@@ -298,13 +306,13 @@ output_path: $ARTIFACTS_DIR/plan.md
 
 - id: fix
   depends_on: [route]
-  when: nodes.route.output.workflow == "fix-github-issue"
+  when: $route.output.workflow == "fix-github-issue"
   workflow:
     path: workflows/fix-github-issue.yaml
-    input: ${input}
+    input: $ARGUMENTS
 ```
 
-Runtime принимает ровно одно JSON-значение и завершает узел `protocol`-ошибкой при нарушении схемы. В шаблонах и `when` доступны вложенные пути `${nodes.route.output.workflow}` и `nodes.route.output.workflow`.
+Runtime принимает ровно одно JSON-значение и завершает узел `protocol`-ошибкой при нарушении схемы. В шаблонах и `when` доступны вложенные пути `$route.output.workflow` и `$route.output.workflow`.
 
 Профиль может объявить именованный каталог `workflows`. Запускай роутер через `takt run code`, конкретный процесс — через `takt run code:piv-loop`, список — через `takt workflow list code`.
 
@@ -316,14 +324,14 @@ Runtime принимает ровно одно JSON-значение и заве
 
 ```yaml
 - id: implement
-  assistant: pi
+  provider: pi
   model: main
   prompt: |
     Выполни запрос:
-    ${input}
+    $ARGUMENTS
 
     Исправь замечания проверки:
-    ${feedback}
+    $FEEDBACK
 ```
 
 Используй `command`, когда prompt длинный, повторяется или должен версионироваться отдельно:
@@ -337,15 +345,15 @@ Runtime принимает ровно одно JSON-значение и заве
 ```markdown
 ---
 description: Выполняет задачу и исправляет замечания
-assistant: pi
+provider: pi
 model: main
 ---
 
 Выполни запрос:
-${input}
+$ARGUMENTS
 
 Замечания проверки:
-${feedback}
+$FEEDBACK
 ```
 
 ## Выбор Pi или OpenCode
@@ -364,10 +372,8 @@ assistants:
 В workflow меняется только ссылка:
 
 ```yaml
-defaults:
-  assistant: opencode
-  model: main
-  session: resume
+provider: opencode
+model: main
 ```
 
 Модель передаётся OpenCode как `provider/id`, параметр `variant` — как вариант модели.

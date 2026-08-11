@@ -105,10 +105,7 @@ func TestCorporatePackageNarrowsCatalogAndAppliesGovernance(t *testing.T) {
 
 func TestPackageRejectsBlockThatStartsGovernedChildRun(t *testing.T) {
 	root := t.TempDir()
-	child := `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	child := `name: child
 nodes:
   - id: done
     prompt: return summary
@@ -119,10 +116,7 @@ nodes:
           type: string
       required: [summary]
 `
-	parent := `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	parent := `name: parent
 nodes:
   - id: child
     workflow:
@@ -166,10 +160,7 @@ func TestPackageFingerprintIncludesResolvedCommandContent(t *testing.T) {
 	workflowPath := filepath.Join(root, "block.yaml")
 	packagePath := filepath.Join(root, "package.yaml")
 	commandPath := filepath.Join(root, "commands", "dynamic-implement.md")
-	mustWriteCatalog(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: command-block
+	mustWriteCatalog(t, workflowPath, `name: command-block
 nodes:
   - id: result
     command: dynamic-implement
@@ -210,10 +201,7 @@ func TestPackageFingerprintIncludesNestedWorkflowScriptDependency(t *testing.T) 
 	root := t.TempDir()
 	mustWriteCatalog(t, filepath.Join(root, "tool.sh"), "#!/bin/sh\necho ok\n")
 	mustWriteCatalog(t, filepath.Join(root, "dependency.txt"), "first")
-	mustWriteCatalog(t, filepath.Join(root, "child.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	mustWriteCatalog(t, filepath.Join(root, "child.yaml"), `name: child
 nodes:
   - id: result
     script:
@@ -227,10 +215,7 @@ nodes:
           type: string
       required: [summary]
 `)
-	mustWriteCatalog(t, filepath.Join(root, "block.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	mustWriteCatalog(t, filepath.Join(root, "block.yaml"), `name: parent
 nodes:
   - id: child
     subworkflow:
@@ -274,10 +259,7 @@ blocks:
 
 func TestExplicitEmptyAllowedIntegrationsDeniesAll(t *testing.T) {
 	root := t.TempDir()
-	mustWriteCatalog(t, filepath.Join(root, "block.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: block
+	mustWriteCatalog(t, filepath.Join(root, "block.yaml"), `name: block
 nodes:
   - id: result
     prompt: return ok
@@ -323,10 +305,7 @@ func TestPackageScopePrecedenceAndGovernanceRemainFailClosed(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		mustWriteCatalog(t, filepath.Join(dir, "block.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: shared
+		mustWriteCatalog(t, filepath.Join(dir, "block.yaml"), `name: shared
 nodes:
   - id: result
     prompt: return `+marker+`
@@ -381,10 +360,7 @@ governance:
 
 func TestPackageAdapterRequirementsAreValidated(t *testing.T) {
 	root := t.TempDir()
-	mustWriteCatalog(t, filepath.Join(root, "block.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: block
+	mustWriteCatalog(t, filepath.Join(root, "block.yaml"), `name: block
 nodes:
   - id: result
     prompt: return ok

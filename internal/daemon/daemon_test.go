@@ -20,10 +20,7 @@ func TestDaemonRunsInBackgroundServesMCPAndStreamsEvents(t *testing.T) {
 	configPath := filepath.Join(workspace, ".takt", "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeDaemonFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeDaemonFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: daemon-background
+	writeDaemonFile(t, workflowPath, `name: daemon-background
 nodes:
   - id: wait
     bash: |
@@ -174,13 +171,9 @@ assistants:
   worker:
     type: mock
 `)
-	writeDaemonFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: daemon-external-idle
-defaults:
-  assistant: worker
-  model: demo
+	writeDaemonFile(t, workflowPath, `name: daemon-external-idle
+provider: worker
+model: demo
 nodes:
   - id: delegated
     prompt: wait
@@ -302,16 +295,13 @@ func TestDaemonStartupRecoversInterruptedRun(t *testing.T) {
 	configPath := filepath.Join(workspace, ".takt", "config.yaml")
 	workflowPath := filepath.Join(workspace, "recover.yaml")
 	writeDaemonFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeDaemonFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: daemon-recover
+	writeDaemonFile(t, workflowPath, `name: daemon-recover
 nodes:
   - id: build
     bash: "true"
 `)
 	now := time.Now().UTC()
-	interrupted := &store.RunState{ID: "run-daemon-recover", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"build": {Status: store.NodeRunning, Attempts: 1}}, Approvals: map[string]string{}, CurrentNode: "build", CurrentNodes: []string{"build"}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now}
+	interrupted := &store.RunState{WorkflowContract: store.CurrentWorkflowContract, ID: "run-daemon-recover", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"build": {Status: store.NodeRunning, Attempts: 1}}, Approvals: map[string]string{}, CurrentNode: "build", CurrentNodes: []string{"build"}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now}
 	if err := (store.FS{Workspace: workspace}).Save(interrupted); err != nil {
 		t.Fatal(err)
 	}

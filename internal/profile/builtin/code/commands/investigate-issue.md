@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 
@@ -9,4 +9,4 @@ Read repository instructions, fetch the GitHub issue when referenced, inspect re
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

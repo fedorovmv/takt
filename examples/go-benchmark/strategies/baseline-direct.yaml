@@ -1,39 +1,33 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: go-benchmark-baseline-direct
-  description: Один coding-agent вызов и независимая Go-проверка
-
-defaults:
-  assistant: coding-agent
-  model: go-model
-  session: fresh
-
+---
 nodes:
-  - id: implement
-    timeout: 15m
-    skills: []
-    prompt: |
-      Выполни Go-задачу в текущей рабочей области.
+- id: implement
+  timeout: 15m
+  skills: []
+  prompt: |
+    Выполни Go-задачу в текущей рабочей области.
 
-      Задача:
-      ${input}
+    Задача:
+    $ARGUMENTS
 
-      Исправляй только разрешённый production package. Не изменяй go.mod,
-      *_test.go, соседние packages и benchmark metadata. Проверь результат
-      указанной в задаче командой go test.
+    Исправляй только разрешённый production package. Не изменяй go.mod,
+    *_test.go, соседние packages и benchmark metadata. Проверь результат
+    указанной в задаче командой go test.
 
-      ${feedback}
-
-  - id: full-validation
-    depends_on: [implement]
-    timeout: 10m
-    bash: |
-      mkdir -p .takt
-      cat > .takt/evaluation-case.md <<'TAKT_GO_CASE'
-      ${input}
-      TAKT_GO_CASE
-      "$TAKT_GO_BENCHMARK_VALIDATOR" \
-        --case-file .takt/evaluation-case.md \
-        --baseline "$TAKT_GO_BENCHMARK_BASELINE" \
-        --workspace .
+    $FEEDBACK
+- id: full-validation
+  depends_on:
+  - implement
+  timeout: 10m
+  bash: |
+    mkdir -p .takt
+    cat > .takt/evaluation-case.md <<'TAKT_GO_CASE'
+    $ARGUMENTS
+    TAKT_GO_CASE
+    "$TAKT_GO_BENCHMARK_VALIDATOR" \
+      --case-file .takt/evaluation-case.md \
+      --baseline "$TAKT_GO_BENCHMARK_BASELINE" \
+      --workspace .
+name: go-benchmark-baseline-direct
+description: Один coding-agent вызов и независимая Go-проверка
+provider: coding-agent
+model: go-model

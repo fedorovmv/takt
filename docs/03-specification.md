@@ -1,6 +1,9 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.52-alpha`; архитектурный рефакторинг v0.1.52 не меняет schema/API semantics. Целевые изменения v0.2 описаны в `08-target-v0.2.md`, `09-runtime-semantics.md` и `10-assistant-adapter-spec.md`. Машиночитаемые схемы находятся в `schemas/`.
+Статус: текущий реализованный внешний контракт `v0.1.57-alpha` с единым
+Archon-first языком Workflow A0 и bounded repair/runtime semantics A1.
+Config, Profile, Run и assistant protocol сохраняют собственные versioned
+контракты. Машиночитаемые схемы находятся в `schemas/`.
 
 ## 1. Область применения
 
@@ -21,9 +24,16 @@ MCP и daemon являются локальными интерфейсами т�
 
 ## 1.2. Authoring preflight
 
-`takt validate` проверяет неизвестные поля с path-aware `did you mean`, command/model/assistant references, effective adapter capabilities, статические `${nodes.*}`/approval/artifact references и несовместимые параметры. Diagnostics возвращаются в JSON; `--warnings-as-errors` делает предупреждения ошибками CI.
+`takt validate` проверяет неизвестные поля с path-aware `did you mean`,
+command/model/provider references, effective adapter capabilities, статические
+`$<node>.*`/approval/artifact references и несовместимые параметры. Diagnostics
+возвращаются в JSON; `--warnings-as-errors` делает предупреждения ошибками CI.
 
-Renderer использует явные формы: `${path}` — обязательная ссылка, `${path?}` — optional, `${path:-default}` — значение по умолчанию. Неразрешённая обязательная ссылка является ошибкой и не передаётся действию как буквальный текст.
+Единый renderer использует формы `$path` — обязательная ссылка, `$path?` —
+optional, `$path:-default` — явное значение по умолчанию. Неразрешённая
+обязательная ссылка является ошибкой и не передаётся действию как буквальный
+текст. Старые `${...}` и `$USER_MESSAGE` не являются вторым dialect и
+отклоняются до создания Run.
 
 ## 1.3. Локальный daemon
 
@@ -177,7 +187,7 @@ Event protocol v2 использует: `assistant.session.started`, `assistant.
 ```yaml
 side_effect:
   mode: reconcile
-  idempotency_key: ${run.id}:${node.id}
+  idempotency_key: stable-change-key
 ```
 
 - `idempotent` означает, что повтор с тем же ключом безопасен по контракту исполнителя;
@@ -261,32 +271,32 @@ CLI пакетов: `takt package install|update|uninstall|list|sync|doctor|sign
 ```markdown
 ---
 description: Исправляет реализацию по результатам проверки
-assistant: pi
+provider: pi
 model: large
 ---
 
 Исправь проект.
 
 Запрос пользователя:
-$USER_MESSAGE
+$ARGUMENTS
 
 Результат предыдущей проверки:
-${feedback}
+$FEEDBACK
 ```
 
-Frontmatter поддерживает `description`, `assistant`, `model`. Остальные поля сохраняются как метаданные.
+Frontmatter поддерживает `description`, `provider`, `model` и
+`argument-hint`. Legacy key `assistant` отклоняется. Остальные поля сохраняются
+как метаданные. Приоритет binding: `node.provider` → frontmatter `provider` →
+`workflow.provider`; неизвестный binding или model останавливает authoring до
+создания Run.
 
 ## 5. Workflow
 
 ```yaml
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: example
-
-defaults:
-  assistant: pi
-  model: large
+name: example
+description: bounded repair flow
+provider: pi
+model: large
 
 nodes:
   - id: implement
@@ -306,7 +316,7 @@ nodes:
           bash: go test ./...
           on_failure:
             action: retry
-            session: fresh
+            session: resume
 
   - id: cleanup
     depends_on: [implement]
@@ -319,6 +329,13 @@ nodes:
       message: Подтвердите результат
       capture_response: true
 ```
+
+Root Workflow принимает `name`, `description`, `labels`, `provider`, `model`,
+`nodes` и существующие Takt extensions (`hooks`, `worktree`, `input`).
+`apiVersion`, `kind`, `metadata`, `defaults` и node field `assistant` относятся
+к старому dialect и fail-closed отклоняются. Каждый node обязан иметь ровно
+одно действие; `provider` и `context` (`fresh` по умолчанию или `shared` в A1)
+являются декларативными defaults для assistant node.
 
 `timeout` использует формат Go duration: `500ms`, `30s`, `5m`, `1h` и ограничивает всю попытку узла. `idle_timeout` поддерживается AI-узлами и сбрасывается нормализованными событиями активности; для claimed внешнего узла его обслуживает daemon. `always_run: true` запускает cleanup-узел после terminal-состояния всех зависимостей независимо от их результата, но не скрывает failure основного графа.
 
@@ -449,10 +466,10 @@ Stdout/stderr сохраняются раздельно. `output_format` нор�
     name: scm
     operation: change.create
     input: |
-      {"title":"${nodes.prepare.output.title}"}
+      {"title":"$prepare.output.title"}
   side_effect:
     mode: reconcile
-    idempotency_key: ${run.id}:create-change
+    idempotency_key: create-change
   output_format:
     type: object
 ```
@@ -474,10 +491,13 @@ Stdout/stderr сохраняются раздельно. `output_format` нор�
   depends_on: [plan]
   prompt: |
     Реализуй план из файла:
-    ${nodes.plan.artifacts.plan.path}
+    $plan.artifacts.plan.path
 ```
 
-Доступны `${nodes.<id>.artifacts.<type>.path}`, `.sha256`, `.mime`, `.size`, producer metadata и обращение по числовому индексу. Governed child Run и fan-out поднимают ссылки родителю, сохраняя producer provenance.
+Доступны `$<id>.artifacts.<type>.path`, `.sha256`, `.mime`, `.size`, producer
+metadata и другие именованные поля. Числовой artifact type/index запрещён.
+Governed child Run и fan-out поднимают ссылки родителю, сохраняя producer
+provenance.
 
 ### `approval`
 
@@ -491,15 +511,39 @@ Stdout/stderr сохраняются раздельно. `output_format` нор�
 until:
   node: validate
   exit_code: 0
+  signal: BUILD-CLEAN
+  requires:
+    - node: tests
+      exit_code: 0
+until_bash: test -s "$validate.artifacts.report.path"
 ```
 
-Также поддерживается `output_contains`. Условие `until` проверяется только для дочернего узла со статусом `completed`; `skipped`, `failed`, `errored`, `timed_out` и `cancelled` не завершают цикл даже при совпадающем нулевом `exit_code`.
+Также поддерживается компактная форма одного assistant node:
+
+```yaml
+- id: repair
+  loop:
+    prompt: Исправь результат проверки и выведи сигнал в конце.
+    until: BUILD-CLEAN
+    max_iterations: 3
+    fresh_context: false
+```
+
+`until` допускает `exit_code`, `output_contains`, ровно один ожидаемый
+`signal` и список `requires` с независимыми доказательствами. Signal считается
+только при единственном валидном `<promise>NAME</promise>` или последней
+непустой строке `NAME`; fenced Markdown исключается, обрезанный output даёт
+protocol failure. `until_bash` выполняется как детерминированный predicate и
+сохраняет stdout/stderr, exit code, duration, truncation и error code в
+`PredicateEvidence`. Условие `until` проверяется только для дочернего узла со
+статусом `completed`; `skipped`, `failed`, `errored`, `timed_out` и `cancelled`
+не завершают цикл даже при совпадающем нулевом `exit_code`.
 
 Если timeout или cancellation родительской попытки наступают во время выполнения дочернего узла, родительский `loop_group` и Run сохраняют `timed_out` или `cancelled`. Производная ошибка `loop_group exhausted` не переопределяет причину завершения контекста.
 
 После каждой завершённой итерации runtime сохраняет immutable snapshot в `NodeState.loop_iterations[]`. `loop_previous` остаётся совместимым представлением последней завершённой итерации. История доступна через обычный Run state/MCP `run.get`; внутренние expanded IDs скрываются из public view.
 
-`subworkflow`, `foreach` и `approval` разрешены внутри `loop_group` и используют тот же дочерний DAG. При остановке на approval сохраняется активная итерация; `takt answer` продолжает её, а следующая итерация создаёт новый запрос approval. Поле `until.node` ссылается на публичный ID контейнера. Вложенные `loop_group` остаются запрещены в `v1alpha1` и в целевом контракте `v0.2`.
+`subworkflow`, `foreach` и `approval` разрешены внутри `loop_group` и используют тот же дочерний DAG. При остановке на approval сохраняется активная итерация; `takt answer` продолжает её, а следующая итерация создаёт новый запрос approval. Поле `until.node` ссылается на публичный ID контейнера. `fresh_context: true` начинает следующую итерацию без Session ID; по умолчанию assistant nodes продолжают предыдущий Session ID и требуют exact resume. `context: shared` разрешает downstream assistant продолжить единственного совместимого upstream ancestor. Вложенные `loop_group` остаются запрещены в `v1alpha1`.
 
 ### `subworkflow`
 
@@ -507,23 +551,35 @@ until:
 
 ```yaml
 - id: implementation
-  assistant: opencode
+  provider: opencode
   model: main
-  session: resume
+  context: shared
   subworkflow:
     path: workflows/implementation.yaml
     inputs:
-      plan: ${input}
+      plan: $ARGUMENTS
     output_node: result
 ```
 
-Путь вычисляется относительно содержащего workflow. В подключённом файле значения доступны как `${inputs.<name>}`. Неразрешённая `${inputs.<name>}` является ошибкой загрузки. Если terminal-узел один, `output_node` выводится автоматически; при нескольких terminal-узлах поле обязательно.
+Путь вычисляется относительно содержащего workflow. В подключённом файле
+значения доступны как `$INPUTS.<name>`. Неразрешённая обязательная ссылка
+является ошибкой загрузки; `$INPUTS.<name>?` и `$INPUTS.<name>:-default`
+разрешаются явно. Если terminal-узел один, `output_node` выводится
+автоматически; при нескольких terminal-узлах поле обязательно.
 
-Публичный ID контейнера сохраняется для `depends_on` и `${nodes.<id>.output}`. CLI показывает только публичные узлы. Внутренние namespaced ID с `__` сохраняются в `state.json` для точного resume и проверки определения. Approval внутри подключённого workflow отображается и принимается через публичный ID контейнера.
+Публичный ID контейнера сохраняется для `depends_on` и `$<id>.output`. CLI
+показывает только публичные узлы. Внутренние namespaced ID с `__` сохраняются
+в `state.json` для точного resume и проверки определения. Approval внутри
+подключённого workflow отображается и принимается через публичный ID контейнера.
 
 Локальная Markdown-команда сначала ищется в `commands/` рядом с подключённым workflow, затем в родительских каталогах до корня композиции. Поэтому workflow из `profiles/code/workflows/` использует команды из `profiles/code/commands/`. Содержимое встроенной команды входит в workflow fingerprint.
 
-`assistant`, `model` и `session` на контейнере задают defaults вызова. Приоритет: явное поле дочернего узла → контейнер → defaults дочернего workflow → defaults родительского workflow. Положительный `attempts.max`, непустые `timeout`, hooks и `native_hooks`, а также `allow_failure: true` задаются внутри подключённого workflow. Нулевые и пустые значения этих полей трактуются так же, как отсутствие поля; схема повторяет эту семантику кода.
+`provider`, `model` и `context` на контейнере задают defaults вызова. Приоритет:
+явное поле дочернего узла → контейнер → defaults дочернего workflow → defaults
+родительского workflow. Положительный `attempts.max`, непустые `timeout`, hooks
+и `native_hooks`, а также `allow_failure: true` задаются внутри подключённого
+workflow. Нулевые и пустые значения этих полей трактуются так же, как
+отсутствие поля; схема повторяет эту семантику кода.
 
 Рекурсивная ссылка отклоняется с цепочкой файлов. Максимальная глубина развёртывания — 16 одновременно активных workflow; превышение возвращает `subworkflow expansion exceeds depth 16`.
 
@@ -535,7 +591,7 @@ until:
 - id: feature
   workflow:
     path: workflows/feature-development.yaml
-    input: ${input}
+    input: $ARGUMENTS
     output_node: summary
     isolation: inherit
     policy:
@@ -564,10 +620,10 @@ Approval ребёнка переводит родителя в `waiting` с `kin
   depends_on: [classify]
   workflow:
     path: workflows/review.yaml
-    input: "${reviewer}"
+    input: $FANOUT.item
     isolation: inherit
     fan_out:
-      items_from: nodes.classify.output.reviewers
+      items_from: $classify.output.reviewers
       as: reviewer
       max_parallel: 5
       join: all_success
@@ -575,7 +631,7 @@ Approval ребёнка переводит родителя в `waiting` с `kin
       allow_duplicates: false
 ```
 
-`items_from` должен указывать на JSON-массив в структурированном output upstream-узла. `max_parallel` по умолчанию равен 1 и ограничен 64. `join` принимает `all_success`, `all_done` или `one_success`. Каждый элемент получает отдельный child Run и устойчивую запись в состоянии; completed-дети переиспользуются при resume, а изменение массива внутри попытки отклоняется. В `input` доступны `${fanout.item}`, `${fanout.index}`, `${fanout.total}` и алиас из `as`. Дубли канонических элементов отклоняются по умолчанию; `allow_duplicates: true` является явным разрешением двойного запуска. Output родительского узла — упорядоченный JSON-массив статусов, outputs, usage, Run ID и при наличии `cancel_reason`. `one_success` отменяет уже ненужных siblings после первого success; `all_success` прекращает оставшуюся работу после первого failure-like результата; `all_done` ждёт всех children. Такая внутренняя отмена имеет `cancel_reason: fanout_result_decided` и отличается от operator cancellation.
+`items_from` должен указывать на JSON-массив в структурированном output upstream-узла. `max_parallel` по умолчанию равен 1 и ограничен 64. `join` принимает `all_success`, `all_done` или `one_success`. Каждый элемент получает отдельный child Run и устойчивую запись в состоянии; completed-дети переиспользуются при resume, а изменение массива внутри попытки отклоняется. В `input` доступны `$FANOUT.item`, `$FANOUT.index`, `$FANOUT.total` и алиас из `as`. Дубли канонических элементов отклоняются по умолчанию; `allow_duplicates: true` является явным разрешением двойного запуска. Output родительского узла — упорядоченный JSON-массив статусов, outputs, usage, Run ID и при наличии `cancel_reason`. `one_success` отменяет уже ненужных siblings после первого success; `all_success` прекращает оставшуюся работу после первого failure-like результата; `all_done` ждёт всех children. Такая внутренняя отмена имеет `cancel_reason: fanout_result_decided` и отличается от operator cancellation.
 
 ### `foreach`
 
@@ -591,12 +647,18 @@ Approval ребёнка переводит родителя в `waiting` с `kin
     subworkflow:
       path: workflows/check.yaml
       inputs:
-        name: ${check}
+        name: $FANOUT.item
 ```
 
 Нужно задать ровно один источник: `items` или `items_from.path`. Путь вычисляется относительно содержащего workflow; файл должен содержать непустой массив верхнего уровня. Его исходные байты входят в fingerprint определения, поэтому изменение списка блокирует resume ранее начатого Run.
 
-Поддерживаются scalar и inline JSON objects. Для объекта доступны `${check}` как JSON и `${check.<field>}`. `${index}` и `${check.index}` содержат индекс с нуля. При `parallel: false` каждая итерация зависит от предыдущей; при `parallel: true` все итерации зависят от общего gate и могут выполняться конкурентно. Публичный output всегда является JSON-массивом результатов в исходном порядке; JSON-результаты сохраняют тип, остальные результаты становятся строками.
+Поддерживаются scalar и inline JSON objects. Для объекта доступны `$FANOUT.item`
+как JSON и `$FANOUT.item.<field>` для полей; `$FANOUT.index` содержит индекс с
+нуля. При `parallel: false` каждая итерация зависит от предыдущей; при
+`parallel: true` все итерации зависят от общего gate и могут выполняться
+конкурентно. Публичный output всегда является JSON-массивом результатов в
+исходном порядке; JSON-результаты сохраняют тип, остальные результаты становятся
+строками.
 
 Runtime читает только явный массив и не преобразует Markdown-план в task AST.
 
@@ -642,14 +704,14 @@ Terminal-состояния Run: `completed|failed|cancelled|abandoned`.
 Базовый синтаксис `when`:
 
 ```yaml
-when: nodes.analyze.exit_code == 0
-when: nodes.classify.output == "feature"
-when: nodes.classify.output.workflow == "fix-github-issue"
-when: inputs.input != "dry-run"
-when: nodes.classify.output == "feature" && nodes.validate.output == "ready"
+when: $analyze.exit_code == 0
+when: $classify.output == "feature"
+when: $classify.output.workflow == "fix-github-issue"
+when: $INPUTS.input != "dry-run"
+when: $classify.output == "feature" && $validate.output == "ready"
 ```
 
-`when` является намеренно малым gate language, а не общим языком выражений. В `takt/v1alpha1` разрешены только `==`, `!=`, `&&` и `||`; `&&` имеет больший приоритет, чем `||`. Левый операнд — `nodes.<id>.<path>` или `inputs.input|inputs.message`, правый — литерал. Скобки, функции, арифметика, regex и операторы порядка не входят в контракт. Более сложное условие вычисляется отдельным `script`/`command`/`prompt` узлом и передаётся дальше через structured output. Loader проверяет синтаксис `when` до создания Run, runtime использует ту же реализацию `internal/whenexpr`.
+`when` является намеренно малым gate language, а не общим языком выражений. В `takt/v1alpha1` разрешены только `==`, `!=`, `&&` и `||`; `&&` имеет больший приоритет, чем `||`. Левый операнд — `$<id>.<path>` или `$INPUTS.<name>`, правый — литерал. Скобки, функции, арифметика, regex и операторы порядка не входят в контракт. Более сложное условие вычисляется отдельным `script`/`command`/`prompt` узлом и передаётся дальше через structured output. Loader проверяет синтаксис `when` до создания Run, runtime использует ту же реализацию `internal/whenexpr`.
 
 Это часть конституции языка workflow: **YAML координирует, код вычисляет, агент принимает решения**. Новые операторы не добавляются по одному; при доказанной потребности в полноценном expression language он должен быть принят целиком как отдельный versioned contract change.
 
@@ -681,7 +743,7 @@ Timeout и cancellation portable hook относятся ко всей попы�
 - `retry`;
 - `fail`.
 
-Stdout и stderr неуспешного hook добавляются в `${feedback}` следующей попытки.
+Stdout и stderr неуспешного hook добавляются в `$FEEDBACK` следующей попытки.
 
 ## 9. YAML input
 
@@ -698,21 +760,26 @@ YAML syntax разбирается upstream-библиотекой `go.yaml.in/y
 
 ## 10. Переменные
 
-Поддерживаются:
+Единый `internal/flowref` parser обслуживает все поверхности:
 
-- `$USER_MESSAGE`;
-- `$ARTIFACTS_DIR`;
-- `${input}`;
-- `${feedback}`;
-- `${nodes.<id>.output}` и `${nodes.<id>.output.<field>}` с вложенными объектами и индексами массивов;
-- `${nodes.<id>.exit_code}`;
-- `${nodes.<id>.status}`;
-- `${loop.previous.<id>.output}`;
-- `${approvals.<id>}`;
-- `${inputs.<name>}` внутри подключённого subworkflow;
-- `${item}`, `${item.<field>}`, `${index}` внутри параметров `foreach` до компиляции.
+- `NonShell`: `$ARGUMENTS`, `$FEEDBACK`, `$INPUTS.<name>`,
+  `$<id>.output[.<field>]`, `$<id>.status`, `$<id>.exit_code`,
+  `$LOOP_PREV.<id>.output[.<field>]`, `$<approval>.output`;
+- `Shell`: те же ссылки с context-aware quoting; `$ARGUMENTS`, `$FEEDBACK`,
+  `$ARTIFACTS_DIR` и `$BASE_BRANCH` передаются через env;
+- `ScriptArg`/`ScriptEnv`: значения передаются как argv/env без shell
+  interpolation;
+- `When`: только левая ссылка из `nodes`/`inputs` и операторы `==`, `!=`, `&&`,
+  `||`.
 
-Неизвестные переменные пока сохраняются как исходный token. Строгий renderer остаётся задачей v0.2.
+`$path` обязателен, `$path?` допускает отсутствие, `$path:-default` задаёт
+fallback. `$FANOUT.item`, `$FANOUT.index`, `$FANOUT.total` действуют внутри
+fan-out; `$INPUTS.<name>` — внутри подключённого subworkflow. В non-shell
+поверхностях `$$` становится literal `$`; в shell-сценариях `$$`, `$?`, `$1`,
+`$((...))` и `$(...)` сохраняются как native shell syntax. Legacy `${...}`,
+`$USER_MESSAGE`, reserved node IDs и positional artifact indexes отклоняются.
+Неразрешённая обязательная ссылка возвращает authoring/runtime error, а не
+литеральный token.
 
 ## 11. Состояние и воспроизводимость
 

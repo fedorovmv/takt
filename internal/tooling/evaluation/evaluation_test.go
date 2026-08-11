@@ -28,18 +28,14 @@ func TestRunCreatesIsolatedWorkspacesAndReport(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	workflow := `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: evaluation-test
-defaults:
-  assistant: fake
-  model: m
+	workflow := `name: evaluation-test
+provider: fake
+model: m
 nodes:
   - id: implement
     prompt: |
       Process this input:
-      ${input}
+      $ARGUMENTS
 `
 	config := `apiVersion: takt/v1alpha1
 kind: Config
@@ -103,7 +99,7 @@ func TestRunRejectsExistingWorkspaceWithoutReplace(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(t, workflowPath, "apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: x\nnodes:\n  - id: done\n    bash: |\n      true\n", 0o644)
+	mustWrite(t, workflowPath, "name: x\nnodes:\n  - id: done\n    bash: |\n      true\n", 0o644)
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "case.md"), "case", 0o644)
 
@@ -232,13 +228,9 @@ func TestRunRecordsStrategyModelsAndQualityMetrics(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: quality-test
-defaults:
-  assistant: fake
-  model: m
+	mustWrite(t, workflowPath, `name: quality-test
+provider: fake
+model: m
 nodes:
   - id: implement
     prompt: generate
@@ -311,10 +303,7 @@ func TestRunRejectsMalformedQualityResult(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: malformed-quality
+	mustWrite(t, workflowPath, `name: malformed-quality
 nodes:
   - id: implement
     bash: |
@@ -440,10 +429,7 @@ func TestRunCountsSkippedQualityAfterGenerationFailureAsInvalid(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: failed-generation
+	mustWrite(t, workflowPath, `name: failed-generation
 nodes:
   - id: implement
     bash: |
@@ -556,10 +542,7 @@ func TestFailedQualityNodeCannotContributeValidResult(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: failed-quality
+	mustWrite(t, workflowPath, `name: failed-quality
 nodes:
   - id: implement
     bash: |
@@ -604,10 +587,7 @@ func TestFailedQualityNodePreservesInvalidEnvelopeDiagnostics(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: invalid-quality
+	mustWrite(t, workflowPath, `name: invalid-quality
 nodes:
   - id: implement
     bash: |
@@ -655,10 +635,7 @@ func TestFailedQualityNodeWithMalformedEnvelopeIsContractError(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: malformed-failed-quality
+	mustWrite(t, workflowPath, `name: malformed-failed-quality
 nodes:
   - id: implement
     bash: |
@@ -695,7 +672,7 @@ func TestBenchmarkFingerprintIncludesValidatorIDAndVersion(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(t, workflowPath, "apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: fingerprint\nnodes:\n  - id: done\n    bash: |\n      true\n", 0o644)
+	mustWrite(t, workflowPath, "name: fingerprint\nnodes:\n  - id: done\n    bash: |\n      true\n", 0o644)
 	mustWrite(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	mustWrite(t, filepath.Join(casesDir, "one.md"), "case", 0o644)
 
@@ -771,10 +748,7 @@ func TestFailedQualityNodeDecodesStdoutAndKeepsStderrDiagnostic(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: stderr-quality
+	mustWrite(t, workflowPath, `name: stderr-quality
 nodes:
   - id: implement
     bash: |
@@ -832,10 +806,7 @@ func TestRunCapturesTimeToValidRetriesAndDiagnosticFingerprints(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mustWrite(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: metrics
+	mustWrite(t, workflowPath, `name: metrics
 nodes:
   - id: implement
     bash: |
@@ -933,10 +904,7 @@ cases:
 `, 0o644)
 	mustWrite(t, filepath.Join(root, "config.yaml"), "apiVersion: takt/v1alpha1\nkind: Config\n", 0o644)
 	workflow := func(valid bool) string {
-		return fmt.Sprintf(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: strategy
+		return fmt.Sprintf(`name: strategy
 nodes:
   - id: implement
     bash: "true"

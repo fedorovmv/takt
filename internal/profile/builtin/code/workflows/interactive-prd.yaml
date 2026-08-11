@@ -1,119 +1,119 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: interactive-prd
-  description: Build a product requirements document through iterative repository-grounded conversation, human decisions, drafting, and review.
-defaults:
-  assistant: coding-agent
-  model: review
-  session: fresh
+---
 nodes:
-  - id: discovery
-    loop_group:
-      max_iterations: 15
-      nodes:
-        - id: explore
-          prompt: |
-            Explore the product idea and current repository before asking questions.
-            Identify users, problem, existing behavior, constraints, scope choices, measurable outcomes, rollout concerns, and only the unresolved product decisions.
+- id: discovery
+  loop_group:
+    max_iterations: 15
+    nodes:
+    - id: explore
+      prompt: |
+        Explore the product idea and current repository before asking questions.
+        Identify users, problem, existing behavior, constraints, scope choices, measurable outcomes, rollout concerns, and only the unresolved product decisions.
 
-            Original request:
-            $USER_MESSAGE
+        Original request:
+        $ARGUMENTS
 
-            Previous human feedback:
-            ${loop.previous.feedback.output}
+        Previous human feedback:
+        $LOOP_PREV.feedback.output
+    - id: feedback
+      depends_on:
+      - explore
+      approval:
+        message: |
+          $explore.output
 
-        - id: feedback
-          depends_on: [explore]
-          approval:
-            message: |
-              ${nodes.explore.output}
+          Answer the questions or add constraints. Reply `ready` when enough decisions exist to draft the PRD.
+        capture_response: true
+    - id: decision
+      depends_on:
+      - feedback
+      prompt: |
+        Decide whether the latest human reply explicitly authorizes drafting the PRD. Return only JSON.
+        Feedback: $feedback.output
+      model: routing
+      allowed_tools: []
+      skills: []
+      output_format:
+        type: object
+        additionalProperties: false
+        properties:
+          ready:
+            type: boolean
+        required:
+        - ready
+    - id: check
+      depends_on:
+      - decision
+      bash: test $decision.output.ready = "true"
+      allow_failure: true
+    until:
+      node: check
+      exit_code: 0
+- id: draft
+  depends_on:
+  - discovery
+  command: create-prd
+  output_type: prd
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/prd.md"
+- id: review
+  depends_on:
+  - draft
+  loop_group:
+    max_iterations: 10
+    nodes:
+    - id: inspect
+      prompt: |
+        Review `$ARTIFACTS_DIR/prd.md` for completeness, contradictions, untestable requirements, accidental implementation detail, missing non-goals, and rollout risks.
+        Present proposed changes.
+    - id: feedback
+      depends_on:
+      - inspect
+      approval:
+        message: |
+          $inspect.output
 
-              Answer the questions or add constraints. Reply `ready` when enough decisions exist to draft the PRD.
-            capture_response: true
-
-        - id: decision
-          depends_on: [feedback]
-          prompt: |
-            Decide whether the latest human reply explicitly authorizes drafting the PRD. Return only JSON.
-            Feedback: ${nodes.feedback.output}
-          model: routing
-          allowed_tools: []
-          skills: []
-          output_format:
-            type: object
-            additionalProperties: false
-            properties:
-              ready:
-                type: boolean
-            required: [ready]
-
-        - id: check
-          depends_on: [decision]
-          bash: test "${nodes.decision.output.ready}" = "true"
-          allow_failure: true
-      until:
-        node: check
-        exit_code: 0
-
-  - id: draft
-    depends_on: [discovery]
-    command: create-prd
-    output_type: prd
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/prd.md
-
-  - id: review
-    depends_on: [draft]
-    loop_group:
-      max_iterations: 10
-      nodes:
-        - id: inspect
-          prompt: |
-            Review `$ARTIFACTS_DIR/prd.md` for completeness, contradictions, untestable requirements, accidental implementation detail, missing non-goals, and rollout risks.
-            Present proposed changes.
-
-        - id: feedback
-          depends_on: [inspect]
-          approval:
-            message: |
-              ${nodes.inspect.output}
-
-              Reply with changes. Reply `ready` to approve the PRD.
-            capture_response: true
-
-        - id: decision
-          depends_on: [feedback]
-          prompt: |
-            Decide whether the human explicitly approved the PRD. Return only JSON.
-            Feedback: ${nodes.feedback.output}
-          model: routing
-          allowed_tools: []
-          skills: []
-          output_format:
-            type: object
-            additionalProperties: false
-            properties:
-              ready:
-                type: boolean
-            required: [ready]
-
-        - id: revise
-          depends_on: [decision]
-          when: nodes.decision.output.ready == "false"
-          prompt: |
-            Revise `$ARTIFACTS_DIR/prd.md` using the human feedback. Preserve approved content and verify consistency.
-            Feedback: ${nodes.feedback.output}
-
-        - id: check
-          depends_on: [decision, revise]
-          trigger_rule: one_success
-          bash: test "${nodes.decision.output.ready}" = "true"
-          allow_failure: true
-      until:
-        node: check
-        exit_code: 0
-
-  - id: summary
-    depends_on: [review]
-    command: summary
+          Reply with changes. Reply `ready` to approve the PRD.
+        capture_response: true
+    - id: decision
+      depends_on:
+      - feedback
+      prompt: |
+        Decide whether the human explicitly approved the PRD. Return only JSON.
+        Feedback: $feedback.output
+      model: routing
+      allowed_tools: []
+      skills: []
+      output_format:
+        type: object
+        additionalProperties: false
+        properties:
+          ready:
+            type: boolean
+        required:
+        - ready
+    - id: revise
+      depends_on:
+      - decision
+      when: $decision.output.ready == "false"
+      prompt: |
+        Revise `$ARTIFACTS_DIR/prd.md` using the human feedback. Preserve approved content and verify consistency.
+        Feedback: $feedback.output
+    - id: check
+      depends_on:
+      - decision
+      - revise
+      trigger_rule: one_success
+      bash: test $decision.output.ready = "true"
+      allow_failure: true
+    until:
+      node: check
+      exit_code: 0
+- id: summary
+  depends_on:
+  - review
+  command: summary
+name: interactive-prd
+description: Build a product requirements document through iterative repository-grounded
+  conversation, human decisions, drafting, and review.
+provider: coding-agent
+model: review

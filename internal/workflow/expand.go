@@ -18,7 +18,7 @@ import (
 
 const maxExpansionDepth = 16
 
-var inputVarRE = regexp.MustCompile(`\$\{inputs\.([A-Za-z_][A-Za-z0-9_-]*)\}`)
+var inputVarRE = regexp.MustCompile(`\$INPUTS\.([A-Za-z_][A-Za-z0-9_-]*)`)
 
 type compiledGroup struct {
 	nodes     []spec.Node
@@ -40,6 +40,7 @@ func Expand(path string, wf *spec.Workflow) (*spec.Workflow, error) {
 	if wf == nil {
 		return nil, fmt.Errorf("workflow is nil")
 	}
+	normalizeWorkflowAliases(wf)
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -337,10 +338,94 @@ func (c *compiler) loadChild(parentPath, rel string) (string, *spec.Workflow, er
 	if err := yamlcodec.Unmarshal(b, &wf); err != nil {
 		return "", nil, fmt.Errorf("parse %s: %w", abs, err)
 	}
-	if wf.APIVersion != "takt/v1alpha1" || wf.Kind != "Workflow" || strings.TrimSpace(wf.Metadata.Name) == "" {
-		return "", nil, fmt.Errorf("%s is not a valid takt/v1alpha1 Workflow", abs)
+	normalizeWorkflowAliases(&wf)
+	if strings.TrimSpace(wf.Name) == "" {
+		return "", nil, fmt.Errorf("%s is not a valid target Workflow: name is required", abs)
 	}
 	return abs, &wf, nil
+}
+
+func normalizeWorkflowAliases(wf *spec.Workflow) {
+	if wf == nil {
+		return
+	}
+	if wf.Name == "" {
+		wf.Name = wf.Metadata.Name
+	}
+	if wf.Description == "" {
+		wf.Description = wf.Metadata.Description
+	}
+	if wf.Labels == nil && wf.Metadata.Labels != nil {
+		wf.Labels = wf.Metadata.Labels
+	}
+	if wf.Provider == "" {
+		wf.Provider = wf.Defaults.Assistant
+	}
+	if wf.Model == "" {
+		wf.Model = wf.Defaults.Model
+	}
+	wf.Metadata = spec.Metadata{Name: wf.Name, Description: wf.Description, Labels: wf.Labels}
+	wf.Defaults = spec.Defaults{Assistant: wf.Provider, Model: wf.Model, Session: "fresh"}
+	for i := range wf.Nodes {
+		normalizeNodeAliases(&wf.Nodes[i])
+	}
+}
+
+func normalizeNodeAliases(node *spec.Node) {
+	if node == nil {
+		return
+	}
+	if node.Assistant == "" {
+		node.Assistant = node.Provider
+	}
+	if node.Provider == "" {
+		node.Provider = node.Assistant
+	}
+	if node.Session == "" && node.Context != "" {
+		node.Session = node.Context
+	}
+	if node.Context == "" && node.Session != "" {
+		node.Context = node.Session
+	}
+	if node.LoopGroup != nil {
+		normalizeLoopPredicate(node.LoopGroup)
+		for i := range node.LoopGroup.Nodes {
+			normalizeNodeAliases(&node.LoopGroup.Nodes[i])
+		}
+	}
+	if node.Loop != nil {
+		loop := node.Loop
+		body := spec.Node{ID: node.ID, Prompt: loop.Prompt, Command: loop.Command, Provider: node.Provider, Model: node.Model, Context: node.Context}
+		normalizeNodeAliases(&body)
+		node.LoopGroup = &spec.LoopGroupSpec{
+			MaxIterations: loop.MaxIterations,
+			Nodes:         []spec.Node{body},
+			Until:         spec.UntilSpec{Node: body.ID, Signal: loop.Until},
+			UntilBash:     loop.UntilBash,
+			FreshContext:  loop.FreshContext,
+		}
+		node.Loop = nil
+	}
+}
+
+func normalizeLoopPredicate(loop *spec.LoopGroupSpec) {
+	if loop == nil || loop.Until.Node != "" || !loop.Until.Scalar {
+		return
+	}
+	terminals := map[string]bool{}
+	for _, child := range loop.Nodes {
+		terminals[child.ID] = true
+	}
+	for _, child := range loop.Nodes {
+		for _, dep := range child.DependsOn {
+			delete(terminals, dep)
+		}
+	}
+	if len(terminals) == 1 {
+		for id := range terminals {
+			loop.Until.Node = id
+		}
+	}
 }
 
 func (c *compiler) enter(path string) error {
@@ -592,6 +677,9 @@ func sourceKinds(node spec.Node) int {
 	if node.Approval != nil {
 		count++
 	}
+	if node.Cancel != "" {
+		count++
+	}
 	if node.LoopGroup != nil {
 		count++
 	}
@@ -634,8 +722,14 @@ func containerDefaults(parent, child spec.Defaults, node spec.Node) spec.Default
 	if node.Assistant != "" {
 		out.Assistant = node.Assistant
 	}
+	if node.Provider != "" {
+		out.Assistant = node.Provider
+	}
 	if node.Model != "" {
 		out.Model = node.Model
+	}
+	if node.Context != "" {
+		out.Session = node.Context
 	}
 	if node.Session != "" {
 		out.Session = node.Session
@@ -679,6 +773,9 @@ func addDependency(nodes []spec.Node, ids []string, dependency string) {
 }
 
 func applyDefaults(node *spec.Node, defaults spec.Defaults) {
+	if node.Provider == "" {
+		node.Provider = defaults.Assistant
+	}
 	if node.Assistant == "" {
 		node.Assistant = defaults.Assistant
 	}
@@ -686,7 +783,14 @@ func applyDefaults(node *spec.Node, defaults spec.Defaults) {
 		node.Model = defaults.Model
 	}
 	if node.Session == "" {
-		node.Session = defaults.Session
+		if node.Context != "" {
+			node.Session = node.Context
+		} else {
+			node.Session = defaults.Session
+		}
+	}
+	if node.Context == "" {
+		node.Context = node.Session
 	}
 }
 
@@ -695,8 +799,8 @@ func rewriteTemplateNodeRefs(value, prefix string, siblings map[string]spec.Node
 		return value
 	}
 	for id := range siblings {
-		value = strings.ReplaceAll(value, "${nodes."+id+".", "${nodes."+qualify(prefix, id)+".")
-		value = strings.ReplaceAll(value, "${loop.previous."+id+".", "${loop.previous."+qualify(prefix, id)+".")
+		value = strings.ReplaceAll(value, "$"+id+".", "$"+qualify(prefix, id)+".")
+		value = strings.ReplaceAll(value, "$LOOP_PREV."+id+".", "$LOOP_PREV."+qualify(prefix, id)+".")
 	}
 	return value
 }
@@ -707,7 +811,7 @@ func rewriteWhenNodeRefs(value, prefix string, siblings map[string]spec.Node) st
 		return value
 	}
 	for id := range siblings {
-		value = strings.ReplaceAll(value, "nodes."+id+".", "nodes."+qualify(prefix, id)+".")
+		value = strings.ReplaceAll(value, "$"+id+".", "$"+qualify(prefix, id)+".")
 	}
 	return value
 }
@@ -718,7 +822,7 @@ func resolveInputs(inputs map[string]string, vars map[string]string) (map[string
 		if strings.TrimSpace(key) == "" {
 			return nil, fmt.Errorf("input name must not be empty")
 		}
-		out["inputs."+key] = replaceVars(value, vars)
+		out["INPUTS."+key] = replaceVars(value, vars)
 	}
 	return out, nil
 }
@@ -734,40 +838,41 @@ func replaceVars(value string, vars map[string]string) string {
 	sort.Slice(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
 	for _, key := range keys {
 		value = strings.ReplaceAll(value, "${"+key+"}", vars[key])
+		value = strings.ReplaceAll(value, "$"+key, vars[key])
 	}
 	return value
 }
 
 func foreachVars(as string, index int, item any) (map[string]string, error) {
-	vars := map[string]string{"index": strconv.Itoa(index), as + ".index": strconv.Itoa(index)}
+	vars := map[string]string{"INPUTS.index": strconv.Itoa(index), "INPUTS." + as + ".index": strconv.Itoa(index)}
 	encoded, err := json.Marshal(item)
 	if err != nil {
 		return nil, err
 	}
 	switch value := item.(type) {
 	case string:
-		vars[as] = value
+		vars["INPUTS."+as] = value
 	case float64:
-		vars[as] = strconv.FormatFloat(value, 'f', -1, 64)
+		vars["INPUTS."+as] = strconv.FormatFloat(value, 'f', -1, 64)
 	case bool:
-		vars[as] = strconv.FormatBool(value)
+		vars["INPUTS."+as] = strconv.FormatBool(value)
 	case nil:
-		vars[as] = "null"
+		vars["INPUTS."+as] = "null"
 	case map[string]any:
-		vars[as] = string(encoded)
+		vars["INPUTS."+as] = string(encoded)
 		for key, field := range value {
 			fieldJSON, err := json.Marshal(field)
 			if err != nil {
 				return nil, err
 			}
 			if text, ok := field.(string); ok {
-				vars[as+"."+key] = text
+				vars["INPUTS."+as+"."+key] = text
 			} else {
-				vars[as+"."+key] = string(fieldJSON)
+				vars["INPUTS."+as+"."+key] = string(fieldJSON)
 			}
 		}
 	default:
-		vars[as] = string(encoded)
+		vars["INPUTS."+as] = string(encoded)
 	}
 	return vars, nil
 }

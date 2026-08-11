@@ -57,10 +57,7 @@ func TestWorktreeContract(t *testing.T) {
 	git(t, repo, "init", "-q")
 	git(t, repo, "config", "user.email", "takt@example.invalid")
 	git(t, repo, "config", "user.name", "Takt Contract")
-	wf := writeFile(t, repo, "workflow.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: isolated-contract
+	wf := writeFile(t, repo, "workflow.yaml", `name: isolated-contract
 worktree:
   enabled: true
   cleanup: on_success
@@ -166,7 +163,7 @@ func TestCodeProfileCatalogContract(t *testing.T) {
 		t.Fatalf("profile version=%q", version)
 	}
 	requireFileContains(t, filepath.Join(base, "profile.yaml"), "router:", "block_packages:", "format: markdown", "preserve_path: true")
-	requireFileContains(t, filepath.Join(base, "workflow.yaml"), "name: code-router", "allowed_tools: []", "output_format:", "workflow:", "retry_on: [protocol]")
+	requireFileContains(t, filepath.Join(base, "workflow.yaml"), "name: code-router", "allowed_tools: []", "output_format:", "workflow:", "retry_on:", "protocol")
 	requireFileContains(t, filepath.Join(base, "workflows", "plan-to-pr.yaml"), "allowed_paths:", "scope-check", "PR_RESULT_ACCEPTED", "WORKFLOW_ACCEPTED")
 	requireFileContains(t, filepath.Join(base, "commands", "route-workflow.md"), "Never infer `allowed_paths`", "otherwise select `assist`")
 	requireFileContains(t, filepath.Join(base, "README.md"), "`allowed_paths`", "WORKFLOW_ACCEPTED")

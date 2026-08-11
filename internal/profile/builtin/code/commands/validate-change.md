@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 
@@ -9,4 +9,4 @@ Inspect the diff and artifacts, run the repository's deterministic validation co
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

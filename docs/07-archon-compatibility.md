@@ -1,6 +1,12 @@
 # Профиль совместимости с Archon
 
-Takt не заявляет бинарную или YAML-совместимость с Archon. Цель — перенести полезные процессы и сохранить знакомую модель DAG без второго runtime. В `v0.1.33-alpha` встроенный профиль `code` 0.9.1 содержит 19 процессов, соответствующих стандартному каталогу Archon, и умный роутер с no-tool policy как корневой Run и выбранный процесс как governed child Run.
+Takt не заявляет бинарную или YAML-совместимость с Archon. Цель — перенести
+полезные процессы и сохранить знакомую модель DAG без второго runtime. В
+`v0.1.57-alpha` реализован единый Archon-first Workflow language (A0) и
+bounded repair/runtime slice (A1): `loop`, scalar/structured `until`, signal
+evidence, `until.requires`, `until_bash`, exact session continuity,
+`fresh_context`, `context: shared`, cancel metadata и durable retry history.
+Hard budgets, `run inspect` и mutating merge fan-out остаются deferred.
 
 ## Перенесённые конструкции
 
@@ -21,7 +27,7 @@ Takt не заявляет бинарную или YAML-совместимост
 | cancellation tree | `takt cancel` и durable marker |
 | structured output | `output_format`, проверяемый runtime |
 | semantic artifacts | `output_type`, MIME, SHA-256, producer metadata и `takt artifacts` |
-| provider/model | assistant/model |
+| provider/model | provider/model, с Config assistant binding внутри runtime |
 | retry | attempts + portable hooks |
 | platform control tools | локальный stdio MCP control plane поверх файлового Run store |
 
@@ -32,12 +38,29 @@ Takt не заявляет бинарную или YAML-совместимост
 - собственная `apiVersion` и другой реестр model/assistant;
 - `subworkflow` компилируется в тот же Run; отдельный `workflow` создаёт governed child Run;
 - managed worktree isolation и автоматическое создание ветки реализованы; выбранный child Run применяет собственную политику или `isolation` родительского узла;
-- `one_success` fan-out пока ждёт всю группу вместо досрочного завершения;
+- `one_success`/`all_success` fan-out может досрочно отменять ненужных siblings;
+  такая отмена получает `cancel_reason: fanout_result_decided`;
 - Web UI, HTTP server, БД, адаптеры сообщений и уведомления остаются proposal для нелокального режима; локальное управление доступно через `takt mcp`;
 - native hooks передаются адаптеру, portable hooks выполняются runtime;
 - state хранится локально.
 
 Эти различия не урезают 19 процессов: каждый процесс присутствует и запускается. Они определяют, какая часть гарантий обеспечивается ядром Takt, а какая остаётся инструкцией внешнему coding agent и окружению проекта.
+
+## A0/A1 release boundary
+
+A0 мигрирует актуальные Workflow и Markdown commands на target root (`name`,
+`description`, `provider`, `model`, `nodes`) и единый `$...` reference grammar.
+Legacy `${...}`, `$USER_MESSAGE`, root `apiVersion/kind/metadata/defaults` и
+frontmatter `assistant` отклоняются fail-closed; importer, dual parser и второй
+renderer не используются. `output_format` и `takt-schema-subset/v1` остаются
+без изменения семантики.
+
+A1 переиспользует один DAG scheduler: loop iterations durable, signal matcher
+сохраняет `matched_signal`/`signal_diagnostic`, `until.requires` проверяет
+дополнительные evidence, `until_bash` сохраняет predicate evidence, а
+`fresh_context`/`context: shared` управляют exact Session ID resume. Approval
+внутри loop продолжает активную iteration после `answer`; timeout/cancel имеют
+приоритет над derived loop/output errors.
 
 ## Запуск
 

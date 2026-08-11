@@ -1,8 +1,4 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: plan-to-pr
-  description: Confirm and execute an existing plan with Git safeguards, mandatory evidence, recovery, PR and comprehensive review.
+---
 input:
   format: json
   schema:
@@ -31,554 +27,574 @@ input:
         minItems: 1
         uniqueItems: true
     required:
-      - repository
-      - plan_path
-      - base_branch
-      - draft_pr
-      - validation_commands
-      - allowed_paths
-defaults:
-  assistant: coding-agent
-  model: implementation
-  session: fresh
+    - repository
+    - plan_path
+    - base_branch
+    - draft_pr
+    - validation_commands
+    - allowed_paths
 nodes:
-  - id: git-prepare
-    command: git-prepare
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
+- id: git-prepare
+  command: git-prepare
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - GIT_READY
+        - GIT_DIRTY
+        - GIT_BRANCH_MISMATCH
+        - GIT_BASE_MISSING
+        - GIT_REMOTE_MISSING
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: git-state
+  output_mime: application/json
+  output_path: "$ARTIFACTS_DIR/git-state.json"
+- id: confirm-plan
+  command: plan-intake
+  depends_on:
+  - git-prepare
+  when: $git-prepare.output.status == "ready"
+  model: review
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - PLAN_CONFIRMED
+        - PLAN_NOT_FOUND
+        - PLAN_STALE
+        - PLAN_SCOPE_AMBIGUOUS
+        - PLAN_CONTRACT_CONFLICT
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-          enum:
-            - GIT_READY
-            - GIT_DIRTY
-            - GIT_BRANCH_MISMATCH
-            - GIT_BASE_MISSING
-            - GIT_REMOTE_MISSING
-        summary:
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: plan-confirmation
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/plan-confirmation.md"
+- id: implement
+  command: plan-implementation
+  depends_on:
+  - git-prepare
+  - confirm-plan
+  when: $confirm-plan.output.status == "ready"
+  attempts:
+    max: 3
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - PLAN_IMPLEMENTED
+        - PLAN_IMPLEMENTATION_BLOCKED
+        - PLAN_DEVIATION_REQUIRES_APPROVAL
+        - PLAN_TEST_FAILED
+        - PLAN_CONTRACT_BROKEN
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: implementation-report
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/implementation-report.md"
+  context:
+- id: validation-commands
+  depends_on:
+  - implement
+  when: $implement.output.status == "ready"
+  script:
+    runtime: validation
+  allow_failure: true
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - failed
+      results:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            command:
+              type: string
+            exit_code:
+              type: integer
+            stdout:
+              type: string
+            stderr:
+              type: string
+          required:
+          - command
+          - exit_code
+    required:
+    - status
+    - results
+  output_type: validation-command-report
+  output_mime: application/json
+  output_path: "$ARTIFACTS_DIR/validation-commands.json"
+- id: validate
+  command: change-validation
+  depends_on:
+  - implement
+  - validation-commands
+  trigger_rule: all_done
+  when: $implement.output.status == "ready"
+  model: review
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - VALIDATION_PASSED
+        - VALIDATION_FAILED
+        - VALIDATION_ENVIRONMENT_MISSING
+        - ACCEPTANCE_NOT_PROVEN
+        - DIFF_SCOPE_VIOLATION
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: git-state
-    output_mime: application/json
-    output_path: $ARTIFACTS_DIR/git-state.json
-  - id: confirm-plan
-    command: plan-intake
-    depends_on:
-      - git-prepare
-    when: nodes.git-prepare.output.status == "ready"
-    model: review
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: validation-report
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/validation-report.md"
+- id: recover
+  command: workflow-recovery
+  depends_on:
+  - validate
+  - validation-commands
+  trigger_rule: all_done
+  when: $validation-commands.output.status != "ready" || $validate.output.status
+    != "ready"
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - RECOVERY_APPLIED
+        - RECOVERY_NOT_POSSIBLE
+        - RECOVERY_REQUIRES_HUMAN
+        - RECOVERY_SCOPE_CONFLICT
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: recovery-report
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/recovery-report.md"
+- id: revalidation-commands
+  depends_on:
+  - recover
+  when: $validation-commands.output.status != "ready" || $validate.output.status
+    != "ready"
+  script:
+    runtime: validation
+  allow_failure: true
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - failed
+      results:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            command:
+              type: string
+            exit_code:
+              type: integer
+            stdout:
+              type: string
+            stderr:
+              type: string
+          required:
+          - command
+          - exit_code
+    required:
+    - status
+    - results
+  output_type: validation-command-report
+  output_mime: application/json
+  output_path: "$ARTIFACTS_DIR/revalidation-commands.json"
+- id: revalidate
+  command: change-validation
+  depends_on:
+  - revalidation-commands
+  model: review
+  trigger_rule: all_done
+  when: $validation-commands.output.status != "ready" || $validate.output.status
+    != "ready"
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - VALIDATION_PASSED
+        - VALIDATION_FAILED
+        - VALIDATION_ENVIRONMENT_MISSING
+        - ACCEPTANCE_NOT_PROVEN
+        - DIFF_SCOPE_VIOLATION
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-          enum:
-            - PLAN_CONFIRMED
-            - PLAN_NOT_FOUND
-            - PLAN_STALE
-            - PLAN_SCOPE_AMBIGUOUS
-            - PLAN_CONTRACT_CONFLICT
-        summary:
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: validation-report
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/validation-report.md"
+- id: validation-gate
+  depends_on:
+  - validation-commands
+  - validate
+  - recover
+  - revalidation-commands
+  - revalidate
+  trigger_rule: all_done
+  bash: |
+    if { [ $validation-commands.output.status? = "ready" ] && [ $validate.output.status? = "ready" ]; } || { [ $revalidation-commands.output.status? = "ready" ] && [ $revalidate.output.status? = "ready" ]; }; then
+      exit 0
+    fi
+    printf 'validation failed: initial=%s recovery=%s revalidate=%s
+    '   '$validate.output.code?' '$recover.output.code?' '$revalidate.output.code?' >&2
+    exit 1
+- id: scope-check
+  depends_on:
+  - validation-gate
+  script:
+    runtime: go
+    path: "../tools/scope-check.go"
+    args:
+    - "$ARGUMENTS"
+    - "$ARTIFACTS_DIR/scope-report.json"
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - failed
+      base_commit:
+        type: string
+      changed_files:
+        type: array
+        items:
           type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
+      outside_allowed:
+        type: array
+        items:
           type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: plan-confirmation
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/plan-confirmation.md
-  - id: implement
-    command: plan-implementation
-    depends_on:
-      - git-prepare
-      - confirm-plan
-    when: nodes.confirm-plan.output.status == "ready"
-    session: resume
-    attempts:
-      max: 3
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
+    required:
+    - status
+    - base_commit
+    - changed_files
+    - outside_allowed
+  output_type: scope-report
+  output_mime: application/json
+  output_path: "$ARTIFACTS_DIR/scope-report.json"
+- id: create-pr
+  command: pr-finalize
+  depends_on:
+  - scope-check
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - PR_READY
+        - PR_GIT_STATE_INVALID
+        - PR_DIFF_SCOPE_VIOLATION
+        - PR_VALIDATION_MISSING
+        - PR_PUSH_FAILED
+        - PR_CREATE_FAILED
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: pr-metadata
+  output_mime: application/json
+  output_path: "$ARTIFACTS_DIR/pr.json"
+- id: pr-result-gate
+  depends_on:
+  - create-pr
+  trigger_rule: all_done
+  bash: |
+    if [ $create-pr.output.status? = "ready" ] && [ $create-pr.output.code? = "PR_READY" ] && [ -f "$ARTIFACTS_DIR/pr.json" ]; then
+      printf 'PR_RESULT_ACCEPTED'
+      exit 0
+    fi
+    printf 'PR_RESULT_REJECTED'
+    exit 1
+- id: review
+  depends_on:
+  - pr-result-gate
+  workflow:
+    path: review-block.yaml
+    input: "$ARGUMENTS"
+    isolation: inherit
+- id: scope-check-after-review
+  depends_on:
+  - review
+  when: $review.output == "REVIEW_BLOCK_ACCEPTED"
+  script:
+    runtime: go
+    path: "../tools/scope-check.go"
+    args:
+    - "$ARGUMENTS"
+    - "$ARTIFACTS_DIR/scope-after-review.json"
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - failed
+      base_commit:
+        type: string
+      changed_files:
+        type: array
+        items:
           type: string
-          enum:
-            - PLAN_IMPLEMENTED
-            - PLAN_IMPLEMENTATION_BLOCKED
-            - PLAN_DEVIATION_REQUIRES_APPROVAL
-            - PLAN_TEST_FAILED
-            - PLAN_CONTRACT_BROKEN
-        summary:
+      outside_allowed:
+        type: array
+        items:
           type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
+    required:
+    - status
+    - base_commit
+    - changed_files
+    - outside_allowed
+  output_type: scope-report
+  output_mime: application/json
+  output_path: "$ARTIFACTS_DIR/scope-after-review.json"
+- id: summary
+  command: workflow-final-summary
+  depends_on:
+  - review
+  - scope-check-after-review
+  model: review
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - WORKFLOW_COMPLETE
+        - WORKFLOW_INCOMPLETE
+        - EVIDENCE_INCONSISTENT
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: implementation-report
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/implementation-report.md
-  - id: validation-commands
-    depends_on:
-      - implement
-    when: nodes.implement.output.status == "ready"
-    script:
-      runtime: validation
-    allow_failure: true
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - failed
-        results:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            properties:
-              command:
-                type: string
-              exit_code:
-                type: integer
-              stdout:
-                type: string
-              stderr:
-                type: string
-            required:
-              - command
-              - exit_code
-      required:
-        - status
-        - results
-    output_type: validation-command-report
-    output_mime: application/json
-    output_path: $ARTIFACTS_DIR/validation-commands.json
-  - id: validate
-    command: change-validation
-    depends_on:
-      - implement
-      - validation-commands
-    trigger_rule: all_done
-    when: nodes.implement.output.status == "ready"
-    model: review
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
-          type: string
-          enum:
-            - VALIDATION_PASSED
-            - VALIDATION_FAILED
-            - VALIDATION_ENVIRONMENT_MISSING
-            - ACCEPTANCE_NOT_PROVEN
-            - DIFF_SCOPE_VIOLATION
-        summary:
-          type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: validation-report
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/validation-report.md
-  - id: recover
-    command: workflow-recovery
-    depends_on:
-      - validate
-      - validation-commands
-    trigger_rule: all_done
-    when: nodes.validation-commands.output.status != "ready" || nodes.validate.output.status != "ready"
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
-          type: string
-          enum:
-            - RECOVERY_APPLIED
-            - RECOVERY_NOT_POSSIBLE
-            - RECOVERY_REQUIRES_HUMAN
-            - RECOVERY_SCOPE_CONFLICT
-        summary:
-          type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: recovery-report
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/recovery-report.md
-  - id: revalidation-commands
-    depends_on:
-      - recover
-    when: nodes.validation-commands.output.status != "ready" || nodes.validate.output.status != "ready"
-    script:
-      runtime: validation
-    allow_failure: true
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - failed
-        results:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            properties:
-              command:
-                type: string
-              exit_code:
-                type: integer
-              stdout:
-                type: string
-              stderr:
-                type: string
-            required:
-              - command
-              - exit_code
-      required:
-        - status
-        - results
-    output_type: validation-command-report
-    output_mime: application/json
-    output_path: $ARTIFACTS_DIR/revalidation-commands.json
-  - id: revalidate
-    command: change-validation
-    depends_on:
-      - revalidation-commands
-    model: review
-    trigger_rule: all_done
-    when: nodes.validation-commands.output.status != "ready" || nodes.validate.output.status != "ready"
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
-          type: string
-          enum:
-            - VALIDATION_PASSED
-            - VALIDATION_FAILED
-            - VALIDATION_ENVIRONMENT_MISSING
-            - ACCEPTANCE_NOT_PROVEN
-            - DIFF_SCOPE_VIOLATION
-        summary:
-          type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: validation-report
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/validation-report.md
-  - id: validation-gate
-    depends_on:
-      - validation-commands
-      - validate
-      - recover
-      - revalidation-commands
-      - revalidate
-    trigger_rule: all_done
-    bash: |
-      if { [ "${nodes.validation-commands.output.status?}" = "ready" ] && [ "${nodes.validate.output.status?}" = "ready" ]; } || { [ "${nodes.revalidation-commands.output.status?}" = "ready" ] && [ "${nodes.revalidate.output.status?}" = "ready" ]; }; then
-        exit 0
-      fi
-      printf 'validation failed: initial=%s recovery=%s revalidate=%s
-      '   '${nodes.validate.output.code?}' '${nodes.recover.output.code?}' '${nodes.revalidate.output.code?}' >&2
-      exit 1
-  - id: scope-check
-    depends_on:
-      - validation-gate
-    script:
-      runtime: go
-      path: ../tools/scope-check.go
-      args: ['${input}', '$ARTIFACTS_DIR/scope-report.json']
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum: [ready, failed]
-        base_commit:
-          type: string
-        changed_files:
-          type: array
-          items:
-            type: string
-        outside_allowed:
-          type: array
-          items:
-            type: string
-      required: [status, base_commit, changed_files, outside_allowed]
-    output_type: scope-report
-    output_mime: application/json
-    output_path: $ARTIFACTS_DIR/scope-report.json
-  - id: create-pr
-    command: pr-finalize
-    depends_on:
-      - scope-check
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
-          type: string
-          enum:
-            - PR_READY
-            - PR_GIT_STATE_INVALID
-            - PR_DIFF_SCOPE_VIOLATION
-            - PR_VALIDATION_MISSING
-            - PR_PUSH_FAILED
-            - PR_CREATE_FAILED
-        summary:
-          type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: pr-metadata
-    output_mime: application/json
-    output_path: $ARTIFACTS_DIR/pr.json
-  - id: pr-result-gate
-    depends_on:
-      - create-pr
-    trigger_rule: all_done
-    bash: |
-      if [ "${nodes.create-pr.output.status?}" = "ready" ] && [ "${nodes.create-pr.output.code?}" = "PR_READY" ] && [ -f "$ARTIFACTS_DIR/pr.json" ]; then
-        printf 'PR_RESULT_ACCEPTED'
-        exit 0
-      fi
-      printf 'PR_RESULT_REJECTED'
-      exit 1
-  - id: review
-    depends_on:
-      - pr-result-gate
-    workflow:
-      path: review-block.yaml
-      input: ${input}
-      isolation: inherit
-  - id: scope-check-after-review
-    depends_on:
-      - review
-    when: nodes.review.output == "REVIEW_BLOCK_ACCEPTED"
-    script:
-      runtime: go
-      path: ../tools/scope-check.go
-      args: ['${input}', '$ARTIFACTS_DIR/scope-after-review.json']
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum: [ready, failed]
-        base_commit:
-          type: string
-        changed_files:
-          type: array
-          items:
-            type: string
-        outside_allowed:
-          type: array
-          items:
-            type: string
-      required: [status, base_commit, changed_files, outside_allowed]
-    output_type: scope-report
-    output_mime: application/json
-    output_path: $ARTIFACTS_DIR/scope-after-review.json
-  - id: summary
-    command: workflow-final-summary
-    depends_on:
-      - review
-      - scope-check-after-review
-    model: review
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
-          type: string
-          enum:
-            - WORKFLOW_COMPLETE
-            - WORKFLOW_INCOMPLETE
-            - EVIDENCE_INCONSISTENT
-        summary:
-          type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: workflow-summary
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/summary.md
-  - id: acceptance-gate
-    depends_on:
-      - confirm-plan
-      - implement
-      - validation-gate
-      - scope-check
-      - pr-result-gate
-      - review
-      - scope-check-after-review
-      - summary
-    trigger_rule: all_done
-    bash: |
-      initial_validation=false
-      if [ "${nodes.validation-commands.output.status?}" = "ready" ] && [ "${nodes.validate.output.status?}" = "ready" ] && [ "${nodes.validate.output.code?}" = "VALIDATION_PASSED" ]; then
-        initial_validation=true
-      fi
-      recovered_validation=false
-      if [ "${nodes.revalidation-commands.output.status?}" = "ready" ] && [ "${nodes.revalidate.output.status?}" = "ready" ] && [ "${nodes.revalidate.output.code?}" = "VALIDATION_PASSED" ]; then
-        recovered_validation=true
-      fi
-      if [ "${nodes.confirm-plan.output.status?}" = "ready" ] && [ "${nodes.confirm-plan.output.code?}" = "PLAN_CONFIRMED" ] && [ "${nodes.implement.output.status?}" = "ready" ] && [ "${nodes.implement.output.code?}" = "PLAN_IMPLEMENTED" ] && { [ "$initial_validation" = true ] || [ "$recovered_validation" = true ]; } && [ "${nodes.scope-check.output.status?}" = "ready" ] && [ "${nodes.pr-result-gate.output?}" = "PR_RESULT_ACCEPTED" ] && [ "${nodes.review.output?}" = "REVIEW_BLOCK_ACCEPTED" ] && [ "${nodes.scope-check-after-review.output.status?}" = "ready" ] && [ "${nodes.summary.output.status?}" = "ready" ] && [ "${nodes.summary.output.code?}" = "WORKFLOW_COMPLETE" ] && [ -f "$ARTIFACTS_DIR/git-state.json" ] && [ -f "$ARTIFACTS_DIR/plan-confirmation.md" ] && [ -f "$ARTIFACTS_DIR/implementation-report.md" ] && [ -f "$ARTIFACTS_DIR/validation-report.md" ] && [ -f "$ARTIFACTS_DIR/scope-report.json" ] && [ -f "$ARTIFACTS_DIR/scope-after-review.json" ] && [ -f "$ARTIFACTS_DIR/pr.json" ] && [ -f "$ARTIFACTS_DIR/summary.md" ]; then
-        printf 'WORKFLOW_ACCEPTED'
-        exit 0
-      fi
-      printf 'WORKFLOW_REJECTED'
-      exit 1
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: workflow-summary
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/summary.md"
+- id: acceptance-gate
+  depends_on:
+  - confirm-plan
+  - implement
+  - validation-gate
+  - scope-check
+  - pr-result-gate
+  - review
+  - scope-check-after-review
+  - summary
+  trigger_rule: all_done
+  bash: |
+    initial_validation=false
+    if [ $validation-commands.output.status? = "ready" ] && [ $validate.output.status? = "ready" ] && [ $validate.output.code? = "VALIDATION_PASSED" ]; then
+      initial_validation=true
+    fi
+    recovered_validation=false
+    if [ $revalidation-commands.output.status? = "ready" ] && [ $revalidate.output.status? = "ready" ] && [ $revalidate.output.code? = "VALIDATION_PASSED" ]; then
+      recovered_validation=true
+    fi
+    if [ $confirm-plan.output.status? = "ready" ] && [ $confirm-plan.output.code? = "PLAN_CONFIRMED" ] && [ $implement.output.status? = "ready" ] && [ $implement.output.code? = "PLAN_IMPLEMENTED" ] && { [ "$initial_validation" = true ] || [ "$recovered_validation" = true ]; } && [ $scope-check.output.status? = "ready" ] && [ $pr-result-gate.output? = "PR_RESULT_ACCEPTED" ] && [ $review.output? = "REVIEW_BLOCK_ACCEPTED" ] && [ $scope-check-after-review.output.status? = "ready" ] && [ $summary.output.status? = "ready" ] && [ $summary.output.code? = "WORKFLOW_COMPLETE" ] && [ -f "$ARTIFACTS_DIR/git-state.json" ] && [ -f "$ARTIFACTS_DIR/plan-confirmation.md" ] && [ -f "$ARTIFACTS_DIR/implementation-report.md" ] && [ -f "$ARTIFACTS_DIR/validation-report.md" ] && [ -f "$ARTIFACTS_DIR/scope-report.json" ] && [ -f "$ARTIFACTS_DIR/scope-after-review.json" ] && [ -f "$ARTIFACTS_DIR/pr.json" ] && [ -f "$ARTIFACTS_DIR/summary.md" ]; then
+      printf 'WORKFLOW_ACCEPTED'
+      exit 0
+    fi
+    printf 'WORKFLOW_REJECTED'
+    exit 1
 worktree:
   enabled: true
   cleanup: on_success
+name: plan-to-pr
+description: Confirm and execute an existing plan with Git safeguards, mandatory evidence,
+  recovery, PR and comprehensive review.
+provider: coding-agent
+model: implementation

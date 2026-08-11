@@ -1,8 +1,4 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: smart-pr-review
-  description: Review one exact pull request through normalized intake, dynamic governed reviewers, evidence synthesis, optional fixes and final summary.
+---
 input:
   format: json
   schema:
@@ -22,141 +18,143 @@ input:
         minItems: 1
         uniqueItems: true
     required:
-      - repository
-      - pr_number
-      - fix_findings
-      - validation_commands
-defaults:
-  assistant: coding-agent
-  model: implementation
-  session: fresh
+    - repository
+    - pr_number
+    - fix_findings
+    - validation_commands
 nodes:
-  - id: intake
-    command: review-intake
-    model: review
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
+- id: intake
+  command: review-intake
+  model: review
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - REVIEW_READY
+        - PR_NOT_FOUND
+        - PR_REPOSITORY_MISMATCH
+        - PR_BASE_STALE
+        - PR_CONFLICTED
+        - REVIEW_SCOPE_EMPTY
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: review-scope
+  output_mime: application/json
+  output_path: "$ARTIFACTS_DIR/review-scope.json"
+- id: validation-commands
+  depends_on:
+  - intake
+  when: $intake.output.status == "ready"
+  script:
+    runtime: validation
+  allow_failure: true
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - failed
+      results:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            command:
+              type: string
+            exit_code:
+              type: integer
+            stdout:
+              type: string
+            stderr:
+              type: string
+          required:
+          - command
+          - exit_code
+    required:
+    - status
+    - results
+  output_type: validation-command-report
+  output_mime: application/json
+  output_path: "$ARTIFACTS_DIR/validation-commands.json"
+- id: review
+  depends_on:
+  - intake
+  - validation-commands
+  when: $intake.output.status == "ready" && $validation-commands.output.status
+    == "ready"
+  workflow:
+    path: smart-review-block.yaml
+    input: "$ARGUMENTS"
+    isolation: inherit
+- id: summary
+  command: workflow-final-summary
+  depends_on:
+  - review
+  model: review
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - WORKFLOW_COMPLETE
+        - WORKFLOW_INCOMPLETE
+        - EVIDENCE_INCONSISTENT
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-          enum:
-            - REVIEW_READY
-            - PR_NOT_FOUND
-            - PR_REPOSITORY_MISMATCH
-            - PR_BASE_STALE
-            - PR_CONFLICTED
-            - REVIEW_SCOPE_EMPTY
-        summary:
-          type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: review-scope
-    output_mime: application/json
-    output_path: $ARTIFACTS_DIR/review-scope.json
-  - id: validation-commands
-    depends_on:
-      - intake
-    when: nodes.intake.output.status == "ready"
-    script:
-      runtime: validation
-    allow_failure: true
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - failed
-        results:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            properties:
-              command:
-                type: string
-              exit_code:
-                type: integer
-              stdout:
-                type: string
-              stderr:
-                type: string
-            required:
-              - command
-              - exit_code
-      required:
-        - status
-        - results
-    output_type: validation-command-report
-    output_mime: application/json
-    output_path: $ARTIFACTS_DIR/validation-commands.json
-  - id: review
-    depends_on:
-      - intake
-      - validation-commands
-    when: nodes.intake.output.status == "ready" && nodes.validation-commands.output.status == "ready"
-    workflow:
-      path: smart-review-block.yaml
-      input: ${input}
-      isolation: inherit
-  - id: summary
-    command: workflow-final-summary
-    depends_on:
-      - review
-    model: review
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
-          type: string
-          enum:
-            - WORKFLOW_COMPLETE
-            - WORKFLOW_INCOMPLETE
-            - EVIDENCE_INCONSISTENT
-        summary:
-          type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: workflow-summary
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/summary.md
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: workflow-summary
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/summary.md"
+name: smart-pr-review
+description: Review one exact pull request through normalized intake, dynamic governed
+  reviewers, evidence synthesis, optional fixes and final summary.
+provider: coding-agent
+model: implementation

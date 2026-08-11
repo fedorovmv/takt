@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -9,8 +9,8 @@ Implement end-to-end behavior, tests, operational setup, and user documentation.
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS
 
 Previous validation feedback:
 
-${feedback}
+$FEEDBACK

@@ -28,10 +28,7 @@ metadata:
     workflow: workflow.yaml
     output_paths: [summary]
 `, name, version, scope, extra)
-	workflow := `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: package-test
+	workflow := `name: package-test
 nodes:
   - id: result
     prompt: Return JSON.

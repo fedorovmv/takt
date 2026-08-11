@@ -19,10 +19,7 @@ func TestGovernedChildRunWaitsResumesAndReturnsOutput(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	mustWriteFile(t, childPath, `name: child
 nodes:
   - id: approve
     approval:
@@ -30,22 +27,19 @@ nodes:
       capture_response: true
   - id: done
     depends_on: [approve]
-    bash: printf '%s' '${nodes.approve.output}'
+    bash: printf '%s' $approve.output
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	mustWriteFile(t, parentPath, `name: parent
 nodes:
   - id: child
     workflow:
       path: child.yaml
-      input: ${input}
+      input: $ARGUMENTS
       output_node: done
       isolation: inherit
   - id: after
     depends_on: [child]
-    bash: printf 'parent:%s' '${nodes.child.output}'
+    bash: printf 'parent:%s' $child.output
 `)
 	wf, err := workflow.Load(parentPath)
 	if err != nil {
@@ -110,18 +104,12 @@ func TestGovernedChildRunFailureFailsParentNode(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	mustWriteFile(t, childPath, `name: child
 nodes:
   - id: fail
     bash: echo child-failed >&2; exit 7
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	mustWriteFile(t, parentPath, `name: parent
 nodes:
   - id: child
     workflow:
@@ -152,19 +140,13 @@ func TestCancelParentRequestsCancellationForChild(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	mustWriteFile(t, childPath, `name: child
 nodes:
   - id: approve
     approval:
       message: wait
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	mustWriteFile(t, parentPath, `name: parent
 nodes:
   - id: child
     workflow:
@@ -247,10 +229,7 @@ func TestGovernedChildRetryCreatesNewChildRun(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: retry-child
+	mustWriteFile(t, childPath, `name: retry-child
 nodes:
   - id: run
     bash: |
@@ -261,10 +240,7 @@ nodes:
       fi
       printf child-succeeded
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: retry-parent
+	mustWriteFile(t, parentPath, `name: retry-parent
 nodes:
   - id: child
     attempts:
@@ -339,18 +315,12 @@ func TestGovernedChildRunCanOwnRepositoryWorktree(t *testing.T) {
 
 	childPath := filepath.Join(root, "child.yaml")
 	parentPath := filepath.Join(root, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child-repo
+	mustWriteFile(t, childPath, `name: child-repo
 nodes:
   - id: change
     bash: printf changed > changed.txt; printf '{"summary":"changed"}'
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent-repo
+	mustWriteFile(t, parentPath, `name: parent-repo
 nodes:
   - id: repo-change
     workflow:
@@ -408,10 +378,7 @@ func TestGovernedChildRetryReusesCompletedChildRun(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: completed-child
+	mustWriteFile(t, childPath, `name: completed-child
 nodes:
   - id: run
     bash: |
@@ -421,10 +388,7 @@ nodes:
       printf %s "$n" > child-count
       printf child-ok
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: retry-parent-postcheck
+	mustWriteFile(t, parentPath, `name: retry-parent-postcheck
 nodes:
   - id: child
     attempts:
@@ -479,18 +443,12 @@ func TestLoopGroupRunsGovernedWorkflowChild(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child-loop.yaml")
 	parentPath := filepath.Join(dir, "parent-loop.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child-loop
+	mustWriteFile(t, childPath, `name: child-loop
 nodes:
   - id: result
     bash: printf child-done
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent-loop
+	mustWriteFile(t, parentPath, `name: parent-loop
 nodes:
   - id: retry
     loop_group:

@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 

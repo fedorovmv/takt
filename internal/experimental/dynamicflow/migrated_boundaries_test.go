@@ -29,10 +29,7 @@ func TestDynamicPlanTracksPauseResumeAndAbandon(t *testing.T) {
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: dynamic-operator
+	writeControlFile(t, workflowPath, `name: dynamic-operator
 nodes:
   - id: approve
     approval:

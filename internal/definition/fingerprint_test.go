@@ -46,10 +46,10 @@ func TestGovernedChildWorkflowChangesParentFingerprint(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	if err := os.WriteFile(childPath, []byte("apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: child\nnodes:\n  - id: run\n    bash: echo one\n"), 0o644); err != nil {
+	if err := os.WriteFile(childPath, []byte("name: child\nnodes:\n  - id: run\n    bash: echo one\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(parentPath, []byte("apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: parent\nnodes:\n  - id: child\n    workflow:\n      path: child.yaml\n"), 0o644); err != nil {
+	if err := os.WriteFile(parentPath, []byte("name: parent\nnodes:\n  - id: child\n    workflow:\n      path: child.yaml\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	wf, err := workflow.Load(parentPath)
@@ -60,7 +60,7 @@ func TestGovernedChildWorkflowChangesParentFingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(childPath, []byte("apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: child\nnodes:\n  - id: run\n    bash: echo two\n"), 0o644); err != nil {
+	if err := os.WriteFile(childPath, []byte("name: child\nnodes:\n  - id: run\n    bash: echo two\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	wf, err = workflow.Load(parentPath)

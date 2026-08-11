@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 Design and add independent tests for the requested behavior before relying on the implementation result.
@@ -13,7 +13,7 @@ Requirements:
 - return only the required JSON object.
 
 Task context:
-$USER_MESSAGE
+$ARGUMENTS
 
 Previous structured-output feedback:
-${feedback}
+$FEEDBACK

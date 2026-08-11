@@ -1,26 +1,25 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: composition-example
+---
 nodes:
-  - id: prepare
+- id: prepare
+  subworkflow:
+    path: workflows/write-item.yaml
+    inputs:
+      name: first
+- id: batch
+  depends_on:
+  - prepare
+  foreach:
+    as: service
+    items_from:
+      path: items.yaml
     subworkflow:
       path: workflows/write-item.yaml
       inputs:
-        name: first
+        name: $INPUTS.service
+- id: verify
+  depends_on:
+  - batch
+  bash: 'test "$(tr ''\n'' '','' < order.txt)" = "first,second,third,"
 
-  - id: batch
-    depends_on: [prepare]
-    foreach:
-      as: service
-      items_from:
-        path: items.yaml
-      subworkflow:
-        path: workflows/write-item.yaml
-        inputs:
-          name: ${service}
-
-  - id: verify
-    depends_on: [batch]
-    bash: |
-      test "$(tr '\n' ',' < order.txt)" = "first,second,third,"
+'
+name: composition-example

@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -9,4 +9,4 @@ Inspect git status, merge base, both sides of every conflict, surrounding histor
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

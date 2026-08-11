@@ -46,7 +46,7 @@ func TestValidateRejectsUnboundedLoopHistory(t *testing.T) {
 
 func TestValidateAcceptsGovernedWorkflowNode(t *testing.T) {
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "parent"}, Nodes: []spec.Node{{
-		ID: "child", WorkflowRun: &spec.WorkflowRunSpec{Path: "child.yaml", Input: "${input}", Isolation: "inherit"},
+		ID: "child", WorkflowRun: &spec.WorkflowRunSpec{Path: "child.yaml", Input: "$ARGUMENTS", Isolation: "inherit"},
 	}}}
 	if err := Validate(wf); err != nil {
 		t.Fatalf("governed workflow node was rejected: %v", err)
@@ -66,10 +66,7 @@ func TestLoadRejectsGovernedWorkflowRecursion(t *testing.T) {
 	dir := t.TempDir()
 	first := filepath.Join(dir, "first.yaml")
 	second := filepath.Join(dir, "second.yaml")
-	if err := os.WriteFile(first, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: first
+	if err := os.WriteFile(first, []byte(`name: first
 nodes:
   - id: child
     workflow:
@@ -77,10 +74,7 @@ nodes:
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(second, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: second
+	if err := os.WriteFile(second, []byte(`name: second
 nodes:
   - id: child
     workflow:
@@ -107,10 +101,7 @@ func TestValidateRejectsAssistantPolicyOnBashNode(t *testing.T) {
 func TestLoadRejectsMissingMCPPolicyFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "workflow.yaml")
-	if err := os.WriteFile(path, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: missing-mcp
+	if err := os.WriteFile(path, []byte(`name: missing-mcp
 nodes:
   - id: agent
     prompt: test
@@ -127,10 +118,7 @@ nodes:
 func TestLoadPreservesExplicitEmptyPolicyAllowlists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "workflow.yaml")
-	if err := os.WriteFile(path, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: empty-policy
+	if err := os.WriteFile(path, []byte(`name: empty-policy
 nodes:
   - id: classify
     prompt: classify
@@ -336,10 +324,7 @@ func TestLoadRejectsUnsupportedSchemaKeywordsForInputAndOutput(t *testing.T) {
 		yaml string
 		want string
 	}{
-		{name: "input-ref", want: "$ref", yaml: `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: bad-input
+		{name: "input-ref", want: "$ref", yaml: `name: bad-input
 input:
   format: json
   schema:
@@ -349,10 +334,7 @@ nodes:
   - id: done
     bash: 'true'
 `},
-		{name: "output-oneof", want: "oneOf", yaml: `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: bad-output
+		{name: "output-oneof", want: "oneOf", yaml: `name: bad-output
 nodes:
   - id: done
     bash: 'printf x'
@@ -400,7 +382,7 @@ func TestValidateRejectsWhenExpressionCreepAtLoadTime(t *testing.T) {
 func TestValidateAcceptsConstitutionalWhenGate(t *testing.T) {
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "when-constitution"}, Nodes: []spec.Node{
 		{ID: "classify-v2", Bash: "echo ready"},
-		{ID: "b", Bash: "true", DependsOn: []string{"classify-v2"}, When: `nodes.classify-v2.output == "ready" && inputs.input != "dry-run"`},
+		{ID: "b", Bash: "true", DependsOn: []string{"classify-v2"}, When: `$classify-v2.output == "ready" && $INPUTS.input != "dry-run"`},
 	}}
 	if err := Validate(wf); err != nil {
 		t.Fatalf("small declarative when gate rejected: %v", err)

@@ -19,18 +19,12 @@ func TestGovernedChildFanOutAggregatesOrderedResults(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: fanout-child
+	mustWriteFile(t, childPath, `name: fanout-child
 nodes:
   - id: result
-    bash: printf '%s' '${input}'
+    bash: printf '%s' "$ARGUMENTS"
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: fanout-parent
+	mustWriteFile(t, parentPath, `name: fanout-parent
 nodes:
   - id: discover
     bash: printf '%s' '{"tasks":[{"name":"alpha"},{"name":"beta"},{"name":"gamma"}]}'
@@ -38,7 +32,7 @@ nodes:
     depends_on: [discover]
     workflow:
       path: child.yaml
-      input: '${task.name}:${fanout.index}/${fanout.total}'
+      input: '$FANOUT.item.name:$FANOUT.index/$FANOUT.total'
       output_node: result
       isolation: inherit
       fan_out:
@@ -80,18 +74,15 @@ func TestGovernedChildFanOutRunsWithBoundedParallelism(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parallel-child
+	mustWriteFile(t, childPath, `name: parallel-child
 nodes:
   - id: barrier
     bash: |
-      touch "ready-${input}"
+      touch "ready-$ARGUMENTS"
       i=0
       while [ "$i" -lt 80 ]; do
         if [ -f ready-0 ] && [ -f ready-1 ]; then
-          printf 'done-%s' '${input}'
+          printf 'done-%s' "$ARGUMENTS"
           exit 0
         fi
         i=$((i + 1))
@@ -100,10 +91,7 @@ nodes:
       echo barrier-timeout >&2
       exit 9
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parallel-parent
+	mustWriteFile(t, parentPath, `name: parallel-parent
 nodes:
   - id: discover
     bash: printf '[0,1]'
@@ -111,7 +99,7 @@ nodes:
     depends_on: [discover]
     workflow:
       path: child.yaml
-      input: '${fanout.item}'
+      input: $FANOUT.item
       output_node: barrier
       isolation: inherit
       fan_out:
@@ -132,23 +120,17 @@ func TestGovernedChildFanOutResumesOnlyWaitingChildren(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: approval-child
+	mustWriteFile(t, childPath, `name: approval-child
 nodes:
   - id: approve
     approval:
-      message: approve ${input}
+      message: approve $ARGUMENTS
       capture_response: true
   - id: done
     depends_on: [approve]
-    bash: printf '%s:%s' '${input}' '${nodes.approve.output}'
+    bash: printf '%s:%s' "$ARGUMENTS" $approve.output
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: approval-parent
+	mustWriteFile(t, parentPath, `name: approval-parent
 nodes:
   - id: discover
     bash: printf '["first","second"]'
@@ -156,7 +138,7 @@ nodes:
     depends_on: [discover]
     workflow:
       path: child.yaml
-      input: '${fanout.item}'
+      input: $FANOUT.item
       output_node: done
       isolation: inherit
       fan_out:
@@ -199,23 +181,17 @@ func TestGovernedChildFanOutAllDonePreservesFailures(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: fallible-child
+	mustWriteFile(t, childPath, `name: fallible-child
 nodes:
   - id: run
     bash: |
-      if [ '${input}' = bad ]; then
+      if [ "$ARGUMENTS" = bad ]; then
         echo rejected >&2
         exit 7
       fi
-      printf '%s' '${input}'
+      printf '%s' "$ARGUMENTS"
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: all-done-parent
+	mustWriteFile(t, parentPath, `name: all-done-parent
 nodes:
   - id: discover
     bash: printf '["good","bad"]'
@@ -223,7 +199,7 @@ nodes:
     depends_on: [discover]
     workflow:
       path: child.yaml
-      input: '${fanout.item}'
+      input: $FANOUT.item
       isolation: inherit
       fan_out:
         items_from: nodes.discover.output
@@ -277,27 +253,21 @@ func TestGovernedChildFanOutPauseStopsBeforeNextBatch(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: pausable-fanout-child
+	mustWriteFile(t, childPath, `name: pausable-fanout-child
 nodes:
   - id: run
     bash: |
-      touch "started-${input}"
-      if [ '${input}' = 0 ]; then
+      touch "started-$ARGUMENTS"
+      if [ "$ARGUMENTS" = 0 ]; then
         i=0
         while [ ! -f release-first ] && [ "$i" -lt 200 ]; do
           i=$((i + 1))
           sleep 0.01
         done
       fi
-      printf '%s' '${input}'
+      printf '%s' "$ARGUMENTS"
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: pausable-fanout-parent
+	mustWriteFile(t, parentPath, `name: pausable-fanout-parent
 nodes:
   - id: discover
     bash: printf '[0,1,2]'
@@ -305,7 +275,7 @@ nodes:
     depends_on: [discover]
     workflow:
       path: child.yaml
-      input: '${fanout.item}'
+      input: $FANOUT.item
       output_node: run
       isolation: inherit
       fan_out:
@@ -385,18 +355,12 @@ func TestGovernedChildFanOutRejectsEmptyItemsByDefault(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: empty-child
+	mustWriteFile(t, childPath, `name: empty-child
 nodes:
   - id: run
     bash: printf done
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: empty-parent
+	mustWriteFile(t, parentPath, `name: empty-parent
 nodes:
   - id: discover
     bash: printf '[]'
@@ -422,18 +386,12 @@ func TestGovernedChildFanOutAllowsEmptyItems(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: empty-child
+	mustWriteFile(t, childPath, `name: empty-child
 nodes:
   - id: run
     bash: printf done
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: empty-parent
+	mustWriteFile(t, parentPath, `name: empty-parent
 nodes:
   - id: discover
     bash: printf '[]'
@@ -463,19 +421,13 @@ func TestGovernedChildFanOutRejectsChangedItemsOnResume(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: waiting-child
+	mustWriteFile(t, childPath, `name: waiting-child
 nodes:
   - id: approve
     approval:
       message: wait
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: changing-parent
+	mustWriteFile(t, parentPath, `name: changing-parent
 nodes:
   - id: discover
     bash: printf '["one"]'
@@ -483,7 +435,7 @@ nodes:
     depends_on: [discover]
     workflow:
       path: child.yaml
-      input: '${fanout.item}'
+      input: '$FANOUT.item'
       isolation: inherit
       fan_out:
         items_from: nodes.discover.output
@@ -508,24 +460,18 @@ func TestGovernedChildFanOutRetryCreatesFreshGroup(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: retry-fanout-child
+	mustWriteFile(t, childPath, `name: retry-fanout-child
 nodes:
   - id: run
     bash: |
-      marker="attempt-${input}"
+      marker="attempt-$ARGUMENTS"
       if [ ! -f "$marker" ]; then
         touch "$marker"
         exit 8
       fi
-      printf '%s' '${input}'
+      printf '%s' "$ARGUMENTS"
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: retry-fanout-parent
+	mustWriteFile(t, parentPath, `name: retry-fanout-parent
 nodes:
   - id: discover
     bash: printf '["a","b"]'
@@ -536,7 +482,7 @@ nodes:
       retry_on: [exit]
     workflow:
       path: child.yaml
-      input: '${fanout.item}'
+      input: $FANOUT.item
       isolation: inherit
       fan_out:
         items_from: nodes.discover.output
@@ -563,18 +509,12 @@ func TestGovernedChildFanOutRejectsDuplicateItemsByDefault(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: duplicate-child
+	mustWriteFile(t, childPath, `name: duplicate-child
 nodes:
   - id: run
-    bash: printf '%s' '${input}'
+    bash: printf '%s' "$ARGUMENTS"
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: duplicate-parent
+	mustWriteFile(t, parentPath, `name: duplicate-parent
 nodes:
   - id: discover
     bash: printf '["code","code"]'
@@ -582,7 +522,7 @@ nodes:
     depends_on: [discover]
     workflow:
       path: child.yaml
-      input: '${fanout.item}'
+      input: $FANOUT.item
       isolation: inherit
       fan_out:
         items_from: nodes.discover.output
@@ -601,18 +541,12 @@ func TestGovernedChildFanOutCanExplicitlyAllowDuplicateItems(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: duplicate-child
+	mustWriteFile(t, childPath, `name: duplicate-child
 nodes:
   - id: run
-    bash: printf '%s' '${input}'
+    bash: printf '%s' "$ARGUMENTS"
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: duplicate-parent
+	mustWriteFile(t, parentPath, `name: duplicate-parent
 nodes:
   - id: discover
     bash: printf '["code","code"]'
@@ -620,7 +554,7 @@ nodes:
     depends_on: [discover]
     workflow:
       path: child.yaml
-      input: '${fanout.item}'
+      input: $FANOUT.item
       isolation: inherit
       fan_out:
         items_from: nodes.discover.output
@@ -640,14 +574,11 @@ func TestGovernedChildFanOutOneSuccessCancelsUnneededChildren(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: early-success-child
+	mustWriteFile(t, childPath, `name: early-success-child
 nodes:
   - id: run
     bash: |
-      if [ '${input}' = fast ]; then
+      if [ "$ARGUMENTS" = fast ]; then
         sleep 0.05
         printf success
         exit 0
@@ -655,10 +586,7 @@ nodes:
       sleep 10
       printf slow
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: early-success-parent
+	mustWriteFile(t, parentPath, `name: early-success-parent
 nodes:
   - id: discover
     bash: printf '["fast","slow-a","slow-b"]'
@@ -666,7 +594,7 @@ nodes:
     depends_on: [discover]
     workflow:
       path: child.yaml
-      input: '${fanout.item}'
+      input: $FANOUT.item
       isolation: inherit
       fan_out:
         items_from: nodes.discover.output
@@ -706,23 +634,17 @@ func TestGovernedChildFanOutAllSuccessCancelsAfterFirstFailure(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: early-failure-child
+	mustWriteFile(t, childPath, `name: early-failure-child
 nodes:
   - id: run
     bash: |
-      if [ '${input}' = fail ]; then
+      if [ "$ARGUMENTS" = fail ]; then
         sleep 0.05
         exit 7
       fi
       sleep 10
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: early-failure-parent
+	mustWriteFile(t, parentPath, `name: early-failure-parent
 nodes:
   - id: discover
     bash: printf '["fail","slow-a","slow-b"]'
@@ -730,7 +652,7 @@ nodes:
     depends_on: [discover]
     workflow:
       path: child.yaml
-      input: '${fanout.item}'
+      input: $FANOUT.item
       isolation: inherit
       fan_out:
         items_from: nodes.discover.output

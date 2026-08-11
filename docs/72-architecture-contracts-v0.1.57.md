@@ -1,6 +1,10 @@
 # Architecture Contracts v0.1.57
 
-`v0.1.57-alpha` не расширяет возможности Takt. Релиз закрепляет три архитектурных правила, полезных для долгой эволюции runtime: дисциплину языка workflow, декларативную регистрацию расширений и schema-first описание canonical operations.
+`v0.1.57-alpha` закрепляет три архитектурных правила, полезных для долгой
+эволюции runtime: дисциплину языка workflow, декларативную регистрацию
+расширений и schema-first описание canonical operations. В том же release
+boundary реализован A0/A1 Archon-first language/runtime slice; это миграция
+Workflow authoring contract, а не второй runtime.
 
 Идеи осознанно адаптированы из практик Archon (`coleam00/Archon`), который является идеологическим родителем Takt. Takt перенимает ограничения, уменьшающие архитектурную энтропию, но сохраняет собственные принципы: один production composition root, отсутствие глобальных mutable registries и небольшой provider-neutral stable core.
 
@@ -36,6 +40,20 @@ Workflow YAML описывает только то, что runtime должен 
 Если практическая потребность когда-либо докажет необходимость полноценного expression language, Takt принимает зрелый специфицированный язык целиком отдельным versioned contract change, а не выращивает собственный parser оператор за оператором.
 
 `internal/whenexpr` является единственной реализацией этой небольшой семантики. `internal/workflow` проверяет выражение до Run, а `internal/runtime` использует тот же пакет при выполнении.
+
+### A0/A1 target language boundary
+
+Workflow authoring использует target root `name`/`description`/`provider`/`model`/
+`nodes`, node `provider`/`context` и единый `$...` reference grammar. Legacy
+`apiVersion`/`kind`/`metadata`/`defaults`, frontmatter `assistant` и `${...}` не
+имеют compatibility path и отклоняются до Run. `output_format` остаётся тем же
+проверяемым `takt-schema-subset/v1` contract.
+
+A1 loop semantics переиспользует общий scheduler и durable state: scalar
+`loop`, `until.signal`, `until.requires`, `until_bash`, immutable iteration
+evidence, `fresh_context`, `context: shared`, approval continuation и exact
+Session ID resume. Hard token/tool budgets требуют отдельного live capability
+proof и не входят в этот contract.
 
 ### Структура workflow
 
@@ -114,7 +132,8 @@ MCP canonical tools строятся из `appapi.CanonicalOperations()`. В `in
 
 ## Что намеренно не изменилось
 
-- внешний API workflow/config остаётся `takt/v1alpha1`;
+- Config/Profile/Run/protocol API сохраняют свои versioned границы; Workflow
+  authoring в `takt/v1alpha1` использует target A0/A1 language surface;
 - существующие CLI/MCP operation names сохраняются;
 - Dynamic Flow остаётся experimental;
 - Pi/OpenCode остаются bundled extensions;

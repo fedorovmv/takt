@@ -1,62 +1,73 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: dynamic-replan
-  description: Reassess only the unfinished part of a Dynamic Takt plan at an explicit checkpoint.
-defaults:
-  assistant: coding-agent
-  model: routing
-  session: fresh
+---
 nodes:
-  - id: replan
-    command: dynamic-replan
-    allowed_tools: []
-    skills: []
-    attempts:
-      max: 2
-      retry_on: [protocol]
-      retry_session: fresh
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        action:
-          type: string
-          enum: [continue, replace_remaining, finish, ask_user]
-        reason:
-          type: string
-          minLength: 1
-        phases:
-          type: array
-          maxItems: 256
-          items:
-            type: object
-            additionalProperties: false
-            properties:
-              id:
+- id: replan
+  command: dynamic-replan
+  allowed_tools: []
+  skills: []
+  attempts:
+    max: 2
+    retry_on:
+    - protocol
+    retry_session: fresh
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      action:
+        type: string
+        enum:
+        - continue
+        - replace_remaining
+        - finish
+        - ask_user
+      reason:
+        type: string
+        minLength: 1
+      phases:
+        type: array
+        maxItems: 256
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              pattern: "^[a-z][a-z0-9-]{0,62}$"
+            uses:
+              type: string
+              pattern: "^[a-z][a-z0-9-]{0,62}$"
+            objective:
+              type: string
+              minLength: 1
+            depends_on:
+              type: array
+              uniqueItems: true
+              items:
                 type: string
-                pattern: "^[a-z][a-z0-9-]{0,62}$"
-              uses:
-                type: string
-                pattern: "^[a-z][a-z0-9-]{0,62}$"
-              objective:
-                type: string
-                minLength: 1
-              depends_on:
-                type: array
-                uniqueItems: true
-                items:
-                  type: string
-              strategy:
-                type: string
-                enum: [task, map]
-              source:
-                type: string
-              max_parallel:
-                type: integer
-                minimum: 1
-                maximum: 64
-              checkpoint:
-                type: boolean
-            required: [id, uses, objective, strategy]
-      required: [action, reason, phases]
+            strategy:
+              type: string
+              enum:
+              - task
+              - map
+            source:
+              type: string
+            max_parallel:
+              type: integer
+              minimum: 1
+              maximum: 64
+            checkpoint:
+              type: boolean
+          required:
+          - id
+          - uses
+          - objective
+          - strategy
+    required:
+    - action
+    - reason
+    - phases
+name: dynamic-replan
+description: Reassess only the unfinished part of a Dynamic Takt plan at an explicit
+  checkpoint.
+provider: coding-agent
+model: routing

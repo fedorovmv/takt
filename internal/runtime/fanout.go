@@ -359,8 +359,12 @@ func (r *Runner) runFanOutChild(ctx context.Context, parent *store.RunState, nod
 
 func resolveFanOutItems(path string, state *store.RunState) ([]any, []json.RawMessage, string, error) {
 	parts := strings.Split(strings.TrimSpace(path), ".")
+	if len(parts) >= 2 && strings.HasPrefix(parts[0], "$") {
+		parts[0] = strings.TrimPrefix(parts[0], "$")
+		parts = append([]string{"nodes", parts[0]}, parts[1:]...)
+	}
 	if len(parts) < 3 || parts[0] != "nodes" || parts[2] != "output" {
-		return nil, nil, "", fmt.Errorf("items_from must be nodes.<id>.output or a nested output path")
+		return nil, nil, "", fmt.Errorf("items_from must be $<id>.output or a nested output path")
 	}
 	node := state.Nodes[parts[1]]
 	if node == nil {

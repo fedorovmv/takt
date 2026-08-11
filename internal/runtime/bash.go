@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"os"
 	"strings"
 
 	"takt/internal/execution"
@@ -12,6 +13,10 @@ import (
 )
 
 func (r *Runner) runBash(ctx context.Context, node spec.Node, script string) (execResult, error) {
+	return r.runBashWithEnv(ctx, node, script, nil)
+}
+
+func (r *Runner) runBashWithEnv(ctx context.Context, node spec.Node, script string, env map[string]string) (execResult, error) {
 	policy := localsandbox.Policy{}
 	if node.Sandbox != nil {
 		policy = localsandbox.Policy{Enforcement: node.Sandbox.Enforcement, Filesystem: node.Sandbox.Filesystem, Network: node.Sandbox.Network}
@@ -23,6 +28,12 @@ func (r *Runner) runBash(ctx context.Context, node spec.Node, script string) (ex
 	}
 	execution.ConfigureCommand(cmd)
 	cmd.Dir = r.workspace
+	if len(env) > 0 {
+		cmd.Env = append([]string(nil), os.Environ()...)
+		for key, value := range env {
+			cmd.Env = append(cmd.Env, key+"="+value)
+		}
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err = cmd.Run()

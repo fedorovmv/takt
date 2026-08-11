@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 Capture the unchanged repository baseline before implementation.
@@ -13,7 +13,7 @@ Requirements:
 - return only the required JSON object.
 
 Task context:
-$USER_MESSAGE
+$ARGUMENTS
 
 Previous structured-output feedback:
-${feedback}
+$FEEDBACK

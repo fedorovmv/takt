@@ -17,6 +17,7 @@ import (
 	"takt/internal/assistant"
 	"takt/internal/execution"
 	assistantpi "takt/internal/extensions/assistants/pi"
+	"takt/internal/redact"
 	"takt/internal/spec"
 	"takt/internal/store"
 	"takt/internal/workflow"
@@ -44,7 +45,7 @@ func TestApprovalResume(t *testing.T) {
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cmdDir, "do.md"), []byte("---\nassistant: demo\nmodel: large\n---\nHello $USER_MESSAGE\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cmdDir, "do.md"), []byte("---\nprovider: demo\nmodel: large\n---\nHello $ARGUMENTS\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "test"}, Nodes: []spec.Node{{ID: "do", Command: "do"}, {ID: "approve", DependsOn: []string{"do"}, Approval: &spec.ApprovalSpec{Message: "OK?", CaptureResponse: true}}}}
@@ -89,6 +90,37 @@ func TestHookRetry(t *testing.T) {
 	}
 	if state.Nodes["n"].Attempts != 2 {
 		t.Fatalf("expected 2 attempts, got %d", state.Nodes["n"].Attempts)
+	}
+}
+
+func TestSharedContextResumesTransitiveAncestorSession(t *testing.T) {
+	dir := t.TempDir()
+	var requests []assistant.Request
+	adapter := adapterFunc(func(_ context.Context, request assistant.Request) (assistant.Result, error) {
+		requests = append(requests, request)
+		return assistant.Result{Output: request.NodeID, Stdout: request.NodeID, ExitCode: 0, SessionID: "source-session"}, nil
+	})
+	wf := &spec.Workflow{Name: "shared-transitive", Nodes: []spec.Node{
+		{ID: "source", Prompt: "source", Provider: "demo", Model: "m"},
+		{ID: "bridge", DependsOn: []string{"source"}, Bash: "true"},
+		{ID: "target", DependsOn: []string{"bridge"}, Prompt: "target", Provider: "demo", Model: "m", Context: "shared"},
+	}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{
+		Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg),
+	})
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != store.RunCompleted {
+		t.Fatalf("run status = %s", state.Status)
+	}
+	if len(requests) != 2 || requests[1].NodeID != "target" {
+		t.Fatalf("assistant requests = %#v", requests)
+	}
+	if requests[1].SessionMode != "resume" || requests[1].SessionID != "source-session" {
+		t.Fatalf("target did not resume transitive source: mode=%q id=%q", requests[1].SessionMode, requests[1].SessionID)
 	}
 }
 
@@ -409,7 +441,7 @@ func TestLoopGroupUsesWhenAndTriggerRules(t *testing.T) {
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-semantics"}, Nodes: []spec.Node{{
 		ID: "loop",
 		LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{
-			{ID: "side-effect", When: `inputs.input == "run"`, Bash: "echo touched > touched.txt"},
+			{ID: "side-effect", When: `$INPUTS.input == "run"`, Bash: "echo touched > touched.txt"},
 			{ID: "check", DependsOn: []string{"side-effect"}, TriggerRule: "all_done", Bash: "test ! -f touched.txt"},
 		}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}},
 	}}}
@@ -574,7 +606,7 @@ func TestUntilRequiresCompletedNode(t *testing.T) {
 	zero := 0
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "until-status"}, Nodes: []spec.Node{{
 		ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{
-			ID: "check", When: `inputs.input == "run"`, Bash: "true",
+			ID: "check", When: `$INPUTS.input == "run"`, Bash: "true",
 		}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}},
 	}}}
 	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
@@ -1139,7 +1171,7 @@ func TestApprovalInsideLoopGroupResumesAndPromptsEachIteration(t *testing.T) {
 			MaxIterations: 3,
 			Nodes: []spec.Node{
 				{ID: "feedback", Approval: &spec.ApprovalSpec{Message: "Continue or ready?", CaptureResponse: true}},
-				{ID: "check", DependsOn: []string{"feedback"}, Bash: `test "${nodes.feedback.output}" = "ready"`, AllowFailure: true},
+				{ID: "check", DependsOn: []string{"feedback"}, Bash: `test $feedback.output = "ready"`, AllowFailure: true},
 			},
 			Until: spec.UntilSpec{Node: "check", ExitCode: &zero},
 		},
@@ -1315,23 +1347,17 @@ func TestGovernedChildPolicyRestrictsChildNode(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	if err := os.WriteFile(childPath, []byte(`name: child
 nodes:
   - id: agent
     prompt: child
-    assistant: demo
+    provider: demo
     model: model
     allowed_tools: [read, write]
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(parentPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	if err := os.WriteFile(parentPath, []byte(`name: parent
 nodes:
   - id: child
     workflow:
@@ -1433,7 +1459,7 @@ func TestPauseIsRecheckedBeforeRetryAttempt(t *testing.T) {
 	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cmdDir, "do.md"), []byte("---\nassistant: demo\nmodel: m\n---\nretry me\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cmdDir, "do.md"), []byte("---\nprovider: demo\nmodel: m\n---\nretry me\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "pause-retry"}, Nodes: []spec.Node{{ID: "do", Command: "do", Attempts: spec.AttemptsSpec{Max: 2, RetryOn: []string{"exit"}}}}}

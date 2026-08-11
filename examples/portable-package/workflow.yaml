@@ -1,31 +1,32 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: portable-review
-defaults:
-  assistant: coding-agent
-  model: review
+---
 nodes:
-  - id: inventory
-    script:
-      runtime: command
-      path: scripts/inventory.sh
-    output_format:
-      type: object
-      properties:
-        files:
-          type: array
-          items:
-            type: string
-      required: [files]
-  - id: review
-    depends_on: [inventory]
-    command: package-review
-    skills: [skills/review]
-    mcp: mcp.json
-    output_format:
-      type: object
-      properties:
-        summary:
+- id: inventory
+  script:
+    runtime: command
+    path: scripts/inventory.sh
+  output_format:
+    type: object
+    properties:
+      files:
+        type: array
+        items:
           type: string
-      required: [summary]
+    required:
+    - files
+- id: review
+  depends_on:
+  - inventory
+  command: package-review
+  skills:
+  - skills/review
+  mcp: mcp.json
+  output_format:
+    type: object
+    properties:
+      summary:
+        type: string
+    required:
+    - summary
+name: portable-review
+provider: coding-agent
+model: review

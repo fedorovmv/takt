@@ -1,54 +1,58 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: neutral-change-flow
-  description: Provider-neutral tracker, CI and SCM flow with no GitHub/Jira names in the workflow.
+---
 nodes:
-  - id: work-item
-    adapter:
-      name: tracker
-      operation: item.get
-      input: |
-        {"id":"ABC-123"}
-    output_format:
-      type: object
-      additionalProperties: true
-      properties:
-        id:
-          type: string
-        operation:
-          type: string
-      required: [id]
+- id: work-item
+  adapter:
+    name: tracker
+    operation: item.get
+    input: '{"id":"ABC-123"}
 
-  - id: ci
-    depends_on: [work-item]
-    adapter:
-      name: ci
-      operation: run.start
-      input: |
-        {"id":"${nodes.work-item.output.id}"}
-    side_effect:
-      mode: reconcile
-      idempotency_key: '${nodes.work-item.output.id}:ci'
+'
+  output_format:
+    type: object
+    additionalProperties: true
+    properties:
+      id:
+        type: string
+      operation:
+        type: string
+    required:
+    - id
+- id: ci
+  depends_on:
+  - work-item
+  adapter:
+    name: ci
+    operation: run.start
+    input: '{"id":"$work-item.output.id"}
 
-  - id: change
-    depends_on: [ci]
-    adapter:
-      name: scm
-      operation: change.create
-      input: |
-        {"title":"Change for ${nodes.work-item.output.id}"}
-    side_effect:
-      mode: reconcile
-      idempotency_key: '${nodes.work-item.output.id}:change'
+'
+  side_effect:
+    mode: reconcile
+    idempotency_key: "$work-item.output.id:ci"
+- id: change
+  depends_on:
+  - ci
+  adapter:
+    name: scm
+    operation: change.create
+    input: '{"title":"Change for $work-item.output.id"}
 
-  - id: tracker-update
-    depends_on: [change]
-    adapter:
-      name: tracker
-      operation: item.comment
-      input: |
-        {"id":"${nodes.work-item.output.id}","message":"SCM change created"}
-    side_effect:
-      mode: reconcile
-      idempotency_key: '${nodes.work-item.output.id}:comment'
+'
+  side_effect:
+    mode: reconcile
+    idempotency_key: "$work-item.output.id:change"
+- id: tracker-update
+  depends_on:
+  - change
+  adapter:
+    name: tracker
+    operation: item.comment
+    input: '{"id":"$work-item.output.id","message":"SCM change created"}
+
+'
+  side_effect:
+    mode: reconcile
+    idempotency_key: "$work-item.output.id:comment"
+name: neutral-change-flow
+description: Provider-neutral tracker, CI and SCM flow with no GitHub/Jira names in
+  the workflow.

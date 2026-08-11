@@ -2,13 +2,13 @@ package authoring
 
 import (
 	"fmt"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"takt/internal/command"
+	"takt/internal/flowref"
 	"takt/internal/spec"
 )
 
@@ -47,8 +47,6 @@ func HasErrors(values []Diagnostic) bool {
 	return false
 }
 
-var templateRE = regexp.MustCompile(`\$\{([^}]+)\}`)
-
 // Analyze performs static checks that are intentionally stricter and more
 // helpful than runtime rendering. It never mutates the workflow.
 func Analyze(wf *spec.Workflow, resolver command.Resolver) []Diagnostic {
@@ -82,6 +80,9 @@ func analyzeScope(nodes []spec.Node, scope string, resolver command.Resolver, in
 	var diagnostics []Diagnostic
 	for index, node := range nodes {
 		path := fmt.Sprintf("%s[%d]", scope, index)
+		if reservedArchonNodeID(node.ID) {
+			diagnostics = append(diagnostics, Diagnostic{Code: "node.id_reserved", Severity: "error", Path: path + ".id", Message: fmt.Sprintf("node id %q is reserved by the reference language", node.ID)})
+		}
 		if node.AlwaysRun && len(node.DependsOn) == 0 {
 			diagnostics = append(diagnostics, Diagnostic{Code: "always_run.no_dependencies", Severity: "warning", Path: path + ".always_run", Message: "always_run has no effect on a node without dependencies", Hint: "remove always_run or add the cleanup dependencies"})
 		}
@@ -101,7 +102,11 @@ func analyzeScope(nodes []spec.Node, scope string, resolver command.Resolver, in
 
 		fields := templateFields(node, resolver)
 		for _, field := range fields {
-			diagnostics = append(diagnostics, analyzeTemplate(field.value, field.path, node, byID, local, insideLoop)...)
+			surface := flowref.NonShell
+			if strings.HasSuffix(field.path, ".bash") {
+				surface = flowref.Shell
+			}
+			diagnostics = append(diagnostics, analyzeTemplate(field.value, field.path, node, byID, local, insideLoop, surface)...)
 		}
 		if strings.TrimSpace(node.When) != "" {
 			diagnostics = append(diagnostics, analyzeWhen(node.When, path+".when", node, byID, local)...)
@@ -197,56 +202,60 @@ func parseExpression(raw string) (expression, error) {
 	return result, nil
 }
 
-func analyzeTemplate(value, path string, current spec.Node, byID, local map[string]spec.Node, insideLoop bool) []Diagnostic {
+func analyzeTemplate(value, path string, current spec.Node, byID, local map[string]spec.Node, insideLoop bool, surface flowref.Surface) []Diagnostic {
 	var diagnostics []Diagnostic
-	for _, match := range templateRE.FindAllStringSubmatch(value, -1) {
-		expression, err := parseExpression(match[1])
-		if err != nil {
-			diagnostics = append(diagnostics, Diagnostic{Code: "template.invalid", Severity: "error", Path: path, Message: err.Error()})
+	if strings.Contains(path, ".tool_approval.message") {
+		// `${tool}` is an external-worker protocol placeholder, not a workflow
+		// reference; the worker replaces it when presenting the approval prompt.
+		value = strings.ReplaceAll(value, "${tool}", "")
+	}
+	if strings.Contains(value, "${") || strings.Contains(value, "$USER_MESSAGE") {
+		return []Diagnostic{{Code: "template.reference_legacy", Severity: "error", Path: path, Message: "legacy Takt references are not accepted; use the Archon-first $... grammar"}}
+	}
+	refs, err := flowref.Scan(value, surface)
+	if err != nil {
+		return []Diagnostic{{Code: "template.invalid", Severity: "error", Path: path, Message: err.Error()}}
+	}
+	for _, ref := range refs {
+		switch ref.Kind {
+		case flowref.KindBare, flowref.KindInput, flowref.KindFanout:
 			continue
-		}
-		key := expression.path
-		if key == "input" || key == "feedback" || (key == "tool" && strings.Contains(path, ".tool_approval.message")) {
-			continue
-		}
-		parts := strings.Split(key, ".")
-		if len(parts) == 2 && parts[0] == "approvals" {
-			target, ok := byID[parts[1]]
+		case flowref.KindApproval:
+			target, ok := byID[ref.NodeID]
 			if !ok || target.Approval == nil {
-				diagnostics = append(diagnostics, Diagnostic{Code: "template.approval_unknown", Severity: "error", Path: path, Message: fmt.Sprintf("template references unknown approval %q", parts[1])})
+				diagnostics = append(diagnostics, Diagnostic{Code: "template.approval_unknown", Severity: "error", Path: path, Message: fmt.Sprintf("template references unknown approval %q", ref.NodeID)})
 			} else if _, inherited := local[target.ID]; inherited && !dependsOn(current.ID, target.ID, local, map[string]bool{}) {
 				diagnostics = append(diagnostics, Diagnostic{Code: "template.reference_not_upstream", Severity: "error", Path: path, Message: fmt.Sprintf("approval %q is not an upstream dependency of node %q", target.ID, current.ID)})
 			}
 			continue
-		}
-		if len(parts) >= 4 && parts[0] == "loop" && parts[1] == "previous" {
+		case flowref.KindLoopPrevious:
 			if !insideLoop {
 				diagnostics = append(diagnostics, Diagnostic{Code: "template.loop_outside_loop", Severity: "error", Path: path, Message: "loop.previous is available only inside loop_group"})
 			}
 			continue
-		}
-		if len(parts) >= 2 && (parts[0] == "fanout" || (current.WorkflowRun != nil && current.WorkflowRun.FanOut != nil && parts[0] == current.WorkflowRun.FanOut.As)) {
-			if current.WorkflowRun == nil || current.WorkflowRun.FanOut == nil {
-				diagnostics = append(diagnostics, Diagnostic{Code: "template.fanout_outside_fanout", Severity: "error", Path: path, Message: "fanout variables are available only in workflow.fan_out input"})
+		case flowref.KindNode:
+			source, ok := byID[ref.NodeID]
+			if !ok {
+				diagnostics = append(diagnostics, Diagnostic{Code: "template.node_unknown", Severity: "error", Path: path, Message: fmt.Sprintf("template references unknown node %q", ref.NodeID)})
+				continue
 			}
-			continue
+			if source.ID == current.ID || (local[source.ID].ID != "" && !dependsOn(current.ID, source.ID, local, map[string]bool{})) {
+				diagnostics = append(diagnostics, Diagnostic{Code: "template.reference_not_upstream", Severity: "error", Path: path, Message: fmt.Sprintf("node %q is not an upstream dependency of node %q", source.ID, current.ID), Hint: "add it to depends_on directly or transitively"})
+				continue
+			}
+			diagnostics = append(diagnostics, validateNodePath(source, ref.Path, path, expression{})...)
 		}
-		if len(parts) < 3 || parts[0] != "nodes" {
-			diagnostics = append(diagnostics, Diagnostic{Code: "template.unknown_root", Severity: "error", Path: path, Message: fmt.Sprintf("unsupported template expression %q", key), Hint: "use input, feedback, approvals.<id>, nodes.<id>.<field>, optional ${path?}, or default ${path:-value}"})
-			continue
-		}
-		source, ok := byID[parts[1]]
-		if !ok {
-			diagnostics = append(diagnostics, Diagnostic{Code: "template.node_unknown", Severity: "error", Path: path, Message: fmt.Sprintf("template references unknown node %q", parts[1])})
-			continue
-		}
-		if source.ID == current.ID || (local[source.ID].ID != "" && !dependsOn(current.ID, source.ID, local, map[string]bool{})) {
-			diagnostics = append(diagnostics, Diagnostic{Code: "template.reference_not_upstream", Severity: "error", Path: path, Message: fmt.Sprintf("node %q is not an upstream dependency of node %q", source.ID, current.ID), Hint: "add it to depends_on directly or transitively"})
-			continue
-		}
-		diagnostics = append(diagnostics, validateNodePath(source, parts[2:], path, expression)...)
 	}
 	return diagnostics
+}
+
+func reservedArchonNodeID(id string) bool {
+	switch id {
+	case "ARGUMENTS", "ARTIFACTS_DIR", "BASE_BRANCH", "INPUTS", "LOOP_PREV", "FEEDBACK", "FANOUT":
+		return true
+	default:
+		return false
+	}
 }
 
 func validateNodePath(source spec.Node, parts []string, path string, expression expression) []Diagnostic {
@@ -344,21 +353,21 @@ func analyzeWhen(value, path string, current spec.Node, byID, local map[string]s
 	for _, operator := range []string{"==", "!="} {
 		if index := strings.Index(value, operator); index >= 0 {
 			left := strings.TrimSpace(value[:index])
-			if strings.HasPrefix(left, "nodes.") {
-				parts := strings.Split(left, ".")
-				if len(parts) < 3 {
-					return []Diagnostic{{Code: "when.reference_invalid", Severity: "error", Path: path, Message: fmt.Sprintf("invalid when reference %q", left)}}
-				}
-				source, ok := byID[parts[1]]
+			ref, err := flowref.Parse(left, flowref.When)
+			if err != nil {
+				return []Diagnostic{{Code: "when.reference_invalid", Severity: "error", Path: path, Message: err.Error()}}
+			}
+			if ref.Kind == flowref.KindNode {
+				source, ok := byID[ref.NodeID]
 				if !ok {
-					return []Diagnostic{{Code: "when.node_unknown", Severity: "error", Path: path, Message: fmt.Sprintf("when references unknown node %q", parts[1])}}
+					return []Diagnostic{{Code: "when.node_unknown", Severity: "error", Path: path, Message: fmt.Sprintf("when references unknown node %q", ref.NodeID)}}
 				}
 				if local[source.ID].ID != "" && !dependsOn(current.ID, source.ID, local, map[string]bool{}) {
 					return []Diagnostic{{Code: "when.reference_not_upstream", Severity: "error", Path: path, Message: fmt.Sprintf("node %q is not upstream of node %q", source.ID, current.ID)}}
 				}
-				return validateNodePath(source, parts[2:], path, expression{})
+				return validateNodePath(source, ref.Path, path, expression{})
 			}
-			if left == "inputs.message" || left == "inputs.input" {
+			if ref.Kind == flowref.KindInput || (ref.Kind == flowref.KindBare && ref.Name == "ARGUMENTS") {
 				return nil
 			}
 			return []Diagnostic{{Code: "when.reference_invalid", Severity: "error", Path: path, Message: fmt.Sprintf("unsupported when reference %q", left)}}

@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/coleam00/Archon",
+  "commit": "41765d6a1448da73f398a30e161f3b4eaba0b768",
+  "license": "MIT",
+  "license_file": "LICENSE",
+  "license_sha256": "be39e59fb1d5f09c831ab6d8d38cba6d07812afb27eed300520dc493580cc7f6",
+  "fixtures": [
+    {
+      "file": "archon-feature-development.yaml",
+      "original_path": ".archon/workflows/defaults/archon-feature-development.yaml",
+      "url": "https://raw.githubusercontent.com/coleam00/Archon/41765d6a1448da73f398a30e161f3b4eaba0b768/.archon/workflows/defaults/archon-feature-development.yaml",
+      "sha256": "438ec22dff9cddeee9dfdf2686abc46ab80dfb147081654e7990b24dfadc1895"
+    },
+    {
+      "file": "t1-fix-issue.yaml",
+      "original_path": ".archon/workflows/rasmus-tests/t1-fix-issue.yaml",
+      "url": "https://raw.githubusercontent.com/coleam00/Archon/41765d6a1448da73f398a30e161f3b4eaba0b768/.archon/workflows/rasmus-tests/t1-fix-issue.yaml",
+      "sha256": "592a223ca26b66eb260e6589ca768becb111ca83be0be89733c5cda788f831ad"
+    }
+  ]
+}

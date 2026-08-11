@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: routing
 ---
 
@@ -7,4 +7,4 @@ Classify the GitHub issue or problem described by the user. Inspect the referenc
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

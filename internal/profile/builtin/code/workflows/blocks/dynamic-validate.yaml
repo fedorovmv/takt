@@ -1,32 +1,32 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: dynamic-validate
-  description: Approved Dynamic Takt block dynamic-validate.
-defaults:
-  assistant: coding-agent
-  model: review
-  session: fresh
+---
 nodes:
-  - id: result
-    command: dynamic-validate
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        summary:
+- id: result
+  command: dynamic-validate
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      summary:
+        type: string
+        minLength: 1
+      passed:
+        type: boolean
+      checks:
+        type: array
+        items:
           type: string
-          minLength: 1
-        passed:
-          type: boolean
-        checks:
-          type: array
-          items:
-            type: string
-        issues:
-          type: array
-          items:
-            type: string
-      required: [summary, passed, checks, issues]
-    output_type: dynamic-validation
-    output_mime: application/json
+      issues:
+        type: array
+        items:
+          type: string
+    required:
+    - summary
+    - passed
+    - checks
+    - issues
+  output_type: dynamic-validation
+  output_mime: application/json
+name: dynamic-validate
+description: Approved Dynamic Takt block dynamic-validate.
+provider: coding-agent
+model: review

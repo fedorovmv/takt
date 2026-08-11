@@ -11,14 +11,23 @@ type Metadata struct {
 }
 
 type Workflow struct {
-	APIVersion string         `json:"apiVersion"`
-	Kind       string         `json:"kind"`
-	Metadata   Metadata       `json:"metadata"`
-	Defaults   Defaults       `json:"defaults,omitempty"`
-	Nodes      []Node         `json:"nodes"`
-	Hooks      HookSet        `json:"hooks,omitempty"`
-	Worktree   WorktreeSpec   `json:"worktree,omitempty"`
-	Input      *InputContract `json:"input,omitempty"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	Provider    string            `json:"provider,omitempty"`
+	Model       string            `json:"model,omitempty"`
+	Nodes       []Node            `json:"nodes"`
+	Hooks       HookSet           `json:"hooks,omitempty"`
+	Worktree    WorktreeSpec      `json:"worktree,omitempty"`
+	Input       *InputContract    `json:"input,omitempty"`
+
+	// Legacy fields remain available to Go callers that build definitions in
+	// tests, but are deliberately excluded from YAML/JSON authoring. Workflow
+	// loading therefore fails closed on the old root dialect.
+	APIVersion string   `json:"-"`
+	Kind       string   `json:"-"`
+	Metadata   Metadata `json:"-"`
+	Defaults   Defaults `json:"-"`
 }
 
 type Defaults struct {
@@ -35,9 +44,15 @@ type Node struct {
 	DependsOn    []string          `json:"depends_on,omitempty"`
 	When         string            `json:"when,omitempty"`
 	TriggerRule  string            `json:"trigger_rule,omitempty"`
-	Assistant    string            `json:"assistant,omitempty"`
+	Provider     string            `json:"provider,omitempty"`
+	Context      string            `json:"context,omitempty"`
+	FreshContext bool              `json:"fresh_context,omitempty"`
+	Cancel       string            `json:"cancel,omitempty"`
+	UntilBash    string            `json:"until_bash,omitempty"`
+	Loop         *LoopSpec         `json:"loop,omitempty"`
+	Assistant    string            `json:"-"`
 	Model        string            `json:"model,omitempty"`
-	Session      string            `json:"session,omitempty"`
+	Session      string            `json:"-"`
 	Executor     string            `json:"executor,omitempty"`
 	Command      string            `json:"command,omitempty"`
 	Prompt       string            `json:"prompt,omitempty"`
@@ -248,12 +263,52 @@ type LoopGroupSpec struct {
 	MaxIterations int       `json:"max_iterations"`
 	Nodes         []Node    `json:"nodes"`
 	Until         UntilSpec `json:"until"`
+	UntilBash     string    `json:"until_bash,omitempty"`
+	FreshContext  bool      `json:"fresh_context,omitempty"`
 }
 
 type UntilSpec struct {
+	Node           string             `json:"node,omitempty"`
+	ExitCode       *int               `json:"exit_code,omitempty"`
+	OutputContains string             `json:"output_contains,omitempty"`
+	Signal         string             `json:"signal,omitempty"`
+	Requires       []UntilRequirement `json:"requires,omitempty"`
+	Scalar         bool               `json:"-"`
+}
+
+type UntilRequirement struct {
 	Node           string `json:"node"`
 	ExitCode       *int   `json:"exit_code,omitempty"`
 	OutputContains string `json:"output_contains,omitempty"`
+}
+
+// LoopSpec is the compact single-node loop form. Loader normalization turns it
+// into LoopGroupSpec so the runtime keeps one scheduler/executor.
+type LoopSpec struct {
+	Prompt        string `json:"prompt,omitempty"`
+	Command       string `json:"command,omitempty"`
+	Until         string `json:"until"`
+	UntilBash     string `json:"until_bash,omitempty"`
+	MaxIterations int    `json:"max_iterations"`
+	FreshContext  bool   `json:"fresh_context,omitempty"`
+}
+
+// UnmarshalJSON accepts the scalar signal sugar (`until: BUILD-CLEAN`) while
+// keeping structured predicates strict.
+func (u *UntilSpec) UnmarshalJSON(data []byte) error {
+	var scalar string
+	if err := json.Unmarshal(data, &scalar); err == nil {
+		u.Signal = scalar
+		u.Scalar = true
+		return nil
+	}
+	type alias UntilSpec
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*u = UntilSpec(value)
+	return nil
 }
 
 type HookSet struct {

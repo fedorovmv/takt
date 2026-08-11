@@ -28,7 +28,7 @@ func TestBlockScalarPreservesBlankLinesAndSpecialText(t *testing.T) {
   first
 
   second: value # literal comment
-  ${feedback}
+  $FEEDBACK
 folded: >
   first
   second
@@ -45,7 +45,7 @@ keep: |+
 	if err := Unmarshal([]byte(src), &got); err != nil {
 		t.Fatal(err)
 	}
-	wantPrompt := "first\n\nsecond: value # literal comment\n${feedback}\n"
+	wantPrompt := "first\n\nsecond: value # literal comment\n$FEEDBACK\n"
 	if got.Prompt != wantPrompt {
 		t.Fatalf("prompt mismatch\nwant: %q\n got: %q", wantPrompt, got.Prompt)
 	}

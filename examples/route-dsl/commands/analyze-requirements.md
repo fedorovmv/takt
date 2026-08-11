@@ -1,10 +1,10 @@
 ---
 description: Анализирует техническое задание
-assistant: demo
+provider: demo
 model: fast
 ---
 
 Проанализируй требования и перечисли неоднозначности.
 
 Техническое задание:
-$USER_MESSAGE
+$ARGUMENTS

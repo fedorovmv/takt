@@ -37,6 +37,9 @@
     "workflow_path": {
       "type": "string"
     },
+    "workflow_contract": {
+      "const": "takt-flow/v1alpha1"
+    },
     "config_path": {
       "type": "string"
     },
@@ -158,6 +161,19 @@
     },
     "cancel_requested": {
       "type": "boolean"
+    },
+    "cancel_source": {
+      "type": "string"
+    },
+    "cancel_node_path": {
+      "type": "string"
+    },
+    "cancel_iteration": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cancel_reason": {
+      "type": "string"
     },
     "pause_requested": {
       "type": "boolean"
@@ -1068,10 +1084,33 @@
         "satisfied": {
           "type": "boolean"
         },
+        "matched_signal": {
+          "type": ["string", "null"]
+        },
+        "signal_diagnostic": {
+          "enum": ["signal_missing", "signal_ambiguous", null]
+        },
+        "until_bash": {
+          "$ref": "#/$defs/predicateEvidence"
+        },
         "completed_at": {
           "type": "string",
           "format": "date-time"
         }
+      }
+    },
+    "predicateEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exit_code", "duration", "terminal_status"],
+      "properties": {
+        "stdout": {"type": "string"},
+        "stderr": {"type": "string"},
+        "exit_code": {"type": "integer"},
+        "duration": {"type": "integer", "minimum": 0},
+        "terminal_status": {"type": "string"},
+        "truncated": {"type": "boolean"},
+        "error_code": {"type": "string"}
       }
     }
   }

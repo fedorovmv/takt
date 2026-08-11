@@ -31,10 +31,10 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 		return nil, fmt.Errorf("cannot compile an empty phase segment")
 	}
 	wf := &spec.Workflow{
-		APIVersion: APIVersion,
-		Kind:       "Workflow",
-		Metadata:   spec.Metadata{Name: options.WorkflowName, Description: "Generated Dynamic Takt segment compiled from a validated WorkflowPlan."},
-		Defaults:   spec.Defaults{Assistant: "opencode", Model: "implementation", Session: "fresh"},
+		Name:        options.WorkflowName,
+		Description: "Generated Dynamic Takt segment compiled from a validated WorkflowPlan.",
+		Provider:    "opencode",
+		Model:       "implementation",
 	}
 	for _, phase := range phases {
 		if phase.Repository == "" && phaseRequiresWorktree(options, phase) {
@@ -136,10 +136,10 @@ func Compile(phases []Phase, budget Budget, options CompileOptions) (*spec.Workf
 		}
 		payload, _ := json.Marshal(map[string]any{
 			"repository":           phase.Repository,
-			"repository_workspace": "${nodes." + phase.ID + ".child_execution_workspace}",
+			"repository_workspace": "$" + phase.ID + ".child_execution_workspace",
 			"title":                phase.Objective,
-			"head":                 "${nodes." + phase.ID + ".child_branch}",
-			"base_commit":          "${nodes." + phase.ID + ".child_base_commit}",
+			"head":                 "$" + phase.ID + ".child_branch",
+			"base_commit":          "$" + phase.ID + ".child_base_commit",
 		})
 		wf.Nodes = append(wf.Nodes, spec.Node{
 			ID: phase.ID + "-publish", DependsOn: []string{phase.ID},
@@ -227,7 +227,7 @@ func internalDependencies(deps []string, segment map[string]bool) []string {
 
 func phaseInput(goal string, phase Phase, context, governance string, promoted bool, signals []string, block *blockcatalog.ResolvedBlock) (string, error) {
 	if promoted {
-		goal = "${input}"
+		goal = "$ARGUMENTS"
 	}
 	dependencyContext := dependencyInput(phase)
 	if block == nil || block.RoleDefinition == nil || block.Role == "" {
@@ -256,10 +256,10 @@ func phaseInput(goal string, phase Phase, context, governance string, promoted b
 		deps := map[string]any{}
 		for _, dep := range phase.DependsOn {
 			deps[dep] = map[string]any{
-				"output":              "${nodes." + dep + ".output}",
-				"execution_workspace": "${nodes." + dep + ".child_execution_workspace}",
-				"branch":              "${nodes." + dep + ".child_branch}",
-				"base_commit":         "${nodes." + dep + ".child_base_commit}",
+				"output":              "$" + dep + ".output",
+				"execution_workspace": "$" + dep + ".child_execution_workspace",
+				"branch":              "$" + dep + ".child_branch",
+				"base_commit":         "$" + dep + ".child_base_commit",
 			}
 		}
 		brief.Context["dependency_results"] = deps
@@ -279,7 +279,7 @@ func dependencyInput(phase Phase) string {
 	}
 	var lines []string
 	for _, dep := range phase.DependsOn {
-		lines = append(lines, fmt.Sprintf("%s: output=${nodes.%s.output}; workspace=${nodes.%s.child_execution_workspace}; branch=${nodes.%s.child_branch}; base_commit=${nodes.%s.child_base_commit}", dep, dep, dep, dep, dep))
+		lines = append(lines, fmt.Sprintf("%s: output=$%s.output; workspace=$%s.child_execution_workspace; branch=$%s.child_branch; base_commit=$%s.child_base_commit", dep, dep, dep, dep, dep))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -297,12 +297,12 @@ func phaseFanOutInput(goal string, phase Phase, context, governance string, prom
 		if brief.Context == nil {
 			brief.Context = map[string]any{}
 		}
-		brief.Context["current_item"] = "${fanout.item}"
-		brief.Context["fanout_index"] = "${fanout.index}"
-		brief.Context["fanout_total"] = "${fanout.total}"
+		brief.Context["current_item"] = "$FANOUT.item"
+		brief.Context["fanout_index"] = "$FANOUT.index"
+		brief.Context["fanout_total"] = "$FANOUT.total"
 		return rolecontract.EncodeBrief(brief), nil
 	}
-	return base + "\n\nCurrent item (${fanout.index}/${fanout.total}):\n${fanout.item}", nil
+	return base + "\n\nCurrent item ($FANOUT.index/$FANOUT.total):\n$FANOUT.item", nil
 }
 
 func SafeWorkflowName(value string) string {

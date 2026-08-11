@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 
@@ -9,4 +9,4 @@ Resolve the PR and base branch, inspect the complete diff, commits, changed publ
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

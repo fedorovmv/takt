@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 
@@ -9,4 +9,4 @@ Read architecture documents and repository instructions, map relevant components
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

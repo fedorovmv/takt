@@ -1,67 +1,83 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: task-route
-  description: Select an existing workflow, the stable simple-reliable template, or bounded Dynamic Takt composition.
-defaults:
-  assistant: coding-agent
-  model: routing
-  session: fresh
+---
 nodes:
-  - id: route
-    command: task-route
-    allowed_tools: []
-    skills: []
-    attempts:
-      max: 2
-      retry_on: [protocol]
-      retry_session: fresh
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        apiVersion:
-          type: string
-          enum: [takt/v1alpha1]
-        kind:
-          type: string
-          enum: [TaskRoute]
-        route:
-          type: string
-          enum: [workflow, template, dynamic]
-        workflow:
-          type: string
-        template:
-          type: string
-          enum: [simple-reliable]
-        reason:
+- id: route
+  command: task-route
+  allowed_tools: []
+  skills: []
+  attempts:
+    max: 2
+    retry_on:
+    - protocol
+    retry_session: fresh
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      apiVersion:
+        type: string
+        enum:
+        - takt/v1alpha1
+      kind:
+        type: string
+        enum:
+        - TaskRoute
+      route:
+        type: string
+        enum:
+        - workflow
+        - template
+        - dynamic
+      workflow:
+        type: string
+      template:
+        type: string
+        enum:
+        - simple-reliable
+      reason:
+        type: string
+        minLength: 1
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+      signals:
+        type: array
+        uniqueItems: true
+        items:
           type: string
           minLength: 1
-        confidence:
-          type: number
-          minimum: 0
-          maximum: 1
-        signals:
-          type: array
-          uniqueItems: true
-          items:
-            type: string
-            minLength: 1
-        controls:
-          type: object
-          additionalProperties: false
-          properties:
-            inspect_first:
-              type: boolean
-            baseline:
-              type: boolean
-            independent_tests:
-              type: boolean
-            enhanced_review:
-              type: boolean
-            max_parallel:
-              type: integer
-              minimum: 1
-              maximum: 64
-          required: [inspect_first, baseline, independent_tests, enhanced_review, max_parallel]
-      required: [apiVersion, kind, route, reason, confidence, signals, controls]
+      controls:
+        type: object
+        additionalProperties: false
+        properties:
+          inspect_first:
+            type: boolean
+          baseline:
+            type: boolean
+          independent_tests:
+            type: boolean
+          enhanced_review:
+            type: boolean
+          max_parallel:
+            type: integer
+            minimum: 1
+            maximum: 64
+        required:
+        - inspect_first
+        - baseline
+        - independent_tests
+        - enhanced_review
+        - max_parallel
+    required:
+    - apiVersion
+    - kind
+    - route
+    - reason
+    - confidence
+    - signals
+    - controls
+name: task-route
+description: Select an existing workflow, the stable simple-reliable template, or
+  bounded Dynamic Takt composition.
+provider: coding-agent
+model: routing

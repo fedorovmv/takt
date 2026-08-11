@@ -27,6 +27,9 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 	for _, node := range wf.Nodes {
 		if node.Command != "" || node.Prompt != "" {
 			assistantName := node.Assistant
+			if assistantName == "" {
+				assistantName = node.Provider
+			}
 			if node.Command != "" {
 				definition, err := resolver.Resolve(node.Command)
 				if err != nil {
@@ -38,6 +41,9 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 			}
 			if assistantName == "" {
 				assistantName = wf.Defaults.Assistant
+				if assistantName == "" {
+					assistantName = wf.Provider
+				}
 			}
 			policy, err := resolveNodePolicy(node, workflowPath, inherited)
 			if err != nil {

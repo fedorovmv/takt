@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -9,4 +9,4 @@ Use the investigation and reproduction evidence in `$ARTIFACTS_DIR`, search for 
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

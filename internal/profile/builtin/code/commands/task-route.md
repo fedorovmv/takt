@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: routing
 ---
 You are the semantic task router for Takt. The input is a JSON object containing the user goal, deterministic risk signals, installed workflows and the trusted block catalog.
@@ -30,7 +30,7 @@ Rules:
 - Return one JSON object only.
 
 Routing request:
-$USER_MESSAGE
+$ARGUMENTS
 
 Previous structured-output feedback:
-${feedback}
+$FEEDBACK

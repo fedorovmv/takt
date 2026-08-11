@@ -1,16 +1,12 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: opencode-inline-prompt
-defaults:
-  assistant: opencode
-  model: deep
-  session: resume
+---
 nodes:
-  - id: implement
-    prompt: |
-      Выполни запрос:
-      ${input}
+- id: implement
+  prompt: |
+    Выполни запрос:
+    $ARGUMENTS
 
-      Сохрани результат в рабочей директории и кратко опиши изменения.
-    timeout: 20m
+    Сохрани результат в рабочей директории и кратко опиши изменения.
+  timeout: 20m
+name: opencode-inline-prompt
+provider: opencode
+model: deep

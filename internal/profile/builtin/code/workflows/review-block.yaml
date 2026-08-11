@@ -1,277 +1,280 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: code-review-block
-  description: Evidence-scoped governed review, synthesis, controlled fixes and independent validation.
-defaults:
-  assistant: coding-agent
-  model: review
-  session: fresh
+---
 nodes:
-  - id: scope
-    command: review-intake
-    model: review
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
-          type: string
-          enum:
-            - REVIEW_READY
-            - PR_NOT_FOUND
-            - PR_REPOSITORY_MISMATCH
-            - PR_BASE_STALE
-            - PR_CONFLICTED
-            - REVIEW_SCOPE_EMPTY
-        summary:
-          type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: review-scope
-    output_mime: application/json
-    output_path: $ARTIFACTS_DIR/review-scope.json
-  - id: perspectives
-    depends_on:
-      - scope
-    when: nodes.scope.output.status == "ready"
-    script:
-      runtime: command
-      path: ../tools/review-perspectives
-    output_format:
-      type: array
-      minItems: 1
-      uniqueItems: true
-      items:
+- id: scope
+  command: review-intake
+  model: review
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
         type: string
         enum:
-          - code
-          - errors
-          - tests
-          - docs
-          - simplicity
-    output_type: review-perspectives
-    output_mime: application/json
-  - id: reviews
-    depends_on:
-      - scope
-      - perspectives
-    when: nodes.scope.output.status == "ready"
-    workflow:
-      path: review-perspective.yaml
-      input: |
-        Perspective: ${perspective}
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - REVIEW_READY
+        - PR_NOT_FOUND
+        - PR_REPOSITORY_MISMATCH
+        - PR_BASE_STALE
+        - PR_CONFLICTED
+        - REVIEW_SCOPE_EMPTY
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: review-scope
+  output_mime: application/json
+  output_path: "$ARTIFACTS_DIR/review-scope.json"
+- id: perspectives
+  depends_on:
+  - scope
+  when: $scope.output.status == "ready"
+  script:
+    runtime: command
+    path: "../tools/review-perspectives"
+  output_format:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      type: string
+      enum:
+      - code
+      - errors
+      - tests
+      - docs
+      - simplicity
+  output_type: review-perspectives
+  output_mime: application/json
+- id: reviews
+  depends_on:
+  - scope
+  - perspectives
+  when: $scope.output.status == "ready"
+  workflow:
+    path: review-perspective.yaml
+    input: |
+      Perspective: $FANOUT.item
 
-        Scoped change artifact: $ARTIFACTS_DIR/review-scope.json
-      isolation: inherit
-      output_node: review
-      fan_out:
-        items_from: nodes.perspectives.output
-        as: perspective
-        max_parallel: 5
-        join: all_success
-  - id: synthesize
-    when: nodes.scope.output.status == "ready"
-    command: review-synthesis
-    depends_on:
-      - reviews
-    model: review
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
+      Scoped change artifact: $ARTIFACTS_DIR/review-scope.json
+    isolation: inherit
+    output_node: review
+    fan_out:
+      items_from: $perspectives.output
+      as: perspective
+      max_parallel: 5
+      join: all_success
+- id: synthesize
+  when: $scope.output.status == "ready"
+  command: review-synthesis
+  depends_on:
+  - reviews
+  model: review
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - REVIEW_APPROVED
+        - REVIEW_CHANGES_REQUIRED
+        - REVIEW_EVIDENCE_INCOMPLETE
+        - REVIEW_SCOPE_CHANGED
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: review-report
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/review-report.md"
+- id: fixes
+  command: review-fix
+  depends_on:
+  - synthesize
+  when: $scope.output.status == "ready" && $synthesize.output.code == "REVIEW_CHANGES_REQUIRED"
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - REVIEW_FIXES_APPLIED
+        - REVIEW_NO_FIXES_REQUIRED
+        - REVIEW_FIX_REQUIRES_DECISION
+        - REVIEW_FIX_VALIDATION_FAILED
+        - REVIEW_FIX_SCOPE_DRIFT
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-          enum:
-            - REVIEW_APPROVED
-            - REVIEW_CHANGES_REQUIRED
-            - REVIEW_EVIDENCE_INCOMPLETE
-            - REVIEW_SCOPE_CHANGED
-        summary:
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: review-fix-report
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/review-fix-report.md"
+- id: validate
+  when: $scope.output.status == "ready"
+  command: change-validation
+  depends_on:
+  - synthesize
+  - fixes
+  model: review
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - blocked
+        - failed
+      code:
+        type: string
+        enum:
+        - VALIDATION_PASSED
+        - VALIDATION_FAILED
+        - VALIDATION_ENVIRONMENT_MISSING
+        - ACCEPTANCE_NOT_PROVEN
+        - DIFF_SCOPE_VIOLATION
+      summary:
+        type: string
+      evidence:
+        type: array
+        items:
           type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: review-report
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/review-report.md
-  - id: fixes
-    command: review-fix
-    depends_on:
-      - synthesize
-    when: nodes.scope.output.status == "ready" && nodes.synthesize.output.code == "REVIEW_CHANGES_REQUIRED"
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
-          type: string
-          enum:
-            - REVIEW_FIXES_APPLIED
-            - REVIEW_NO_FIXES_REQUIRED
-            - REVIEW_FIX_REQUIRES_DECISION
-            - REVIEW_FIX_VALIDATION_FAILED
-            - REVIEW_FIX_SCOPE_DRIFT
-        summary:
-          type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: review-fix-report
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/review-fix-report.md
-  - id: validate
-    when: nodes.scope.output.status == "ready"
-    command: change-validation
-    depends_on:
-      - synthesize
-      - fixes
-    model: review
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum:
-            - ready
-            - blocked
-            - failed
-        code:
-          type: string
-          enum:
-            - VALIDATION_PASSED
-            - VALIDATION_FAILED
-            - VALIDATION_ENVIRONMENT_MISSING
-            - ACCEPTANCE_NOT_PROVEN
-            - DIFF_SCOPE_VIOLATION
-        summary:
-          type: string
-        evidence:
-          type: array
-          items:
-            type: string
-          minItems: 1
-          uniqueItems: true
-        artifact_path:
-          type: string
-      required:
-        - status
-        - code
-        - summary
-        - evidence
-        - artifact_path
-    output_type: validation-report
-    output_mime: text/markdown
-    output_path: $ARTIFACTS_DIR/validation-report.md
-    trigger_rule: all_done
-  - id: post-review-validation-commands
-    depends_on:
-      - synthesize
-      - fixes
-      - validate
-    when: nodes.scope.output.status == "ready"
-    trigger_rule: all_done
-    script:
-      runtime: validation
-    allow_failure: true
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        status:
-          type: string
-          enum: [ready, failed]
-        results:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            properties:
-              command:
-                type: string
-              exit_code:
-                type: integer
-              stdout:
-                type: string
-              stderr:
-                type: string
-            required: [command, exit_code]
-      required: [status, results]
-    output_type: validation-command-report
-    output_mime: application/json
-    output_path: $ARTIFACTS_DIR/post-review-validation-commands.json
-  - id: review-acceptance-gate
-    depends_on:
-      - scope
-      - synthesize
-      - fixes
-      - validate
-      - post-review-validation-commands
-    trigger_rule: all_done
-    bash: |
-      review_decision=false
-      if [ "${nodes.synthesize.output.code?}" = "REVIEW_APPROVED" ]; then
-        review_decision=true
-      fi
-      if [ "${nodes.synthesize.output.code?}" = "REVIEW_CHANGES_REQUIRED" ] && [ "${nodes.fixes.output.code?}" = "REVIEW_FIXES_APPLIED" ]; then
-        review_decision=true
-      fi
-      if [ "${nodes.scope.output.status?}" = "ready" ] && [ "$review_decision" = true ] && [ "${nodes.validate.output.status?}" = "ready" ] && [ "${nodes.validate.output.code?}" = "VALIDATION_PASSED" ] && [ "${nodes.post-review-validation-commands.output.status?}" = "ready" ] && [ -f "$ARTIFACTS_DIR/review-report.md" ]; then
-        printf 'REVIEW_BLOCK_ACCEPTED'
-        exit 0
-      fi
-      printf 'REVIEW_BLOCK_REJECTED'
-      exit 1
+        minItems: 1
+        uniqueItems: true
+      artifact_path:
+        type: string
+    required:
+    - status
+    - code
+    - summary
+    - evidence
+    - artifact_path
+  output_type: validation-report
+  output_mime: text/markdown
+  output_path: "$ARTIFACTS_DIR/validation-report.md"
+  trigger_rule: all_done
+- id: post-review-validation-commands
+  depends_on:
+  - synthesize
+  - fixes
+  - validate
+  when: $scope.output.status == "ready"
+  trigger_rule: all_done
+  script:
+    runtime: validation
+  allow_failure: true
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      status:
+        type: string
+        enum:
+        - ready
+        - failed
+      results:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            command:
+              type: string
+            exit_code:
+              type: integer
+            stdout:
+              type: string
+            stderr:
+              type: string
+          required:
+          - command
+          - exit_code
+    required:
+    - status
+    - results
+  output_type: validation-command-report
+  output_mime: application/json
+  output_path: "$ARTIFACTS_DIR/post-review-validation-commands.json"
+- id: review-acceptance-gate
+  depends_on:
+  - scope
+  - synthesize
+  - fixes
+  - validate
+  - post-review-validation-commands
+  trigger_rule: all_done
+  bash: |
+    review_decision=false
+    if [ $synthesize.output.code? = "REVIEW_APPROVED" ]; then
+      review_decision=true
+    fi
+    if [ $synthesize.output.code? = "REVIEW_CHANGES_REQUIRED" ] && [ $fixes.output.code? = "REVIEW_FIXES_APPLIED" ]; then
+      review_decision=true
+    fi
+    if [ $scope.output.status? = "ready" ] && [ "$review_decision" = true ] && [ $validate.output.status? = "ready" ] && [ $validate.output.code? = "VALIDATION_PASSED" ] && [ $post-review-validation-commands.output.status? = "ready" ] && [ -f "$ARTIFACTS_DIR/review-report.md" ]; then
+      printf 'REVIEW_BLOCK_ACCEPTED'
+      exit 0
+    fi
+    printf 'REVIEW_BLOCK_REJECTED'
+    exit 1
+name: code-review-block
+description: Evidence-scoped governed review, synthesis, controlled fixes and independent
+  validation.
+provider: coding-agent
+model: review

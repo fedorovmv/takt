@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: routing
 ---
 
@@ -41,8 +41,8 @@ Return one JSON object and no other text:
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS
 
 Previous structured-output feedback:
 
-${feedback}
+$FEEDBACK

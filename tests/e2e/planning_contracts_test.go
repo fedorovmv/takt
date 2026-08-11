@@ -92,7 +92,7 @@ func TestDynamicTaktContract(t *testing.T) {
 	}
 	takt(t, nil, "plan", "promote", planID, "--name", "fixture-dynamic", "--workspace", project, "--json").RequireSuccess(t)
 	generated := filepath.Join(project, ".takt", "workflows", "generated", "fixture-dynamic.yaml")
-	requireFileContains(t, generated, "${input}")
+	requireFileContains(t, generated, "$ARGUMENTS")
 	takt(t, nil, "validate", generated, "--workspace", project, "--config", cfg, "--json").RequireSuccess(t)
 }
 
@@ -172,5 +172,5 @@ func TestSimpleReliableRouterContract(t *testing.T) {
 		t.Fatalf("agent=%#v", agent)
 	}
 	requireFileContains(t, filepath.Join(repoRoot, "schemas", "config.schema.json"), "default_assistant", "takt-assistant/v1alpha2")
-	requireFileContains(t, filepath.Join(project, ".takt", "profiles", "code", "workflows", "task-route.yaml"), "assistant: coding-agent")
+	requireFileContains(t, filepath.Join(project, ".takt", "profiles", "code", "workflows", "task-route.yaml"), "provider: coding-agent")
 }

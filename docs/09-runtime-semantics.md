@@ -1,6 +1,9 @@
 # Спецификация семантики runtime
 
-Статус документа: целевой контракт v0.2. Семантика отказов, параллельных DAG-волн, `loop_group`, approval, fingerprints, persistence и per-attempt execution identity реализована к `v0.1.39-alpha`. Оставшиеся отличия перечислены в `05-implementation-status.md`.
+Статус документа: реализованный контракт A0/A1 `v0.1.57-alpha`. Он фиксирует
+единый Archon-first Workflow language, durable loop evidence, exact session
+resume и recovery/retry поверх существующего scheduler. Hard budgets, `run
+inspect` и mutating fan-out остаются отдельными deferred срезами.
 
 ## 1. Основные сущности
 
@@ -131,7 +134,7 @@ Scheduler собирает все готовые узлы текущего то�
 - классификация ошибок;
 - `allow_failure`.
 
-Различается только область состояния: после итерации child states добавляются в `LoopIterations`, последняя итерация также копируется в совместимое `LoopPrevious`, после чего активные child states удаляются из карты. В `v0.2` вложенные `loop_group` остаются запрещены: path namespace уже поддерживает другие виды композиции, а рекурсивную loop-семантику решено не замораживать без production evidence.
+Различается только область состояния: после итерации child states добавляются в `LoopIterations`, последняя итерация также копируется в совместимое `LoopPrevious`, после чего активные child states удаляются из карты. Вложенные `loop_group` запрещены в `v1alpha1`: path namespace уже поддерживает другие виды композиции, а рекурсивную loop-семантику не замораживаем без production evidence.
 
 ## 6. Попытки узла
 
@@ -149,11 +152,14 @@ node.started
 
 Решение `retry`:
 
-- сохраняет feedback;
-- сохраняет событие `node.retry`;
-- при `session: fresh` очищает session ID;
-- следующая попытка увеличивает счётчик;
-- остановка на approval уменьшает счётчик обратно и сохраняется отдельным transition.
+- сохраняет feedback и diagnostic fingerprint;
+- сохраняет отдельную `ExecutionState` и событие `node.retry`;
+- `attempts.retry_session: fresh` очищает Session ID, `reuse` сохраняет его;
+- hook `on_failure.session: resume` также обязан вернуть тот же Session ID;
+- следующая попытка увеличивает счётчик и durable `not_before` не пересчитывается
+  после restart;
+- остановка на approval уменьшает счётчик обратно и сохраняется отдельным
+  transition.
 
 При исчерпании `attempts.max` узел становится `failed` с кодом `attempts_exhausted`. Агрегированные output, Session ID и `resumed` остаются результатом последней фактической попытки и не обнуляются синтетическим terminal transition.
 
@@ -172,6 +178,8 @@ node.started
 
 Output, exit code, session ID и признак truncation сохраняются даже при неуспешном результате, если они доступны. Для `bash` stdout и stderr сохраняются раздельно; совместимое поле `output` остаётся объединённым представлением для шаблонов, feedback и диагностики. Структурные протоколы поверх bash, включая `takt-validation/v1alpha1`, декодируются только из stdout. Для агентного узла также сохраняются assistant, версия assistant, requested model и resolved model. Pi adapter использует `responseModel` последнего assistant message и только при его отсутствии берёт модель из `get_state`.
 
+Приоритет terminal classification строгий: context `timed_out`/`cancelled` сохраняет этот статус даже при output overflow; `allow_failure` применяется только к штатному `exit`; protocol, internal, start и unknown side effect не превращаются в допустимый failure.
+
 Usage каждой агентной попытки добавляется к aggregate `NodeState.usage`, а сама попытка записывается в `NodeState.executions`. Поэтому retry после внешней проверки не теряет стоимость и не приписывает usage предыдущих попыток последней модели. Различающиеся assistant/version/requested/resolved model образуют mixed execution identity.
 
 Для process assistant с `takt-assistant/v1alpha1` OS exit code и envelope `exit_code` обязаны совпадать всегда. Расхождение классифицируется как `protocol` до применения `allow_failure`. Runtime также отклоняет дополнительный JSON, неизвестные поля, несовместимые status/exit, отрицательный usage и неподтверждённый resume.
@@ -188,7 +196,7 @@ Usage каждой агентной попытки добавляется к agg
 - downstream `all_done` может выполниться;
 - итоговый Run становится `failed`.
 
-При отмене родительского context Node и Run становятся `cancelled`. Причина context имеет приоритет над одновременно обнаруженным output overflow: Node сохраняет `timed_out` или `cancelled`, а `output_truncated` остаётся дополнительным полем результата.
+При отмене родительского context Node и Run становятся `cancelled`. Причина context имеет приоритет над одновременно обнаруженным output overflow: Node сохраняет `timed_out` или `cancelled`, а `output_truncated` остаётся дополнительным полем результата. Для fan-out раннее решение join помечает ненужных siblings `cancel_reason: fanout_result_decided`, что не является пользовательской отменой.
 
 `takt cancel` создаёт durable marker в каталоге Run. Ожидающий Run переводится в `cancelled` сразу; активная попытка проверяет marker и отменяет context вместе с process group. Запрос каскадируется по известным `child_run_ids`. Terminal children не изменяются.
 
@@ -226,6 +234,21 @@ Hooks выполняются последовательно:
 
 `until` вычисляется только для child node со статусом `completed`. `skipped`, `failed`, `errored`, `timed_out`, `cancelled` и `blocked` не удовлетворяют условию независимо от значения `exit_code`.
 
+`until.signal` требует ровно одно валидное occurrence ожидаемого uppercase
+сигнала в `<promise>NAME</promise>` либо в последней непустой строке. Fenced
+Markdown не учитывается. Отсутствие сигнала сохраняется как
+`signal_diagnostic: signal_missing`, повторное/неоднозначное occurrence — как
+`signal_ambiguous`; измеренный сигнал и отсутствие сигнала сериализуются как
+`null`/строка, а не как пустой текст. Если source output truncated, signal
+predicate завершается `protocol` до проверки содержимого.
+
+`until.requires` проверяет дополнительные completed/terminal evidence узлов.
+Обычное несовпадение даёт следующую bounded iteration; отсутствующий или
+не-terminal required evidence — `required_evidence_missing` protocol error.
+`until_bash` выполняется после child DAG, не получает скрытого JSON validator
+контракта и сохраняет `PredicateEvidence` (stdout, stderr, exit code, duration,
+terminal status, truncation, error code) внутри immutable iteration snapshot.
+
 При выполнении `until` parent node становится `completed`. При исчерпании лимита parent node получает `failed/exit`.
 
 Если attempt context родительского цикла завершён во время child execution, его причина имеет приоритет над производной ошибкой контейнера:
@@ -235,7 +258,7 @@ Hooks выполняются последовательно:
 
 `loop_group exhausted` не может заменить эти состояния на `failed/exit`.
 
-Approval внутри `loop_group` сохраняет `loop_iteration` и дочерние состояния. После `answer` scheduler продолжает ту же итерацию; после её завершения approval-state очищается перед следующей итерацией. Вложенный `loop_group` остаётся запрещён в `v1alpha1`.
+Approval внутри `loop_group` сохраняет `loop_iteration` и дочерние состояния. После `answer` scheduler продолжает ту же итерацию; после её завершения approval-state очищается перед следующей итерацией. `fresh_context: true` очищает Session ID для следующей итерации, а `false` сохраняет каждый совместимый assistant Session ID и требует exact resume. `context: shared` ищет транзитивного единственного upstream assistant ancestor с тем же provider/model и не имеет fresh fallback. Вложенный `loop_group` остаётся запрещён в `v1alpha1`.
 
 ## 11. Approval и безопасное продолжение
 
@@ -264,7 +287,11 @@ Approval внутри `loop_group` сохраняет `loop_iteration` и доч
 
 Если AI-узел объявляет `output_format`, runtime добавляет его точный `takt-schema-subset/v1` contract к отрендеренному prompt, а успешный сырой output затем декодируется как ровно одно JSON-значение, проверяется по тому же contract и канонизируется. Workflow JSON `input.schema` использует тот же validator; полный JSON Schema не заявляется. Ошибка декодирования, лишнее значение или нарушение схемы классифицируются как `protocol`; такой output не становится успешным результатом узла.
 
-`when` и renderer разрешают путь `nodes.<id>.output.<field>` только после декодирования output как JSON. Поля объектов и индексы массивов читаются без преобразования всего workflow в отдельный task AST.
+`when` и renderer разрешают путь `$<id>.output.<field>` только после
+декодирования output как JSON. Поля объектов и индексы массивов читаются без
+преобразования всего workflow в отдельный task AST. Один `internal/flowref`
+parser также обслуживает `$INPUTS.*`, `$LOOP_PREV.*`, `$FANOUT.*`, approval
+output и shell/script escaping; `${...}` legacy forms fail closed.
 
 ## 13. Persistence
 
@@ -291,7 +318,10 @@ Run хранит SHA-256:
 
 ## 15. YAML
 
-Текущий loader поддерживает документированный subset, а не полную YAML 1.2. Block scalar сохраняет пустые строки и поддерживает chomp modes. Полная замена на внешнюю YAML-библиотеку не является обязательной для v0.2, пока subset явно ограничен и покрыт тестами.
+Loader принимает target root `name`/`nodes` и target node `provider`/`context`.
+Legacy Workflow root (`apiVersion`, `kind`, `metadata`, `defaults`, `assistant`)
+не имеет compatibility parse path и отклоняется до Run. YAML syntax принадлежит
+`go.yaml.in/yaml/v3`; Takt сохраняет только strict JSON-tag contract diagnostics.
 
 ## 16. JSON CLI
 
@@ -304,6 +334,9 @@ Flag parser не печатает дополнительный текст в std
 
 ## 17. Оставшаяся семантика v0.2
 
+- `run inspect --node/--iteration` и отдельная public projection durable evidence;
+- hard token/tool budgets после live capability proof Pi/OpenCode;
+- mutating merge fan-out после отдельной merge action и threat-model.
 - финальная `v1alpha1 → v1beta1` migration после production evidence;
 - live compatibility evidence для guarded host integrations и внешних wrappers;
 - новые schema keywords только как явное совместимое расширение `takt-schema-subset/v1`, если их потребует evidence.
@@ -317,7 +350,9 @@ Flag parser не печатает дополнительный текст в std
 
 Fingerprint workflow включает исходный родительский файл, каноническое скомпилированное определение, встроенные локальные Markdown-команды и исходные байты `foreach.items_from`. Изменение дочернего workflow, команды, входов, inline `items` или внешнего списка блокирует resume старого Run.
 
-`assistant`, `model` и `session` контейнера становятся defaults подключённого вызова. Политики, требующие управления всей группой — `attempts`, `timeout`, hooks, `native_hooks` и `allow_failure` — остаются внутри дочернего workflow.
+`provider`, `model` и `context` контейнера становятся defaults подключённого
+вызова. Политики, требующие управления всей группой — `attempts`, `timeout`,
+hooks, `native_hooks` и `allow_failure` — остаются внутри дочернего workflow.
 
 `foreach` при `parallel: false` связывает итерации последовательно, а при `parallel: true` создаёт независимые ветви от общего gate. Aggregator ждёт terminal-состояния всех итераций и собирает output в порядке исходного массива, а не в порядке завершения.
 
@@ -343,7 +378,11 @@ Fingerprint workflow включает исходный родительский 
 
 ### Dynamic governed child fan-out
 
-`workflow.fan_out` разрешает массив из `nodes.<id>.output...` после успешного upstream-узла. До запуска родитель фиксирует fingerprint списка, индекс, канонический item и Run ID каждого ребёнка. При resume terminal-дети переиспользуются, waiting-дети продолжаются, а изменение списка блокирует запуск.
+`workflow.fan_out` разрешает массив из `$<id>.output...` после успешного
+upstream-узла. До запуска родитель фиксирует fingerprint списка, индекс,
+канонический item и Run ID каждого ребёнка. При resume terminal-дети
+переиспользуются, waiting-дети продолжаются, а изменение списка блокирует
+запуск.
 
 `max_parallel` ограничивает число одновременно исполняемых детей. Join формируется после terminal-состояния группы и поддерживает `all_success`, `all_done`, `one_success`. Output агрегируется в исходном порядке; usage детей входит в usage родительского узла. `WaitingState.ChildRunIDs` хранит множественное ожидание. Ответ через родителя разрешён только при одном waiting-ребёнке; при нескольких CLI требует выбрать child Run.
 
@@ -357,7 +396,10 @@ Retry родительского узла создаёт новую группу
 
 `node.completed` включает metadata артефактов. `RunState.Artifacts` агрегирует ссылки без потери hidden structural nodes. Governed child Run возвращает свои ссылки как часть execution result родительского узла, а fan-out сохраняет их в каждом item state. Сам файл остаётся в store фактического producer Run.
 
-Renderer разрешает `nodes.<id>.artifacts.<type|index>.<field>`. Resume использует сохранённый path/checksum, а изменение script source или dependency блокируется definition fingerprint до исполнения.
+Renderer разрешает `$<id>.artifacts.<type>.<field>` с именованным artifact type;
+числовой index и positional artifact forms запрещены. Resume использует
+сохранённый path/checksum, а изменение script source или dependency блокируется
+definition fingerprint до исполнения.
 
 ## Managed Git worktree
 
@@ -374,7 +416,13 @@ Adapter публикует capabilities. Если хотя бы одна нео�
 
 ## Authoring, always_run и idle_timeout
 
-Workflow загружается fail-closed. Неизвестные поля получают path-aware подсказку; обязательная `${path}` должна разрешиться, `${path?}` допускает отсутствие, `${path:-default}` подставляет fallback. До Run статически проверяются upstream output/artifact references и capabilities локальных adapters.
+Workflow загружается fail-closed. Неизвестные поля получают path-aware
+подсказку; обязательная `$path` должна разрешиться, `$path?` допускает
+отсутствие, `$path:-default` подставляет fallback. До Run статически
+проверяются upstream output/artifact references и capabilities локальных
+adapters. Shell surface quote-ит подставленное значение одним аргументом,
+передаёт reserved env refs через environment и сохраняет native `$?`, `$1`,
+`$$`, `$((...))`, `$(...)`.
 
 `always_run` ждёт terminal-состояния всех зависимостей и затем становится runnable независимо от их успеха. Cleanup не меняет итог failed Run на completed. `idle_timeout` измеряет отсутствие нормализованной assistant activity, а не полное wall-clock время попытки; общий `timeout` остаётся верхней границей. Blocking tool approval не считается зависанием внешнего worker.
 

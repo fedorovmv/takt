@@ -117,11 +117,11 @@ func TestJSONOutputFieldsAreAvailableToConditionsAndTemplates(t *testing.T) {
 			"route": {Status: store.NodeCompleted, Output: `{"workflow":"assist","details":{"level":"full"}}`},
 		},
 	}
-	ok, err := evalWhen(`nodes.route.output.workflow == "assist"`, state)
+	ok, err := evalWhen(`$route.output.workflow == "assist"`, state)
 	if err != nil || !ok {
 		t.Fatalf("unexpected condition result ok=%v err=%v", ok, err)
 	}
-	got, err := renderTemplate("${nodes.route.output.details.level}", state, nil, "", "")
+	got, err := renderTemplate("$route.output.details.level", state, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestStructuredOutputRetryPolicyPassesValidationFeedback(t *testing.T) {
 		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "structured-retry"},
 		Defaults: spec.Defaults{Assistant: "demo", Model: "m", Session: "reuse"},
 		Nodes: []spec.Node{{
-			ID: "route", Prompt: "Choose route.\nFeedback:\n${feedback}",
+			ID: "route", Prompt: "Choose route.\nFeedback:\n$FEEDBACK",
 			Attempts: spec.AttemptsSpec{Max: 2, RetryOn: []string{"protocol"}, RetrySession: "fresh"},
 			OutputFormat: &spec.OutputFormat{Type: "object", Properties: map[string]spec.OutputFormat{
 				"workflow": {Type: "string", Enum: []string{"assist"}},
@@ -205,11 +205,11 @@ func TestWhenSupportsAndOrExpressions(t *testing.T) {
 		"scope": {Status: store.NodeCompleted, Output: `{"status":"ready","code":"OK"}`},
 		"check": {Status: store.NodeCompleted, Output: `{"status":"failed"}`},
 	}}
-	ok, err := evalWhen(`nodes.scope.output.status == "ready" && nodes.scope.output.code == "OK"`, state)
+	ok, err := evalWhen(`$scope.output.status == "ready" && $scope.output.code == "OK"`, state)
 	if err != nil || !ok {
 		t.Fatalf("and expression: ok=%v err=%v", ok, err)
 	}
-	ok, err = evalWhen(`nodes.check.output.status == "ready" || nodes.scope.output.status == "ready"`, state)
+	ok, err = evalWhen(`$check.output.status == "ready" || $scope.output.status == "ready"`, state)
 	if err != nil || !ok {
 		t.Fatalf("or expression: ok=%v err=%v", ok, err)
 	}

@@ -25,10 +25,7 @@ func newUserJourneyProject(t *testing.T) string {
 
 func TestUserJourneyValidateRunInspectArtifacts(t *testing.T) {
 	project := newUserJourneyProject(t)
-	workflow := writeFile(t, project, "workflow.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: first-run
+	workflow := writeFile(t, project, "workflow.yaml", `name: first-run
 nodes:
   - id: produce
     bash: printf 'hello-user'
@@ -68,10 +65,7 @@ nodes:
 
 func TestUserJourneyApprovalAnswerContinue(t *testing.T) {
 	project := newUserJourneyProject(t)
-	workflow := writeFile(t, project, "approval.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: approval
+	workflow := writeFile(t, project, "approval.yaml", `name: approval
 nodes:
   - id: approve
     approval:
@@ -101,10 +95,7 @@ nodes:
 
 func TestUserJourneyFailureRetry(t *testing.T) {
 	project := newUserJourneyProject(t)
-	workflow := writeFile(t, project, "retry.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: retry
+	workflow := writeFile(t, project, "retry.yaml", `name: retry
 nodes:
   - id: flaky
     bash: |
@@ -137,18 +128,12 @@ nodes:
 
 func TestUserJourneyReusableSubworkflow(t *testing.T) {
 	project := newUserJourneyProject(t)
-	writeFile(t, project, "workflows/write.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: reusable-write
+	writeFile(t, project, "workflows/write.yaml", `name: reusable-write
 nodes:
   - id: write
-    bash: printf '%s' '${inputs.name}' > reusable.txt
+    bash: printf '%s' '$INPUTS.name' > reusable.txt
 `)
-	workflow := writeFile(t, project, "main.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: composition
+	workflow := writeFile(t, project, "main.yaml", `name: composition
 nodes:
   - id: reusable
     subworkflow:

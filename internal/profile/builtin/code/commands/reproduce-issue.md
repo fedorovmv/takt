@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 
@@ -9,4 +9,4 @@ Use the investigation, run focused commands, capture stdout/stderr, versions, lo
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

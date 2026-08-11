@@ -1,29 +1,22 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: route-dsl-baseline-direct
-  description: Один coding-agent вызов без автоматического repair
-
-defaults:
-  assistant: coding-agent
-  model: route-model
-  session: fresh
-
+---
 nodes:
-  - id: implement
-    prompt: |
-      Создай файл route.yaml по техническому заданию.
+- id: implement
+  prompt: |
+    Создай файл route.yaml по техническому заданию.
 
-      Техническое задание:
-      ${input}
+    Техническое задание:
+    $ARGUMENTS
 
-      Требования:
-      - работай только в текущей рабочей области;
-      - используй доступную спецификацию Route DSL и route-tool;
-      - не придумывай отсутствующие возможности DSL;
-      - итогом должен быть route.yaml либо явное объяснение невозможности реализации.
-
-  - id: full-validation
-    depends_on: [implement]
-    bash: |
-      ./route-tool validate route.yaml
+    Требования:
+    - работай только в текущей рабочей области;
+    - используй доступную спецификацию Route DSL и route-tool;
+    - не придумывай отсутствующие возможности DSL;
+    - итогом должен быть route.yaml либо явное объяснение невозможности реализации.
+- id: full-validation
+  depends_on:
+  - implement
+  bash: "./route-tool validate route.yaml\n"
+name: route-dsl-baseline-direct
+description: Один coding-agent вызов без автоматического repair
+provider: coding-agent
+model: route-model

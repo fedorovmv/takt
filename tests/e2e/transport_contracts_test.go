@@ -24,34 +24,25 @@ assistants:
     type: process
     argv: [/bin/cat]
 `)
-	typo := writeFile(t, work, "typo.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: typo
+	typo := writeFile(t, work, "typo.yaml", `name: typo
 nodes:
   - id: work
     prompt: hello
-    assistant: limited
+    provider: limited
     model: demo
     idle_timout: 10s
 `)
 	takt(t, nil, "validate", typo, "--config", cfg, "--workspace", work).RequireFailure(t).Contains(t, `did you mean "idle_timeout"`)
-	capability := writeFile(t, work, "capability.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: capability
+	capability := writeFile(t, work, "capability.yaml", `name: capability
 nodes:
   - id: work
     prompt: hello
-    assistant: limited
+    provider: limited
     model: demo
     denied_tools: [write]
 `)
 	takt(t, nil, "validate", capability, "--config", cfg, "--workspace", work).RequireFailure(t).Contains(t, "capability validation").Contains(t, "tool_policy")
-	outputRef := writeFile(t, work, "output-ref.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: output-reference
+	outputRef := writeFile(t, work, "output-ref.yaml", `name: output-reference
 nodes:
   - id: produce
     script:
@@ -67,13 +58,10 @@ nodes:
       additionalProperties: false
   - id: consume
     depends_on: [produce]
-    bash: printf '%s' '${nodes.produce.output.summry}'
+    bash: printf '%s' $produce.output.summry
 `)
 	takt(t, nil, "validate", outputRef, "--config", cfg, "--workspace", work).RequireFailure(t).Contains(t, `output path "summry" is not declared`)
-	render := writeFile(t, work, "render.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: strict-renderer
+	render := writeFile(t, work, "render.yaml", `name: strict-renderer
 nodes:
   - id: produce
     script:
@@ -93,7 +81,7 @@ nodes:
       additionalProperties: false
   - id: consume
     depends_on: [produce]
-    bash: printf '%s|%s|%s' '${nodes.produce.output.summary}' '${nodes.produce.output.missing?}' '${nodes.produce.output.empty:-fallback}'
+    bash: printf '%s|%s|%s' $produce.output.summary '$produce.output.missing?' '$produce.output.empty:-fallback'
 `)
 	takt(t, nil, "validate", render, "--config", cfg, "--workspace", work, "--json").RequireSuccess(t)
 	state := resultObject(t, takt(t, nil, "run", render, "--config", cfg, "--workspace", work, "--json").RequireSuccess(t).JSON(t))
@@ -104,10 +92,7 @@ nodes:
 	if stringField(t, consume, "output") != "ok||fallback" {
 		t.Fatalf("consume=%#v", consume)
 	}
-	warning := writeFile(t, work, "warning.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: warning
+	warning := writeFile(t, work, "warning.yaml", `name: warning
 nodes:
   - id: work
     script:
@@ -132,10 +117,7 @@ nodes:
 		t.Fatalf("schema warning missing: %#v", report)
 	}
 	takt(t, nil, "validate", warning, "--config", cfg, "--workspace", work, "--warnings-as-errors", "--json").RequireFailure(t)
-	always := writeFile(t, work, "always.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: always-run
+	always := writeFile(t, work, "always.yaml", `name: always-run
 nodes:
   - id: fail
     bash: exit 9
@@ -151,10 +133,7 @@ nodes:
 func TestMCPContract(t *testing.T) {
 	work := t.TempDir()
 	cfg := writeFile(t, work, "config.yaml", "apiVersion: takt/v1alpha1\nkind: Config\n")
-	wf := writeFile(t, work, "workflow.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: mcp-contract
+	wf := writeFile(t, work, "workflow.yaml", `name: mcp-contract
 nodes:
   - id: complete
     bash: printf 'mcp-ok'
@@ -214,10 +193,7 @@ nodes:
 func TestDaemonContract(t *testing.T) {
 	work := t.TempDir()
 	cfg := writeFile(t, work, ".takt/config.yaml", "apiVersion: takt/v1alpha1\nkind: Config\n")
-	wf := writeFile(t, work, "workflow.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: daemon-contract
+	wf := writeFile(t, work, "workflow.yaml", `name: daemon-contract
 nodes:
   - id: background
     bash: |

@@ -1,43 +1,40 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: resolve-conflicts
-  description: Detect and analyze merge conflicts, resolve both sides intentionally, validate the result, and finish the merge or rebase safely.
-defaults:
-  assistant: coding-agent
-  model: implementation
-  session: resume
+---
 nodes:
-  - id: detect
-    bash: |
-      git status --porcelain=v1
-      git diff --name-only --diff-filter=U
-
-  - id: analyze
-    depends_on: [detect]
-    command: investigate-issue
-    model: review
-
-  - id: resolve
-    depends_on: [analyze]
-    command: resolve-conflicts
-    attempts:
-      max: 3
-    hooks:
-      after_node:
-        - id: no-markers
-          bash: |
-            test -z "$(git diff --name-only --diff-filter=U)"
-            ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.md' 2>/dev/null
-          on_failure:
-            action: retry
-            session: resume
-
-  - id: validate
-    depends_on: [resolve]
-    bash: ./.takt/profiles/code/tools/validate
-
-  - id: summary
-    depends_on: [validate]
-    command: summary
-    model: review
+- id: detect
+  bash: |
+    git status --porcelain=v1
+    git diff --name-only --diff-filter=U
+- id: analyze
+  depends_on:
+  - detect
+  command: investigate-issue
+  model: review
+- id: resolve
+  depends_on:
+  - analyze
+  command: resolve-conflicts
+  attempts:
+    max: 3
+  hooks:
+    after_node:
+    - id: no-markers
+      bash: |
+        test -z "$(git diff --name-only --diff-filter=U)"
+        ! git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.md' 2>/dev/null
+      on_failure:
+        action: retry
+        session: resume
+- id: validate
+  depends_on:
+  - resolve
+  bash: "./.takt/profiles/code/tools/validate"
+- id: summary
+  depends_on:
+  - validate
+  command: summary
+  model: review
+name: resolve-conflicts
+description: Detect and analyze merge conflicts, resolve both sides intentionally,
+  validate the result, and finish the merge or rebase safely.
+provider: coding-agent
+model: implementation

@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -9,4 +9,4 @@ Read repository instructions and artifacts. Inspect git status carefully and inc
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

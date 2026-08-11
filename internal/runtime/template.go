@@ -3,15 +3,13 @@ package runtime
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
+	"takt/internal/flowref"
 	"takt/internal/store"
 	"takt/internal/whenexpr"
 )
-
-var variableRE = regexp.MustCompile(`\$\{([^}]+)\}`)
 
 type templateExpression struct {
 	Path       string
@@ -45,75 +43,88 @@ func parseTemplateExpression(raw string) (templateExpression, error) {
 type templateResolver func(string) (string, bool)
 
 func renderTemplate(src string, state *store.RunState, local map[string]store.NodeState, feedback, artifactsDir string) (string, error) {
-	return renderTemplateWithResolver(src, state, local, feedback, artifactsDir, nil)
+	return renderTemplateSurface(src, flowref.NonShell, state, local, feedback, artifactsDir, nil)
 }
 
 func renderTemplateWithResolver(src string, state *store.RunState, local map[string]store.NodeState, feedback, artifactsDir string, extra templateResolver) (string, error) {
-	src = strings.ReplaceAll(src, "$USER_MESSAGE", state.Input)
-	src = strings.ReplaceAll(src, "$ARTIFACTS_DIR", artifactsDir)
-	var renderErr error
-	out := variableRE.ReplaceAllStringFunc(src, func(token string) string {
-		if renderErr != nil {
-			return token
-		}
-		raw := strings.TrimSuffix(strings.TrimPrefix(token, "${"), "}")
-		expression, err := parseTemplateExpression(raw)
-		if err != nil {
-			renderErr = err
-			return token
-		}
-		value, found := resolveTemplatePath(expression.Path, state, local, feedback, extra)
-		if expression.HasDefault && (!found || value == "") {
-			return expression.Default
-		}
-		if expression.Optional && !found {
-			return ""
-		}
-		if !found {
-			renderErr = fmt.Errorf("unresolved template expression %q", expression.Path)
-			return token
-		}
-		return value
-	})
-	if renderErr != nil {
-		return "", renderErr
-	}
-	return out, nil
+	return renderTemplateSurface(src, flowref.NonShell, state, local, feedback, artifactsDir, extra)
 }
 
-func resolveTemplatePath(key string, state *store.RunState, local map[string]store.NodeState, feedback string, extra templateResolver) (string, bool) {
+func renderTemplateSurface(src string, surface flowref.Surface, state *store.RunState, local map[string]store.NodeState, feedback, artifactsDir string, extra templateResolver) (string, error) {
+	return flowref.Render(src, surface, func(ref flowref.Reference) (string, bool) {
+		return resolveFlowReference(ref, state, local, feedback, artifactsDir, extra)
+	})
+}
+
+func resolveFlowReference(ref flowref.Reference, state *store.RunState, local map[string]store.NodeState, feedback, artifactsDir string, extra templateResolver) (string, bool) {
+	key := flowReferenceKey(ref)
 	if extra != nil {
 		if value, ok := extra(key); ok {
 			return value, true
 		}
 	}
-	switch key {
-	case "input":
-		return state.Input, true
-	case "feedback":
-		return feedback, true
-	}
-	parts := strings.Split(key, ".")
-	if len(parts) >= 3 && parts[0] == "nodes" {
-		if n, ok := state.Nodes[parts[1]]; ok && n != nil {
-			return nodePathLookup(*n, parts[2:])
+	switch ref.Kind {
+	case flowref.KindBare:
+		switch ref.Name {
+		case "ARGUMENTS":
+			return state.Input, true
+		case "ARTIFACTS_DIR":
+			return artifactsDir, true
+		case "FEEDBACK":
+			return feedback, true
+		case "BASE_BRANCH":
+			if state.Worktree != nil && state.Worktree.BaseRef != "" {
+				return state.Worktree.BaseRef, true
+			}
+			return "", false
 		}
-		if n, ok := local[parts[1]]; ok {
-			return nodePathLookup(n, parts[2:])
+	case flowref.KindInput:
+		if ref.Name == "input" || ref.Name == "message" {
+			return state.Input, true
 		}
 		return "", false
-	}
-	if len(parts) >= 4 && parts[0] == "loop" && parts[1] == "previous" {
-		if n, ok := local[parts[2]]; ok {
-			return nodePathLookup(n, parts[3:])
+	case flowref.KindFanout:
+		return "", false
+	case flowref.KindLoopPrevious:
+		if n, ok := local[ref.NodeID]; ok {
+			return nodePathLookup(n, ref.Path)
 		}
 		return "", false
-	}
-	if len(parts) == 2 && parts[0] == "approvals" {
-		value, ok := state.Approvals[parts[1]]
-		return value, ok
+	case flowref.KindNode, flowref.KindApproval:
+		if ref.Kind == flowref.KindApproval {
+			value, ok := state.Approvals[ref.NodeID]
+			return value, ok
+		}
+		if len(ref.Path) == 1 && ref.Path[0] == "output" {
+			if value, ok := state.Approvals[ref.NodeID]; ok {
+				return value, true
+			}
+		}
+		if n, ok := state.Nodes[ref.NodeID]; ok && n != nil {
+			return nodePathLookup(*n, ref.Path)
+		}
+		if n, ok := local[ref.NodeID]; ok {
+			return nodePathLookup(n, ref.Path)
+		}
 	}
 	return "", false
+}
+
+func flowReferenceKey(ref flowref.Reference) string {
+	switch ref.Kind {
+	case flowref.KindBare:
+		return strings.ToLower(ref.Name)
+	case flowref.KindInput:
+		return "inputs." + strings.Join(append([]string{ref.Name}, ref.Path...), ".")
+	case flowref.KindFanout:
+		return "fanout." + strings.Join(append([]string{ref.Name}, ref.Path...), ".")
+	case flowref.KindLoopPrevious:
+		return "loop.previous." + strings.Join(append([]string{ref.NodeID}, ref.Path...), ".")
+	case flowref.KindApproval:
+		return "approvals." + ref.NodeID
+	default:
+		return "nodes." + strings.Join(append([]string{ref.NodeID}, ref.Path...), ".")
+	}
 }
 
 func nodePath(n store.NodeState, parts []string) string {
@@ -275,22 +286,26 @@ func evalWhen(expr string, state *store.RunState) (bool, error) {
 }
 
 func resolveExprPath(path string, state *store.RunState) (string, error) {
-	parts := strings.Split(path, ".")
-	if len(parts) >= 3 && parts[0] == "nodes" {
-		n, ok := state.Nodes[parts[1]]
-		if !ok {
-			return "", fmt.Errorf("when references unknown node %q", parts[1])
+	ref, err := flowref.Parse(path, flowref.When)
+	if err != nil {
+		return "", err
+	}
+	if ref.Kind == flowref.KindBare && ref.Name == "ARGUMENTS" {
+		return state.Input, nil
+	}
+	if ref.Kind == flowref.KindNode {
+		n, ok := state.Nodes[ref.NodeID]
+		if !ok || n == nil {
+			return "", fmt.Errorf("when references unknown node %q", ref.NodeID)
 		}
-		value, found := nodePathLookup(*n, parts[2:])
+		value, found := nodePathLookup(*n, ref.Path)
 		if !found {
-			return "", fmt.Errorf("when references unknown node field %q", strings.Join(parts[2:], "."))
+			return "", fmt.Errorf("when references unknown node field %q", strings.Join(ref.Path, "."))
 		}
 		return value, nil
 	}
-	if len(parts) == 2 && parts[0] == "inputs" {
-		if parts[1] == "message" || parts[1] == "input" {
-			return state.Input, nil
-		}
+	if ref.Kind == flowref.KindInput && (ref.Name == "input" || ref.Name == "message") {
+		return state.Input, nil
 	}
 	return "", fmt.Errorf("unsupported expression path %q", path)
 }

@@ -38,6 +38,12 @@ func loadOne(path string) (*spec.Workflow, error) {
 	if err := yamlcodec.Unmarshal(b, &wf); err != nil {
 		return nil, fmt.Errorf("parse workflow %s: %w", path, err)
 	}
+	// Keep the internal expansion/runtime compatibility view populated while
+	// exposing only the Archon-first root in YAML.
+	if wf.Name != "" {
+		wf.Metadata = spec.Metadata{Name: wf.Name, Description: wf.Description, Labels: wf.Labels}
+	}
+	wf.Defaults = spec.Defaults{Assistant: wf.Provider, Model: wf.Model, Session: "fresh"}
 	expanded, err := Expand(path, &wf)
 	if err != nil {
 		return nil, fmt.Errorf("expand workflow %s: %w", path, err)

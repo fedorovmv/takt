@@ -1,5 +1,24 @@
 # Takt v0.1.57-alpha — TEST RESULTS
 
+## Archon-first A0/A1 contract slice — 2026-08-11
+
+PASS (deterministic local/fake-host boundary):
+
+- `go test ./... -count=1 -timeout=300s`;
+- `go test -race ./... -count=1 -timeout=300s`;
+- `go vet ./...`;
+- `make check` (including user journeys, race suite and TypeScript host smoke);
+- `./scripts/verify.sh`;
+- `go test ./tests/e2e -count=1 -timeout=300s`;
+- `go test ./internal/runtime -count=1 -timeout=180s`;
+- `git diff --check`.
+
+The suite covers target Workflow/command loading, unified `$...` references,
+signal matching/truncation, `until.requires`/`until_bash`, durable loop history,
+approval/cancel recovery, exact session resume and Archon provenance fixtures.
+No live provider budget or mutating fan-out proof is claimed; `scripts/check-docs.sh`
+is intentionally absent in this branch.
+
 ## Deterministic Development Flow Acceptance — 2026-08-10
 
 Focused PASS on `code:plan-to-pr` profile 0.17.0:

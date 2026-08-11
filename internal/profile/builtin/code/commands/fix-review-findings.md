@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -9,8 +9,8 @@ Re-check each finding before changing code. Add tests for repaired defects, upda
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS
 
 Previous validation feedback:
 
-${feedback}
+$FEEDBACK

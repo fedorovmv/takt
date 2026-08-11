@@ -25,6 +25,8 @@ const (
 	NodeWaiting   = "waiting"
 )
 
+const CurrentWorkflowContract = "takt-flow/v1alpha1"
+
 const (
 	RunRunning   = "running"
 	RunPausing   = "pausing"
@@ -267,13 +269,26 @@ type NodeState struct {
 // loop_group iteration. LoopPrevious remains the compatibility view of the
 // latest item while LoopIterations preserves the full bounded history.
 type LoopIterationState struct {
-	Iteration   int                  `json:"iteration"`
-	Nodes       map[string]NodeState `json:"nodes"`
-	UntilNode   string               `json:"until_node"`
-	ExitCode    int                  `json:"exit_code"`
-	Status      string               `json:"status"`
-	Satisfied   bool                 `json:"satisfied"`
-	CompletedAt time.Time            `json:"completed_at"`
+	Iteration        int                  `json:"iteration"`
+	Nodes            map[string]NodeState `json:"nodes"`
+	UntilNode        string               `json:"until_node"`
+	ExitCode         int                  `json:"exit_code"`
+	Status           string               `json:"status"`
+	Satisfied        bool                 `json:"satisfied"`
+	MatchedSignal    *string              `json:"matched_signal"`
+	SignalDiagnostic *string              `json:"signal_diagnostic"`
+	UntilBash        *PredicateEvidence   `json:"until_bash,omitempty"`
+	CompletedAt      time.Time            `json:"completed_at"`
+}
+
+type PredicateEvidence struct {
+	Stdout         string        `json:"stdout,omitempty"`
+	Stderr         string        `json:"stderr,omitempty"`
+	ExitCode       int           `json:"exit_code"`
+	Duration       time.Duration `json:"duration"`
+	TerminalStatus string        `json:"terminal_status"`
+	Truncated      bool          `json:"truncated,omitempty"`
+	ErrorCode      string        `json:"error_code,omitempty"`
 }
 
 func (n NodeState) Terminal() bool {
@@ -331,6 +346,7 @@ type RunState struct {
 	ParentNodeID          string                `json:"parent_node_id,omitempty"`
 	ChildRunIDs           []string              `json:"child_run_ids,omitempty"`
 	WorkflowPath          string                `json:"workflow_path"`
+	WorkflowContract      string                `json:"workflow_contract,omitempty"`
 	ConfigPath            string                `json:"config_path"`
 	Workspace             string                `json:"workspace"`
 	ExecutionWorkspace    string                `json:"execution_workspace,omitempty"`
@@ -342,6 +358,10 @@ type RunState struct {
 	Usage                 *Usage                `json:"usage,omitempty"`
 	Artifacts             []ArtifactRef         `json:"artifacts,omitempty"`
 	CancelRequested       bool                  `json:"cancel_requested,omitempty"`
+	CancelSource          string                `json:"cancel_source,omitempty"`
+	CancelNodePath        string                `json:"cancel_node_path,omitempty"`
+	CancelIteration       int                   `json:"cancel_iteration,omitempty"`
+	CancelReason          string                `json:"cancel_reason,omitempty"`
 	PauseRequested        bool                  `json:"pause_requested,omitempty"`
 	PausedAt              *time.Time            `json:"paused_at,omitempty"`
 	PausedFrom            string                `json:"paused_from,omitempty"`

@@ -79,9 +79,8 @@ func (s *CommandService) Run(ctx context.Context, request CommandRunRequest) (*s
 		}
 	}
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "command-" + request.Name},
-		Defaults: spec.Defaults{Assistant: assistantName, Model: modelName},
-		Nodes:    []spec.Node{{ID: "command", Command: request.Name}},
+		Name: "command-" + request.Name, Provider: assistantName, Model: modelName,
+		Nodes: []spec.Node{{ID: "command", Command: request.Name}},
 	}
 	runner := s.runnerFactory(runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: "<command>", ConfigPath: cfgPath, ControlWorkspace: s.workspace}, RunnerOptions{Commands: &resolver})
 	state, runErr := runner.Start(ctx, input)

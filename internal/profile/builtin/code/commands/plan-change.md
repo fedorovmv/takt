@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 
@@ -9,4 +9,4 @@ Read repository instructions, relevant code, tests, and any existing artifacts i
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

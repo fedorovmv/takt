@@ -8,8 +8,9 @@ package whenexpr
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
+
+	"takt/internal/flowref"
 )
 
 type Resolver func(path string) (string, error)
@@ -128,8 +129,6 @@ func parse(expr string) (node, error) {
 	return comparison{left: left, op: op, right: right}, nil
 }
 
-var pathRE = regexp.MustCompile(`^(nodes\.[A-Za-z0-9_-]+\.[A-Za-z0-9_.-]+|inputs\.(message|input))$`)
-
 func parseComparison(expr string) (string, string, string, error) {
 	idx, op, count := findComparators(expr)
 	if count != 1 {
@@ -143,8 +142,15 @@ func parseComparison(expr string) (string, string, string, error) {
 	if left == "" || rightRaw == "" {
 		return "", "", "", constitutionError(expr, "comparison operands must not be empty")
 	}
-	if !pathRE.MatchString(left) {
-		return "", "", "", constitutionError(expr, "the left operand must be a nodes.* or inputs.* path")
+	if !strings.HasPrefix(left, "$") {
+		return "", "", "", constitutionError(expr, "the left operand must be a target $ reference")
+	}
+	ref, refErr := flowref.Parse(left, flowref.When)
+	if refErr != nil || (ref.Kind != flowref.KindNode && ref.Kind != flowref.KindInput && ref.Kind != flowref.KindBare) {
+		return "", "", "", constitutionError(expr, "the left operand must be a node, input, or $ARGUMENTS reference")
+	}
+	if ref.Kind == flowref.KindBare && ref.Name != "ARGUMENTS" {
+		return "", "", "", constitutionError(expr, "runtime-only references are not valid in when")
 	}
 	if hasUnquotedAny(rightRaw, "+*/%<>") {
 		return "", "", "", constitutionError(expr, "arithmetic and ordering operators belong in a script node")

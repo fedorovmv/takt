@@ -5,12 +5,12 @@
 ```yaml
 nodes:
   - id: implement
-    assistant: pi
+    provider: pi
     model: deep
-    session: fresh
+    context: fresh
     prompt: |
       Изучи запрос:
-      ${input}
+      $ARGUMENTS
 
       Выполни работу в текущем workspace.
 ```
@@ -21,14 +21,14 @@ nodes:
 nodes:
   - id: draft
     model: fast
-    prompt: Подготовь первый вариант для ${input}
+    prompt: Подготовь первый вариант для $ARGUMENTS
 
   - id: review
     depends_on: [draft]
     model: deep
     prompt: |
       Проверь и исправь результат предыдущего узла.
-      Вывод: ${nodes.draft.output}
+      Вывод: $draft.output
 ```
 
 Если оба узла работают с одними файлами, явно укажи агенту, какие файлы читать и изменять. Не полагайся только на текстовый output первого узла.
@@ -41,15 +41,15 @@ nodes:
     command: implement
     attempts:
       max: 3
-    session: resume
+      retry_session: reuse
+    context: fresh
     timeout: 20m
     hooks:
       after_node:
         - id: validate-result
           bash: ./.takt/tools/validate-result
           on_failure:
-            action: retry
-            session: resume
+          action: retry
       before_complete:
         - id: preserve-result
           bash: |
@@ -61,7 +61,7 @@ nodes:
     bash: ./.takt/tools/validate-result
 ```
 
-Prompt команды должен содержать `${feedback}`.
+Prompt команды должен содержать `$FEEDBACK`.
 
 ## 4. Approval после детерминированной проверки
 
@@ -88,7 +88,7 @@ Prompt команды должен содержать `${feedback}`.
 ```yaml
 - id: publish
   depends_on: [validate]
-  when: nodes.validate.exit_code == 0
+  when: $validate.exit_code == 0
   bash: ./publish.sh
 ```
 
@@ -128,16 +128,13 @@ Prompt команды должен содержать `${feedback}`.
   subworkflow:
     path: workflows/implementation.yaml
     inputs:
-      plan: ${input}
+      plan: $ARGUMENTS
 ```
 
 `workflows/implementation.yaml`:
 
 ```yaml
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: implementation
+name: implementation
 nodes:
   - id: implement
     command: implement
@@ -156,7 +153,7 @@ nodes:
     subworkflow:
       path: workflows/render.yaml
       inputs:
-        environment: ${env}
+        environment: $INPUTS.env
 ```
 
 Такой `foreach` подходит для известного набора окружений, файлов или компонентов. Markdown-план оставляй Markdown-документом и передавай coding agent целиком.
@@ -177,7 +174,7 @@ nodes:
 
 - id: review
   depends_on: [route]
-  when: nodes.route.output.workflow == "review"
+  when: $route.output.workflow == "review"
   subworkflow:
     path: workflows/review.yaml
 ```

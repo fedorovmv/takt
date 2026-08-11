@@ -3,3 +3,4 @@
 examples/**/.takt/
 examples/**/route.yaml
 examples/**/counter.txt
+.superpowers/brainstorm/*

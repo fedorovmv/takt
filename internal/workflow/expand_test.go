@@ -16,13 +16,9 @@ func TestLoadExpandsSubworkflowAndPreservesPublicNode(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(childDir, "commands"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeTestFile(t, filepath.Join(childDir, "task.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: task
-defaults:
-  assistant: demo
-  model: model
+	writeTestFile(t, filepath.Join(childDir, "task.yaml"), `name: task
+provider: demo
+model: model
 nodes:
   - id: write
     command: write-item
@@ -32,25 +28,22 @@ nodes:
       cat order.txt
 `)
 	writeTestFile(t, filepath.Join(childDir, "commands", "write-item.md"), `---
-assistant: child-assistant
+provider: child-assistant
 model: child-model
 ---
-printf '%s\n' '${inputs.value}' >> order.txt
+printf '%s\n' '$INPUTS.value' >> order.txt
 `)
-	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `name: parent
 nodes:
   - id: task
     subworkflow:
       path: flows/task.yaml
       inputs:
-        value: ${input}
+        value: $ARGUMENTS
   - id: verify
     depends_on: [task]
     bash: |
-      test "${nodes.task.output}" = "hello"
+      test $task.output = "hello"
 `)
 
 	wf, err := Load(filepath.Join(dir, "workflow.yaml"))
@@ -67,14 +60,14 @@ nodes:
 	for _, node := range wf.Nodes {
 		if node.ID == "task__write" {
 			writeNodeFound = true
-			if node.Command != "" || !strings.Contains(node.Prompt, "${input}") {
+			if node.Command != "" || !strings.Contains(node.Prompt, "$ARGUMENTS") {
 				t.Fatalf("local command was not inlined correctly: %+v", node)
 			}
 			if node.Assistant != "child-assistant" || node.Model != "child-model" {
 				t.Fatalf("command frontmatter was not preserved: %+v", node)
 			}
 		}
-		if node.ID == "verify" && !strings.Contains(node.Bash, "${nodes.task.output}") {
+		if node.ID == "verify" && !strings.Contains(node.Bash, "$task.output") {
 			t.Fatalf("public container reference changed: %q", node.Bash)
 		}
 	}
@@ -85,22 +78,16 @@ nodes:
 
 func TestLoadExpandsForeachSequentially(t *testing.T) {
 	dir := t.TempDir()
-	writeTestFile(t, filepath.Join(dir, "item.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: item
+	writeTestFile(t, filepath.Join(dir, "item.yaml"), `name: item
 nodes:
   - id: append
     bash: |
-      printf '%s\n' '${inputs.name}' >> order.txt
+      printf '%s\n' '$INPUTS.name' >> order.txt
   - id: result
     depends_on: [append]
     bash: cat order.txt
 `)
-	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: batch
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `name: batch
 nodes:
   - id: batch
     foreach:
@@ -112,7 +99,7 @@ nodes:
       subworkflow:
         path: item.yaml
         inputs:
-          name: ${service}
+          name: $INPUTS.service
   - id: verify
     depends_on: [batch]
     bash: |
@@ -139,19 +126,13 @@ nodes:
 
 func TestLoadRejectsRecursiveSubworkflow(t *testing.T) {
 	dir := t.TempDir()
-	writeTestFile(t, filepath.Join(dir, "a.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: a
+	writeTestFile(t, filepath.Join(dir, "a.yaml"), `name: a
 nodes:
   - id: b
     subworkflow:
       path: b.yaml
 `)
-	writeTestFile(t, filepath.Join(dir, "b.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: b
+	writeTestFile(t, filepath.Join(dir, "b.yaml"), `name: b
 nodes:
   - id: a
     subworkflow:
@@ -165,20 +146,14 @@ nodes:
 
 func TestLoadRequiresOutputNodeForMultipleTerminals(t *testing.T) {
 	dir := t.TempDir()
-	writeTestFile(t, filepath.Join(dir, "child.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	writeTestFile(t, filepath.Join(dir, "child.yaml"), `name: child
 nodes:
   - id: left
     bash: echo left
   - id: right
     bash: echo right
 `)
-	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `name: parent
 nodes:
   - id: child
     subworkflow:
@@ -220,18 +195,12 @@ func TestLoadExpandsForeachItemsFromFile(t *testing.T) {
 - alpha
 - beta
 `)
-	writeTestFile(t, filepath.Join(dir, "item.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: item
+	writeTestFile(t, filepath.Join(dir, "item.yaml"), `name: item
 nodes:
   - id: result
-    bash: printf '%s' '${inputs.name}'
+    bash: printf '%s' '$INPUTS.name'
 `)
-	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: batch
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `name: batch
 nodes:
   - id: batch
     foreach:
@@ -240,7 +209,7 @@ nodes:
       subworkflow:
         path: item.yaml
         inputs:
-          name: ${item}
+          name: $INPUTS.item
 `)
 	wf, err := Load(filepath.Join(dir, "workflow.yaml"))
 	if err != nil {
@@ -256,18 +225,12 @@ nodes:
 
 func TestLoadExpandsCompositionInsideLoopGroup(t *testing.T) {
 	dir := t.TempDir()
-	writeTestFile(t, filepath.Join(dir, "step.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: step
+	writeTestFile(t, filepath.Join(dir, "step.yaml"), `name: step
 nodes:
   - id: result
     bash: echo done
 `)
-	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `name: parent
 nodes:
   - id: retry
     loop_group:
@@ -305,7 +268,7 @@ func TestLoadRejectsExpansionBeyondDepthLimit(t *testing.T) {
 		} else {
 			next = "nodes:\n  - id: done\n    bash: echo done\n"
 		}
-		writeTestFile(t, filepath.Join(dir, fmt.Sprintf("%d.yaml", i)), fmt.Sprintf("apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: depth-%d\n%s", i, next))
+		writeTestFile(t, filepath.Join(dir, fmt.Sprintf("%d.yaml", i)), fmt.Sprintf("name: depth-%d\n%s", i, next))
 	}
 	_, err := Load(filepath.Join(dir, "0.yaml"))
 	if err == nil || !strings.Contains(err.Error(), "exceeds depth 16") {
@@ -315,25 +278,19 @@ func TestLoadRejectsExpansionBeyondDepthLimit(t *testing.T) {
 
 func TestLoadRejectsUnresolvedSubworkflowInput(t *testing.T) {
 	dir := t.TempDir()
-	writeTestFile(t, filepath.Join(dir, "child.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	writeTestFile(t, filepath.Join(dir, "child.yaml"), `name: child
 nodes:
   - id: result
-    bash: echo '${inputs.missing}'
+    bash: echo '$INPUTS.missing'
 `)
-	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `name: parent
 nodes:
   - id: child
     subworkflow:
       path: child.yaml
 `)
 	_, err := Load(filepath.Join(dir, "workflow.yaml"))
-	if err == nil || !strings.Contains(err.Error(), "unresolved subworkflow input ${inputs.missing}") {
+	if err == nil || !strings.Contains(err.Error(), "unresolved subworkflow input $INPUTS.missing") {
 		t.Fatalf("expected unresolved input error, got %v", err)
 	}
 }
@@ -347,18 +304,12 @@ func TestLoadFindsCommandsAtCompositionRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeTestFile(t, filepath.Join(dir, "commands", "shared.md"), "echo from-root\n")
-	writeTestFile(t, filepath.Join(dir, "workflows", "child.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	writeTestFile(t, filepath.Join(dir, "workflows", "child.yaml"), `name: child
 nodes:
   - id: result
     command: shared
 `)
-	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `name: parent
 nodes:
   - id: child
     subworkflow:
@@ -380,38 +331,30 @@ nodes:
 }
 
 func TestRewriteNodeRefsDoesNotChangeProse(t *testing.T) {
-	value := "Explain nodes.build.output in prose and use ${nodes.build.output} as a template."
+	value := "Explain nodes.build.output in prose and use $build.output as a template."
 	rewritten := rewriteTemplateNodeRefs(value, "child__", map[string]spec.Node{"build": {ID: "build"}})
 	if !strings.Contains(rewritten, "Explain nodes.build.output in prose") {
 		t.Fatalf("prose reference was rewritten: %q", rewritten)
 	}
-	if !strings.Contains(rewritten, "${nodes.child__build.output}") {
+	if !strings.Contains(rewritten, "$child__build.output") {
 		t.Fatalf("template reference was not rewritten: %q", rewritten)
 	}
 }
 
 func TestCompositionContainerProvidesChildExecutionDefaults(t *testing.T) {
 	dir := t.TempDir()
-	writeTestFile(t, filepath.Join(dir, "child.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	writeTestFile(t, filepath.Join(dir, "child.yaml"), `name: child
 nodes:
   - id: implement
     prompt: do work
 `)
-	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
-defaults:
-  assistant: parent-assistant
-  model: parent-model
-  session: fresh
+	writeTestFile(t, filepath.Join(dir, "workflow.yaml"), `name: parent
+provider: parent-assistant
+model: parent-model
 nodes:
   - id: child
-    assistant: invocation-assistant
-    session: resume
+    provider: invocation-assistant
+    context: fresh
     subworkflow:
       path: child.yaml
 `)
@@ -423,7 +366,7 @@ nodes:
 		if node.ID != "child__implement" {
 			continue
 		}
-		if node.Assistant != "invocation-assistant" || node.Model != "parent-model" || node.Session != "resume" {
+		if node.Provider != "invocation-assistant" || node.Assistant != "invocation-assistant" || node.Model != "parent-model" || node.Context != "fresh" || node.Session != "fresh" {
 			t.Fatalf("container defaults were not inherited: %+v", node)
 		}
 		return

@@ -14,14 +14,15 @@ import (
 )
 
 func Validate(wf *spec.Workflow) error {
-	if wf.APIVersion != "takt/v1alpha1" {
-		return fmt.Errorf("unsupported apiVersion %q", wf.APIVersion)
+	if wf == nil {
+		return fmt.Errorf("workflow is required")
 	}
-	if wf.Kind != "Workflow" {
-		return fmt.Errorf("kind must be Workflow")
+	name := strings.TrimSpace(wf.Name)
+	if name == "" {
+		name = strings.TrimSpace(wf.Metadata.Name) // Go-built legacy definitions only.
 	}
-	if strings.TrimSpace(wf.Metadata.Name) == "" {
-		return fmt.Errorf("metadata.name is required")
+	if name == "" {
+		return fmt.Errorf("name is required")
 	}
 	if err := validateWorktree(wf.Worktree); err != nil {
 		return err
@@ -81,7 +82,65 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 	if err := validateFanOutDependencies(nodes, byID); err != nil {
 		return err
 	}
+	if err := validateSharedContexts(nodes, byID); err != nil {
+		return err
+	}
 	return validateAcyclic(byID)
+}
+
+func validateSharedContexts(nodes []spec.Node, byID map[string]spec.Node) error {
+	for _, node := range nodes {
+		if node.Context != "shared" {
+			continue
+		}
+		ancestors := map[string]bool{}
+		var visit func(string)
+		visit = func(id string) {
+			candidate, ok := byID[id]
+			if !ok {
+				return
+			}
+			for _, dep := range candidate.DependsOn {
+				if !ancestors[dep] {
+					ancestors[dep] = true
+					visit(dep)
+				}
+			}
+		}
+		for _, dep := range node.DependsOn {
+			ancestors[dep] = true
+			visit(dep)
+		}
+		candidates := 0
+		provider := node.Provider
+		if provider == "" {
+			provider = node.Assistant
+		}
+		for id := range ancestors {
+			candidate := byID[id]
+			if candidate.Command == "" && candidate.Prompt == "" {
+				continue
+			}
+			candidateProvider := candidate.Provider
+			if candidateProvider == "" {
+				candidateProvider = candidate.Assistant
+			}
+			if provider != "" && candidateProvider != "" && provider != candidateProvider {
+				continue
+			}
+			if node.Model != "" && candidate.Model != "" && node.Model != candidate.Model {
+				continue
+			}
+			candidates++
+		}
+		if candidates == 0 {
+			return fmt.Errorf("node %q context: shared requires one explicit upstream assistant ancestor", node.ID)
+		}
+		if candidates > 1 {
+			return fmt.Errorf("node %q context: shared has ambiguous upstream assistant ancestors", node.ID)
+		}
+	}
+	return nil
 }
 
 func indexNodes(nodes []spec.Node, scope string) (map[string]spec.Node, error) {
@@ -92,6 +151,12 @@ func indexNodes(nodes []spec.Node, scope string) (map[string]spec.Node, error) {
 	for _, node := range nodes {
 		if strings.TrimSpace(node.ID) == "" {
 			return nil, fmt.Errorf("%s contains node without id", scope)
+		}
+		if !nodeIDRE.MatchString(node.ID) {
+			return nil, fmt.Errorf("%s contains invalid node id %q", scope, node.ID)
+		}
+		if reservedNodeIDs[node.ID] {
+			return nil, fmt.Errorf("%s contains reserved node id %q", scope, node.ID)
 		}
 		if _, exists := byID[node.ID]; exists {
 			return nil, fmt.Errorf("duplicate node id %q in %s", node.ID, scope)
@@ -115,6 +180,7 @@ func validateNode(node spec.Node, scope string, insideLoop bool) error {
 		validateSandbox,
 		validateOutputs,
 		validateApproval,
+		validateArchonA0Fields,
 	}
 	for _, check := range checks {
 		if err := check(node); err != nil {
@@ -124,11 +190,25 @@ func validateNode(node spec.Node, scope string, insideLoop bool) error {
 	return validateLoop(node, scope, insideLoop)
 }
 
+var nodeIDRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
+
+var reservedNodeIDs = map[string]bool{
+	"ARGUMENTS": true, "ARTIFACTS_DIR": true, "BASE_BRANCH": true,
+	"INPUTS": true, "LOOP_PREV": true, "FEEDBACK": true, "FANOUT": true,
+}
+
+func validateArchonA0Fields(node spec.Node) error {
+	if node.Context != "" && node.Context != "fresh" && node.Context != "shared" {
+		return fmt.Errorf("node %q context must be fresh or shared", node.ID)
+	}
+	return nil
+}
+
 func validateActionShape(node spec.Node) error {
 	kinds := 0
 	for _, present := range []bool{
 		node.Command != "", node.Prompt != "", node.Bash != "", node.Script != nil,
-		node.Approval != nil, node.LoopGroup != nil, node.Subworkflow != nil,
+		node.Approval != nil, node.LoopGroup != nil, node.Loop != nil, node.Cancel != "", node.Subworkflow != nil,
 		node.Foreach != nil, node.WorkflowRun != nil, node.Internal != nil, node.Adapter != nil,
 	} {
 		if present {
@@ -474,6 +554,35 @@ func validateLoop(node spec.Node, scope string, insideLoop bool) error {
 	if value.MaxIterations > spec.MaxLoopGroupIterations {
 		return fmt.Errorf("loop_group node %q max_iterations must be <= %d", node.ID, spec.MaxLoopGroupIterations)
 	}
+	if value.Until.Node == "" {
+		return fmt.Errorf("loop_group %q until.node is required; scalar until needs one terminal node", node.ID)
+	}
+	if value.Until.Signal != "" && !signalRE.MatchString(value.Until.Signal) {
+		return fmt.Errorf("loop_group %q until.signal must match %s", node.ID, signalRE.String())
+	}
+	if len(value.Until.Requires) > 64 {
+		return fmt.Errorf("loop_group %q until.requires must contain at most 64 entries", node.ID)
+	}
+	body := make(map[string]spec.Node, len(value.Nodes))
+	for _, child := range value.Nodes {
+		body[child.ID] = child
+	}
+	seenRequirements := map[string]bool{}
+	for _, requirement := range value.Until.Requires {
+		if requirement.Node == "" || seenRequirements[requirement.Node] {
+			return fmt.Errorf("loop_group %q until.requires contains duplicate or empty node", node.ID)
+		}
+		seenRequirements[requirement.Node] = true
+		if _, ok := body[requirement.Node]; !ok {
+			return fmt.Errorf("loop_group %q until.requires references node %q outside body", node.ID, requirement.Node)
+		}
+		if requirement.ExitCode == nil && requirement.OutputContains == "" {
+			return fmt.Errorf("loop_group %q until.requires[%q] needs exit_code or output_contains", node.ID, requirement.Node)
+		}
+		if requirement.Node == value.Until.Node {
+			return fmt.Errorf("loop_group %q until.requires repeats primary node %q", node.ID, requirement.Node)
+		}
+	}
 	if err := validateNodes(value.Nodes, scope+"."+node.ID+".loop_group.nodes", true); err != nil {
 		return err
 	}
@@ -487,11 +596,13 @@ func validateLoop(node spec.Node, scope string, insideLoop bool) error {
 	if !found {
 		return fmt.Errorf("loop_group %q until.node %q does not exist", node.ID, value.Until.Node)
 	}
-	if value.Until.ExitCode == nil && value.Until.OutputContains == "" {
+	if value.Until.ExitCode == nil && value.Until.OutputContains == "" && value.Until.Signal == "" {
 		return fmt.Errorf("loop_group %q requires until.exit_code or until.output_contains", node.ID)
 	}
 	return nil
 }
+
+var signalRE = regexp.MustCompile(`^[A-Z][A-Z0-9_-]{0,63}$`)
 
 func validateLoopCollisions(nodes []spec.Node, byID map[string]spec.Node) error {
 	for _, node := range nodes {
@@ -614,9 +725,17 @@ func validateScript(script spec.ScriptSpec, scope string) error {
 }
 
 func fanOutSourceNode(path string) (string, error) {
-	match := fanOutSourceRE.FindStringSubmatch(strings.TrimSpace(path))
+	path = strings.TrimSpace(path)
+	if strings.HasPrefix(path, "$") {
+		parts := strings.Split(path, ".")
+		if len(parts) >= 2 && parts[1] == "output" && nodeIDRE.MatchString(strings.TrimPrefix(parts[0], "$")) {
+			return strings.TrimPrefix(parts[0], "$"), nil
+		}
+		return "", fmt.Errorf("must be $<id>.output or a nested output path")
+	}
+	match := fanOutSourceRE.FindStringSubmatch(path)
 	if len(match) != 2 {
-		return "", fmt.Errorf("must be nodes.<id>.output or a nested output path")
+		return "", fmt.Errorf("must be $<id>.output or a nested output path")
 	}
 	return match[1], nil
 }

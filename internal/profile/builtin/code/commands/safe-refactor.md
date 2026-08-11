@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -9,8 +9,8 @@ Read the baseline validation evidence and plan. Make small reviewable steps, kee
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS
 
 Previous validation feedback:
 
-${feedback}
+$FEEDBACK

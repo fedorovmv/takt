@@ -1,98 +1,117 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: dynamic-plan
-  description: Decide whether an existing workflow fits or produce a bounded task-specific WorkflowPlan from approved blocks.
-defaults:
-  assistant: coding-agent
-  model: routing
-  session: fresh
+---
 nodes:
-  - id: plan
-    command: dynamic-plan
-    allowed_tools: []
-    skills: []
-    attempts:
-      max: 2
-      retry_on: [protocol]
-      retry_session: fresh
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        apiVersion:
-          type: string
-          enum: [takt/v1alpha1]
-        kind:
-          type: string
-          enum: [WorkflowPlan]
-        decision:
-          type: string
-          enum: [existing, planned]
-        goal:
-          type: string
-          minLength: 1
-        existing_workflow:
-          type: string
-        reason:
-          type: string
-          minLength: 1
-        budget:
+- id: plan
+  command: dynamic-plan
+  allowed_tools: []
+  skills: []
+  attempts:
+    max: 2
+    retry_on:
+    - protocol
+    retry_session: fresh
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      apiVersion:
+        type: string
+        enum:
+        - takt/v1alpha1
+      kind:
+        type: string
+        enum:
+        - WorkflowPlan
+      decision:
+        type: string
+        enum:
+        - existing
+        - planned
+      goal:
+        type: string
+        minLength: 1
+      existing_workflow:
+        type: string
+      reason:
+        type: string
+        minLength: 1
+      budget:
+        type: object
+        additionalProperties: false
+        properties:
+          max_child_runs:
+            type: integer
+            minimum: 1
+            maximum: 256
+          max_parallel:
+            type: integer
+            minimum: 1
+            maximum: 64
+          max_iterations:
+            type: integer
+            minimum: 1
+            maximum: 16
+          max_tokens:
+            type: integer
+            minimum: 1
+        required:
+        - max_child_runs
+        - max_parallel
+        - max_iterations
+        - max_tokens
+      phases:
+        type: array
+        maxItems: 256
+        items:
           type: object
           additionalProperties: false
           properties:
-            max_child_runs:
-              type: integer
-              minimum: 1
-              maximum: 256
+            id:
+              type: string
+              pattern: "^[a-z][a-z0-9-]{0,62}$"
+            uses:
+              type: string
+              pattern: "^[a-z][a-z0-9-]{0,62}$"
+            objective:
+              type: string
+              minLength: 1
+            repository:
+              type: string
+              pattern: "^[a-z][a-z0-9-]{0,62}$"
+            publish_change:
+              type: boolean
+            depends_on:
+              type: array
+              uniqueItems: true
+              items:
+                type: string
+            strategy:
+              type: string
+              enum:
+              - task
+              - map
+            source:
+              type: string
             max_parallel:
               type: integer
               minimum: 1
               maximum: 64
-            max_iterations:
-              type: integer
-              minimum: 1
-              maximum: 16
-            max_tokens:
-              type: integer
-              minimum: 1
-          required: [max_child_runs, max_parallel, max_iterations, max_tokens]
-        phases:
-          type: array
-          maxItems: 256
-          items:
-            type: object
-            additionalProperties: false
-            properties:
-              id:
-                type: string
-                pattern: "^[a-z][a-z0-9-]{0,62}$"
-              uses:
-                type: string
-                pattern: "^[a-z][a-z0-9-]{0,62}$"
-              objective:
-                type: string
-                minLength: 1
-              repository:
-                type: string
-                pattern: "^[a-z][a-z0-9-]{0,62}$"
-              publish_change:
-                type: boolean
-              depends_on:
-                type: array
-                uniqueItems: true
-                items:
-                  type: string
-              strategy:
-                type: string
-                enum: [task, map]
-              source:
-                type: string
-              max_parallel:
-                type: integer
-                minimum: 1
-                maximum: 64
-              checkpoint:
-                type: boolean
-            required: [id, uses, objective, strategy]
-      required: [apiVersion, kind, decision, goal, reason, budget, phases]
+            checkpoint:
+              type: boolean
+          required:
+          - id
+          - uses
+          - objective
+          - strategy
+    required:
+    - apiVersion
+    - kind
+    - decision
+    - goal
+    - reason
+    - budget
+    - phases
+name: dynamic-plan
+description: Decide whether an existing workflow fits or produce a bounded task-specific
+  WorkflowPlan from approved blocks.
+provider: coding-agent
+model: routing

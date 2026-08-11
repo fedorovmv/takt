@@ -1,14 +1,9 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: qwen-reference-session
-
-defaults:
-  assistant: qwen-reference
-  model: coding
-  session: fresh
-
+---
 nodes:
-  - id: inspect
-    prompt: |
-      Inspect the current repository and return a concise factual summary.
+- id: inspect
+  prompt: 'Inspect the current repository and return a concise factual summary.
+
+'
+name: qwen-reference-session
+provider: qwen-reference
+model: coding

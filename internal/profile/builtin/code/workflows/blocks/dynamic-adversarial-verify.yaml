@@ -1,32 +1,32 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: dynamic-adversarial-verify
-  description: Approved Dynamic Takt block dynamic-adversarial-verify.
-defaults:
-  assistant: coding-agent
-  model: review
-  session: fresh
+---
 nodes:
-  - id: result
-    command: dynamic-review
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        summary:
+- id: result
+  command: dynamic-review
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      summary:
+        type: string
+        minLength: 1
+      approved:
+        type: boolean
+      findings:
+        type: array
+        items:
           type: string
-          minLength: 1
-        approved:
-          type: boolean
-        findings:
-          type: array
-          items:
-            type: string
-        evidence:
-          type: array
-          items:
-            type: string
-      required: [summary, approved, findings, evidence]
-    output_type: dynamic-adversarial-verification
-    output_mime: application/json
+      evidence:
+        type: array
+        items:
+          type: string
+    required:
+    - summary
+    - approved
+    - findings
+    - evidence
+  output_type: dynamic-adversarial-verification
+  output_mime: application/json
+name: dynamic-adversarial-verify
+description: Approved Dynamic Takt block dynamic-adversarial-verify.
+provider: coding-agent
+model: review

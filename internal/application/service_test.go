@@ -30,13 +30,9 @@ assistants:
     env:
       TOKEN: secret://`+envName+`
 `)
-	mustWriteControlTest(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: answer-redaction
-defaults:
-  assistant: worker
-  model: demo
+	mustWriteControlTest(t, workflowPath, `name: answer-redaction
+provider: worker
+model: demo
 nodes:
   - id: approve
     approval:

@@ -1,12 +1,9 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: assist
-  description: General repository Q&A, debugging, exploration, CI diagnosis, and one-off implementation work.
-defaults:
-  assistant: coding-agent
-  model: implementation
-  session: resume
+---
 nodes:
-  - id: assist
-    command: assist
+- id: assist
+  command: assist
+name: assist
+description: General repository Q&A, debugging, exploration, CI diagnosis, and one-off
+  implementation work.
+provider: coding-agent
+model: implementation

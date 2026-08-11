@@ -1,8 +1,7 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: write
+---
 nodes:
-  - id: write
-    bash: |
-      printf '%s\n' '${inputs.value}' >> composition.txt
+- id: write
+  bash: 'printf ''%s\n'' ''$INPUTS.value'' >> composition.txt
+
+'
+name: write

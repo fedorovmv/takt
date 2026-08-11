@@ -26,6 +26,9 @@ type resolvedAssistantNode struct {
 func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, local map[string]store.NodeState, feedback, artifacts string) (resolvedAssistantNode, error) {
 	prompt := node.Prompt
 	assistantName, modelName := node.Assistant, node.Model
+	if assistantName == "" {
+		assistantName = node.Provider
+	}
 	if node.Command != "" {
 		cmd, err := r.commands.Resolve(node.Command)
 		if err != nil {
@@ -33,7 +36,10 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 		}
 		prompt = cmd.Body
 		if assistantName == "" {
-			assistantName = cmd.Assistant
+			assistantName = cmd.Provider
+			if assistantName == "" {
+				assistantName = cmd.Assistant
+			}
 		}
 		if modelName == "" {
 			modelName = cmd.Model
@@ -41,9 +47,15 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 	}
 	if assistantName == "" {
 		assistantName = r.workflow.Defaults.Assistant
+		if assistantName == "" {
+			assistantName = r.workflow.Provider
+		}
 	}
 	if modelName == "" {
 		modelName = r.workflow.Defaults.Model
+		if modelName == "" {
+			modelName = r.workflow.Model
+		}
 	}
 	if assistantName == "" {
 		return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: fmt.Errorf("node %q does not resolve an assistant", node.ID)}
@@ -90,14 +102,27 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 	}
 	sessionMode := node.Session
 	if sessionMode == "" {
+		sessionMode = node.Context
+	}
+	if sessionMode == "" {
 		sessionMode = r.workflow.Defaults.Session
 	}
 	if sessionMode == "" {
 		sessionMode = "fresh"
 	}
 	sessionID := state.Nodes[node.ID].SessionID
-	if sessionMode == "fresh" {
+	if sessionMode == "fresh" && !state.Nodes[node.ID].Resumed {
 		sessionID = ""
+	}
+	if state.Nodes[node.ID].Resumed && sessionID != "" {
+		sessionMode = "resume"
+	}
+	if node.Context == "shared" {
+		source, err := r.sharedSessionSource(state, local, node, assistantName, modelName)
+		if err != nil {
+			return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindProtocol, Op: "resolve shared session", Err: err}
+		}
+		sessionMode, sessionID = "resume", source
 	}
 	renderedPrompt, err := renderTemplate(prompt, state, local, feedback, artifacts)
 	if err != nil {
@@ -115,6 +140,109 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 		ModelName: modelName, Model: model, Policy: policy, Capabilities: capabilities,
 		SessionMode: sessionMode, SessionID: sessionID,
 	}, nil
+}
+
+func (r *Runner) sharedSessionSource(state *store.RunState, local map[string]store.NodeState, node spec.Node, provider, model string) (string, error) {
+	if r.workflow == nil {
+		return "", fmt.Errorf("node %q has no workflow definition", node.ID)
+	}
+	byID := make(map[string][]spec.Node)
+	var collect func([]spec.Node)
+	collect = func(nodes []spec.Node) {
+		for _, candidate := range nodes {
+			byID[candidate.ID] = append(byID[candidate.ID], candidate)
+			if candidate.LoopGroup != nil {
+				collect(candidate.LoopGroup.Nodes)
+			}
+		}
+	}
+	collect(r.workflow.Nodes)
+
+	seen := map[string]bool{}
+	var visit func(string)
+	visit = func(id string) {
+		if seen[id] {
+			return
+		}
+		seen[id] = true
+		for _, candidate := range byID[id] {
+			for _, dependency := range candidate.DependsOn {
+				visit(dependency)
+			}
+		}
+	}
+	for _, dependency := range node.DependsOn {
+		visit(dependency)
+	}
+
+	var sessions []string
+	for id := range seen {
+		candidates := byID[id]
+		if len(candidates) != 1 {
+			return "", fmt.Errorf("node %q has ambiguous upstream ancestor %q", node.ID, id)
+		}
+		candidate := candidates[0]
+		if candidate.Command == "" && candidate.Prompt == "" {
+			continue
+		}
+		candidateProvider, candidateModel := r.nodeBinding(candidate)
+		if candidateProvider != provider || candidateModel != model {
+			continue
+		}
+		var candidateState *store.NodeState
+		if state != nil {
+			candidateState = state.Nodes[id]
+		}
+		if candidateState == nil {
+			if value, ok := local[id]; ok {
+				candidateState = &value
+			}
+		}
+		if candidateState == nil || candidateState.SessionID == "" {
+			continue
+		}
+		sessions = append(sessions, candidateState.SessionID)
+	}
+	if len(sessions) == 0 {
+		return "", fmt.Errorf("node %q has no upstream session", node.ID)
+	}
+	if len(sessions) > 1 {
+		return "", fmt.Errorf("node %q has ambiguous upstream sessions", node.ID)
+	}
+	return sessions[0], nil
+}
+
+func (r *Runner) nodeBinding(node spec.Node) (string, string) {
+	provider, model := node.Assistant, node.Model
+	if provider == "" {
+		provider = node.Provider
+	}
+	if node.Command != "" {
+		if command, err := r.commands.Resolve(node.Command); err == nil {
+			if provider == "" {
+				provider = command.Provider
+				if provider == "" {
+					provider = command.Assistant
+				}
+			}
+			if model == "" {
+				model = command.Model
+			}
+		}
+	}
+	if provider == "" && r.workflow != nil {
+		provider = r.workflow.Defaults.Assistant
+		if provider == "" {
+			provider = r.workflow.Provider
+		}
+	}
+	if model == "" && r.workflow != nil {
+		model = r.workflow.Defaults.Model
+		if model == "" {
+			model = r.workflow.Model
+		}
+	}
+	return provider, model
 }
 
 func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, resolved resolvedAssistantNode) (execResult, error) {

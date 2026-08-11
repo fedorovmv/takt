@@ -21,10 +21,7 @@ func TestPackageDistributionBoundary(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(tmp, "home"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, pkg, "workflow.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: portable-extra
+	writeFile(t, pkg, "workflow.yaml", `name: portable-extra
 nodes:
   - id: result
     prompt: Return JSON summary.
@@ -163,14 +160,9 @@ assistants:
       QWEN_FIXTURE_ARGS: %s
     capabilities: [agent_events_v2, session_events, usage_events]
 `, qwenAdapter, qwen, qwenArgs))
-	writeFile(t, qwenWork, "workflow.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: qwen-reference-adapter
-defaults:
-  assistant: qwen-reference
-  model: default
-  session: fresh
+	writeFile(t, qwenWork, "workflow.yaml", `name: qwen-reference-adapter
+provider: qwen-reference
+model: default
 nodes:
   - id: execute
     prompt: Return a short result.
@@ -217,10 +209,7 @@ adapters:
       GH_FIXTURE_BODY: %s
     timeout: 10s
 `, githubAdapter, gh, ghLog, ghBody))
-	writeFile(t, scmWork, "workflow.yaml", `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: github-reference-reconcile
+	writeFile(t, scmWork, "workflow.yaml", `name: github-reference-reconcile
 nodes:
   - id: publish
     adapter:

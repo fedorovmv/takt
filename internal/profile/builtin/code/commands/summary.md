@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 
@@ -9,4 +9,4 @@ Report what changed, validation evidence, issue or PR links, review verdict, kno
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

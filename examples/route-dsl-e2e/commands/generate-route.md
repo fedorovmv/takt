@@ -1,15 +1,15 @@
 ---
 description: Создаёт или исправляет Route DSL
-assistant: pi
+provider: pi
 model: route-model
 ---
 Создай или исправь файл `route.yaml` по техническому заданию.
 
 Техническое задание:
-$USER_MESSAGE
+$ARGUMENTS
 
 Диагностика предыдущей проверки:
-${feedback}
+$FEEDBACK
 
 Требования к результату:
 - изменяй только файлы в текущей рабочей области;

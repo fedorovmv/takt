@@ -1,42 +1,38 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: remotion-generate
-  description: Inspect, plan, generate or modify a Remotion composition, validate code and rendering, review visual/technical risks, and repair findings.
+---
 worktree:
   enabled: true
   cleanup: on_success
-
-defaults:
-  assistant: coding-agent
-  model: implementation
-  session: resume
 nodes:
-  - id: plan
-    command: plan-change
-    model: review
-
-  - id: generate
-    depends_on: [plan]
-    command: remotion-generate
-    attempts:
-      max: 3
-    hooks:
-      after_node:
-        - id: remotion-validation
-          bash: ./.takt/profiles/code/tools/validate
-          on_failure:
-            action: retry
-            session: resume
-
-  - id: review
-    depends_on: [generate]
-    workflow:
-      path: smart-review-block.yaml
-      input: ${input}
-      isolation: inherit
-
-  - id: summary
-    depends_on: [review]
-    command: summary
-    model: review
+- id: plan
+  command: plan-change
+  model: review
+- id: generate
+  depends_on:
+  - plan
+  command: remotion-generate
+  attempts:
+    max: 3
+  hooks:
+    after_node:
+    - id: remotion-validation
+      bash: "./.takt/profiles/code/tools/validate"
+      on_failure:
+        action: retry
+        session: resume
+- id: review
+  depends_on:
+  - generate
+  workflow:
+    path: smart-review-block.yaml
+    input: "$ARGUMENTS"
+    isolation: inherit
+- id: summary
+  depends_on:
+  - review
+  command: summary
+  model: review
+name: remotion-generate
+description: Inspect, plan, generate or modify a Remotion composition, validate code
+  and rendering, review visual/technical risks, and repair findings.
+provider: coding-agent
+model: implementation

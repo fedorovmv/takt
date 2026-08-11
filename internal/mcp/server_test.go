@@ -101,10 +101,7 @@ func TestToolLifecycleStartEventsArtifactsAndAnswer(t *testing.T) {
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	configPath := filepath.Join(workspace, "config.yaml")
 	writeFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: mcp-contract
+	writeFile(t, workflowPath, `name: mcp-contract
 nodes:
   - id: produce
     bash: |
@@ -176,10 +173,7 @@ func TestRunStartDefaultsToDetachedAndCanBeCancelled(t *testing.T) {
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	configPath := filepath.Join(workspace, "config.yaml")
 	writeFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: detached-cancel
+	writeFile(t, workflowPath, `name: detached-cancel
 nodes:
   - id: wait
     bash: sleep 30
@@ -321,13 +315,9 @@ assistants:
   worker:
     type: mock
 `)
-	writeFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: external-mcp-contract
-defaults:
-  assistant: worker
-  model: demo
+	writeFile(t, workflowPath, `name: external-mcp-contract
+provider: worker
+model: demo
 nodes:
   - id: delegated
     prompt: Produce a structured result.
@@ -343,7 +333,7 @@ nodes:
     output_mime: application/json
   - id: verify
     depends_on: [delegated]
-    bash: test '${nodes.delegated.output.ok}' = 'true'
+    bash: test '$delegated.output.ok' = 'true'
 `)
 	service, err := appfixture.New(workspace, configPath)
 	if err != nil {
@@ -457,13 +447,9 @@ assistants:
   worker:
     type: mock
 `)
-	writeFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: external-retry
-defaults:
-  assistant: worker
-  model: demo
+	writeFile(t, workflowPath, `name: external-retry
+provider: worker
+model: demo
 nodes:
   - id: delegated
     prompt: retry me
@@ -527,13 +513,9 @@ assistants:
   worker:
     type: mock
 `)
-	writeFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: external-lease
-defaults:
-  assistant: worker
-  model: demo
+	writeFile(t, workflowPath, `name: external-lease
+provider: worker
+model: demo
 nodes:
   - id: delegated
     prompt: lease

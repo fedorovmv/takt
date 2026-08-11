@@ -22,20 +22,14 @@ func TestAnswerValidatesDefinitionsBeforeConsumingApproval(t *testing.T) {
 	dir := t.TempDir()
 	workflowPath := filepath.Join(dir, "workflow.yaml")
 	configPath := filepath.Join(dir, "config.yaml")
-	workflowV1 := `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: approval
+	workflowV1 := `name: approval
 nodes:
   - id: approve
     approval:
       message: Continue?
       capture_response: true
 `
-	workflowV2 := `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: approval
+	workflowV2 := `name: approval
 nodes:
   - id: approve
     approval:
@@ -92,7 +86,7 @@ func TestValidatePreservesCWDRelativeWorkflowAndConfigPaths(t *testing.T) {
 	}
 	workflowPath := filepath.Join(root, "workflow.yaml")
 	configPath := filepath.Join(root, "config.yaml")
-	if err := os.WriteFile(workflowPath, []byte("apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: cwd-relative\nnodes:\n  - id: ok\n    bash: 'true'\n"), 0o644); err != nil {
+	if err := os.WriteFile(workflowPath, []byte("name: cwd-relative\nnodes:\n  - id: ok\n    bash: 'true'\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(configPath, []byte("apiVersion: takt/v1alpha1\nkind: Config\n"), 0o644); err != nil {
@@ -134,10 +128,7 @@ func TestAnswerAcceptsPublicSubworkflowNodeID(t *testing.T) {
 	workflowPath := filepath.Join(dir, "workflow.yaml")
 	childPath := filepath.Join(dir, "child.yaml")
 	configPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	if err := os.WriteFile(childPath, []byte(`name: child
 nodes:
   - id: approve
     approval:
@@ -145,10 +136,7 @@ nodes:
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(workflowPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	if err := os.WriteFile(workflowPath, []byte(`name: parent
 nodes:
   - id: child
     subworkflow:
@@ -191,10 +179,7 @@ func TestAnswerResumesManagedWorktreeAndManualRemoveCleansIt(t *testing.T) {
 	mainGit(t, repo, "config", "user.name", "Takt Test")
 	workflowPath := filepath.Join(repo, "workflow.yaml")
 	configPath := filepath.Join(repo, "config.yaml")
-	workflowText := `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: approval-worktree
+	workflowText := `name: approval-worktree
 worktree:
   enabled: true
   cleanup: manual
@@ -205,7 +190,7 @@ nodes:
       capture_response: true
   - id: write
     depends_on: [approve]
-    bash: printf '%s' "${nodes.approve.output}" > answer.txt
+    bash: printf '%s' $approve.output > answer.txt
 `
 	if err := os.WriteFile(workflowPath, []byte(workflowText), 0o644); err != nil {
 		t.Fatal(err)
@@ -273,10 +258,7 @@ func TestAnswerForGovernedChildResumesRootRun(t *testing.T) {
 	workflowPath := filepath.Join(dir, "workflow.yaml")
 	childPath := filepath.Join(dir, "child.yaml")
 	configPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	if err := os.WriteFile(childPath, []byte(`name: child
 nodes:
   - id: approve
     approval:
@@ -284,14 +266,11 @@ nodes:
       capture_response: true
   - id: done
     depends_on: [approve]
-    bash: printf '%s' '${nodes.approve.output}'
+    bash: printf '%s' '$approve.output'
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(workflowPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	if err := os.WriteFile(workflowPath, []byte(`name: parent
 nodes:
   - id: child
     workflow:
@@ -299,7 +278,7 @@ nodes:
       output_node: done
   - id: finish
     depends_on: [child]
-    bash: printf 'root:%s' '${nodes.child.output}'
+    bash: printf 'root:%s' '$child.output'
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -349,10 +328,7 @@ func TestCancelWaitingGovernedTree(t *testing.T) {
 	workflowPath := filepath.Join(dir, "workflow.yaml")
 	childPath := filepath.Join(dir, "child.yaml")
 	configPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	if err := os.WriteFile(childPath, []byte(`name: child
 nodes:
   - id: approve
     approval:
@@ -360,10 +336,7 @@ nodes:
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(workflowPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	if err := os.WriteFile(workflowPath, []byte(`name: parent
 nodes:
   - id: child
     workflow:
@@ -405,10 +378,7 @@ func TestCancelCommandRejectsFailedRun(t *testing.T) {
 	dir := t.TempDir()
 	workflowPath := filepath.Join(dir, "workflow.yaml")
 	configPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(workflowPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: failing
+	if err := os.WriteFile(workflowPath, []byte(`name: failing
 nodes:
   - id: fail
     bash: exit 7
@@ -438,13 +408,10 @@ func TestRunCmdResolvesLogicalCodingAgentThroughDefaultAssistant(t *testing.T) {
 	dir := t.TempDir()
 	workflowPath := filepath.Join(dir, "workflow.yaml")
 	configPath := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(workflowPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: logical-coding-agent
+	if err := os.WriteFile(workflowPath, []byte(`name: logical-coding-agent
 nodes:
   - id: work
-    assistant: coding-agent
+    provider: fixture
     model: demo
     prompt: complete the fixture
 `), 0o644); err != nil {
@@ -496,14 +463,11 @@ func TestRunCmdPerformsCapabilityPreflightBeforeExecution(t *testing.T) {
 	dir := t.TempDir()
 	workflowPath := filepath.Join(dir, "workflow.yaml")
 	configPath := filepath.Join(dir, "config.yaml")
-	workflowText := `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: preflight
+	workflowText := `name: preflight
 nodes:
   - id: work
     prompt: do work
-    assistant: limited
+    provider: limited
     model: demo
     allowed_tools: [read]
 `
@@ -605,10 +569,7 @@ func TestPackageCmdProjectLifecycle(t *testing.T) {
 	if err := os.MkdirAll(pkg, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pkg, "workflow.yaml"), []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: cli-package
+	if err := os.WriteFile(filepath.Join(pkg, "workflow.yaml"), []byte(`name: cli-package
 nodes:
   - id: done
     prompt: Return JSON summary.

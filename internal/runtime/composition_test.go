@@ -15,38 +15,32 @@ import (
 
 func TestSubworkflowRunsOnParentSchedulerAndResumesApproval(t *testing.T) {
 	dir := t.TempDir()
-	writeCompositionFile(t, filepath.Join(dir, "child.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	writeCompositionFile(t, filepath.Join(dir, "child.yaml"), `name: child
 nodes:
   - id: prepare
     bash: |
-      printf '%s' '${inputs.value}' > value.txt
+      printf '%s' "$INPUTS.value" > value.txt
   - id: approve
     depends_on: [prepare]
     approval:
-      message: Approve ${inputs.value}?
+      message: Approve $INPUTS.value?
       capture_response: true
   - id: result
     depends_on: [approve]
     bash: cat value.txt
 `)
 	workflowPath := filepath.Join(dir, "workflow.yaml")
-	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	writeCompositionFile(t, workflowPath, `name: parent
 nodes:
   - id: child
     subworkflow:
       path: child.yaml
       inputs:
-        value: ${input}
+        value: $ARGUMENTS
   - id: final
     depends_on: [child]
     bash: |
-      test "${nodes.child.output}" = "hello"
+      test $child.output = "hello"
 `)
 	wf, err := workflow.Load(workflowPath)
 	if err != nil {
@@ -78,23 +72,17 @@ nodes:
 
 func TestForeachRunsItemsSequentiallyAndCollectsOutputs(t *testing.T) {
 	dir := t.TempDir()
-	writeCompositionFile(t, filepath.Join(dir, "item.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: item
+	writeCompositionFile(t, filepath.Join(dir, "item.yaml"), `name: item
 nodes:
   - id: append
     bash: |
-      printf '%s\n' '${inputs.value}' >> order.txt
+      printf '%s\n' "$INPUTS.value" >> order.txt
   - id: result
     depends_on: [append]
-    bash: printf '%s' '${inputs.value}'
+    bash: printf '%s' "$INPUTS.value"
 `)
 	workflowPath := filepath.Join(dir, "workflow.yaml")
-	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: foreach
+	writeCompositionFile(t, workflowPath, `name: foreach
 nodes:
   - id: batch
     foreach:
@@ -105,7 +93,7 @@ nodes:
       subworkflow:
         path: item.yaml
         inputs:
-          value: ${item}
+          value: $INPUTS.item
   - id: verify
     depends_on: [batch]
     bash: |
@@ -141,20 +129,14 @@ func writeCompositionFile(t *testing.T, path, content string) {
 func TestSubworkflowDefinitionChangeBlocksResume(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
-	writeCompositionFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	writeCompositionFile(t, childPath, `name: child
 nodes:
   - id: wait
     approval:
       message: Continue?
 `)
 	workflowPath := filepath.Join(dir, "workflow.yaml")
-	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	writeCompositionFile(t, workflowPath, `name: parent
 nodes:
   - id: child
     subworkflow:
@@ -169,10 +151,7 @@ nodes:
 	if !errors.Is(err, ErrWaiting) {
 		t.Fatalf("expected waiting run, got %v", err)
 	}
-	writeCompositionFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	writeCompositionFile(t, childPath, `name: child
 nodes:
   - id: wait
     approval:
@@ -190,19 +169,13 @@ nodes:
 
 func TestLoopGroupRunsComposedChild(t *testing.T) {
 	dir := t.TempDir()
-	writeCompositionFile(t, filepath.Join(dir, "step.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: step
+	writeCompositionFile(t, filepath.Join(dir, "step.yaml"), `name: step
 nodes:
   - id: result
     bash: echo done
 `)
 	workflowPath := filepath.Join(dir, "workflow.yaml")
-	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: loop-composition
+	writeCompositionFile(t, workflowPath, `name: loop-composition
 nodes:
   - id: retry
     loop_group:
@@ -238,20 +211,14 @@ nodes:
 
 func TestPublicRunStateHidesExpandedNodesAndAliasesApproval(t *testing.T) {
 	dir := t.TempDir()
-	writeCompositionFile(t, filepath.Join(dir, "child.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	writeCompositionFile(t, filepath.Join(dir, "child.yaml"), `name: child
 nodes:
   - id: approve
     approval:
       message: Continue?
 `)
 	workflowPath := filepath.Join(dir, "workflow.yaml")
-	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	writeCompositionFile(t, workflowPath, `name: parent
 nodes:
   - id: child
     subworkflow:
@@ -278,10 +245,7 @@ nodes:
 func TestPublicRunStateUsesLocalLoopChildIDs(t *testing.T) {
 	dir := t.TempDir()
 	workflowPath := filepath.Join(dir, "workflow.yaml")
-	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: loop-public-view
+	writeCompositionFile(t, workflowPath, `name: loop-public-view
 nodes:
   - id: retry
     loop_group:
@@ -324,14 +288,11 @@ nodes:
 
 func TestForeachParallelRunsIterationsConcurrentlyAndCollectsInInputOrder(t *testing.T) {
 	dir := t.TempDir()
-	writeCompositionFile(t, filepath.Join(dir, "item.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: item
+	writeCompositionFile(t, filepath.Join(dir, "item.yaml"), `name: item
 nodes:
   - id: result
     bash: |
-      touch "$ARTIFACTS_DIR/${inputs.value}.ready"
+      touch "$ARTIFACTS_DIR/$INPUTS.value.ready"
       i=0
       while { [ ! -f "$ARTIFACTS_DIR/one.ready" ] || [ ! -f "$ARTIFACTS_DIR/two.ready" ]; } && [ "$i" -lt 200 ]; do
         i=$((i + 1))
@@ -339,13 +300,10 @@ nodes:
       done
       test -f "$ARTIFACTS_DIR/one.ready"
       test -f "$ARTIFACTS_DIR/two.ready"
-      printf '%s' '${inputs.value}'
+      printf '%s' "$INPUTS.value"
 `)
 	workflowPath := filepath.Join(dir, "workflow.yaml")
-	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parallel-foreach
+	writeCompositionFile(t, workflowPath, `name: parallel-foreach
 nodes:
   - id: batch
     foreach:
@@ -354,7 +312,7 @@ nodes:
       subworkflow:
         path: item.yaml
         inputs:
-          value: ${item}
+          value: $INPUTS.item
 `)
 	wf, err := workflow.Load(workflowPath)
 	if err != nil {
@@ -381,10 +339,7 @@ func TestSubworkflowRebasesScriptPathAndDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeCompositionFile(t, filepath.Join(childDir, "tools", "value.txt"), "nested-ok")
-	writeCompositionFile(t, filepath.Join(childDir, "child.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: nested-script
+	writeCompositionFile(t, filepath.Join(childDir, "child.yaml"), `name: nested-script
 nodes:
   - id: run
     script:
@@ -393,17 +348,14 @@ nodes:
       dependencies: [tools/value.txt]
 `)
 	parentPath := filepath.Join(dir, "parent.yaml")
-	writeCompositionFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent-script
+	writeCompositionFile(t, parentPath, `name: parent-script
 nodes:
   - id: nested
     subworkflow:
       path: nested/child.yaml
   - id: verify
     depends_on: [nested]
-    bash: test '${nodes.nested.output}' = nested-ok
+    bash: test $nested.output = nested-ok
 `)
 	wf, err := workflow.Load(parentPath)
 	if err != nil {
@@ -417,19 +369,13 @@ nodes:
 
 func TestLoopGroupRunsForeachChild(t *testing.T) {
 	dir := t.TempDir()
-	writeCompositionFile(t, filepath.Join(dir, "item.yaml"), `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: item
+	writeCompositionFile(t, filepath.Join(dir, "item.yaml"), `name: item
 nodes:
   - id: result
-    bash: printf '%s' '${inputs.value}'
+    bash: printf '%s' "$INPUTS.value"
 `)
 	workflowPath := filepath.Join(dir, "workflow.yaml")
-	writeCompositionFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: loop-foreach
+	writeCompositionFile(t, workflowPath, `name: loop-foreach
 nodes:
   - id: retry
     loop_group:
@@ -441,7 +387,7 @@ nodes:
             subworkflow:
               path: item.yaml
               inputs:
-                value: ${item}
+                value: $INPUTS.item
       until:
         node: batch
         output_contains: two

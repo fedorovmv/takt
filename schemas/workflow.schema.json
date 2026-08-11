@@ -5,23 +5,30 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "apiVersion",
-    "kind",
-    "metadata",
+    "name",
     "nodes"
   ],
   "properties": {
-    "apiVersion": {
-      "const": "takt/v1alpha1"
+    "name": {
+      "type": "string",
+      "minLength": 1
     },
-    "kind": {
-      "const": "Workflow"
+    "description": {
+      "type": "string"
     },
-    "metadata": {
-      "$ref": "#/$defs/metadata"
+    "labels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
     },
-    "defaults": {
-      "$ref": "#/$defs/defaults"
+    "provider": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
     },
     "nodes": {
       "type": "array",
@@ -67,7 +74,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "assistant": {
+        "provider": {
           "type": "string"
         },
         "model": {
@@ -147,34 +154,48 @@
       }
     },
     "until": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_-]{0,63}$"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["node"],
+          "properties": {
+            "node": {"type": "string", "minLength": 1},
+            "signal": {"type": "string", "pattern": "^[A-Z][A-Z0-9_-]{0,63}$"},
+            "exit_code": {"type": "integer"},
+            "output_contains": {"type": "string"},
+            "requires": {
+              "type": "array",
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": {"$ref": "#/$defs/untilRequirement"}
+            }
+          },
+          "anyOf": [
+            {"required": ["signal"]},
+            {"required": ["exit_code"]},
+            {"required": ["output_contains"]},
+            {"required": ["requires"]}
+          ]
+        }
+      ]
+    },
+    "untilRequirement": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "node"
-      ],
+      "required": ["node"],
       "properties": {
-        "node": {
-          "type": "string",
-          "minLength": 1
-        },
-        "exit_code": {
-          "type": "integer"
-        },
-        "output_contains": {
-          "type": "string"
-        }
+        "node": {"type": "string", "minLength": 1},
+        "exit_code": {"type": "integer"},
+        "output_contains": {"type": "string"}
       },
       "anyOf": [
-        {
-          "required": [
-            "exit_code"
-          ]
-        },
-        {
-          "required": [
-            "output_contains"
-          ]
-        }
+        {"required": ["exit_code"]},
+        {"required": ["output_contains"]}
       ]
     },
     "loopGroup": {
@@ -200,8 +221,32 @@
         },
         "until": {
           "$ref": "#/$defs/until"
+        },
+        "until_bash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fresh_context": {
+          "type": "boolean"
         }
       }
+    },
+    "loop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["until", "max_iterations"],
+      "properties": {
+        "prompt": {"type": "string", "minLength": 1},
+        "command": {"type": "string", "minLength": 1},
+        "until": {"type": "string", "pattern": "^[A-Z][A-Z0-9_-]{0,63}$"},
+        "until_bash": {"type": "string", "minLength": 1},
+        "max_iterations": {"type": "integer", "minimum": 1, "maximum": 64},
+        "fresh_context": {"type": "boolean"}
+      },
+      "oneOf": [
+        {"required": ["prompt"]},
+        {"required": ["command"]}
+      ]
     },
     "hookDecision": {
       "type": "object",
@@ -297,15 +342,22 @@
             "one_success"
           ]
         },
-        "assistant": {
+        "provider": {
           "type": "string"
         },
         "model": {
           "type": "string"
         },
-        "session": {
-          "type": "string"
+        "context": {
+          "enum": [
+            "fresh",
+            "shared"
+          ]
         },
+        "fresh_context": {"type": "boolean"},
+        "until_bash": {"type": "string", "minLength": 1},
+        "cancel": {"type": "string", "minLength": 1},
+        "loop": {"$ref": "#/$defs/loop"},
         "command": {
           "type": "string"
         },
@@ -429,6 +481,12 @@
           "required": [
             "approval"
           ]
+        },
+        {
+          "required": ["cancel"]
+        },
+        {
+          "required": ["loop"]
         },
         {
           "required": [
@@ -672,14 +730,16 @@
             "one_success"
           ]
         },
-        "assistant": {
+        "provider": {
           "type": "string"
         },
         "model": {
           "type": "string"
         },
-        "session": {
-          "type": "string"
+        "context": {
+          "enum": [
+            "fresh"
+          ]
         },
         "command": {
           "type": "string"

@@ -110,20 +110,14 @@ func TestGovernedChildArtifactIsAvailableToParentTemplate(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")
 	parentPath := filepath.Join(dir, "parent.yaml")
-	mustWriteFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	mustWriteFile(t, childPath, `name: child
 nodes:
   - id: plan
     bash: printf '# Plan\nchild\n'
     output_type: plan
     output_mime: text/markdown
 `)
-	mustWriteFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	mustWriteFile(t, parentPath, `name: parent
 nodes:
   - id: child
     workflow:
@@ -131,7 +125,7 @@ nodes:
       isolation: inherit
   - id: consume
     depends_on: [child]
-    bash: cat '${nodes.child.artifacts.plan.path}'
+    bash: cat $child.artifacts.plan.path
 `)
 	wf, err := workflow.Load(parentPath)
 	if err != nil {

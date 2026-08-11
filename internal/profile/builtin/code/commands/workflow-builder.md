@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -9,8 +9,8 @@ Read `skills/takt/SKILL.md`, current Takt schemas, profile examples, and reposit
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS
 
 Previous validation feedback:
 
-${feedback}
+$FEEDBACK

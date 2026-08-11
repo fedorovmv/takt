@@ -1,94 +1,109 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: create-issue
-  description: Classify a reported problem, gather repository context in parallel, investigate and reproduce it, then create a non-duplicate GitHub issue with evidence.
-defaults:
-  assistant: coding-agent
-  model: review
-  session: fresh
+---
 nodes:
-  - id: classify
-    command: classify-issue
-    model: routing
-    allowed_tools: []
-    skills: []
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        issue_type:
-          type: string
-          enum: [bug, feature, enhancement, refactor, chore, documentation]
-        title:
-          type: string
-        issue_number:
-          type: string
-        repository:
-          type: string
-      required: [issue_type, title]
+- id: classify
+  command: classify-issue
+  model: routing
+  allowed_tools: []
+  skills: []
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      issue_type:
+        type: string
+        enum:
+        - bug
+        - feature
+        - enhancement
+        - refactor
+        - chore
+        - documentation
+      title:
+        type: string
+      issue_number:
+        type: string
+      repository:
+        type: string
+    required:
+    - issue_type
+    - title
+- id: git-context
+  depends_on:
+  - classify
+  bash: |
+    git status --short
+    git branch --show-current
+    git log --oneline -15
+- id: templates
+  depends_on:
+  - classify
+  bash: 'find .github -maxdepth 3 -type f \( -iname ''*issue*template*'' -o -path
+    ''*/ISSUE_TEMPLATE/*'' \) -print 2>/dev/null || true
 
-  - id: git-context
-    depends_on: [classify]
-    bash: |
-      git status --short
-      git branch --show-current
-      git log --oneline -15
+'
+- id: duplicates
+  depends_on:
+  - classify
+  bash: 'gh issue list --state all --limit 20 --json number,title,url,labels 2>/dev/null
+    || true
 
-  - id: templates
-    depends_on: [classify]
-    bash: |
-      find .github -maxdepth 3 -type f \( -iname '*issue*template*' -o -path '*/ISSUE_TEMPLATE/*' \) -print 2>/dev/null || true
-
-  - id: duplicates
-    depends_on: [classify]
-    bash: |
-      gh issue list --state all --limit 20 --json number,title,url,labels 2>/dev/null || true
-
-  - id: investigate
-    depends_on: [git-context, templates, duplicates]
-    command: investigate-issue
-
-  - id: reproduce
-    depends_on: [investigate]
-    command: reproduce-issue
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        reproduced:
-          type: boolean
-        summary:
-          type: string
-        evidence_path:
-          type: string
-      required: [reproduced, summary, evidence_path]
-
-  - id: create
-    depends_on: [reproduce]
-    when: nodes.reproduce.output.reproduced == "true"
-    command: create-issue
-    model: implementation
-
-  - id: cannot-reproduce
-    depends_on: [reproduce]
-    when: nodes.reproduce.output.reproduced == "false"
-    prompt: |
-      Report that the issue was not created because reproduction did not succeed.
-      Summarize the exact attempts and evidence from $ARTIFACTS_DIR, explain what additional data is needed, and preserve the investigation artifacts.
-
-
-  - id: reproduction-error
-    depends_on: [reproduce]
-    trigger_rule: all_done
-    when: nodes.reproduce.status != "completed"
-    prompt: |
-      Report that issue reproduction could not produce a valid structured result.
-      Include the reproduce node status, error, raw stdout/stderr diagnostics, investigation artifacts, and concrete next steps.
-      Do not create a GitHub issue without reproducible evidence.
-
-  - id: summary
-    depends_on: [create, cannot-reproduce, reproduction-error]
-    trigger_rule: one_success
-    command: summary
-    model: review
+'
+- id: investigate
+  depends_on:
+  - git-context
+  - templates
+  - duplicates
+  command: investigate-issue
+- id: reproduce
+  depends_on:
+  - investigate
+  command: reproduce-issue
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      reproduced:
+        type: boolean
+      summary:
+        type: string
+      evidence_path:
+        type: string
+    required:
+    - reproduced
+    - summary
+    - evidence_path
+- id: create
+  depends_on:
+  - reproduce
+  when: $reproduce.output.reproduced == "true"
+  command: create-issue
+  model: implementation
+- id: cannot-reproduce
+  depends_on:
+  - reproduce
+  when: $reproduce.output.reproduced == "false"
+  prompt: |
+    Report that the issue was not created because reproduction did not succeed.
+    Summarize the exact attempts and evidence from $ARTIFACTS_DIR, explain what additional data is needed, and preserve the investigation artifacts.
+- id: reproduction-error
+  depends_on:
+  - reproduce
+  trigger_rule: all_done
+  when: $reproduce.status != "completed"
+  prompt: |
+    Report that issue reproduction could not produce a valid structured result.
+    Include the reproduce node status, error, raw stdout/stderr diagnostics, investigation artifacts, and concrete next steps.
+    Do not create a GitHub issue without reproducible evidence.
+- id: summary
+  depends_on:
+  - create
+  - cannot-reproduce
+  - reproduction-error
+  trigger_rule: one_success
+  command: summary
+  model: review
+name: create-issue
+description: Classify a reported problem, gather repository context in parallel, investigate
+  and reproduce it, then create a non-duplicate GitHub issue with evidence.
+provider: coding-agent
+model: review

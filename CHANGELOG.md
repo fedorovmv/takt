@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Реализован Archon-first A0/A1 Workflow contract: target root/provider/model,
+  единый `$...` reference lexer/rendering и fail-closed rejection legacy
+  `${...}`, `assistant` frontmatter и `apiVersion/kind/metadata/defaults`;
+  `output_format` сохранён без изменения semantics.
+- Добавлены bounded repair loops: scalar/structured `until`, signal
+  `matched_signal`/`signal_diagnostic`, `until.requires`, `until_bash`, durable
+  loop history, `fresh_context`, `context: shared`, exact Session ID resume,
+  approval continuation и cancel/retry evidence. Hard budgets, `run inspect` и
+  mutating merge fan-out остаются deferred.
 - `code:plan-to-pr` получил обязательный user-owned `allowed_paths`, native Git
   scope checks до draft PR и после review, а также fail-closed PR/review/summary
   gates. Go E2E покрывает один `safe_success` и семь `safe_stop` outcomes.

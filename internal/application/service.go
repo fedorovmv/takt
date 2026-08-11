@@ -336,6 +336,9 @@ func newRunID() (string, error) {
 // as ordinary Run lifecycle operations. It is a narrow port for sibling stable
 // use cases such as external workers.
 func (s *RunService) Continue(ctx context.Context, state *store.RunState) (*store.RunState, error) {
+	if err := requireCurrentWorkflowContract(state); err != nil {
+		return nil, err
+	}
 	runner, err := s.runnerForState(state)
 	if err != nil {
 		return nil, err
@@ -371,6 +374,9 @@ func (s *RunService) Resume(ctx context.Context, runID string) (*store.RunState,
 	if err != nil {
 		return nil, err
 	}
+	if err := requireCurrentWorkflowContract(state); err != nil {
+		return nil, err
+	}
 	runner, err := s.runnerForState(state)
 	if err != nil {
 		return nil, err
@@ -380,6 +386,20 @@ func (s *RunService) Resume(ctx context.Context, runID string) (*store.RunState,
 		return nil, runErr
 	}
 	return runcontrol.DurablePublicRun(st, state)
+}
+
+func requireCurrentWorkflowContract(state *store.RunState) error {
+	if state == nil {
+		return fmt.Errorf("run state is required")
+	}
+	if state.WorkflowContract != store.CurrentWorkflowContract {
+		contract := state.WorkflowContract
+		if contract == "" {
+			contract = "legacy"
+		}
+		return fmt.Errorf("run %s uses incompatible workflow contract %q; read-only inspection is supported, resume/retry/fork require %s", state.ID, contract, store.CurrentWorkflowContract)
+	}
+	return nil
 }
 
 func (s *RunService) Answer(ctx context.Context, runID, requestedNodeID, value string) (*store.RunState, error) {
@@ -394,6 +414,10 @@ func (s *RunService) Answer(ctx context.Context, runID, requestedNodeID, value s
 	}
 	target, err = st.Load(target.ID)
 	if err != nil {
+		_ = release()
+		return nil, err
+	}
+	if err := requireCurrentWorkflowContract(target); err != nil {
 		_ = release()
 		return nil, err
 	}

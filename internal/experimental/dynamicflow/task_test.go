@@ -21,10 +21,7 @@ func TestRespondTaskAnswerRoutesPlanReferenceToWaitingRun(t *testing.T) {
 	}
 	configPath := filepath.Join(workspace, ".takt", "config.yaml")
 	workflowPath := filepath.Join(workspace, "question.yaml")
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: task-answer
+	writeControlFile(t, workflowPath, `name: task-answer
 nodes:
   - id: question
     approval:

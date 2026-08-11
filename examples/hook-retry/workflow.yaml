@@ -1,25 +1,23 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: hook-retry
+---
 nodes:
-  - id: produce
-    bash: |
-      n=0
-      test -f counter.txt && n=$(cat counter.txt)
-      n=$((n+1))
-      printf '%s' "$n" > counter.txt
-      printf 'attempt=%s\n' "$n"
-    attempts:
-      max: 3
-    hooks:
-      after_node:
-        - id: require-two-attempts
-          bash: |
-            test "$(cat counter.txt)" -ge 2 || {
-              printf 'counter must reach 2, current=%s\n' "$(cat counter.txt)"
-              exit 1
-            }
-          on_failure:
-            action: retry
-            session: fresh
+- id: produce
+  bash: |
+    n=0
+    test -f counter.txt && n=$(cat counter.txt)
+    n=$((n+1))
+    printf '%s' "$n" > counter.txt
+    printf 'attempt=%s\n' "$n"
+  attempts:
+    max: 3
+  hooks:
+    after_node:
+    - id: require-two-attempts
+      bash: |
+        test "$(cat counter.txt)" -ge 2 || {
+          printf 'counter must reach 2, current=%s\n' "$(cat counter.txt)"
+          exit 1
+        }
+      on_failure:
+        action: retry
+        session: fresh
+name: hook-retry

@@ -28,13 +28,9 @@ assistants:
   worker:
     type: mock
 `)
-	mustWriteControlTest(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: tool-approval
-defaults:
-  assistant: worker
-  model: demo
+	mustWriteControlTest(t, workflowPath, `name: tool-approval
+provider: worker
+model: demo
 nodes:
   - id: delegated
     prompt: execute safely
@@ -127,13 +123,9 @@ assistants:
   worker:
     type: mock
 `)
-	mustWriteControlTest(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: tool-policy
-defaults:
-  assistant: worker
-  model: demo
+	mustWriteControlTest(t, workflowPath, `name: tool-policy
+provider: worker
+model: demo
 nodes:
   - id: delegated
     prompt: execute safely
@@ -221,14 +213,10 @@ assistants:
   worker:
     type: mock
 `)
-	mustWriteControlTest(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: external-idle
+	mustWriteControlTest(t, workflowPath, `name: external-idle
 
-defaults:
-  assistant: worker
-  model: demo
+provider: worker
+model: demo
 nodes:
   - id: delegated
     prompt: wait forever
@@ -280,13 +268,9 @@ assistants:
   worker:
     type: mock
 `)
-	mustWriteControlTest(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: reconcile-side-effect
-defaults:
-  assistant: worker
-  model: demo
+	mustWriteControlTest(t, workflowPath, `name: reconcile-side-effect
+provider: worker
+model: demo
 nodes:
   - id: publish
     prompt: publish externally
@@ -399,13 +383,9 @@ assistants:
     env:
       TOKEN: secret://`+envName+`
 `)
-	mustWriteControlTest(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: external-redaction
-defaults:
-  assistant: worker
-  model: demo
+	mustWriteControlTest(t, workflowPath, `name: external-redaction
+provider: worker
+model: demo
 nodes:
   - id: delegated
     prompt: execute safely

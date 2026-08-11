@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -9,4 +9,4 @@ Read the PRD, story state, progress log, repository instructions, and current co
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

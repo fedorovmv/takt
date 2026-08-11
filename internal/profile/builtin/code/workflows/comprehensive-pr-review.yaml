@@ -1,19 +1,16 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: comprehensive-pr-review
-  description: Run code, error-handling, test, documentation, and simplicity reviews in parallel, synthesize findings, fix them, and validate.
-defaults:
-  assistant: coding-agent
-  model: review
-  session: fresh
+---
 nodes:
-  - id: review
-    workflow:
-      path: review-block.yaml
-      input: ${input}
-      isolation: inherit
-
-  - id: summary
-    depends_on: [review]
-    command: summary
+- id: review
+  workflow:
+    path: review-block.yaml
+    input: "$ARGUMENTS"
+    isolation: inherit
+- id: summary
+  depends_on:
+  - review
+  command: summary
+name: comprehensive-pr-review
+description: Run code, error-handling, test, documentation, and simplicity reviews
+  in parallel, synthesize findings, fix them, and validate.
+provider: coding-agent
+model: review

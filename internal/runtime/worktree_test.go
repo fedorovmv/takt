@@ -15,10 +15,7 @@ import (
 )
 
 func TestRunUsesIsolatedWorktreeAndRetainsDirtyResult(t *testing.T) {
-	repo, workflowPath, configPath := runtimeWorktreeRepo(t, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: isolated-change
+	repo, workflowPath, configPath := runtimeWorktreeRepo(t, `name: isolated-change
 worktree:
   enabled: true
   cleanup: on_success
@@ -61,10 +58,7 @@ nodes:
 }
 
 func TestRunRemovesCleanWorktreeOnSuccess(t *testing.T) {
-	repo, workflowPath, configPath := runtimeWorktreeRepo(t, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: clean-run
+	repo, workflowPath, configPath := runtimeWorktreeRepo(t, `name: clean-run
 worktree:
   enabled: true
   cleanup: on_success
@@ -134,10 +128,7 @@ func TestSubworkflowEnablesWorktreeAtItsGate(t *testing.T) {
 	parentPath := filepath.Join(repo, "workflow.yaml")
 	childPath := filepath.Join(repo, "child.yaml")
 	configPath := filepath.Join(repo, "config.yaml")
-	if err := os.WriteFile(parentPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: router-like-parent
+	if err := os.WriteFile(parentPath, []byte(`name: router-like-parent
 nodes:
   - id: select
     bash: printf selected
@@ -148,10 +139,7 @@ nodes:
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: mutating-child
+	if err := os.WriteFile(childPath, []byte(`name: mutating-child
 worktree:
   enabled: true
   cleanup: on_success
@@ -205,10 +193,7 @@ func TestSubworkflowWorktreeRespectsPersistedNoWorktreeOverride(t *testing.T) {
 	parentPath := filepath.Join(repo, "workflow.yaml")
 	childPath := filepath.Join(repo, "child.yaml")
 	configPath := filepath.Join(repo, "config.yaml")
-	if err := os.WriteFile(parentPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	if err := os.WriteFile(parentPath, []byte(`name: parent
 nodes:
   - id: child
     subworkflow:
@@ -216,10 +201,7 @@ nodes:
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	if err := os.WriteFile(childPath, []byte(`name: child
 worktree:
   enabled: true
 nodes:
@@ -262,10 +244,7 @@ func TestGovernedChildRunCanInheritParentWorktree(t *testing.T) {
 	parentPath := filepath.Join(repo, "workflow.yaml")
 	childPath := filepath.Join(repo, "child.yaml")
 	configPath := filepath.Join(repo, "config.yaml")
-	if err := os.WriteFile(parentPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	if err := os.WriteFile(parentPath, []byte(`name: parent
 worktree:
   enabled: true
   cleanup: on_success
@@ -277,10 +256,7 @@ nodes:
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	if err := os.WriteFile(childPath, []byte(`name: child
 worktree:
   enabled: true
 nodes:

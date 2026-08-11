@@ -1,162 +1,181 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: code-router
-  description: Smart router for the complete code workflow catalog; classifies the request and executes exactly one specialized workflow as a separately governed child Run.
-defaults:
-  assistant: coding-agent
-  model: implementation
-  session: fresh
+---
 nodes:
-  - id: route
-    command: route-workflow
-    model: routing
-    allowed_tools: []
-    skills: []
-    attempts:
-      max: 2
-      retry_on: [protocol]
-      retry_session: fresh
-    output_format:
-      type: object
-      additionalProperties: false
-      properties:
-        workflow:
-          type: string
-          enum: [assist, fix-github-issue, create-issue, issue-review-full, piv-loop, idea-to-pr, plan-to-pr, feature-development, adversarial-dev, smart-pr-review, comprehensive-pr-review, validate-pr, architect, refactor-safely, interactive-prd, ralph-dag, workflow-builder, remotion-generate, resolve-conflicts]
-        reason:
-          type: string
-      required: [workflow, reason]
-
-  - id: assist
-    depends_on: [route]
-    when: nodes.route.output.workflow == "assist"
-    workflow:
-      path: workflows/assist.yaml
-      input: ${input}
-
-  - id: fix-github-issue
-    depends_on: [route]
-    when: nodes.route.output.workflow == "fix-github-issue"
-    workflow:
-      path: workflows/fix-github-issue.yaml
-      input: ${input}
-
-  - id: create-issue
-    depends_on: [route]
-    when: nodes.route.output.workflow == "create-issue"
-    workflow:
-      path: workflows/create-issue.yaml
-      input: ${input}
-
-  - id: issue-review-full
-    depends_on: [route]
-    when: nodes.route.output.workflow == "issue-review-full"
-    workflow:
-      path: workflows/issue-review-full.yaml
-      input: ${input}
-
-  - id: piv-loop
-    depends_on: [route]
-    when: nodes.route.output.workflow == "piv-loop"
-    workflow:
-      path: workflows/piv-loop.yaml
-      input: ${input}
-
-  - id: idea-to-pr
-    depends_on: [route]
-    when: nodes.route.output.workflow == "idea-to-pr"
-    workflow:
-      path: workflows/idea-to-pr.yaml
-      input: ${input}
-
-  - id: plan-to-pr
-    depends_on: [route]
-    when: nodes.route.output.workflow == "plan-to-pr"
-    workflow:
-      path: workflows/plan-to-pr.yaml
-      input: ${input}
-
-  - id: feature-development
-    depends_on: [route]
-    when: nodes.route.output.workflow == "feature-development"
-    workflow:
-      path: workflows/feature-development.yaml
-      input: ${input}
-
-  - id: adversarial-dev
-    depends_on: [route]
-    when: nodes.route.output.workflow == "adversarial-dev"
-    workflow:
-      path: workflows/adversarial-dev.yaml
-      input: ${input}
-
-  - id: smart-pr-review
-    depends_on: [route]
-    when: nodes.route.output.workflow == "smart-pr-review"
-    workflow:
-      path: workflows/smart-pr-review.yaml
-      input: ${input}
-
-  - id: comprehensive-pr-review
-    depends_on: [route]
-    when: nodes.route.output.workflow == "comprehensive-pr-review"
-    workflow:
-      path: workflows/comprehensive-pr-review.yaml
-      input: ${input}
-
-  - id: validate-pr
-    depends_on: [route]
-    when: nodes.route.output.workflow == "validate-pr"
-    workflow:
-      path: workflows/validate-pr.yaml
-      input: ${input}
-
-  - id: architect
-    depends_on: [route]
-    when: nodes.route.output.workflow == "architect"
-    workflow:
-      path: workflows/architect.yaml
-      input: ${input}
-
-  - id: refactor-safely
-    depends_on: [route]
-    when: nodes.route.output.workflow == "refactor-safely"
-    workflow:
-      path: workflows/refactor-safely.yaml
-      input: ${input}
-
-  - id: interactive-prd
-    depends_on: [route]
-    when: nodes.route.output.workflow == "interactive-prd"
-    workflow:
-      path: workflows/interactive-prd.yaml
-      input: ${input}
-
-  - id: ralph-dag
-    depends_on: [route]
-    when: nodes.route.output.workflow == "ralph-dag"
-    workflow:
-      path: workflows/ralph-dag.yaml
-      input: ${input}
-
-  - id: workflow-builder
-    depends_on: [route]
-    when: nodes.route.output.workflow == "workflow-builder"
-    workflow:
-      path: workflows/workflow-builder.yaml
-      input: ${input}
-
-  - id: remotion-generate
-    depends_on: [route]
-    when: nodes.route.output.workflow == "remotion-generate"
-    workflow:
-      path: workflows/remotion-generate.yaml
-      input: ${input}
-
-  - id: resolve-conflicts
-    depends_on: [route]
-    when: nodes.route.output.workflow == "resolve-conflicts"
-    workflow:
-      path: workflows/resolve-conflicts.yaml
-      input: ${input}
+- id: route
+  command: route-workflow
+  model: routing
+  allowed_tools: []
+  skills: []
+  attempts:
+    max: 2
+    retry_on:
+    - protocol
+    retry_session: fresh
+  output_format:
+    type: object
+    additionalProperties: false
+    properties:
+      workflow:
+        type: string
+        enum:
+        - assist
+        - fix-github-issue
+        - create-issue
+        - issue-review-full
+        - piv-loop
+        - idea-to-pr
+        - plan-to-pr
+        - feature-development
+        - adversarial-dev
+        - smart-pr-review
+        - comprehensive-pr-review
+        - validate-pr
+        - architect
+        - refactor-safely
+        - interactive-prd
+        - ralph-dag
+        - workflow-builder
+        - remotion-generate
+        - resolve-conflicts
+      reason:
+        type: string
+    required:
+    - workflow
+    - reason
+- id: assist
+  depends_on:
+  - route
+  when: $route.output.workflow == "assist"
+  workflow:
+    path: workflows/assist.yaml
+    input: "$ARGUMENTS"
+- id: fix-github-issue
+  depends_on:
+  - route
+  when: $route.output.workflow == "fix-github-issue"
+  workflow:
+    path: workflows/fix-github-issue.yaml
+    input: "$ARGUMENTS"
+- id: create-issue
+  depends_on:
+  - route
+  when: $route.output.workflow == "create-issue"
+  workflow:
+    path: workflows/create-issue.yaml
+    input: "$ARGUMENTS"
+- id: issue-review-full
+  depends_on:
+  - route
+  when: $route.output.workflow == "issue-review-full"
+  workflow:
+    path: workflows/issue-review-full.yaml
+    input: "$ARGUMENTS"
+- id: piv-loop
+  depends_on:
+  - route
+  when: $route.output.workflow == "piv-loop"
+  workflow:
+    path: workflows/piv-loop.yaml
+    input: "$ARGUMENTS"
+- id: idea-to-pr
+  depends_on:
+  - route
+  when: $route.output.workflow == "idea-to-pr"
+  workflow:
+    path: workflows/idea-to-pr.yaml
+    input: "$ARGUMENTS"
+- id: plan-to-pr
+  depends_on:
+  - route
+  when: $route.output.workflow == "plan-to-pr"
+  workflow:
+    path: workflows/plan-to-pr.yaml
+    input: "$ARGUMENTS"
+- id: feature-development
+  depends_on:
+  - route
+  when: $route.output.workflow == "feature-development"
+  workflow:
+    path: workflows/feature-development.yaml
+    input: "$ARGUMENTS"
+- id: adversarial-dev
+  depends_on:
+  - route
+  when: $route.output.workflow == "adversarial-dev"
+  workflow:
+    path: workflows/adversarial-dev.yaml
+    input: "$ARGUMENTS"
+- id: smart-pr-review
+  depends_on:
+  - route
+  when: $route.output.workflow == "smart-pr-review"
+  workflow:
+    path: workflows/smart-pr-review.yaml
+    input: "$ARGUMENTS"
+- id: comprehensive-pr-review
+  depends_on:
+  - route
+  when: $route.output.workflow == "comprehensive-pr-review"
+  workflow:
+    path: workflows/comprehensive-pr-review.yaml
+    input: "$ARGUMENTS"
+- id: validate-pr
+  depends_on:
+  - route
+  when: $route.output.workflow == "validate-pr"
+  workflow:
+    path: workflows/validate-pr.yaml
+    input: "$ARGUMENTS"
+- id: architect
+  depends_on:
+  - route
+  when: $route.output.workflow == "architect"
+  workflow:
+    path: workflows/architect.yaml
+    input: "$ARGUMENTS"
+- id: refactor-safely
+  depends_on:
+  - route
+  when: $route.output.workflow == "refactor-safely"
+  workflow:
+    path: workflows/refactor-safely.yaml
+    input: "$ARGUMENTS"
+- id: interactive-prd
+  depends_on:
+  - route
+  when: $route.output.workflow == "interactive-prd"
+  workflow:
+    path: workflows/interactive-prd.yaml
+    input: "$ARGUMENTS"
+- id: ralph-dag
+  depends_on:
+  - route
+  when: $route.output.workflow == "ralph-dag"
+  workflow:
+    path: workflows/ralph-dag.yaml
+    input: "$ARGUMENTS"
+- id: workflow-builder
+  depends_on:
+  - route
+  when: $route.output.workflow == "workflow-builder"
+  workflow:
+    path: workflows/workflow-builder.yaml
+    input: "$ARGUMENTS"
+- id: remotion-generate
+  depends_on:
+  - route
+  when: $route.output.workflow == "remotion-generate"
+  workflow:
+    path: workflows/remotion-generate.yaml
+    input: "$ARGUMENTS"
+- id: resolve-conflicts
+  depends_on:
+  - route
+  when: $route.output.workflow == "resolve-conflicts"
+  workflow:
+    path: workflows/resolve-conflicts.yaml
+    input: "$ARGUMENTS"
+name: code-router
+description: Smart router for the complete code workflow catalog; classifies the request
+  and executes exactly one specialized workflow as a separately governed child Run.
+provider: coding-agent
+model: implementation

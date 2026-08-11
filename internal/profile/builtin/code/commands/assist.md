@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -9,4 +9,4 @@ Read AGENTS.md and relevant project documentation first. Inspect the repository 
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

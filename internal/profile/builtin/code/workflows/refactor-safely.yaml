@@ -1,50 +1,46 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: refactor-safely
-  description: Capture a behavioral baseline, plan and perform a refactor, then compare validation and repair any regression before delivery.
+---
 worktree:
   enabled: true
   cleanup: on_success
-
-defaults:
-  assistant: coding-agent
-  model: review
-  session: fresh
 nodes:
-  - id: baseline-agent
-    command: validate-change
-
-  - id: baseline
-    depends_on: [baseline-agent]
-    bash: ./.takt/profiles/code/tools/validate
-
-  - id: plan
-    depends_on: [baseline]
-    command: plan-change
-
-  - id: refactor
-    depends_on: [plan]
-    command: safe-refactor
-    model: implementation
-    session: resume
-    attempts:
-      max: 3
-    hooks:
-      after_node:
-        - id: behavior-validation
-          bash: ./.takt/profiles/code/tools/validate
-          on_failure:
-            action: retry
-            session: resume
-
-  - id: review
-    depends_on: [refactor]
-    workflow:
-      path: smart-review-block.yaml
-      input: ${input}
-      isolation: inherit
-
-  - id: summary
-    depends_on: [review]
-    command: summary
+- id: baseline-agent
+  command: validate-change
+- id: baseline
+  depends_on:
+  - baseline-agent
+  bash: "./.takt/profiles/code/tools/validate"
+- id: plan
+  depends_on:
+  - baseline
+  command: plan-change
+- id: refactor
+  depends_on:
+  - plan
+  command: safe-refactor
+  model: implementation
+  attempts:
+    max: 3
+  hooks:
+    after_node:
+    - id: behavior-validation
+      bash: "./.takt/profiles/code/tools/validate"
+      on_failure:
+        action: retry
+        session: resume
+  context:
+- id: review
+  depends_on:
+  - refactor
+  workflow:
+    path: smart-review-block.yaml
+    input: "$ARGUMENTS"
+    isolation: inherit
+- id: summary
+  depends_on:
+  - review
+  command: summary
+name: refactor-safely
+description: Capture a behavioral baseline, plan and perform a refactor, then compare
+  validation and repair any regression before delivery.
+provider: coding-agent
+model: review

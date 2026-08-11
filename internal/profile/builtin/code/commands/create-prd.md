@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 
@@ -9,4 +9,4 @@ Ground the PRD in repository and product context. Include problem, users, goals,
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

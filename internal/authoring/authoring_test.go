@@ -11,7 +11,7 @@ func TestAnalyzeChecksOutputReferencesAndAuthoringHints(t *testing.T) {
 	closed := false
 	workflow := &spec.Workflow{Nodes: []spec.Node{
 		{ID: "produce", Bash: "echo", OutputFormat: &spec.OutputFormat{Type: "object", Properties: map[string]spec.OutputFormat{"summary": {Type: "string"}}, Required: []string{"summary"}, AdditionalProperties: &closed}},
-		{ID: "consume", DependsOn: []string{"produce"}, Bash: "echo ${nodes.produce.output.summry}", AlwaysRun: true, IdleTimeout: "2m", Timeout: "1m"},
+		{ID: "consume", DependsOn: []string{"produce"}, Bash: "echo $produce.output.summry", AlwaysRun: true, IdleTimeout: "2m", Timeout: "1m"},
 	}}
 	diagnostics := Analyze(workflow, command.Resolver{})
 	codes := map[string]string{}
@@ -29,7 +29,7 @@ func TestAnalyzeChecksOutputReferencesAndAuthoringHints(t *testing.T) {
 func TestAnalyzeRejectsNonUpstreamReference(t *testing.T) {
 	workflow := &spec.Workflow{Nodes: []spec.Node{
 		{ID: "source", Bash: "echo"},
-		{ID: "consumer", Bash: "echo ${nodes.source.output}"},
+		{ID: "consumer", Bash: "echo $source.output"},
 	}}
 	if diagnostics := Analyze(workflow, command.Resolver{}); !HasErrors(diagnostics) {
 		t.Fatalf("expected error, got %#v", diagnostics)
@@ -41,7 +41,7 @@ func TestAnalyzeAllowsLoopNodeToReferenceContainerUpstream(t *testing.T) {
 	workflow := &spec.Workflow{Nodes: []spec.Node{
 		{ID: "analyze", Bash: "echo", OutputFormat: &spec.OutputFormat{Type: "object", Properties: map[string]spec.OutputFormat{"summary": {Type: "string"}}, Required: []string{"summary"}, AdditionalProperties: &closed}},
 		{ID: "cycle", DependsOn: []string{"analyze"}, LoopGroup: &spec.LoopGroupSpec{MaxIterations: 2, Nodes: []spec.Node{
-			{ID: "implement", Prompt: "Use ${nodes.analyze.output.summary}"},
+			{ID: "implement", Prompt: "Use $analyze.output.summary"},
 		}}},
 	}}
 	if diagnostics := Analyze(workflow, command.Resolver{}); HasErrors(diagnostics) {
@@ -52,7 +52,7 @@ func TestAnalyzeAllowsLoopNodeToReferenceContainerUpstream(t *testing.T) {
 func TestAnalyzeChecksEveryCompoundWhenReference(t *testing.T) {
 	workflow := &spec.Workflow{Nodes: []spec.Node{
 		{ID: "source", Bash: "echo"},
-		{ID: "consumer", DependsOn: []string{"source"}, Bash: "echo", When: `nodes.source.status == "completed" && nodes.missing.status == "ready"`},
+		{ID: "consumer", DependsOn: []string{"source"}, Bash: "echo", When: `$source.status == "completed" && $missing.status == "ready"`},
 	}}
 	diagnostics := Analyze(workflow, command.Resolver{})
 	found := false

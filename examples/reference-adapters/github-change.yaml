@@ -1,15 +1,13 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: github-reference-change
-
+---
 nodes:
-  - id: publish
-    adapter:
-      name: scm
-      operation: change.create
-      input: |
-        {"title":"Takt reference change","head":"takt/reference-change"}
-    side_effect:
-      mode: reconcile
-      idempotency_key: '${run.id}:reference-change'
+- id: publish
+  adapter:
+    name: scm
+    operation: change.create
+    input: '{"title":"Takt reference change","head":"takt/reference-change"}
+
+'
+  side_effect:
+    mode: reconcile
+    idempotency_key: reference-change
+name: github-reference-change

@@ -561,6 +561,9 @@ func (s *RunService) Retry(ctx context.Context, request RetryRequest) (*store.Ru
 	if err != nil {
 		return nil, err
 	}
+	if err := requireCurrentWorkflowContract(state); err != nil {
+		return nil, err
+	}
 	if state.Status != store.RunFailed && state.Status != store.RunCancelled {
 		return nil, fmt.Errorf("run %s cannot retry from status %s", state.ID, state.Status)
 	}
@@ -593,6 +596,9 @@ func (s *RunService) Retry(ctx context.Context, request RetryRequest) (*store.Ru
 		if previous == nil {
 			continue
 		}
+		if node.LoopGroup != nil && len(previous.LoopIterations) >= node.LoopGroup.MaxIterations {
+			return nil, fmt.Errorf("run %s loop %q reached max_iterations; fork with a new definition", state.ID, node.ID)
+		}
 		state.OperatorRetries = append(state.OperatorRetries, store.OperatorRetryState{NodeID: node.ID, RequestedAt: time.Now().UTC(), PreviousStatus: previous.Status, PreviousAttempts: previous.Attempts, PreviousError: previous.Error})
 		for _, childID := range append(append([]string(nil), previous.ChildRunIDs...), previous.ChildRunID) {
 			if childID != "" {
@@ -601,13 +607,19 @@ func (s *RunService) Retry(ctx context.Context, request RetryRequest) (*store.Ru
 				}
 			}
 		}
-		state.Nodes[node.ID] = &store.NodeState{
+		resetState := &store.NodeState{
 			Status:       store.NodePending,
 			Hidden:       previous.Hidden,
 			PublicParent: previous.PublicParent,
 			Executions:   append([]store.ExecutionState(nil), previous.Executions...),
 			Artifacts:    append([]store.ArtifactRef(nil), previous.Artifacts...),
 		}
+		resetState.LoopPrevious = previous.LoopPrevious
+		resetState.LoopIterations = previous.LoopIterations
+		resetState.LoopIteration = 0
+		resetState.SessionID = previous.SessionID
+		resetState.Resumed = previous.Resumed
+		state.Nodes[node.ID] = resetState
 	}
 	state.Status = store.RunRunning
 	state.CurrentNode = ""
@@ -734,6 +746,9 @@ func (s *RunService) ForkRun(ctx context.Context, request RunForkRequest) (*Star
 	st := s.store
 	state, err := st.Load(request.RunID)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireCurrentWorkflowContract(state); err != nil {
 		return nil, err
 	}
 	input := state.Input

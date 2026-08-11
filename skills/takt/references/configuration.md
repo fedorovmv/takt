@@ -46,7 +46,7 @@ models:
 
 ```yaml
 - id: draft
-  prompt: Подготовь решение для ${input}
+  prompt: Подготовь решение для $ARGUMENTS
   model: fast
 
 - id: repair
@@ -110,7 +110,8 @@ assistants:
 
 ## Логический coding-agent
 
-Встроенный профиль `code` ссылается на `assistant: coding-agent`, а конкретный исполнитель выбирается один раз:
+Встроенный профиль `code` ссылается на `provider: coding-agent`, а конкретный
+исполнитель выбирается один раз через Config binding:
 
 ```yaml
 default_assistant: qwen

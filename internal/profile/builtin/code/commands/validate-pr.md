@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 
@@ -9,4 +9,4 @@ Resolve the PR and exact base/head commits. Run relevant tests on the base and f
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

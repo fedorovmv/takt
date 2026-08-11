@@ -20,19 +20,13 @@ func TestSubworkflowLocalCommandChangesWorkflowFingerprint(t *testing.T) {
 	parentPath := filepath.Join(dir, "workflow.yaml")
 	childPath := filepath.Join(childDir, "workflow.yaml")
 	commandPath := filepath.Join(childDir, "commands", "run.md")
-	mustWrite(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	mustWrite(t, parentPath, `name: parent
 nodes:
   - id: child
     subworkflow:
       path: child/workflow.yaml
 `)
-	mustWrite(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	mustWrite(t, childPath, `name: child
 nodes:
   - id: run
     command: run
@@ -74,21 +68,15 @@ func TestForeachItemsFileChangesWorkflowFingerprint(t *testing.T) {
 		t.Fatal(err)
 	}
 	childPath := filepath.Join(dir, "child.yaml")
-	if err := os.WriteFile(childPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: child
+	if err := os.WriteFile(childPath, []byte(`name: child
 nodes:
   - id: result
-    bash: echo '${inputs.value}'
+    bash: echo '$INPUTS.value'
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	parentPath := filepath.Join(dir, "workflow.yaml")
-	if err := os.WriteFile(parentPath, []byte(`apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: parent
+	if err := os.WriteFile(parentPath, []byte(`name: parent
 nodes:
   - id: batch
     foreach:
@@ -97,7 +85,7 @@ nodes:
       subworkflow:
         path: child.yaml
         inputs:
-          value: ${item}
+          value: $INPUTS.item
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}

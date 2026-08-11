@@ -6,11 +6,13 @@
 
 ## `references unknown model`
 
-Значение `node.model`, frontmatter или `defaults.model` отсутствует в `config.models`. Добавь alias в config или исправь имя.
+Значение `node.model`, frontmatter или `workflow.model` отсутствует в
+`config.models`. Добавь alias в config или исправь имя.
 
 ## `does not resolve an assistant`
 
-Assistant не задан в узле, Markdown-команде и defaults. Добавь alias из `config.assistants`.
+Provider не задан в узле, Markdown-команде и `workflow.provider`. Добавь
+binding из `config.assistants`.
 
 ## `command not found`
 
@@ -36,13 +38,15 @@ Assistant не задан в узле, Markdown-команде и defaults. До
 
 1. model в узле;
 2. model во frontmatter команды;
-3. `defaults.model`.
+3. `workflow.model`.
 
 В `state.json` и evaluation report смотри `requested_model` и `resolved_model`. Провайдер может маршрутизировать запрос на другую фактическую модель.
 
 ## Resume не работает
 
-- используй `session: resume`;
+- для retry используй `attempts.retry_session: reuse` или hook
+  `on_failure.session: resume`; `context: shared` — для продолжения совместимого
+  upstream session;
 - assistant должен поддерживать resume;
 - предыдущая попытка должна сохранить Session ID;
 - Pi должен открыть тот же Session ID;
@@ -79,7 +83,7 @@ takt answer <run-id> <node-id> --workspace <dir> --value <text> --json
 
 ## Неизвестное поле или подозрительная ссылка
 
-`takt validate` показывает путь поля и `did you mean` для близкой опечатки. Обязательная `${path}` должна разрешиться статически и во время Run. Для осознанно отсутствующего значения используй `${path?}`, для fallback — `${path:-default}`. В CI запускай `takt validate ... --warnings-as-errors`.
+`takt validate` показывает путь поля и `did you mean` для близкой опечатки. Обязательная `$path` должна разрешиться статически и во время Run. Для осознанно отсутствующего значения используй `$path?`, для fallback — `$path:-default`. В CI запускай `takt validate ... --warnings-as-errors`.
 
 ## Daemon не запускается
 

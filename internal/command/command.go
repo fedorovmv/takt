@@ -10,13 +10,17 @@ import (
 )
 
 type Command struct {
-	Name        string
-	Description string
-	Assistant   string
-	Model       string
-	Metadata    map[string]any
-	Body        string
-	Path        string
+	Name         string
+	Description  string
+	Provider     string
+	Model        string
+	ArgumentHint string
+	Metadata     map[string]any
+	Body         string
+	Path         string
+	// Assistant is retained as an internal compatibility alias for runtime
+	// callers while command authoring uses provider exclusively.
+	Assistant string
 }
 
 type Resolver struct {
@@ -64,15 +68,23 @@ func Parse(name, path, src string) (*Command, error) {
 	if v, ok := fm["description"].(string); ok {
 		cmd.Description = v
 	}
-	if v, ok := fm["assistant"].(string); ok {
+	if _, ok := fm["assistant"]; ok {
+		return nil, fmt.Errorf("command %s uses legacy frontmatter key assistant; use provider", path)
+	}
+	if v, ok := fm["provider"].(string); ok {
+		cmd.Provider = v
 		cmd.Assistant = v
 	}
 	if v, ok := fm["model"].(string); ok {
 		cmd.Model = v
 	}
+	if v, ok := fm["argument-hint"].(string); ok {
+		cmd.ArgumentHint = v
+	}
 	delete(fm, "description")
-	delete(fm, "assistant")
+	delete(fm, "provider")
 	delete(fm, "model")
+	delete(fm, "argument-hint")
 	cmd.Metadata = fm
 	cmd.Body = strings.TrimSpace(rest[idx+5:])
 	return cmd, nil

@@ -1,39 +1,33 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: validated-agent-task
-  description: Агентская работа с детерминированной проверкой, retry и approval
-
-defaults:
-  assistant: pi
-  model: deep
-  session: resume
-
+---
 nodes:
-  - id: implement
-    command: implement
-    attempts:
-      max: 3
-    timeout: 20m
-    hooks:
-      after_node:
-        - id: validate-result
-          bash: ./.takt/tools/validate-result
-          on_failure:
-            action: retry
-            session: resume
-      before_complete:
-        - id: preserve-result
-          bash: |
-            mkdir -p "$ARTIFACTS_DIR"
-            cp result.txt "$ARTIFACTS_DIR/result.txt"
-
-  - id: final-validation
-    depends_on: [implement]
-    bash: ./.takt/tools/validate-result
-
-  - id: approve-result
-    depends_on: [final-validation]
-    approval:
-      message: Результат прошёл проверку. Подтвердите его.
-      capture_response: true
+- id: implement
+  command: implement
+  attempts:
+    max: 3
+  timeout: 20m
+  hooks:
+    after_node:
+    - id: validate-result
+      bash: "./.takt/tools/validate-result"
+      on_failure:
+        action: retry
+        session: resume
+    before_complete:
+    - id: preserve-result
+      bash: |
+        mkdir -p "$ARTIFACTS_DIR"
+        cp result.txt "$ARTIFACTS_DIR/result.txt"
+- id: final-validation
+  depends_on:
+  - implement
+  bash: "./.takt/tools/validate-result"
+- id: approve-result
+  depends_on:
+  - final-validation
+  approval:
+    message: Результат прошёл проверку. Подтвердите его.
+    capture_response: true
+name: validated-agent-task
+description: Агентская работа с детерминированной проверкой, retry и approval
+provider: pi
+model: deep

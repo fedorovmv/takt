@@ -305,10 +305,10 @@ func TestRepositoryTaskBriefIncludesDependencyResults(t *testing.T) {
 		t.Fatalf("api dependency missing: %#v", deps)
 	}
 	for key, want := range map[string]string{
-		"output":              "${nodes.api.output}",
-		"execution_workspace": "${nodes.api.child_execution_workspace}",
-		"branch":              "${nodes.api.child_branch}",
-		"base_commit":         "${nodes.api.child_base_commit}",
+		"output":              "$api.output",
+		"execution_workspace": "$api.child_execution_workspace",
+		"branch":              "$api.child_branch",
+		"base_commit":         "$api.child_base_commit",
 	} {
 		if got, _ := api[key].(string); got != want {
 			t.Fatalf("dependency_results.api.%s=%q want %q", key, got, want)

@@ -1,21 +1,15 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: basic-inline-prompt
-  description: Минимальный агентский узел с inline prompt
-
-defaults:
-  assistant: pi
-  model: fast
-  session: fresh
-
+---
 nodes:
-  - id: implement
-    model: deep
-    timeout: 20m
-    prompt: |
-      Выполни запрос пользователя в текущем workspace:
+- id: implement
+  model: deep
+  timeout: 20m
+  prompt: |
+    Выполни запрос пользователя в текущем workspace:
 
-      ${input}
+    $ARGUMENTS
 
-      Кратко опиши результат в ответе.
+    Кратко опиши результат в ответе.
+name: basic-inline-prompt
+description: Минимальный агентский узел с inline prompt
+provider: pi
+model: fast

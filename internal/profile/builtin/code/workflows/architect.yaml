@@ -1,52 +1,49 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: architect
-  description: Perform an architectural sweep, propose the smallest valuable simplification, obtain approval, implement it, and validate codebase health.
+---
 worktree:
   enabled: true
   cleanup: on_success
-
-defaults:
-  assistant: coding-agent
-  model: review
-  session: fresh
 nodes:
-  - id: sweep
-    command: architecture-review
-
-  - id: approve
-    depends_on: [sweep]
-    approval:
-      message: Review `$ARTIFACTS_DIR/architecture.md`. Approve the proposed architectural change or provide constraints.
-      capture_response: true
-
-  - id: plan
-    depends_on: [approve]
-    command: plan-change
-
-  - id: implement
-    depends_on: [plan]
-    command: implement-change
-    model: implementation
-    session: resume
-    attempts:
-      max: 3
-    hooks:
-      after_node:
-        - id: validation
-          bash: ./.takt/profiles/code/tools/validate
-          on_failure:
-            action: retry
-            session: resume
-
-  - id: review
-    depends_on: [implement]
-    workflow:
-      path: smart-review-block.yaml
-      input: ${input}
-      isolation: inherit
-
-  - id: summary
-    depends_on: [review]
-    command: summary
+- id: sweep
+  command: architecture-review
+- id: approve
+  depends_on:
+  - sweep
+  approval:
+    message: Review `$ARTIFACTS_DIR/architecture.md`. Approve the proposed architectural
+      change or provide constraints.
+    capture_response: true
+- id: plan
+  depends_on:
+  - approve
+  command: plan-change
+- id: implement
+  depends_on:
+  - plan
+  command: implement-change
+  model: implementation
+  attempts:
+    max: 3
+  hooks:
+    after_node:
+    - id: validation
+      bash: "./.takt/profiles/code/tools/validate"
+      on_failure:
+        action: retry
+        session: resume
+  context:
+- id: review
+  depends_on:
+  - implement
+  workflow:
+    path: smart-review-block.yaml
+    input: "$ARGUMENTS"
+    isolation: inherit
+- id: summary
+  depends_on:
+  - review
+  command: summary
+name: architect
+description: Perform an architectural sweep, propose the smallest valuable simplification,
+  obtain approval, implement it, and validate codebase health.
+provider: coding-agent
+model: review

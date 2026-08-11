@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: review
 ---
 
@@ -9,4 +9,4 @@ Read the PRD and current repository. Create small independently verifiable stori
 
 User request:
 
-$USER_MESSAGE
+$ARGUMENTS

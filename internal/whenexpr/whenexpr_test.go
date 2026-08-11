@@ -4,9 +4,9 @@ import "testing"
 
 func TestConstitutionAllowsOnlySmallGateLanguage(t *testing.T) {
 	valid := []string{
-		`nodes.a.output == "ready"`,
-		`nodes.a.status != completed && nodes.b.output == "ok"`,
-		`nodes.a.output == "a || b" || inputs.message != "stop"`,
+		`$a.output == "ready"`,
+		`$a.status != completed && $b.output == "ok"`,
+		`$a.output == "a || b" || $INPUTS.message != "stop"`,
 	}
 	for _, value := range valid {
 		if err := Validate(value); err != nil {
@@ -31,8 +31,8 @@ func TestConstitutionAllowsOnlySmallGateLanguage(t *testing.T) {
 }
 
 func TestEvaluateUsesAndBeforeOr(t *testing.T) {
-	values := map[string]string{"nodes.a.output": "yes", "nodes.b.output": "no", "nodes.c.output": "yes"}
-	got, err := Evaluate(`nodes.a.output == yes && nodes.b.output == yes || nodes.c.output == yes`, func(path string) (string, error) { return values[path], nil })
+	values := map[string]string{"$a.output": "yes", "$b.output": "no", "$c.output": "yes"}
+	got, err := Evaluate(`$a.output == yes && $b.output == yes || $c.output == yes`, func(path string) (string, error) { return values[path], nil })
 	if err != nil {
 		t.Fatal(err)
 	}

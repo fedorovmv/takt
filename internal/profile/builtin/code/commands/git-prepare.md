@@ -1,5 +1,5 @@
 ---
-assistant: coding-agent
+provider: coding-agent
 model: implementation
 ---
 
@@ -10,7 +10,7 @@ Prepare the current isolated checkout for the requested workflow without impleme
 
 Required procedure:
 1. Read `AGENTS.md` and repository-specific contribution instructions.
-2. Parse the JSON workflow input from `$USER_MESSAGE` and identify repository, base branch, requested PR mode, and scope limits.
+2. Parse the JSON workflow input from `$ARGUMENTS` and identify repository, base branch, requested PR mode, and scope limits.
 3. Inspect `git rev-parse --show-toplevel`, `git branch --show-current`, `git status --porcelain`, configured remotes, and commits relative to the requested base.
 4. If Takt already placed the Run in a worktree, keep its current branch. Never switch away from a managed worktree branch.
 5. Outside a managed worktree, create a dedicated branch only when the current branch is the clean requested base. Reuse an existing matching feature branch. Stop on unrelated changes or an unexpected branch.

@@ -17,10 +17,7 @@ func TestDetachedStartAcceptsImmediateDurableFailure(t *testing.T) {
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: immediate-failure
+	writeControlFile(t, workflowPath, `name: immediate-failure
 nodes:
   - id: fail
     bash: exit 17
@@ -47,17 +44,14 @@ func TestRunOperationsListAttentionSummaryPauseAndResume(t *testing.T) {
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: operator-view
+	writeControlFile(t, workflowPath, `name: operator-view
 nodes:
   - id: approve
     approval:
       message: Continue?
 `)
 	now := time.Now().UTC()
-	state := &store.RunState{ID: "run-operations-view", Status: store.RunWaiting, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Input: "input", Nodes: map[string]*store.NodeState{"approve": {Status: store.NodeWaiting}}, Approvals: map[string]string{}, Waiting: &store.WaitingState{NodeID: "approve", Kind: "approval", Message: "Continue?"}, CreatedAt: now, UpdatedAt: now}
+	state := &store.RunState{WorkflowContract: store.CurrentWorkflowContract, ID: "run-operations-view", Status: store.RunWaiting, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Input: "input", Nodes: map[string]*store.NodeState{"approve": {Status: store.NodeWaiting}}, Approvals: map[string]string{}, Waiting: &store.WaitingState{NodeID: "approve", Kind: "approval", Message: "Continue?"}, CreatedAt: now, UpdatedAt: now}
 	st := store.FS{Workspace: workspace}
 	if err := st.Save(state); err != nil {
 		t.Fatal(err)
@@ -108,10 +102,7 @@ func TestSafePauseStopsAtNodeBoundary(t *testing.T) {
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: safe-pause
+	writeControlFile(t, workflowPath, `name: safe-pause
 nodes:
   - id: first
     bash: sleep 0.4
@@ -155,10 +146,7 @@ func TestRetryAndRecoverInterruptedRun(t *testing.T) {
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: retry-recover
+	writeControlFile(t, workflowPath, `name: retry-recover
 nodes:
   - id: build
     bash: "true"
@@ -172,7 +160,7 @@ nodes:
 	}
 	st := store.FS{Workspace: workspace}
 	now := time.Now().UTC()
-	failed := &store.RunState{ID: "run-operator-retry", Status: store.RunFailed, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"build": {Status: store.NodeFailed, Attempts: 1, Error: "boom"}, "verify": {Status: store.NodeBlocked}}, Approvals: map[string]string{}, CurrentNode: "build", Error: "boom", CreatedAt: now, UpdatedAt: now}
+	failed := &store.RunState{WorkflowContract: store.CurrentWorkflowContract, ID: "run-operator-retry", Status: store.RunFailed, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"build": {Status: store.NodeFailed, Attempts: 1, Error: "boom"}, "verify": {Status: store.NodeBlocked}}, Approvals: map[string]string{}, CurrentNode: "build", Error: "boom", CreatedAt: now, UpdatedAt: now}
 	if err := st.Save(failed); err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +175,7 @@ nodes:
 		t.Fatalf("retry history = %#v", retried.OperatorRetries)
 	}
 
-	lost := &store.RunState{ID: "run-worker-lost", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"build": {Status: store.NodeRunning, Attempts: 1}, "verify": {Status: store.NodePending}}, Approvals: map[string]string{}, CurrentNode: "build", CurrentNodes: []string{"build"}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now}
+	lost := &store.RunState{WorkflowContract: store.CurrentWorkflowContract, ID: "run-worker-lost", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"build": {Status: store.NodeRunning, Attempts: 1}, "verify": {Status: store.NodePending}}, Approvals: map[string]string{}, CurrentNode: "build", CurrentNodes: []string{"build"}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now}
 	if err := st.Save(lost); err != nil {
 		t.Fatal(err)
 	}
@@ -235,10 +223,7 @@ func TestSafePausePropagatesThroughGovernedChildRun(t *testing.T) {
 	childPath := filepath.Join(workspace, "child.yaml")
 	parentPath := filepath.Join(workspace, "parent.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: pause-child
+	writeControlFile(t, childPath, `name: pause-child
 nodes:
   - id: first
     bash: sleep 0.4
@@ -246,10 +231,7 @@ nodes:
     depends_on: [first]
     bash: printf done > child-second.txt
 `)
-	writeControlFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: pause-parent
+	writeControlFile(t, parentPath, `name: pause-parent
 nodes:
   - id: delegated
     workflow:
@@ -300,10 +282,7 @@ func TestOperatorActionsPrearmMarkersForLinkedChildWithoutState(t *testing.T) {
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: prearm-markers
+	writeControlFile(t, workflowPath, `name: prearm-markers
 nodes:
   - id: wait
     bash: sleep 1
@@ -315,7 +294,7 @@ nodes:
 	st := store.FS{Workspace: workspace}
 	now := time.Now().UTC()
 	pauseChild := "run-linked-pause-child"
-	pauseRoot := &store.RunState{
+	pauseRoot := &store.RunState{WorkflowContract: store.CurrentWorkflowContract,
 		ID:                 "run-linked-pause-root",
 		Status:             store.RunRunning,
 		WorkflowPath:       workflowPath,
@@ -343,7 +322,7 @@ nodes:
 	}
 
 	abandonChild := "run-linked-abandon-child"
-	abandonRoot := &store.RunState{
+	abandonRoot := &store.RunState{WorkflowContract: store.CurrentWorkflowContract,
 		ID:                 "run-linked-abandon-root",
 		Status:             store.RunRunning,
 		WorkflowPath:       workflowPath,
@@ -376,9 +355,9 @@ func TestResumePausedRejectsNonPausedWithoutClearingMarker(t *testing.T) {
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, "apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: marker-preserve\nnodes:\n  - id: x\n    bash: sleep 1\n")
+	writeControlFile(t, workflowPath, "name: marker-preserve\nnodes:\n  - id: x\n    bash: sleep 1\n")
 	now := time.Now().UTC()
-	state := &store.RunState{ID: "run-marker-preserve", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"x": {Status: store.NodeRunning}}, Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now}
+	state := &store.RunState{WorkflowContract: store.CurrentWorkflowContract, ID: "run-marker-preserve", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"x": {Status: store.NodeRunning}}, Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now}
 	st := store.FS{Workspace: workspace}
 	if err := st.Save(state); err != nil {
 		t.Fatal(err)
@@ -408,19 +387,13 @@ func TestPausedParentWaitingForChildStaysPausedAfterChildAnswer(t *testing.T) {
 	childPath := filepath.Join(workspace, "child.yaml")
 	parentPath := filepath.Join(workspace, "parent.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, childPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: approval-child
+	writeControlFile(t, childPath, `name: approval-child
 nodes:
   - id: approve
     approval:
       message: Continue child?
 `)
-	writeControlFile(t, parentPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: approval-parent
+	writeControlFile(t, parentPath, `name: approval-parent
 nodes:
   - id: delegated
     workflow:
@@ -487,10 +460,7 @@ assistants:
   worker:
     type: mock
 `)
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: pause-same-wave
+	writeControlFile(t, workflowPath, `name: pause-same-wave
 nodes:
   - id: first
     bash: sleep 0.35
@@ -499,7 +469,7 @@ nodes:
   - id: delegated
     prompt: do not publish after pause
     executor: external
-    assistant: worker
+    provider: worker
     model: demo
 `)
 	service, err := New(workspace, configPath)
@@ -529,16 +499,13 @@ func TestForegroundRecoveryPreservesOperatorPause(t *testing.T) {
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: recover-pausing
+	writeControlFile(t, workflowPath, `name: recover-pausing
 nodes:
   - id: build
     bash: "true"
 `)
 	now := time.Now().UTC()
-	state := &store.RunState{ID: "run-recover-pausing", Status: store.RunPausing, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"build": {Status: store.NodeRunning, Attempts: 1}}, Approvals: map[string]string{}, CurrentNode: "build", CurrentNodes: []string{"build"}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now}
+	state := &store.RunState{WorkflowContract: store.CurrentWorkflowContract, ID: "run-recover-pausing", Status: store.RunPausing, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"build": {Status: store.NodeRunning, Attempts: 1}}, Approvals: map[string]string{}, CurrentNode: "build", CurrentNodes: []string{"build"}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now}
 	st := store.FS{Workspace: workspace}
 	if err := st.Save(state); err != nil {
 		t.Fatal(err)
@@ -571,10 +538,7 @@ func TestRetryCancelledStartsAtFirstIncompleteAndPreservesExecutionHistory(t *te
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: retry-cancelled
+	writeControlFile(t, workflowPath, `name: retry-cancelled
 nodes:
   - id: done
     bash: "true"
@@ -584,7 +548,7 @@ nodes:
 `)
 	now := time.Now().UTC()
 	oldExec := store.ExecutionState{Attempt: 1, Status: store.NodeFailed, Error: "old failure", ErrorCode: "old"}
-	state := &store.RunState{ID: "run-retry-cancelled", Status: store.RunCancelled, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"done": {Status: store.NodeCompleted, Attempts: 1, Output: "kept"}, "pending": {Status: store.NodeCancelled, Attempts: 1, Error: "cancelled", Executions: []store.ExecutionState{oldExec}}}, Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now}
+	state := &store.RunState{WorkflowContract: store.CurrentWorkflowContract, ID: "run-retry-cancelled", Status: store.RunCancelled, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"done": {Status: store.NodeCompleted, Attempts: 1, Output: "kept"}, "pending": {Status: store.NodeCancelled, Attempts: 1, Error: "cancelled", Executions: []store.ExecutionState{oldExec}}}, Approvals: map[string]string{}, CreatedAt: now, UpdatedAt: now}
 	st := store.FS{Workspace: workspace}
 	if err := st.Save(state); err != nil {
 		t.Fatal(err)
@@ -613,7 +577,7 @@ func TestForkPersistsSourceFingerprintAndProvenance(t *testing.T) {
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, "apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: fork-source\nnodes:\n  - id: x\n    bash: \"true\"\n")
+	writeControlFile(t, workflowPath, "name: fork-source\nnodes:\n  - id: x\n    bash: \"true\"\n")
 	service, err := New(workspace, configPath)
 	if err != nil {
 		t.Fatal(err)
@@ -643,9 +607,9 @@ func TestRecursiveSummaryToleratesLinkedChildBeforeStatePublication(t *testing.T
 	configPath := filepath.Join(workspace, "config.yaml")
 	workflowPath := filepath.Join(workspace, "workflow.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
-	writeControlFile(t, workflowPath, "apiVersion: takt/v1alpha1\nkind: Workflow\nmetadata:\n  name: summary-race\nnodes:\n  - id: x\n    bash: true\n")
+	writeControlFile(t, workflowPath, "name: summary-race\nnodes:\n  - id: x\n    bash: true\n")
 	now := time.Now().UTC()
-	state := &store.RunState{ID: "run-summary-race", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"x": {Status: store.NodeCompleted}}, Approvals: map[string]string{}, ChildRunIDs: []string{"run-child-not-published"}, CreatedAt: now, UpdatedAt: now}
+	state := &store.RunState{WorkflowContract: store.CurrentWorkflowContract, ID: "run-summary-race", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"x": {Status: store.NodeCompleted}}, Approvals: map[string]string{}, ChildRunIDs: []string{"run-child-not-published"}, CreatedAt: now, UpdatedAt: now}
 	if err := (store.FS{Workspace: workspace}).Save(state); err != nil {
 		t.Fatal(err)
 	}
@@ -675,10 +639,7 @@ func TestForegroundStartReturnsDurableRedactedState(t *testing.T) {
 	if err := os.Chmod(scriptPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeControlFile(t, workflowPath, `apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: public-redaction
+	writeControlFile(t, workflowPath, `name: public-redaction
 nodes:
   - id: emit
     script:

@@ -697,3 +697,28 @@ Concrete assistant extensions объявляют `assistant.ProviderRegistration
 MCP canonical surface строится из `appapi.CanonicalOperations()`, а generated `docs/71-canonical-operation-contracts.generated.md` строится из тех же descriptors и защищён regression test. MCP-specific external-worker protocol tools могут сохранять локальные descriptors, поскольку они не являются canonical application operations.
 
 **Причина.** После стабилизации `v0.1.52–v0.1.56` главный риск сместился от god objects к постепенной архитектурной энтропии: рост собственного expression language, скрытая mutable registration и рассинхронизация Go DTO/MCP schema/docs. Эти три контракта уменьшают будущую стоимость изменений без нового слоя фреймворков и поддерживают SOLID/DRY/KISS/YAGNI. Подробности: `docs/72-architecture-contracts-v0.1.57.md`.
+
+## ADR-091. Archon-first Workflow language is a single native contract with durable A1 loop evidence
+
+**Статус:** принято.
+
+Начиная с A0 Workflow authoring использует один target root (`name`,
+`description`, `provider`, `model`, `nodes`) и один `$...` reference grammar.
+Legacy Workflow root (`apiVersion`, `kind`, `metadata`, `defaults`),
+frontmatter `assistant` и `${...}` не имеют compatibility parser, importer или
+второго renderer: loader/authoring fail-closed отклоняют их до создания Run.
+`output_format` и `takt-schema-subset/v1` не меняют semantics.
+
+A1 loop predicates/actions остаются частью обычного scheduler. `loop`,
+`until.signal`, `until.requires` и `until_bash` сохраняют immutable iteration
+evidence; signal missing/ambiguous и predicate diagnostics сериализуются явно.
+`fresh_context` и `context: shared` управляют Session ID, а resume обязан
+вернуть тот же ID без fresh fallback. Approval продолжает активную итерацию;
+timeout/cancellation имеют приоритет над derived loop/output errors. Hard
+token/tool budgets и mutating merge fan-out требуют отдельного evidence и не
+добавляются в этот contract.
+
+**Причина.** Dual dialects и второй executor создали бы неоднозначный
+fingerprint/resume contract. Один parser и существующий DAG дают меньше
+состояний, а durable evidence делает bounded repair loop проверяемым без
+доверия к тексту агента.

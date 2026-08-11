@@ -1,43 +1,34 @@
-apiVersion: takt/v1alpha1
-kind: Workflow
-
-metadata:
-  name: route-dsl-e2e
-  description: Генерация Route DSL с обязательной проверкой и исправлением
-
-defaults:
-  assistant: pi
-  model: route-model
-  session: resume
-
+---
 nodes:
-  - id: implement
-    command: generate-route
-    attempts:
-      max: 3
-    timeout: 10m
-    hooks:
-      after_node:
-        - id: validate-generated-route
-          bash: |
-            ./route-tool validate route.yaml
-          on_failure:
-            action: retry
-            session: resume
-      before_complete:
-        - id: preserve-result
-          bash: |
-            mkdir -p "$ARTIFACTS_DIR"
-            ./route-tool validate route.yaml > "$ARTIFACTS_DIR/validation.json"
-            cp route.yaml "$ARTIFACTS_DIR/route.yaml"
-
-  - id: full-validation
-    depends_on: [implement]
-    bash: |
-      ./route-tool validate route.yaml
-
-  - id: approve-result
-    depends_on: [full-validation]
-    approval:
-      message: Маршрут прошёл обязательную проверку. Подтвердите результат.
-      capture_response: true
+- id: implement
+  command: generate-route
+  attempts:
+    max: 3
+  timeout: 10m
+  hooks:
+    after_node:
+    - id: validate-generated-route
+      bash: "./route-tool validate route.yaml\n"
+      on_failure:
+        action: retry
+        session: resume
+    before_complete:
+    - id: preserve-result
+      bash: |
+        mkdir -p "$ARTIFACTS_DIR"
+        ./route-tool validate route.yaml > "$ARTIFACTS_DIR/validation.json"
+        cp route.yaml "$ARTIFACTS_DIR/route.yaml"
+- id: full-validation
+  depends_on:
+  - implement
+  bash: "./route-tool validate route.yaml\n"
+- id: approve-result
+  depends_on:
+  - full-validation
+  approval:
+    message: Маршрут прошёл обязательную проверку. Подтвердите результат.
+    capture_response: true
+name: route-dsl-e2e
+description: Генерация Route DSL с обязательной проверкой и исправлением
+provider: pi
+model: route-model
