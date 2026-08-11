@@ -56,3 +56,26 @@ func TestRunStateRedactionCoversDomainReceiptAndApproval(t *testing.T) {
 		t.Fatalf("secret remained in state: %s", raw)
 	}
 }
+
+func TestRedactRunStateCoversArchonLoopEvidence(t *testing.T) {
+	secret := "archon-loop-secret-047"
+	t.Setenv("TAKT_ARCHON_LOOP_SECRET", secret)
+	r := NewFromEnvironment()
+	r.RegisterReferences("secret://TAKT_ARCHON_LOOP_SECRET")
+	state := &store.RunState{
+		CancelReason: "cancel=" + secret,
+		Nodes: map[string]*store.NodeState{
+			"repair": {LoopIterations: []store.LoopIterationState{{
+				Iteration: 1,
+				UntilNode: "review",
+				Nodes:     map[string]store.NodeState{},
+				UntilBash: &store.PredicateEvidence{Stdout: "stdout=" + secret, Stderr: "stderr=" + secret},
+			}}},
+		},
+	}
+	RedactRunState(r, state)
+	raw, _ := json.Marshal(state)
+	if strings.Contains(string(raw), secret) {
+		t.Fatalf("secret remained in durable Archon fields: %s", raw)
+	}
+}

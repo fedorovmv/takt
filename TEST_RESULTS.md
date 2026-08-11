@@ -4,6 +4,10 @@
 
 PASS (deterministic local/fake-host boundary):
 
+- review remediation focused suite:
+  `go test ./internal/flowref ./internal/authoring ./internal/redact
+  ./internal/workflow ./internal/runtime ./tests/e2e -run
+  'Shell|Quote|BaseBranch|InlineScript|Archon|Loop|Until|Cancel|Required|Shared|Signal|Truncat|Redact|CurrentDocumentation' -count=1`;
 - `go test ./... -count=1 -timeout=300s`;
 - `go test -race ./... -count=1 -timeout=300s`;
 - `go vet ./...`;

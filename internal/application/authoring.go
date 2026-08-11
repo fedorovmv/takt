@@ -57,7 +57,7 @@ func (s *AuthoringService) ValidateWorkflow(selector, configOverride string, war
 	if authoring.HasErrors(diagnostics) {
 		return nil, &authoring.Error{Diagnostics: diagnostics}
 	}
-	return &ValidationResult{Valid: true, Workflow: wf.Metadata.Name, Diagnostics: diagnostics}, nil
+	return &ValidationResult{Valid: true, Workflow: wf.Name, Diagnostics: diagnostics}, nil
 }
 
 func (s *AuthoringService) InitProfile(name string, force bool) (string, error) {

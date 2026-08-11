@@ -20,7 +20,7 @@ func TestCommandFingerprintChangesWithContent(t *testing.T) {
 	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "test"}, Nodes: []spec.Node{{ID: "build", Command: "build"}}}
+	wf := &spec.Workflow{Name: "test", Nodes: []spec.Node{{ID: "build", Command: "build"}}}
 	cfg := &spec.Config{}
 	resolver := command.Resolver{Dirs: []string{cmdDir}}
 	before, err := Compute(wf, cfg, "<workflow>", "<config>", resolver)
@@ -87,7 +87,7 @@ func TestScriptFingerprintChangesWithSourceAndDependency(t *testing.T) {
 		t.Fatal(err)
 	}
 	workflowPath := filepath.Join(dir, "workflow.yaml")
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "script"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "script", Nodes: []spec.Node{{
 		ID: "run", Script: &spec.ScriptSpec{Runtime: "python", Path: "script.py", Dependencies: []string{"schema.json"}},
 	}}}
 	first, err := Compute(wf, &spec.Config{}, workflowPath, "<config>", command.Resolver{})

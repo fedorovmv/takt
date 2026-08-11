@@ -19,9 +19,6 @@ func Validate(wf *spec.Workflow) error {
 	}
 	name := strings.TrimSpace(wf.Name)
 	if name == "" {
-		name = strings.TrimSpace(wf.Metadata.Name) // Go-built legacy definitions only.
-	}
-	if name == "" {
 		return fmt.Errorf("name is required")
 	}
 	if err := validateWorktree(wf.Worktree); err != nil {
@@ -89,58 +86,87 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 }
 
 func validateSharedContexts(nodes []spec.Node, byID map[string]spec.Node) error {
+	consumers := map[string][]string{}
 	for _, node := range nodes {
 		if node.Context != "shared" {
 			continue
 		}
-		ancestors := map[string]bool{}
-		var visit func(string)
-		visit = func(id string) {
-			candidate, ok := byID[id]
-			if !ok {
-				return
-			}
-			for _, dep := range candidate.DependsOn {
-				if !ancestors[dep] {
-					ancestors[dep] = true
-					visit(dep)
+		source, err := nearestSharedSource(node, byID)
+		if err != nil {
+			return err
+		}
+		consumers[source] = append(consumers[source], node.ID)
+	}
+	for source, ids := range consumers {
+		for i := 0; i < len(ids); i++ {
+			for j := i + 1; j < len(ids); j++ {
+				if !nodeDependsOn(ids[i], ids[j], byID, map[string]bool{}) && !nodeDependsOn(ids[j], ids[i], byID, map[string]bool{}) {
+					return fmt.Errorf("shared session source %q is consumed concurrently by nodes %q and %q", source, ids[i], ids[j])
 				}
 			}
 		}
-		for _, dep := range node.DependsOn {
-			ancestors[dep] = true
-			visit(dep)
-		}
-		candidates := 0
-		provider := node.Provider
-		if provider == "" {
-			provider = node.Assistant
-		}
-		for id := range ancestors {
-			candidate := byID[id]
-			if candidate.Command == "" && candidate.Prompt == "" {
-				continue
-			}
-			candidateProvider := candidate.Provider
-			if candidateProvider == "" {
-				candidateProvider = candidate.Assistant
-			}
-			if provider != "" && candidateProvider != "" && provider != candidateProvider {
-				continue
-			}
-			if node.Model != "" && candidate.Model != "" && node.Model != candidate.Model {
-				continue
-			}
-			candidates++
-		}
-		if candidates == 0 {
-			return fmt.Errorf("node %q context: shared requires one explicit upstream assistant ancestor", node.ID)
-		}
-		if candidates > 1 {
-			return fmt.Errorf("node %q context: shared has ambiguous upstream assistant ancestors", node.ID)
-		}
 	}
 	return nil
+}
+
+func nearestSharedSource(node spec.Node, byID map[string]spec.Node) (string, error) {
+	ancestors := map[string]bool{}
+	var visit func(string)
+	visit = func(id string) {
+		if ancestors[id] {
+			return
+		}
+		candidate, ok := byID[id]
+		if !ok {
+			return
+		}
+		ancestors[id] = true
+		for _, dep := range candidate.DependsOn {
+			visit(dep)
+		}
+	}
+	for _, dep := range node.DependsOn {
+		visit(dep)
+	}
+	provider := node.Provider
+	candidates := make([]string, 0, len(ancestors))
+	for id := range ancestors {
+		candidate := byID[id]
+		if candidate.Command == "" && candidate.Prompt == "" {
+			continue
+		}
+		candidateProvider := candidate.Provider
+		if provider != "" && candidateProvider != "" && provider != candidateProvider {
+			continue
+		}
+		if node.Model != "" && candidate.Model != "" && node.Model != candidate.Model {
+			continue
+		}
+		candidates = append(candidates, id)
+	}
+	nearest := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		shadowed := false
+		for _, other := range candidates {
+			if candidate == other {
+				continue
+			}
+			if nodeDependsOn(other, candidate, byID, map[string]bool{}) {
+				shadowed = true
+				break
+			}
+		}
+		if !shadowed {
+			nearest = append(nearest, candidate)
+		}
+	}
+	if len(nearest) == 0 {
+		return "", fmt.Errorf("node %q context: shared requires one explicit upstream assistant ancestor", node.ID)
+	}
+	if len(nearest) > 1 {
+		return "", fmt.Errorf("node %q context: shared has ambiguous upstream assistant ancestors", node.ID)
+	}
+	return nearest[0], nil
 }
 
 func indexNodes(nodes []spec.Node, scope string) (map[string]spec.Node, error) {
@@ -200,6 +226,12 @@ var reservedNodeIDs = map[string]bool{
 func validateArchonA0Fields(node spec.Node) error {
 	if node.Context != "" && node.Context != "fresh" && node.Context != "shared" {
 		return fmt.Errorf("node %q context must be fresh or shared", node.ID)
+	}
+	if node.FreshContext {
+		return fmt.Errorf("node %q fresh_context is only valid inside loop or loop_group", node.ID)
+	}
+	if strings.TrimSpace(node.UntilBash) != "" {
+		return fmt.Errorf("node %q until_bash is only valid inside loop or loop_group", node.ID)
 	}
 	return nil
 }

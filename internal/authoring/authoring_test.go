@@ -1,6 +1,7 @@
 package authoring
 
 import (
+	"strings"
 	"testing"
 
 	"takt/internal/command"
@@ -64,4 +65,18 @@ func TestAnalyzeChecksEveryCompoundWhenReference(t *testing.T) {
 	if !found {
 		t.Fatalf("expected unknown node in compound when, got %#v", diagnostics)
 	}
+}
+
+func TestAnalyzeRejectsReferencesInInlineScriptSource(t *testing.T) {
+	workflow := &spec.Workflow{Nodes: []spec.Node{{
+		ID:     "script",
+		Script: &spec.ScriptSpec{Runtime: "python", Inline: `print("$ARGUMENTS")`},
+	}}}
+	diagnostics := Analyze(workflow, command.Resolver{})
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == "script.inline_reference" && strings.Contains(diagnostic.Message, "script.args") {
+			return
+		}
+	}
+	t.Fatalf("inline reference was accepted: %#v", diagnostics)
 }

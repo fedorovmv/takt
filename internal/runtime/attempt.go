@@ -110,6 +110,9 @@ func (r *Runner) executeAttempt(ctx context.Context, state *store.RunState, node
 			execErr = contextErr
 		}
 	}
+	if execErr == nil && result.Truncated && r.loopPredicateNode(node.ID) {
+		execErr = &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "predicate output", Err: fmt.Errorf("node %q output was truncated before predicate evaluation", node.ID)}
+	}
 	retryable := execErr != nil && shouldRetryAttempt(node.Attempts, execution.KindOf(execErr), ns.Attempts, max)
 	recordExecution(ns, result, execErr)
 	if execErr != nil {

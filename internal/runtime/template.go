@@ -89,6 +89,11 @@ func resolveFlowReference(ref flowref.Reference, state *store.RunState, local ma
 		if n, ok := local[ref.NodeID]; ok {
 			return nodePathLookup(n, ref.Path)
 		}
+		if len(local) == 0 {
+			// The first loop iteration has no prior snapshot. This is the one
+			// implicit-empty reference permitted by the workflow contract.
+			return "", true
+		}
 		return "", false
 	case flowref.KindNode, flowref.KindApproval:
 		if ref.Kind == flowref.KindApproval {

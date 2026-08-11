@@ -452,7 +452,7 @@ Linux использует `bwrap`, macOS — `sandbox-exec` при наличи
   output_mime: application/json
 ```
 
-`runtime` принимает `command`, `python` или `node`. `command` требует `path`; `python` и `node` принимают ровно одно из `path` и `inline`. Дополнительно доступны `args`, `env`, `working_directory` и `dependencies`. Пути вычисляются относительно workflow и отображаются в execution workspace при managed worktree. Runtime передаёт `TAKT_RUN_ID`, `TAKT_NODE_ID`, `TAKT_ATTEMPT`, `TAKT_WORKSPACE` и `TAKT_ARTIFACTS_DIR`.
+`runtime` принимает `command`, `python` или `node`. `command` требует `path`; `python` и `node` принимают ровно одно из `path` и `inline`. Дополнительно доступны `args`, `env`, `working_directory` и `dependencies`. Пути вычисляются относительно workflow и отображаются в execution workspace при managed worktree. Runtime передаёт `TAKT_RUN_ID`, `TAKT_NODE_ID`, `TAKT_ATTEMPT`, `TAKT_WORKSPACE` и `TAKT_ARTIFACTS_DIR`. Inline source передаётся интерпретатору byte-for-byte: Takt references в нём запрещены authoring-валидацией; значения передаются только через `args` или `env`.
 
 Stdout/stderr сохраняются раздельно. `output_format` нормализует только `Output`, не затирая raw stdout. Исходник script и файлы `dependencies` входят в fingerprint.
 
@@ -538,6 +538,8 @@ protocol failure. `until_bash` выполняется как детермини�
 `PredicateEvidence`. Условие `until` проверяется только для дочернего узла со
 статусом `completed`; `skipped`, `failed`, `errored`, `timed_out` и `cancelled`
 не завершают цикл даже при совпадающем нулевом `exit_code`.
+
+Failure-like body nodes останавливают loop до вычисления predicate и не могут служить acceptance evidence. При protocol/start/timeout/cancel ошибке predicate активные child states сначала сохраняются в immutable iteration snapshot с satisfied: false, затем очищаются из transient state; resume продолжает следующую bounded итерацию без потери доказательств.
 
 Если timeout или cancellation родительской попытки наступают во время выполнения дочернего узла, родительский `loop_group` и Run сохраняют `timed_out` или `cancelled`. Производная ошибка `loop_group exhausted` не переопределяет причину завершения контекста.
 
@@ -780,6 +782,12 @@ fan-out; `$INPUTS.<name>` — внутри подключённого subworkflo
 `$USER_MESSAGE`, reserved node IDs и positional artifact indexes отклоняются.
 Неразрешённая обязательная ссылка возвращает authoring/runtime error, а не
 литеральный token.
+
+В Shell surface Takt reference внутри double quotes отклоняется; в
+single-quoted сегменте значение экранируется внутри существующей кавычки.
+Нативные `$PATH`, `${PATH}`, `$?`, `$$`, `$((...))` и `$(...)` сохраняются.
+`$BASE_BRANCH` разрешается только из durable worktree base и при его отсутствии
+fail-closed до запуска bash.
 
 ## 11. Состояние и воспроизводимость
 

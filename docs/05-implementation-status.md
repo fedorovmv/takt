@@ -2,6 +2,17 @@
 
 Статус после `v0.1.57-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
+## Archon A1 review remediation — реализовано
+
+- durable redaction покрывает `cancel_reason` и `loop_iterations[].until_bash`;
+- shell/template surfaces используют quote-state, durable `BASE_BRANCH` и
+  отдельную argv/env границу для scripts;
+- loop predicate errors и failure-like body nodes сохраняют snapshot и делают
+  safe-stop; shared sessions выбирают ближайшего ancestor и отклоняют
+  конкурентное использование;
+- schema разрешает `cancel`/`context: shared` только в loop body, а
+  текущая документация проверяется inventory-тестом.
+
 ## Deterministic Development Flow Acceptance — реализовано после v0.1.57
 
 - профиль `code` 0.17.0 требует user-owned `allowed_paths` для `plan-to-pr`;

@@ -33,6 +33,12 @@ type compiler struct {
 	rootDir string
 }
 
+type effectiveDefaults struct {
+	Provider string
+	Model    string
+	Context  string
+}
+
 // Expand compiles subworkflow and foreach containers into ordinary DAG nodes.
 // The runtime therefore keeps one scheduler, one Run state and one persistence
 // model for both top-level and reusable workflows.
@@ -46,7 +52,7 @@ func Expand(path string, wf *spec.Workflow) (*spec.Workflow, error) {
 		return nil, err
 	}
 	c := &compiler{stack: []string{abs}, rootDir: filepath.Dir(abs)}
-	group, err := c.compileNodes(wf.Nodes, abs, "", wf.Defaults, spec.HookSet{}, nil, false)
+	group, err := c.compileNodes(wf.Nodes, abs, "", workflowDefaults(wf), spec.HookSet{}, nil, false)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +61,7 @@ func Expand(path string, wf *spec.Workflow) (*spec.Workflow, error) {
 	return &out, nil
 }
 
-func (c *compiler) compileNodes(nodes []spec.Node, workflowPath, prefix string, defaults spec.Defaults, inheritedHooks spec.HookSet, vars map[string]string, inlineLocalCommands bool) (compiledGroup, error) {
+func (c *compiler) compileNodes(nodes []spec.Node, workflowPath, prefix string, defaults effectiveDefaults, inheritedHooks spec.HookSet, vars map[string]string, inlineLocalCommands bool) (compiledGroup, error) {
 	if len(nodes) == 0 {
 		return compiledGroup{}, fmt.Errorf("nodes must not be empty")
 	}
@@ -111,7 +117,7 @@ func (c *compiler) compileNodes(nodes []spec.Node, workflowPath, prefix string, 
 	return compiledGroup{nodes: compiled, entries: entries, terminals: terminals, public: public, outputID: outputID}, nil
 }
 
-func (c *compiler) compileNode(node spec.Node, workflowPath, prefix string, defaults spec.Defaults, inheritedHooks spec.HookSet, vars map[string]string, inlineLocalCommands bool, siblings map[string]spec.Node) (compiledGroup, error) {
+func (c *compiler) compileNode(node spec.Node, workflowPath, prefix string, defaults effectiveDefaults, inheritedHooks spec.HookSet, vars map[string]string, inlineLocalCommands bool, siblings map[string]spec.Node) (compiledGroup, error) {
 	publicID := qualify(prefix, node.ID)
 	kinds := sourceKinds(node)
 	if kinds != 1 {
@@ -148,7 +154,7 @@ func (c *compiler) compileNode(node spec.Node, workflowPath, prefix string, defa
 	}
 }
 
-func (c *compiler) compileSubworkflow(node spec.Node, workflowPath, prefix string, parentDefaults spec.Defaults, vars map[string]string, siblings map[string]spec.Node) (compiledGroup, error) {
+func (c *compiler) compileSubworkflow(node spec.Node, workflowPath, prefix string, parentDefaults effectiveDefaults, vars map[string]string, siblings map[string]spec.Node) (compiledGroup, error) {
 	publicID := qualify(prefix, node.ID)
 	gateID := publicID + "__start"
 
@@ -159,7 +165,7 @@ func (c *compiler) compileSubworkflow(node spec.Node, workflowPath, prefix strin
 	gateInternal := &spec.InternalNodeSpec{Mode: "noop"}
 	if child.Worktree.Enabled {
 		worktree := child.Worktree
-		gateInternal = &spec.InternalNodeSpec{Mode: "worktree", WorkflowName: child.Metadata.Name, Worktree: &worktree}
+		gateInternal = &spec.InternalNodeSpec{Mode: "worktree", WorkflowName: child.Name, Worktree: &worktree}
 	}
 	gate := spec.Node{ID: gateID, Hidden: true, PublicParent: publicID, DependsOn: qualifyDependencies(prefix, node.DependsOn), When: rewriteWhenNodeRefs(replaceVars(node.When, vars), prefix, siblings), TriggerRule: node.TriggerRule, Internal: gateInternal}
 	childVars, err := resolveInputs(node.Subworkflow.Inputs, vars)
@@ -172,7 +178,7 @@ func (c *compiler) compileSubworkflow(node spec.Node, workflowPath, prefix strin
 	if err := c.enter(childPath); err != nil {
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
 	}
-	childGroup, err := c.compileNodes(child.Nodes, childPath, publicID+"__", containerDefaults(parentDefaults, child.Defaults, node), child.Hooks, childVars, true)
+	childGroup, err := c.compileNodes(child.Nodes, childPath, publicID+"__", containerDefaults(parentDefaults, workflowDefaults(child), node), child.Hooks, childVars, true)
 	c.leave()
 	if err != nil {
 		return compiledGroup{}, fmt.Errorf("subworkflow node %q: %w", node.ID, err)
@@ -192,7 +198,7 @@ func (c *compiler) compileSubworkflow(node spec.Node, workflowPath, prefix strin
 	return compiledGroup{nodes: all, entries: []string{gateID}, terminals: []string{publicID}, public: map[string]string{node.ID: publicID}, outputID: publicID}, nil
 }
 
-func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, parentDefaults spec.Defaults, vars map[string]string, siblings map[string]spec.Node) (compiledGroup, error) {
+func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, parentDefaults effectiveDefaults, vars map[string]string, siblings map[string]spec.Node) (compiledGroup, error) {
 	items, definitionHash, err := c.resolveForeachItems(node, workflowPath)
 	if err != nil {
 		return compiledGroup{}, err
@@ -231,7 +237,7 @@ func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, p
 			return compiledGroup{}, fmt.Errorf("foreach node %q: %w", node.ID, err)
 		}
 		if child.Worktree.Enabled {
-			return compiledGroup{}, fmt.Errorf("foreach node %q child workflow %q enables worktree isolation; per-item worktrees require governed child Runs", node.ID, child.Metadata.Name)
+			return compiledGroup{}, fmt.Errorf("foreach node %q child workflow %q enables worktree isolation; per-item worktrees require governed child Runs", node.ID, child.Name)
 		}
 		childInputs, err := resolveInputs(node.Foreach.Subworkflow.Inputs, merged)
 		if err != nil {
@@ -244,7 +250,7 @@ func (c *compiler) compileForeach(node spec.Node, workflowPath, prefix string, p
 		if err := c.enter(childPath); err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q item %d: %w", node.ID, index, err)
 		}
-		childGroup, err := c.compileNodes(child.Nodes, childPath, iterationID+"__", containerDefaults(parentDefaults, child.Defaults, node), child.Hooks, childInputs, true)
+		childGroup, err := c.compileNodes(child.Nodes, childPath, iterationID+"__", containerDefaults(parentDefaults, workflowDefaults(child), node), child.Hooks, childInputs, true)
 		c.leave()
 		if err != nil {
 			return compiledGroup{}, fmt.Errorf("foreach node %q item %d: %w", node.ID, index, err)
@@ -349,43 +355,21 @@ func normalizeWorkflowAliases(wf *spec.Workflow) {
 	if wf == nil {
 		return
 	}
-	if wf.Name == "" {
-		wf.Name = wf.Metadata.Name
-	}
-	if wf.Description == "" {
-		wf.Description = wf.Metadata.Description
-	}
-	if wf.Labels == nil && wf.Metadata.Labels != nil {
-		wf.Labels = wf.Metadata.Labels
-	}
-	if wf.Provider == "" {
-		wf.Provider = wf.Defaults.Assistant
-	}
-	if wf.Model == "" {
-		wf.Model = wf.Defaults.Model
-	}
-	wf.Metadata = spec.Metadata{Name: wf.Name, Description: wf.Description, Labels: wf.Labels}
-	wf.Defaults = spec.Defaults{Assistant: wf.Provider, Model: wf.Model, Session: "fresh"}
 	for i := range wf.Nodes {
 		normalizeNodeAliases(&wf.Nodes[i])
 	}
 }
 
+func workflowDefaults(wf *spec.Workflow) effectiveDefaults {
+	if wf == nil {
+		return effectiveDefaults{Context: "fresh"}
+	}
+	return effectiveDefaults{Provider: wf.Provider, Model: wf.Model, Context: "fresh"}
+}
+
 func normalizeNodeAliases(node *spec.Node) {
 	if node == nil {
 		return
-	}
-	if node.Assistant == "" {
-		node.Assistant = node.Provider
-	}
-	if node.Provider == "" {
-		node.Provider = node.Assistant
-	}
-	if node.Session == "" && node.Context != "" {
-		node.Session = node.Context
-	}
-	if node.Context == "" && node.Session != "" {
-		node.Context = node.Session
 	}
 	if node.LoopGroup != nil {
 		normalizeLoopPredicate(node.LoopGroup)
@@ -503,8 +487,8 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 			}
 			node.Prompt = rewriteTemplate(cmd.Body)
 			node.Command = ""
-			if node.Assistant == "" {
-				node.Assistant = cmd.Assistant
+			if node.Provider == "" {
+				node.Provider = cmd.Assistant
 			}
 			if node.Model == "" {
 				node.Model = cmd.Model
@@ -599,7 +583,7 @@ func (c *compiler) rewriteLoopGroup(node *spec.Node, vars map[string]string, wor
 	loop := node.LoopGroup
 	originalUntil := loop.Until.Node
 	childPrefix := node.ID + "__"
-	defaults := spec.Defaults{Assistant: node.Assistant, Model: node.Model, Session: node.Session}
+	defaults := effectiveDefaults{Provider: node.Provider, Model: node.Model, Context: node.Context}
 	group, err := c.compileNodes(loop.Nodes, workflowPath, childPrefix, defaults, spec.HookSet{}, vars, inlineLocalCommands)
 	if err != nil {
 		return fmt.Errorf("loop_group %q: %w", node.ID, err)
@@ -708,31 +692,25 @@ func validateContainerFields(node spec.Node) error {
 	return nil
 }
 
-func containerDefaults(parent, child spec.Defaults, node spec.Node) spec.Defaults {
+func containerDefaults(parent, child effectiveDefaults, node spec.Node) effectiveDefaults {
 	out := child
-	if out.Assistant == "" {
-		out.Assistant = parent.Assistant
+	if out.Provider == "" {
+		out.Provider = parent.Provider
 	}
 	if out.Model == "" {
 		out.Model = parent.Model
 	}
-	if out.Session == "" {
-		out.Session = parent.Session
-	}
-	if node.Assistant != "" {
-		out.Assistant = node.Assistant
+	if out.Context == "" {
+		out.Context = parent.Context
 	}
 	if node.Provider != "" {
-		out.Assistant = node.Provider
+		out.Provider = node.Provider
 	}
 	if node.Model != "" {
 		out.Model = node.Model
 	}
 	if node.Context != "" {
-		out.Session = node.Context
-	}
-	if node.Session != "" {
-		out.Session = node.Session
+		out.Context = node.Context
 	}
 	return out
 }
@@ -772,25 +750,15 @@ func addDependency(nodes []spec.Node, ids []string, dependency string) {
 	}
 }
 
-func applyDefaults(node *spec.Node, defaults spec.Defaults) {
+func applyDefaults(node *spec.Node, defaults effectiveDefaults) {
 	if node.Provider == "" {
-		node.Provider = defaults.Assistant
-	}
-	if node.Assistant == "" {
-		node.Assistant = defaults.Assistant
+		node.Provider = defaults.Provider
 	}
 	if node.Model == "" {
 		node.Model = defaults.Model
 	}
-	if node.Session == "" {
-		if node.Context != "" {
-			node.Session = node.Context
-		} else {
-			node.Session = defaults.Session
-		}
-	}
 	if node.Context == "" {
-		node.Context = node.Session
+		node.Context = defaults.Context
 	}
 }
 

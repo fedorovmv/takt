@@ -48,7 +48,7 @@ func TestApprovalResume(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cmdDir, "do.md"), []byte("---\nprovider: demo\nmodel: large\n---\nHello $ARGUMENTS\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "test"}, Nodes: []spec.Node{{ID: "do", Command: "do"}, {ID: "approve", DependsOn: []string{"do"}, Approval: &spec.ApprovalSpec{Message: "OK?", CaptureResponse: true}}}}
+	wf := &spec.Workflow{Name: "test", Nodes: []spec.Node{{ID: "do", Command: "do"}, {ID: "approve", DependsOn: []string{"do"}, Approval: &spec.ApprovalSpec{Message: "OK?", CaptureResponse: true}}}}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"large": {Provider: "demo", ID: "demo"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
 	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
 	r.commands.Dirs = []string{cmdDir}
@@ -81,7 +81,7 @@ func TestApprovalResume(t *testing.T) {
 
 func TestHookRetry(t *testing.T) {
 	dir := t.TempDir()
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "retry"}, Nodes: []spec.Node{{ID: "n", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`, Attempts: spec.AttemptsSpec{Max: 3}, Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{ID: "check", Bash: `test $(cat c) -ge 2 || { echo too-small; exit 1; }`, OnFailure: spec.HookDecision{Action: "retry"}}}}}}}
+	wf := &spec.Workflow{Name: "retry", Nodes: []spec.Node{{ID: "n", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`, Attempts: spec.AttemptsSpec{Max: 3}, Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{ID: "check", Bash: `test $(cat c) -ge 2 || { echo too-small; exit 1; }`, OnFailure: spec.HookDecision{Action: "retry"}}}}}}}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{}, Assistants: map[string]spec.AssistantSpec{}}
 	r := New(wf, cfg, "wf", "cfg", dir)
 	state, err := r.Start(context.Background(), "")
@@ -127,7 +127,7 @@ func TestSharedContextResumesTransitiveAncestorSession(t *testing.T) {
 func TestLoopGroup(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop"}, Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 3, Nodes: []spec.Node{{ID: "inc", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`}, {ID: "check", DependsOn: []string{"inc"}, Bash: `test $(cat c) -ge 2`, AllowFailure: true}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
+	wf := &spec.Workflow{Name: "loop", Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 3, Nodes: []spec.Node{{ID: "inc", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`}, {ID: "check", DependsOn: []string{"inc"}, Bash: `test $(cat c) -ge 2`, AllowFailure: true}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
 	cfg := &spec.Config{}
 	r := New(wf, cfg, "wf", "cfg", dir)
 	state, err := r.Start(context.Background(), "")
@@ -203,7 +203,7 @@ func TestLoopGroupCrashBetweenIterationsResumesAfterDurableHistory(t *testing.T)
 	dir := t.TempDir()
 	zero := 0
 	parent := spec.Node{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 3, Nodes: []spec.Node{{ID: "inc", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`}, {ID: "check", DependsOn: []string{"inc"}, Bash: `test $(cat c) -ge 2`, AllowFailure: true}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-crash"}, Nodes: []spec.Node{parent}}
+	wf := &spec.Workflow{Name: "loop-crash", Nodes: []spec.Node{parent}}
 	r := New(wf, &spec.Config{}, "wf", "cfg", dir)
 	base := r.store
 	state := &store.RunState{ID: "run-loop-crash", Status: store.RunRunning, WorkflowPath: "wf", ConfigPath: "cfg", Workspace: dir, ExecutionWorkspace: dir, Nodes: map[string]*store.NodeState{"loop": {Status: store.NodeRunning, Path: "/loop"}}, Approvals: map[string]string{}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
@@ -248,7 +248,7 @@ func TestLoopGroupResumeAfterSatisfiedCommitDoesNotReplaySideEffectsOrExhaust(t 
 		{ID: "effect", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`},
 		{ID: "check", DependsOn: []string{"effect"}, Bash: `test $(cat c) -eq 1`, AllowFailure: true},
 	}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-satisfied-crash"}, Nodes: []spec.Node{parent}}
+	wf := &spec.Workflow{Name: "loop-satisfied-crash", Nodes: []spec.Node{parent}}
 	r := New(wf, &spec.Config{}, "wf", "cfg", dir)
 	base := r.store
 	state := &store.RunState{ID: "run-loop-satisfied-crash", Status: store.RunRunning, WorkflowPath: "wf", ConfigPath: "cfg", Workspace: dir, ExecutionWorkspace: dir, Nodes: map[string]*store.NodeState{"loop": {Status: store.NodeRunning, Path: "/loop"}}, Approvals: map[string]string{}, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
@@ -285,7 +285,7 @@ func TestLoopGroupResumeAfterSatisfiedCommitDoesNotReplaySideEffectsOrExhaust(t 
 func TestLoopGroupRetryAfterExhaustionDoesNotAppendHistory(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-exhaust"}, Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 2, Nodes: []spec.Node{{ID: "inc", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`}, {ID: "check", DependsOn: []string{"inc"}, Bash: `exit 1`, AllowFailure: true}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
+	wf := &spec.Workflow{Name: "loop-exhaust", Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 2, Nodes: []spec.Node{{ID: "inc", Bash: `n=0; test -f c && n=$(cat c); n=$((n+1)); echo -n $n > c`}, {ID: "check", DependsOn: []string{"inc"}, Bash: `exit 1`, AllowFailure: true}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
 	r := New(wf, &spec.Config{}, "wf", "cfg", dir)
 	state, err := r.Start(context.Background(), "")
 	if err == nil {
@@ -329,7 +329,7 @@ func TestLoopHistoryBackwardCompatibleWithoutLoopIterations(t *testing.T) {
 func TestLoopHistoryBackwardCompatibleStateResumesWithoutLoopIterations(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "legacy-loop-resume"}, Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{ID: "check", Bash: `echo resumed`}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
+	wf := &spec.Workflow{Name: "legacy-loop-resume", Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{ID: "check", Bash: `echo resumed`}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
 	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
 	raw := `{"id":"run-old-loop-resume","status":"running","workflow_path":"<workflow>","config_path":"<config>","workspace":"` + dir + `","execution_workspace":"` + dir + `","nodes":{"loop":{"status":"pending","loop_previous":{"check":{"status":"completed","exit_code":1}}}},"approvals":{}}`
 	var state store.RunState
@@ -354,7 +354,7 @@ func TestLoopHistoryBackwardCompatibleStateResumesWithoutLoopIterations(t *testi
 func TestLoopPreviousDoesNotAliasHistorySnapshot(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-alias"}, Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{ID: "check", Bash: `echo ok`}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
+	wf := &spec.Workflow{Name: "loop-alias", Nodes: []spec.Node{{ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{ID: "check", Bash: `echo ok`}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}}}}}
 	state, err := New(wf, &spec.Config{}, "wf", "cfg", dir).Start(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -380,7 +380,7 @@ func readFileForTest(t *testing.T, path string) string {
 func TestAllowFailureOnlyAllowsNonZeroExit(t *testing.T) {
 	t.Run("non-zero exit is data", func(t *testing.T) {
 		dir := t.TempDir()
-		wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "allow-exit"}, Nodes: []spec.Node{{ID: "check", Bash: "exit 7", AllowFailure: true}}}
+		wf := &spec.Workflow{Name: "allow-exit", Nodes: []spec.Node{{ID: "check", Bash: "exit 7", AllowFailure: true}}}
 		r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
 		state, err := r.Start(context.Background(), "")
 		if err != nil {
@@ -393,7 +393,7 @@ func TestAllowFailureOnlyAllowsNonZeroExit(t *testing.T) {
 
 	t.Run("start error remains fatal", func(t *testing.T) {
 		dir := t.TempDir()
-		wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "allow-start"}, Defaults: spec.Defaults{Assistant: "broken", Model: "m"}, Nodes: []spec.Node{{ID: "agent", Prompt: "hello", AllowFailure: true}}}
+		wf := &spec.Workflow{Name: "allow-start", Provider: "broken", Model: "m", Nodes: []spec.Node{{ID: "agent", Prompt: "hello", AllowFailure: true}}}
 		cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "test", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"broken": {Type: "process", Argv: []string{"definitely-missing-takt-binary"}}}}
 		r := New(wf, cfg, "<workflow>", "<config>", dir)
 		state, err := r.Start(context.Background(), "")
@@ -408,7 +408,7 @@ func TestAllowFailureOnlyAllowsNonZeroExit(t *testing.T) {
 
 func TestAllDoneRunsAfterFailedDependency(t *testing.T) {
 	dir := t.TempDir()
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "all-done"}, Nodes: []spec.Node{
+	wf := &spec.Workflow{Name: "all-done", Nodes: []spec.Node{
 		{ID: "build", Bash: "exit 7"},
 		{ID: "cleanup", DependsOn: []string{"build"}, TriggerRule: "all_done", Bash: "echo cleaned > cleanup.txt"},
 		{ID: "publish", DependsOn: []string{"build"}, Bash: "echo published > publish.txt"},
@@ -438,7 +438,7 @@ func TestAllDoneRunsAfterFailedDependency(t *testing.T) {
 func TestLoopGroupUsesWhenAndTriggerRules(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "loop-semantics"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "loop-semantics", Nodes: []spec.Node{{
 		ID: "loop",
 		LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{
 			{ID: "side-effect", When: `$INPUTS.input == "run"`, Bash: "echo touched > touched.txt"},
@@ -464,7 +464,7 @@ func TestLoopGroupUsesWhenAndTriggerRules(t *testing.T) {
 
 func TestNodeTimeoutAndAllDoneCleanup(t *testing.T) {
 	dir := t.TempDir()
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "timeout"}, Nodes: []spec.Node{
+	wf := &spec.Workflow{Name: "timeout", Nodes: []spec.Node{
 		{ID: "slow", Bash: "sleep 2", Timeout: "20ms"},
 		{ID: "cleanup", DependsOn: []string{"slow"}, TriggerRule: "all_done", Bash: "echo done > cleanup.txt"},
 	}}
@@ -497,7 +497,7 @@ func (f *failingRepository) Commit(state *store.RunState, event store.Event) err
 
 func TestPersistenceErrorsAreReturned(t *testing.T) {
 	dir := t.TempDir()
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "persistence"}, Nodes: []spec.Node{{ID: "node", Bash: "true"}}}
+	wf := &spec.Workflow{Name: "persistence", Nodes: []spec.Node{{ID: "node", Bash: "true"}}}
 	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
 	r.store = &failingRepository{Repository: store.FS{Workspace: dir}, failOn: 2}
 	if _, err := r.Start(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "injected persistence failure") {
@@ -538,7 +538,7 @@ func TestNodeTimeoutCoversHookPhases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "hook-timeout"}, Nodes: []spec.Node{tt.node}}
+			wf := &spec.Workflow{Name: "hook-timeout", Nodes: []spec.Node{tt.node}}
 			r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
 			started := time.Now()
 			state, err := r.Start(context.Background(), "")
@@ -557,7 +557,7 @@ func TestNodeTimeoutCoversHookPhases(t *testing.T) {
 
 func TestCancellationDuringHookCancelsRun(t *testing.T) {
 	dir := t.TempDir()
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "hook-cancel"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "hook-cancel", Nodes: []spec.Node{{
 		ID: "n", Bash: "true", Hooks: spec.HookSet{BeforeNode: []spec.HookSpec{{ID: "slow", Bash: "sleep 1"}}},
 	}}}
 	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
@@ -578,7 +578,7 @@ func TestCancellationDuringHookCancelsRun(t *testing.T) {
 func TestNestedLoopGroupIsRejectedAtRuntimeWithoutCorruptingOuterState(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "nested-loop"}, Nodes: []spec.Node{
+	wf := &spec.Workflow{Name: "nested-loop", Nodes: []spec.Node{
 		{ID: "victim", Bash: `n=0; test -f count && n=$(cat count); n=$((n+1)); echo -n $n > count`},
 		{ID: "outer", DependsOn: []string{"victim"}, LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{
 			{ID: "inner", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{ID: "victim", Bash: "true"}}, Until: spec.UntilSpec{Node: "victim", ExitCode: &zero}}},
@@ -604,7 +604,7 @@ func TestNestedLoopGroupIsRejectedAtRuntimeWithoutCorruptingOuterState(t *testin
 func TestUntilRequiresCompletedNode(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "until-status"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "until-status", Nodes: []spec.Node{{
 		ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{
 			ID: "check", When: `$INPUTS.input == "run"`, Bash: "true",
 		}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}},
@@ -625,7 +625,7 @@ func TestUntilRequiresCompletedNode(t *testing.T) {
 func TestUntilDoesNotAcceptFailedNode(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "until-failed"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "until-failed", Nodes: []spec.Node{{
 		ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{
 			ID: "check", Bash: "exit 7",
 		}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}},
@@ -641,14 +641,123 @@ func TestUntilDoesNotAcceptFailedNode(t *testing.T) {
 	}
 }
 
+func TestLoopBodyFailureStopsBeforeNextIterationAndSnapshotsState(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{Name: "loop-body-failure", Nodes: []spec.Node{{
+		ID: "loop",
+		LoopGroup: &spec.LoopGroupSpec{MaxIterations: 3, Nodes: []spec.Node{
+			{ID: "check", Bash: "echo attempt >> attempts; exit 7"},
+		}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}},
+	}}}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected failed loop")
+	}
+	if got := strings.TrimSpace(readFileForTest(t, filepath.Join(dir, "attempts"))); got != "attempt" {
+		t.Fatalf("failure-like body was retried: %q", got)
+	}
+	loop := state.Nodes["loop"]
+	if len(loop.LoopIterations) != 1 || loop.LoopIteration != 0 {
+		t.Fatalf("active iteration was not durably snapshotted: %+v", loop)
+	}
+	if loop.LoopIterations[0].Nodes["check"].Status != store.NodeFailed {
+		t.Fatalf("snapshot lost failed child: %+v", loop.LoopIterations[0])
+	}
+}
+
+func TestCancelInsideLoopPersistsCanonicalPathAndIteration(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{Name: "loop-cancel", Nodes: []spec.Node{{
+		ID: "loop",
+		LoopGroup: &spec.LoopGroupSpec{MaxIterations: 2, Nodes: []spec.Node{
+			{ID: "stop", Cancel: "operator stop"},
+		}, Until: spec.UntilSpec{Node: "stop", ExitCode: &zero}},
+	}}}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected cancellation")
+	}
+	if state.Status != store.RunCancelled || state.CancelNodePath != "/loop/stop" || state.CancelIteration != 1 || state.CancelReason != "operator stop" {
+		t.Fatalf("cancel metadata = %#v", state)
+	}
+}
+
+func TestPredicateTruncationFailsBeforeNodeCompleted(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{Name: "truncated-predicate", Nodes: []spec.Node{{
+		ID: "loop",
+		LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{
+			ID: "review", Prompt: "review", Provider: "demo", Model: "m",
+		}}, Until: spec.UntilSpec{Node: "review", Signal: "BUILD-CLEAN"}},
+	}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := New(wf, cfg, "<workflow>", "<config>", dir)
+	r.assistants = resolverFunc(func(string) (assistant.Adapter, error) {
+		return adapterFunc(func(context.Context, assistant.Request) (assistant.Result, error) {
+			return assistant.Result{Output: "<promise>BUILD-CLEAN</promise>", Stdout: "<promise>BUILD-CLEAN</promise>", ExitCode: 0, SessionID: "s", Truncated: true}, nil
+		}), nil
+	})
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("truncated predicate output was accepted")
+	}
+	loop := state.Nodes["loop"]
+	if len(loop.LoopIterations) != 1 || loop.LoopIterations[0].Nodes["review"].Status != store.NodeErrored {
+		t.Fatalf("truncated predicate snapshot = %#v", loop)
+	}
+	events, err := (store.FS{Workspace: dir}).ReadEvents(state.ID, 0, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.Type == "node.completed" && event.NodeID == "review" {
+			t.Fatal("predicate node completed before truncation failure")
+		}
+	}
+}
+
+func TestBaseBranchIsResolvedForShellAndUntilBashSurfaces(t *testing.T) {
+	dir := t.TempDir()
+	r := New(&spec.Workflow{Name: "base-branch", Nodes: []spec.Node{{ID: "bash", Bash: `test "$BASE_BRANCH" = base`}}}, &spec.Config{}, "<workflow>", "<config>", dir)
+	state := &store.RunState{ID: "base-branch-run", Input: "", Nodes: map[string]*store.NodeState{"bash": {Status: store.NodePending}}, Approvals: map[string]string{}, Worktree: &store.WorktreeState{BaseRef: "base"}}
+	if _, err := r.executeBashAction(context.Background(), state, spec.Node{ID: "bash", Bash: `test "$BASE_BRANCH" = base`}, actionContext{}); err != nil {
+		t.Fatalf("durable base branch was not passed to bash: %v", err)
+	}
+	state.Worktree = nil
+	if _, err := r.executeBashAction(context.Background(), state, spec.Node{ID: "bash", Bash: `test "$BASE_BRANCH" = base`}, actionContext{}); err == nil {
+		t.Fatal("missing durable base branch was accepted")
+	}
+}
+
+func TestUntilRequiresRejectsFailedTerminalEvidence(t *testing.T) {
+	dir := t.TempDir()
+	zero := 0
+	wf := &spec.Workflow{Name: "requires-failed", Nodes: []spec.Node{{
+		ID: "loop",
+		LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{
+			{ID: "review", Bash: "true"},
+			{ID: "validate", Bash: "exit 9"},
+		}, Until: spec.UntilSpec{Node: "review", ExitCode: &zero, Requires: []spec.UntilRequirement{{Node: "validate", ExitCode: &zero}}}},
+	}}}
+	r := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("failed required evidence was accepted")
+	}
+	if state.Nodes["loop"].LoopIterations[0].Nodes["validate"].Status != store.NodeFailed {
+		t.Fatalf("required failure missing from snapshot: %+v", state.Nodes["loop"].LoopIterations[0])
+	}
+}
+
 func TestParentLoopGroupTimeoutPreservesClassification(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1",
-		Kind:       "Workflow",
-		Metadata:   spec.Metadata{Name: "parent-loop-timeout"},
-		Nodes: []spec.Node{{
+		Name: "parent-loop-timeout", Nodes: []spec.Node{{
 			ID:      "loop",
 			Timeout: "40ms",
 			LoopGroup: &spec.LoopGroupSpec{
@@ -679,10 +788,7 @@ func TestParentLoopGroupCancellationPreservesClassification(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1",
-		Kind:       "Workflow",
-		Metadata:   spec.Metadata{Name: "parent-loop-cancel"},
-		Nodes: []spec.Node{{
+		Name: "parent-loop-cancel", Nodes: []spec.Node{{
 			ID: "loop",
 			LoopGroup: &spec.LoopGroupSpec{
 				MaxIterations: 2,
@@ -730,13 +836,10 @@ func TestProtocolAssistantResumesSessionAcrossRetry(t *testing.T) {
 
 	dir := t.TempDir()
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1",
-		Kind:       "Workflow",
-		Metadata:   spec.Metadata{Name: "assistant-session"},
-		Defaults:   spec.Defaults{Assistant: "fake", Model: "m", Session: "resume"},
-		Nodes: []spec.Node{{
+		Name: "assistant-session", Provider: "fake", Model: "m", Nodes: []spec.Node{{
 			ID:       "agent",
 			Prompt:   "hello",
+			Context:  "resume",
 			Attempts: spec.AttemptsSpec{Max: 2},
 			Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
 				ID:        "retry-once",
@@ -814,11 +917,7 @@ func TestPiOverflowContextStateIntegration(t *testing.T) {
 			defer cancel()
 			dir := t.TempDir()
 			wf := &spec.Workflow{
-				APIVersion: "takt/v1alpha1",
-				Kind:       "Workflow",
-				Metadata:   spec.Metadata{Name: "pi-context-overflow"},
-				Defaults:   spec.Defaults{Assistant: "pi", Model: "m"},
-				Nodes:      []spec.Node{{ID: "agent", Prompt: "run"}},
+				Name: "pi-context-overflow", Provider: "pi", Model: "m", Nodes: []spec.Node{{ID: "agent", Prompt: "run"}},
 			}
 			cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "openai", ID: "fake-model"}}}
 			adapter := assistantpi.NewPi(spec.AssistantSpec{
@@ -866,13 +965,10 @@ func TestPiAssistantResumesSessionAcrossRetry(t *testing.T) {
 
 	dir := t.TempDir()
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1",
-		Kind:       "Workflow",
-		Metadata:   spec.Metadata{Name: "pi-session"},
-		Defaults:   spec.Defaults{Assistant: "pi", Model: "m", Session: "resume"},
-		Nodes: []spec.Node{{
+		Name: "pi-session", Provider: "pi", Model: "m", Nodes: []spec.Node{{
 			ID:       "agent",
 			Prompt:   "hello",
+			Context:  "resume",
 			Attempts: spec.AttemptsSpec{Max: 2},
 			Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
 				ID:        "retry-once",
@@ -939,13 +1035,10 @@ func TestOpenCodeAssistantResumesSessionAcrossRetry(t *testing.T) {
 
 	dir := t.TempDir()
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1",
-		Kind:       "Workflow",
-		Metadata:   spec.Metadata{Name: "opencode-session"},
-		Defaults:   spec.Defaults{Assistant: "opencode", Model: "m", Session: "resume"},
-		Nodes: []spec.Node{{
+		Name: "opencode-session", Provider: "opencode", Model: "m", Nodes: []spec.Node{{
 			ID:       "agent",
 			Prompt:   "hello",
+			Context:  "resume",
 			Attempts: spec.AttemptsSpec{Max: 2},
 			Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
 				ID:        "retry-once",
@@ -1012,11 +1105,7 @@ func TestOpenCodeTimeoutPreservesProviderDiagnostics(t *testing.T) {
 
 	dir := t.TempDir()
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1",
-		Kind:       "Workflow",
-		Metadata:   spec.Metadata{Name: "opencode-provider-timeout"},
-		Defaults:   spec.Defaults{Assistant: "opencode", Model: "m"},
-		Nodes: []spec.Node{{
+		Name: "opencode-provider-timeout", Provider: "opencode", Model: "m", Nodes: []spec.Node{{
 			ID: "agent", Prompt: "hello", Timeout: "5s",
 		}},
 	}
@@ -1055,10 +1144,9 @@ func TestOpenCodeTimeoutPreservesProviderDiagnostics(t *testing.T) {
 func TestRetryPreservesPerExecutionModelIdentityAndUsage(t *testing.T) {
 	dir := t.TempDir()
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "mixed-model-retry"},
-		Defaults: spec.Defaults{Assistant: "dynamic", Model: "logical", Session: "resume"},
-		Nodes: []spec.Node{{
+		Name: "mixed-model-retry", Provider: "dynamic", Model: "logical", Nodes: []spec.Node{{
 			ID: "agent", Prompt: "generate", Attempts: spec.AttemptsSpec{Max: 2},
+			Context: "resume",
 			Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
 				ID: "retry-once", Bash: `test -f retried || { touch retried; echo retry; exit 1; }`,
 				OnFailure: spec.HookDecision{Action: "retry"},
@@ -1109,10 +1197,9 @@ func TestRetryPreservesPerExecutionModelIdentityAndUsage(t *testing.T) {
 func TestExhaustedHookRetriesPreserveLastExecution(t *testing.T) {
 	dir := t.TempDir()
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "exhausted-resume"},
-		Defaults: spec.Defaults{Assistant: "demo", Model: "m", Session: "resume"},
-		Nodes: []spec.Node{{
+		Name: "exhausted-resume", Provider: "demo", Model: "m", Nodes: []spec.Node{{
 			ID: "agent", Prompt: "generate", Attempts: spec.AttemptsSpec{Max: 2},
+			Context: "resume",
 			Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
 				ID: "reject", Bash: `echo retry; exit 1`, OnFailure: spec.HookDecision{Action: "retry"},
 			}}},
@@ -1149,7 +1236,7 @@ done
 test -f "$ARTIFACTS_DIR/%s.ready"
 printf '%s'`, self, peer, peer, self)
 	}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "parallel"}, Nodes: []spec.Node{
+	wf := &spec.Workflow{Name: "parallel", Nodes: []spec.Node{
 		{ID: "a", Bash: waitForPeer("a", "b")},
 		{ID: "b", Bash: waitForPeer("b", "a")},
 	}}
@@ -1165,7 +1252,7 @@ printf '%s'`, self, peer, peer, self)
 func TestApprovalInsideLoopGroupResumesAndPromptsEachIteration(t *testing.T) {
 	dir := t.TempDir()
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "interactive-loop"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "interactive-loop", Nodes: []spec.Node{{
 		ID: "explore",
 		LoopGroup: &spec.LoopGroupSpec{
 			MaxIterations: 3,
@@ -1220,8 +1307,7 @@ func TestApprovalInsideLoopGroupResumesAndPromptsEachIteration(t *testing.T) {
 func TestParallelWavePublishesAllCurrentNodes(t *testing.T) {
 	workspace := t.TempDir()
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "parallel-status"},
-		Nodes: []spec.Node{
+		Name: "parallel-status", Nodes: []spec.Node{
 			{ID: "left", Bash: `while [ ! -f release ]; do sleep 0.02; done`},
 			{ID: "right", Bash: `while [ ! -f release ]; do sleep 0.02; done`},
 		},
@@ -1287,8 +1373,8 @@ func (p *policyAdapter) Capabilities() []string { return append([]string(nil), p
 
 func TestNodePolicyRejectsUnsupportedAssistantCapability(t *testing.T) {
 	dir := t.TempDir()
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "policy"}, Nodes: []spec.Node{{
-		ID: "agent", Prompt: "test", Assistant: "demo", Model: "model", DeniedTools: []string{"write"},
+	wf := &spec.Workflow{Name: "policy", Nodes: []spec.Node{{
+		ID: "agent", Prompt: "test", Provider: "demo", Model: "model", DeniedTools: []string{"write"},
 	}}}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"model": {Provider: "test", ID: "model"}}}
 	adapter := &policyAdapter{}
@@ -1318,8 +1404,8 @@ func TestNodePolicyIsResolvedPassedAndPersisted(t *testing.T) {
 	workflowPath := filepath.Join(dir, "workflow.yaml")
 	allowedTools := []string{"read", "grep"}
 	skills := []string{"skills/review"}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "policy"}, Nodes: []spec.Node{{
-		ID: "agent", Prompt: "test", Assistant: "demo", Model: "model",
+	wf := &spec.Workflow{Name: "policy", Nodes: []spec.Node{{
+		ID: "agent", Prompt: "test", Provider: "demo", Model: "model",
 		AllowedTools: &allowedTools, DeniedTools: []string{"write"}, Skills: &skills, MCP: "mcp.json",
 		Sandbox: &spec.SandboxSpec{Filesystem: "read_only"}, Requires: []string{"custom"},
 	}}}
@@ -1395,9 +1481,7 @@ nodes:
 func TestAssistantEventsAreNormalizedAndPersisted(t *testing.T) {
 	dir := t.TempDir()
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "assistant-events"},
-		Defaults: spec.Defaults{Assistant: "demo", Model: "large"},
-		Nodes:    []spec.Node{{ID: "agent", Prompt: "review"}},
+		Name: "assistant-events", Provider: "demo", Model: "large", Nodes: []spec.Node{{ID: "agent", Prompt: "review"}},
 	}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"large": {Provider: "provider-x", ID: "model-x"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
 	r := New(wf, cfg, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
@@ -1435,7 +1519,7 @@ func TestPreStartCancellationMarkerIsHonored(t *testing.T) {
 	if err := st.RequestCancel(runID); err != nil {
 		t.Fatal(err)
 	}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "pre-cancel"}, Nodes: []spec.Node{{ID: "work", Bash: "touch should-not-exist"}}}
+	wf := &spec.Workflow{Name: "pre-cancel", Nodes: []spec.Node{{ID: "work", Bash: "touch should-not-exist"}}}
 	runner := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
 	state, err := runner.StartWithOptions(context.Background(), "", StartOptions{RunID: runID})
 	if !errors.Is(err, context.Canceled) {
@@ -1462,7 +1546,7 @@ func TestPauseIsRecheckedBeforeRetryAttempt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cmdDir, "do.md"), []byte("---\nprovider: demo\nmodel: m\n---\nretry me\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "pause-retry"}, Nodes: []spec.Node{{ID: "do", Command: "do", Attempts: spec.AttemptsSpec{Max: 2, RetryOn: []string{"exit"}}}}}
+	wf := &spec.Workflow{Name: "pause-retry", Nodes: []spec.Node{{ID: "do", Command: "do", Attempts: spec.AttemptsSpec{Max: 2, RetryOn: []string{"exit"}}}}}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "test", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
 	r := New(wf, cfg, "wf", "cfg", dir)
 	r.commands.Dirs = []string{cmdDir}
@@ -1514,7 +1598,7 @@ func TestPauseIsRecheckedBeforeRetryAttempt(t *testing.T) {
 
 func TestRetryBackoffPersistsDeadlineAndDiagnosticFingerprint(t *testing.T) {
 	dir := t.TempDir()
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "backoff"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "backoff", Nodes: []spec.Node{{
 		ID:       "work",
 		Bash:     `n=0; test -f count && n=$(cat count); n=$((n+1)); printf %s "$n" > count; if test "$n" -lt 3; then echo transient >&2; exit 7; fi; echo done`,
 		Attempts: spec.AttemptsSpec{Max: 3, RetryOn: []string{"exit"}, Backoff: &spec.BackoffSpec{Initial: "80ms", Multiplier: 2, Max: "120ms"}},
@@ -1582,7 +1666,7 @@ func TestSecretRefIsRedactedFromDurableStateEventsAndTextArtifact(t *testing.T) 
 	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\nprintf '%s' \"$TOKEN\"\nprintf '%s' \"$TOKEN\" >&2\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "secret"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "secret", Nodes: []spec.Node{{
 		ID: "emit", Script: &spec.ScriptSpec{Runtime: "command", Path: "emit.sh", Env: map[string]string{"TOKEN": "secret://TAKT_TEST_SECRET_TOKEN"}},
 		OutputType: "secret-output", OutputMIME: "text/plain",
 	}}}
@@ -1633,7 +1717,7 @@ func TestKnownSecretCannotBePersistedInBinaryArtifact(t *testing.T) {
 	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\nprintf '%s' \"$TOKEN\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "secret-binary"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "secret-binary", Nodes: []spec.Node{{
 		ID: "emit", Script: &spec.ScriptSpec{Runtime: "command", Path: "emit.sh", Env: map[string]string{"TOKEN": "secret://TAKT_TEST_BINARY_SECRET"}},
 		OutputType: "binary-output", OutputMIME: "application/octet-stream",
 	}}}
@@ -1668,7 +1752,7 @@ func TestCanonicalNodePathUsesStructuredNamespace(t *testing.T) {
 func TestValidationScriptCannotBypassRequiredOSSandbox(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PATH", t.TempDir())
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "validation-sandbox"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "validation-sandbox", Nodes: []spec.Node{{
 		ID: "validate", Script: &spec.ScriptSpec{Runtime: "validation"}, Sandbox: &spec.SandboxSpec{Enforcement: "required", Network: "deny"},
 	}}}
 	r := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
@@ -1694,8 +1778,8 @@ func TestValidationScriptCannotBypassRequiredOSSandbox(t *testing.T) {
 func TestAfterHookCannotBypassRequiredOSSandbox(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PATH", t.TempDir())
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "hook-sandbox"}, Nodes: []spec.Node{{
-		ID: "worker", Prompt: "complete fixture", Assistant: "demo", Model: "m", Sandbox: &spec.SandboxSpec{Enforcement: "required", Network: "deny"},
+	wf := &spec.Workflow{Name: "hook-sandbox", Nodes: []spec.Node{{
+		ID: "worker", Prompt: "complete fixture", Provider: "demo", Model: "m", Sandbox: &spec.SandboxSpec{Enforcement: "required", Network: "deny"},
 		Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{ID: "verify", Bash: "true", OnFailure: spec.HookDecision{Action: "fail"}}}},
 	}}}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "fixture", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
@@ -1711,7 +1795,7 @@ func TestAfterHookCannotBypassRequiredOSSandbox(t *testing.T) {
 
 func TestRetryBackoffDeadlineSurvivesPauseAndNewRunnerResume(t *testing.T) {
 	dir := t.TempDir()
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "backoff-resume"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "backoff-resume", Nodes: []spec.Node{{
 		ID:       "work",
 		Bash:     `n=0; test -f count && n=$(cat count); n=$((n+1)); printf %s "$n" > count; if test "$n" -lt 2; then echo transient >&2; exit 7; fi; echo done`,
 		Attempts: spec.AttemptsSpec{Max: 2, RetryOn: []string{"exit"}, Backoff: &spec.BackoffSpec{Initial: "500ms"}},
@@ -1768,7 +1852,7 @@ func TestRetryBackoffDeadlineSurvivesPauseAndNewRunnerResume(t *testing.T) {
 
 func TestCanonicalNodePathIsPersistedInStateAndEvents(t *testing.T) {
 	dir := t.TempDir()
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "node-path"}, Nodes: []spec.Node{{ID: "batch__1__append", Bash: "true"}}}
+	wf := &spec.Workflow{Name: "node-path", Nodes: []spec.Node{{ID: "batch__1__append", Bash: "true"}}}
 	r := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), filepath.Join(dir, "config.yaml"), dir)
 	state, err := r.Start(context.Background(), "")
 	if err != nil {

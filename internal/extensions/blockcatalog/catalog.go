@@ -513,11 +513,11 @@ func validateRoleWorkflowContract(name string, role rolecontract.Definition, wf 
 			if node.Command != "" || node.Prompt != "" {
 				model := node.Model
 				if model == "" {
-					model = wf.Defaults.Model
+					model = wf.Model
 				}
-				session := node.Session
+				session := node.Context
 				if session == "" {
-					session = wf.Defaults.Session
+					session = "fresh"
 				}
 				if role.ModelProfile != "" && model != role.ModelProfile {
 					return fmt.Errorf("role %s model_profile %q does not match workflow node %s effective model %q", name, role.ModelProfile, node.ID, model)

@@ -165,8 +165,8 @@ func runListEntry(st RunStore, state *store.RunState) RunListEntry {
 		effective = "abandoning"
 	}
 	workflowName := filepath.Base(state.WorkflowPath)
-	if wf, err := workflow.Load(state.WorkflowPath); err == nil && wf.Metadata.Name != "" {
-		workflowName = wf.Metadata.Name
+	if wf, err := workflow.Load(state.WorkflowPath); err == nil && wf.Name != "" {
+		workflowName = wf.Name
 	}
 	return RunListEntry{
 		ID: state.ID, Workflow: workflowName, Status: state.Status, EffectiveState: effective,

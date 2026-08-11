@@ -26,10 +26,7 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 	}
 	for _, node := range wf.Nodes {
 		if node.Command != "" || node.Prompt != "" {
-			assistantName := node.Assistant
-			if assistantName == "" {
-				assistantName = node.Provider
-			}
+			assistantName := node.Provider
 			if node.Command != "" {
 				definition, err := resolver.Resolve(node.Command)
 				if err != nil {
@@ -40,10 +37,7 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 				}
 			}
 			if assistantName == "" {
-				assistantName = wf.Defaults.Assistant
-				if assistantName == "" {
-					assistantName = wf.Provider
-				}
+				assistantName = wf.Provider
 			}
 			policy, err := resolveNodePolicy(node, workflowPath, inherited)
 			if err != nil {
@@ -66,7 +60,7 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 			}
 		}
 		if node.LoopGroup != nil {
-			if err := validateCapabilitiesRecursive(&spec.Workflow{Defaults: wf.Defaults, Nodes: node.LoopGroup.Nodes}, cfg, workflowPath, resolver, assistants, inherited, stack, depth); err != nil {
+			if err := validateCapabilitiesRecursive(&spec.Workflow{Provider: wf.Provider, Model: wf.Model, Nodes: node.LoopGroup.Nodes}, cfg, workflowPath, resolver, assistants, inherited, stack, depth); err != nil {
 				return fmt.Errorf("loop_group %q: %w", node.ID, err)
 			}
 		}
@@ -106,7 +100,7 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 		err = validateCapabilitiesRecursive(child, cfg, childPath, childResolver, assistants, childPolicy, stack, depth+1)
 		delete(stack, childPath)
 		if err != nil {
-			return fmt.Errorf("node %q child workflow %q: %w", node.ID, child.Metadata.Name, err)
+			return fmt.Errorf("node %q child workflow %q: %w", node.ID, child.Name, err)
 		}
 	}
 	return nil

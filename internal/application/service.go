@@ -80,8 +80,8 @@ func (s *CatalogService) ListWorkflows(profileName string) ([]WorkflowListEntry,
 		return nil, err
 	}
 	entries = append(entries, WorkflowListEntry{
-		Name: defaultWorkflow.Metadata.Name, Selector: resolved.Name,
-		Description: defaultWorkflow.Metadata.Description, Default: true,
+		Name: defaultWorkflow.Name, Selector: resolved.Name,
+		Description: defaultWorkflow.Description, Default: true,
 	})
 	names := make([]string, 0, len(resolved.Manifest.Workflows))
 	for name := range resolved.Manifest.Workflows {
@@ -97,7 +97,7 @@ func (s *CatalogService) ListWorkflows(profileName string) ([]WorkflowListEntry,
 		if err != nil {
 			return nil, fmt.Errorf("profile workflow %q: %w", name, err)
 		}
-		entries = append(entries, WorkflowListEntry{Name: name, Selector: resolved.Name + ":" + name, Description: wf.Metadata.Description})
+		entries = append(entries, WorkflowListEntry{Name: name, Selector: resolved.Name + ":" + name, Description: wf.Description})
 	}
 	return entries, nil
 }
@@ -125,7 +125,7 @@ func (s *CatalogService) DescribeWorkflow(selector string) (*WorkflowDescription
 			"trigger_rule": node.TriggerRule, "kind": nodeKind(node),
 		})
 	}
-	return &WorkflowDescription{Selector: selected, Name: wf.Metadata.Name, Description: wf.Metadata.Description, Nodes: nodes}, nil
+	return &WorkflowDescription{Selector: selected, Name: wf.Name, Description: wf.Description, Nodes: nodes}, nil
 }
 
 func nodeKind(node spec.Node) string {

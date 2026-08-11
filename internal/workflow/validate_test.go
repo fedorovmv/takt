@@ -9,14 +9,14 @@ import (
 )
 
 func TestValidateDetectsCycle(t *testing.T) {
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "x"}, Nodes: []spec.Node{{ID: "a", Bash: "true", DependsOn: []string{"b"}}, {ID: "b", Bash: "true", DependsOn: []string{"a"}}}}
+	wf := &spec.Workflow{Name: "x", Nodes: []spec.Node{{ID: "a", Bash: "true", DependsOn: []string{"b"}}, {ID: "b", Bash: "true", DependsOn: []string{"a"}}}}
 	if err := Validate(wf); err == nil {
 		t.Fatal("expected cycle error")
 	}
 }
 
 func TestRejectsInvalidTimeout(t *testing.T) {
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "bad-timeout"}, Nodes: []spec.Node{{ID: "n", Bash: "true", Timeout: "never"}}}
+	wf := &spec.Workflow{Name: "bad-timeout", Nodes: []spec.Node{{ID: "n", Bash: "true", Timeout: "never"}}}
 	if err := Validate(wf); err == nil {
 		t.Fatal("expected invalid timeout error")
 	}
@@ -24,7 +24,7 @@ func TestRejectsInvalidTimeout(t *testing.T) {
 
 func TestValidateRejectsNestedLoopGroups(t *testing.T) {
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "nested"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "nested", Nodes: []spec.Node{{
 		ID: "outer", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{
 			ID: "inner", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{ID: "check", Bash: "true"}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}},
 		}}, Until: spec.UntilSpec{Node: "inner", ExitCode: &zero}},
@@ -36,7 +36,7 @@ func TestValidateRejectsNestedLoopGroups(t *testing.T) {
 
 func TestValidateRejectsUnboundedLoopHistory(t *testing.T) {
 	zero := 0
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "bounded-loop"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "bounded-loop", Nodes: []spec.Node{{
 		ID: "loop", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 65, Nodes: []spec.Node{{ID: "check", Bash: "true"}}, Until: spec.UntilSpec{Node: "check", ExitCode: &zero}},
 	}}}
 	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "max_iterations must be <= 64") {
@@ -45,7 +45,7 @@ func TestValidateRejectsUnboundedLoopHistory(t *testing.T) {
 }
 
 func TestValidateAcceptsGovernedWorkflowNode(t *testing.T) {
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "parent"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "parent", Nodes: []spec.Node{{
 		ID: "child", WorkflowRun: &spec.WorkflowRunSpec{Path: "child.yaml", Input: "$ARGUMENTS", Isolation: "inherit"},
 	}}}
 	if err := Validate(wf); err != nil {
@@ -54,7 +54,7 @@ func TestValidateAcceptsGovernedWorkflowNode(t *testing.T) {
 }
 
 func TestValidateRejectsGovernedWorkflowIsolation(t *testing.T) {
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "parent"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "parent", Nodes: []spec.Node{{
 		ID: "child", WorkflowRun: &spec.WorkflowRunSpec{Path: "child.yaml", Isolation: "shared"},
 	}}}
 	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "isolation") {
@@ -90,7 +90,7 @@ nodes:
 
 func TestValidateRejectsAssistantPolicyOnBashNode(t *testing.T) {
 	allowedTools := []string{"read"}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "bad-policy"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "bad-policy", Nodes: []spec.Node{{
 		ID: "shell", Bash: "true", AllowedTools: &allowedTools,
 	}}}
 	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "command or prompt") {
@@ -141,7 +141,7 @@ nodes:
 }
 
 func TestValidateGovernedFanOutRequiresUpstreamArraySource(t *testing.T) {
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "fanout"}, Nodes: []spec.Node{
+	wf := &spec.Workflow{Name: "fanout", Nodes: []spec.Node{
 		{ID: "discover", Bash: "printf '[]'"},
 		{ID: "run", DependsOn: []string{"discover"}, WorkflowRun: &spec.WorkflowRunSpec{Path: "/tmp/child.yaml", FanOut: &spec.WorkflowFanOutSpec{ItemsFrom: "nodes.discover.output.items", MaxParallel: 4, Join: "all_done"}}},
 	}}
@@ -160,7 +160,7 @@ func TestValidateGovernedFanOutRequiresUpstreamArraySource(t *testing.T) {
 }
 
 func TestValidateScriptAndTypedArtifactContracts(t *testing.T) {
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "script"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "script", Nodes: []spec.Node{{
 		ID: "run", Script: &spec.ScriptSpec{Runtime: "python", Inline: "print('ok')"}, OutputType: "result", OutputMIME: "text/plain",
 	}}}
 	if err := Validate(wf); err != nil {
@@ -183,7 +183,7 @@ func TestValidateScriptAndTypedArtifactContracts(t *testing.T) {
 }
 
 func TestValidateAllowsOutputFormatForScript(t *testing.T) {
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "script-json"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "script-json", Nodes: []spec.Node{{
 		ID: "run", Script: &spec.ScriptSpec{Runtime: "python", Inline: "print('{}')"}, OutputFormat: &spec.OutputFormat{Type: "object"},
 	}}}
 	if err := Validate(wf); err != nil {
@@ -210,22 +210,22 @@ func TestCommandDirsForDefinitionIncludesProfileAndTaktRoots(t *testing.T) {
 }
 
 func TestValidateExternalSideEffectContract(t *testing.T) {
-	valid := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "side-effect"}, Nodes: []spec.Node{{ID: "publish", Prompt: "publish", Executor: "external", SideEffect: &spec.SideEffectSpec{Mode: "reconcile"}}}}
+	valid := &spec.Workflow{Name: "side-effect", Nodes: []spec.Node{{ID: "publish", Prompt: "publish", Executor: "external", SideEffect: &spec.SideEffectSpec{Mode: "reconcile"}}}}
 	if err := Validate(valid); err != nil {
 		t.Fatalf("valid reconcile side effect rejected: %v", err)
 	}
-	invalidMode := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "side-effect"}, Nodes: []spec.Node{{ID: "publish", Prompt: "publish", Executor: "external", SideEffect: &spec.SideEffectSpec{Mode: "maybe"}}}}
+	invalidMode := &spec.Workflow{Name: "side-effect", Nodes: []spec.Node{{ID: "publish", Prompt: "publish", Executor: "external", SideEffect: &spec.SideEffectSpec{Mode: "maybe"}}}}
 	if err := Validate(invalidMode); err == nil || !strings.Contains(err.Error(), "side_effect.mode") {
 		t.Fatalf("invalid mode error = %v", err)
 	}
-	local := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "side-effect"}, Nodes: []spec.Node{{ID: "publish", Bash: "true", SideEffect: &spec.SideEffectSpec{Mode: "reconcile"}}}}
+	local := &spec.Workflow{Name: "side-effect", Nodes: []spec.Node{{ID: "publish", Bash: "true", SideEffect: &spec.SideEffectSpec{Mode: "reconcile"}}}}
 	if err := Validate(local); err == nil || !strings.Contains(err.Error(), "executor: external") {
 		t.Fatalf("local side effect error = %v", err)
 	}
 }
 
 func TestValidateDomainAdapterNode(t *testing.T) {
-	valid := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "adapter"}, Nodes: []spec.Node{{
+	valid := &spec.Workflow{Name: "adapter", Nodes: []spec.Node{{
 		ID: "publish", Adapter: &spec.AdapterCallSpec{Name: "scm", Operation: "change.create", Input: `{"title":"change"}`}, SideEffect: &spec.SideEffectSpec{Mode: "reconcile"}, OutputFormat: &spec.OutputFormat{Type: "object"},
 	}}}
 	if err := Validate(valid); err != nil {
@@ -243,7 +243,7 @@ func TestValidateDomainAdapterNode(t *testing.T) {
 }
 
 func TestValidateRetryBackoffAndTimeoutRetryKind(t *testing.T) {
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "backoff"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "backoff", Nodes: []spec.Node{{
 		ID: "work", Bash: "true", Attempts: spec.AttemptsSpec{Max: 3, RetryOn: []string{"timed_out"}, Backoff: &spec.BackoffSpec{Initial: "100ms", Multiplier: 2, Max: "1s", Jitter: true}},
 	}}}
 	if err := Validate(wf); err != nil {
@@ -271,23 +271,23 @@ func TestValidateOSSandboxEnforcementOnlyForDeterministicLocalNodes(t *testing.T
 		{ID: "bash", Bash: "true", Sandbox: &spec.SandboxSpec{Enforcement: "required", Network: "deny"}},
 		{ID: "script", Script: &spec.ScriptSpec{Runtime: "command", Path: "tool.sh"}, Sandbox: &spec.SandboxSpec{Enforcement: "optional", Filesystem: "read_only"}},
 	} {
-		wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "sandbox"}, Nodes: []spec.Node{node}}
+		wf := &spec.Workflow{Name: "sandbox", Nodes: []spec.Node{node}}
 		if err := Validate(wf); err != nil {
 			t.Fatalf("valid sandbox node %s rejected: %v", node.ID, err)
 		}
 	}
-	assistantNode := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "sandbox"}, Nodes: []spec.Node{{ID: "agent", Prompt: "work", Sandbox: &spec.SandboxSpec{Enforcement: "required"}}}}
+	assistantNode := &spec.Workflow{Name: "sandbox", Nodes: []spec.Node{{ID: "agent", Prompt: "work", Sandbox: &spec.SandboxSpec{Enforcement: "required"}}}}
 	if err := Validate(assistantNode); err == nil || !strings.Contains(err.Error(), "OS sandbox enforcement") {
 		t.Fatalf("assistant OS enforcement should be rejected until host wrapping exists: %v", err)
 	}
-	invalid := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "sandbox"}, Nodes: []spec.Node{{ID: "bash", Bash: "true", Sandbox: &spec.SandboxSpec{Enforcement: "maybe"}}}}
+	invalid := &spec.Workflow{Name: "sandbox", Nodes: []spec.Node{{ID: "bash", Bash: "true", Sandbox: &spec.SandboxSpec{Enforcement: "maybe"}}}}
 	if err := Validate(invalid); err == nil || !strings.Contains(err.Error(), "sandbox.enforcement") {
 		t.Fatalf("invalid enforcement accepted: %v", err)
 	}
 }
 
 func TestValidateRepositoryChildRunRules(t *testing.T) {
-	valid := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "repo-child"}, Nodes: []spec.Node{{ID: "api", WorkflowRun: &spec.WorkflowRunSpec{Path: "child.yaml", Repository: "repos/api", Isolation: "worktree"}}}}
+	valid := &spec.Workflow{Name: "repo-child", Nodes: []spec.Node{{ID: "api", WorkflowRun: &spec.WorkflowRunSpec{Path: "child.yaml", Repository: "repos/api", Isolation: "worktree"}}}}
 	if err := Validate(valid); err != nil {
 		t.Fatalf("valid repository child rejected: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestValidateRejectsWhenExpressionCreepAtLoadTime(t *testing.T) {
 	}
 	for _, when := range cases {
 		t.Run(when, func(t *testing.T) {
-			wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "when-constitution"}, Nodes: []spec.Node{
+			wf := &spec.Workflow{Name: "when-constitution", Nodes: []spec.Node{
 				{ID: "a", Bash: "echo ok"},
 				{ID: "b", Bash: "true", DependsOn: []string{"a"}, When: when},
 			}}
@@ -380,7 +380,7 @@ func TestValidateRejectsWhenExpressionCreepAtLoadTime(t *testing.T) {
 }
 
 func TestValidateAcceptsConstitutionalWhenGate(t *testing.T) {
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "when-constitution"}, Nodes: []spec.Node{
+	wf := &spec.Workflow{Name: "when-constitution", Nodes: []spec.Node{
 		{ID: "classify-v2", Bash: "echo ready"},
 		{ID: "b", Bash: "true", DependsOn: []string{"classify-v2"}, When: `$classify-v2.output == "ready" && $INPUTS.input != "dry-run"`},
 	}}

@@ -31,6 +31,7 @@ func RedactRunState(r *Redactor, state *store.RunState) {
 	state.Output = r.String(state.Output)
 	state.Error = r.String(state.Error)
 	state.AbandonReason = r.String(state.AbandonReason)
+	state.CancelReason = r.String(state.CancelReason)
 	if state.Waiting != nil {
 		state.Waiting.Message = r.String(state.Waiting.Message)
 	}
@@ -66,6 +67,10 @@ func RedactNodeState(r *Redactor, node *store.NodeState) {
 		node.LoopPrevious[key] = copy
 	}
 	for i := range node.LoopIterations {
+		if node.LoopIterations[i].UntilBash != nil {
+			node.LoopIterations[i].UntilBash.Stdout = r.String(node.LoopIterations[i].UntilBash.Stdout)
+			node.LoopIterations[i].UntilBash.Stderr = r.String(node.LoopIterations[i].UntilBash.Stderr)
+		}
 		for key, previous := range node.LoopIterations[i].Nodes {
 			copy := previous
 			RedactNodeState(r, &copy)
@@ -75,6 +80,7 @@ func RedactNodeState(r *Redactor, node *store.NodeState) {
 	for i := range node.ChildRuns {
 		node.ChildRuns[i].Output = r.String(node.ChildRuns[i].Output)
 		node.ChildRuns[i].Error = r.String(node.ChildRuns[i].Error)
+		node.ChildRuns[i].CancelReason = r.String(node.ChildRuns[i].CancelReason)
 	}
 	if node.DomainOperation != nil {
 		node.DomainOperation.Receipt = r.String(node.DomainOperation.Receipt)

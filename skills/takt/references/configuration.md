@@ -164,11 +164,12 @@ blocks:
 
 Для `command` и `prompt`:
 
-1. `node.assistant` / `node.model`;
-2. `assistant` / `model` во frontmatter команды;
-3. `workflow.defaults.assistant` / `workflow.defaults.model`.
+1. `node.provider` / `node.model`;
+2. `provider` / `model` во frontmatter команды;
+3. `workflow.provider` / `workflow.model`.
 
-`session` задаётся в узле или `workflow.defaults`; значение по умолчанию — `fresh`.
+`context: fresh` задаётся в узле; значение по умолчанию — `fresh`. Для
+продолжения совместимой upstream-сессии используй `context: shared`.
 
 ## Assistant opencode
 
@@ -193,7 +194,9 @@ assistants:
 
 Takt запускает `opencode run --format json --dir <workspace> --model <provider>/<id>`.
 Параметр модели `variant` передаётся через `--variant`; если `variant` отсутствует, используется строковый `reasoning_effort`.
-При `session: resume` Takt передаёт сохранённый Session ID через `--session` и проверяет, что OpenCode вернул тот же идентификатор.
+При `context: shared` Takt передаёт сохранённый Session ID через `--session` и
+проверяет, что OpenCode вернул тот же идентификатор. Межитерационный resume
+внутри `loop_group` управляется `fresh_context: false`.
 
 Не добавляй в `args` управляемые adapter флаги: `run`, `--format`, `--model`, `--agent`, `--session`, `--dir`, `--variant`, `--auto` и их короткие варианты.
 JSON events читаются из stdout, stderr остаётся диагностическим. Usage одной попытки — сумма событий `step_finish`.

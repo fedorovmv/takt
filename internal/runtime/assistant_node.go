@@ -25,10 +25,7 @@ type resolvedAssistantNode struct {
 
 func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, local map[string]store.NodeState, feedback, artifacts string) (resolvedAssistantNode, error) {
 	prompt := node.Prompt
-	assistantName, modelName := node.Assistant, node.Model
-	if assistantName == "" {
-		assistantName = node.Provider
-	}
+	assistantName, modelName := node.Provider, node.Model
 	if node.Command != "" {
 		cmd, err := r.commands.Resolve(node.Command)
 		if err != nil {
@@ -46,16 +43,10 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 		}
 	}
 	if assistantName == "" {
-		assistantName = r.workflow.Defaults.Assistant
-		if assistantName == "" {
-			assistantName = r.workflow.Provider
-		}
+		assistantName = r.workflow.Provider
 	}
 	if modelName == "" {
-		modelName = r.workflow.Defaults.Model
-		if modelName == "" {
-			modelName = r.workflow.Model
-		}
+		modelName = r.workflow.Model
 	}
 	if assistantName == "" {
 		return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: fmt.Errorf("node %q does not resolve an assistant", node.ID)}
@@ -100,13 +91,7 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 			}
 		}
 	}
-	sessionMode := node.Session
-	if sessionMode == "" {
-		sessionMode = node.Context
-	}
-	if sessionMode == "" {
-		sessionMode = r.workflow.Defaults.Session
-	}
+	sessionMode := node.Context
 	if sessionMode == "" {
 		sessionMode = "fresh"
 	}
@@ -175,7 +160,7 @@ func (r *Runner) sharedSessionSource(state *store.RunState, local map[string]sto
 		visit(dependency)
 	}
 
-	var sessions []string
+	candidateIDs := make([]string, 0, len(seen))
 	for id := range seen {
 		candidates := byID[id]
 		if len(candidates) != 1 {
@@ -189,6 +174,32 @@ func (r *Runner) sharedSessionSource(state *store.RunState, local map[string]sto
 		if candidateProvider != provider || candidateModel != model {
 			continue
 		}
+		candidateIDs = append(candidateIDs, id)
+	}
+	nearest := make([]string, 0, len(candidateIDs))
+	for _, candidate := range candidateIDs {
+		shadowed := false
+		for _, other := range candidateIDs {
+			if candidate == other {
+				continue
+			}
+			if runtimeNodeDependsOn(other, candidate, byID, map[string]bool{}) {
+				shadowed = true
+				break
+			}
+		}
+		if !shadowed {
+			nearest = append(nearest, candidate)
+		}
+	}
+	if len(nearest) == 0 {
+		return "", fmt.Errorf("node %q has no upstream session", node.ID)
+	}
+	if len(nearest) > 1 {
+		return "", fmt.Errorf("node %q has ambiguous upstream sessions", node.ID)
+	}
+	var sessions []string
+	for _, id := range nearest {
 		var candidateState *store.NodeState
 		if state != nil {
 			candidateState = state.Nodes[id]
@@ -212,11 +223,25 @@ func (r *Runner) sharedSessionSource(state *store.RunState, local map[string]sto
 	return sessions[0], nil
 }
 
-func (r *Runner) nodeBinding(node spec.Node) (string, string) {
-	provider, model := node.Assistant, node.Model
-	if provider == "" {
-		provider = node.Provider
+func runtimeNodeDependsOn(nodeID, target string, byID map[string][]spec.Node, seen map[string]bool) bool {
+	if seen[nodeID] {
+		return false
 	}
+	seen[nodeID] = true
+	items := byID[nodeID]
+	if len(items) != 1 {
+		return false
+	}
+	for _, dependency := range items[0].DependsOn {
+		if dependency == target || runtimeNodeDependsOn(dependency, target, byID, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Runner) nodeBinding(node spec.Node) (string, string) {
+	provider, model := node.Provider, node.Model
 	if node.Command != "" {
 		if command, err := r.commands.Resolve(node.Command); err == nil {
 			if provider == "" {
@@ -231,16 +256,10 @@ func (r *Runner) nodeBinding(node spec.Node) (string, string) {
 		}
 	}
 	if provider == "" && r.workflow != nil {
-		provider = r.workflow.Defaults.Assistant
-		if provider == "" {
-			provider = r.workflow.Provider
-		}
+		provider = r.workflow.Provider
 	}
 	if model == "" && r.workflow != nil {
-		model = r.workflow.Defaults.Model
-		if model == "" {
-			model = r.workflow.Model
-		}
+		model = r.workflow.Model
 	}
 	return provider, model
 }

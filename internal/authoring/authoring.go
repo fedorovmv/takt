@@ -216,6 +216,9 @@ func analyzeTemplate(value, path string, current spec.Node, byID, local map[stri
 	if err != nil {
 		return []Diagnostic{{Code: "template.invalid", Severity: "error", Path: path, Message: err.Error()}}
 	}
+	if strings.HasSuffix(path, ".script.inline") && len(refs) > 0 {
+		return []Diagnostic{{Code: "script.inline_reference", Severity: "error", Path: path, Message: "inline script source cannot contain Takt references; pass values through script.args or script.env"}}
+	}
 	for _, ref := range refs {
 		switch ref.Kind {
 		case flowref.KindBare, flowref.KindInput, flowref.KindFanout:

@@ -63,7 +63,7 @@ nodes:
 			if node.Command != "" || !strings.Contains(node.Prompt, "$ARGUMENTS") {
 				t.Fatalf("local command was not inlined correctly: %+v", node)
 			}
-			if node.Assistant != "child-assistant" || node.Model != "child-model" {
+			if node.Provider != "child-assistant" || node.Model != "child-model" {
 				t.Fatalf("command frontmatter was not preserved: %+v", node)
 			}
 		}
@@ -366,7 +366,7 @@ nodes:
 		if node.ID != "child__implement" {
 			continue
 		}
-		if node.Provider != "invocation-assistant" || node.Assistant != "invocation-assistant" || node.Model != "parent-model" || node.Context != "fresh" || node.Session != "fresh" {
+		if node.Provider != "invocation-assistant" || node.Model != "parent-model" || node.Context != "fresh" {
 			t.Fatalf("container defaults were not inherited: %+v", node)
 		}
 		return

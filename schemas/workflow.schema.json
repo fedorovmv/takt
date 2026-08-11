@@ -354,8 +354,6 @@
             "shared"
           ]
         },
-        "fresh_context": {"type": "boolean"},
-        "until_bash": {"type": "string", "minLength": 1},
         "cancel": {"type": "string", "minLength": 1},
         "loop": {"$ref": "#/$defs/loop"},
         "command": {
@@ -738,9 +736,11 @@
         },
         "context": {
           "enum": [
-            "fresh"
+            "fresh",
+            "shared"
           ]
         },
+        "cancel": {"type": "string", "minLength": 1},
         "command": {
           "type": "string"
         },

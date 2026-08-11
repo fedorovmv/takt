@@ -263,7 +263,7 @@ func Run(ctx context.Context, opts RunOptions) (*SuiteReport, error) {
 		return nil, err
 	}
 	if opts.StrategyID == "" {
-		opts.StrategyID = wf.Metadata.Name
+		opts.StrategyID = wf.Name
 	}
 	if opts.BenchmarkID == "" {
 		opts.BenchmarkID = filepath.Base(paths.CasesDir)

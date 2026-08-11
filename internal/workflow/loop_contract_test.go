@@ -43,3 +43,64 @@ func TestArchonSharedContextNeedsUniqueAncestor(t *testing.T) {
 		t.Fatal("shared context without ancestor accepted")
 	}
 }
+
+func TestArchonSharedContextChoosesNearestCompatibleAncestor(t *testing.T) {
+	wf := &spec.Workflow{Name: "nearest", Nodes: []spec.Node{
+		{ID: "a", Prompt: "a", Provider: "p", Model: "m"},
+		{ID: "b", DependsOn: []string{"a"}, Prompt: "b", Provider: "p", Model: "m"},
+		{ID: "c", DependsOn: []string{"b"}, Prompt: "c", Provider: "p", Model: "m", Context: "shared"},
+	}}
+	if err := Validate(wf); err != nil {
+		t.Fatalf("nearest shared ancestor rejected: %v", err)
+	}
+}
+
+func TestArchonSharedContextRejectsConcurrentConsumers(t *testing.T) {
+	wf := &spec.Workflow{Name: "concurrent", Nodes: []spec.Node{
+		{ID: "source", Prompt: "source", Provider: "p", Model: "m"},
+		{ID: "left", DependsOn: []string{"source"}, Prompt: "left", Provider: "p", Model: "m", Context: "shared"},
+		{ID: "right", DependsOn: []string{"source"}, Prompt: "right", Provider: "p", Model: "m", Context: "shared"},
+	}}
+	if err := Validate(wf); err == nil {
+		t.Fatal("parallel shared consumers accepted")
+	}
+}
+
+func TestArchonSharedContextAllowsSequentialReuse(t *testing.T) {
+	wf := &spec.Workflow{Name: "sequential", Nodes: []spec.Node{
+		{ID: "source", Prompt: "source", Provider: "p", Model: "m"},
+		{ID: "first", DependsOn: []string{"source"}, Prompt: "first", Provider: "p", Model: "m", Context: "shared"},
+		{ID: "second", DependsOn: []string{"first"}, Prompt: "second", Provider: "p", Model: "m", Context: "shared"},
+	}}
+	if err := Validate(wf); err != nil {
+		t.Fatalf("sequential shared reuse rejected: %v", err)
+	}
+}
+
+func TestArchonLoopChildAllowsCancelAndSharedContext(t *testing.T) {
+	wf := &spec.Workflow{Name: "loop-fields", Nodes: []spec.Node{{
+		ID: "repair",
+		LoopGroup: &spec.LoopGroupSpec{
+			MaxIterations: 2,
+			Nodes: []spec.Node{
+				{ID: "source", Prompt: "source", Provider: "p", Model: "m"},
+				{ID: "stop", DependsOn: []string{"source"}, Cancel: "stop", Context: "shared", Provider: "p", Model: "m"},
+			},
+			Until: spec.UntilSpec{Node: "source", OutputContains: "done"},
+		},
+	}}}
+	if err := Validate(wf); err != nil {
+		t.Fatalf("loop child cancel/shared rejected: %v", err)
+	}
+}
+
+func TestArchonRejectsContainerOnlyFieldsOnOrdinaryNodes(t *testing.T) {
+	for _, node := range []spec.Node{
+		{ID: "fresh", Bash: "true", FreshContext: true},
+		{ID: "predicate", Bash: "true", UntilBash: "true"},
+	} {
+		if err := Validate(&spec.Workflow{Name: "placement", Nodes: []spec.Node{node}}); err == nil {
+			t.Fatalf("unsupported field placement accepted for node %q", node.ID)
+		}
+	}
+}

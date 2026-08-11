@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"takt/internal/execution"
+	"takt/internal/flowref"
 	"takt/internal/localsandbox"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -64,7 +65,7 @@ func (r *Runner) scriptWorkingDir(definition *spec.ScriptSpec, state *store.RunS
 func renderScriptArgs(values []string, state *store.RunState, local map[string]store.NodeState, feedback, artifactsDir string) ([]string, error) {
 	args := make([]string, len(values))
 	for index, value := range values {
-		rendered, err := renderTemplate(value, state, local, feedback, artifactsDir)
+		rendered, err := renderTemplateSurface(value, flowref.ScriptArg, state, local, feedback, artifactsDir, nil)
 		if err != nil {
 			return nil, &execution.Error{Kind: execution.KindInternal, Op: "render script argument", Err: err}
 		}
@@ -95,14 +96,6 @@ func (r *Runner) buildScriptCommandWithPolicy(ctx context.Context, definition *s
 		}
 		return path, nil
 	}
-	inline := func(op string) (string, error) {
-		rendered, err := renderTemplate(definition.Inline, state, local, feedback, artifactsDir)
-		if err != nil {
-			return "", &execution.Error{Kind: execution.KindInternal, Op: "render " + op + " inline script", Err: err}
-		}
-		return rendered, nil
-	}
-
 	var cmd *exec.Cmd
 	var err error
 	switch strings.TrimSpace(definition.Runtime) {
@@ -114,11 +107,7 @@ func (r *Runner) buildScriptCommandWithPolicy(ctx context.Context, definition *s
 		cmd, err = newCommand(path, args...)
 	case "python":
 		if definition.Inline != "" {
-			body, bodyErr := inline("python")
-			if bodyErr != nil {
-				return nil, sandboxState, bodyErr
-			}
-			cmd, err = newCommand("python3", append([]string{"-c", body}, args...)...)
+			cmd, err = newCommand("python3", append([]string{"-c", definition.Inline}, args...)...)
 		} else {
 			path, pathErr := resolvePath("python script")
 			if pathErr != nil {
@@ -128,11 +117,7 @@ func (r *Runner) buildScriptCommandWithPolicy(ctx context.Context, definition *s
 		}
 	case "node":
 		if definition.Inline != "" {
-			body, bodyErr := inline("node")
-			if bodyErr != nil {
-				return nil, sandboxState, bodyErr
-			}
-			cmd, err = newCommand("node", append([]string{"-e", body}, args...)...)
+			cmd, err = newCommand("node", append([]string{"-e", definition.Inline}, args...)...)
 		} else {
 			path, pathErr := resolvePath("node script")
 			if pathErr != nil {
@@ -167,7 +152,7 @@ func (r *Runner) configureScriptCommand(cmd *exec.Cmd, definition *spec.ScriptSp
 		return &execution.Error{Kind: execution.KindInternal, Op: "resolve script environment", Err: fmt.Errorf("redactor dependency is required")}
 	}
 	for key, value := range definition.Env {
-		rendered, err := renderTemplate(value, state, local, feedback, artifactsDir)
+		rendered, err := renderTemplateSurface(value, flowref.ScriptEnv, state, local, feedback, artifactsDir, nil)
 		if err != nil {
 			return &execution.Error{Kind: execution.KindInternal, Op: "render script environment", Err: err}
 		}

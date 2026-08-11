@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"takt/internal/assistant"
 	"takt/internal/execution"
@@ -31,11 +32,7 @@ func (r *Runner) executeBashAction(ctx context.Context, state *store.RunState, n
 	if err != nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "render bash node", Err: err}
 	}
-	env := map[string]string{"ARGUMENTS": state.Input, "FEEDBACK": action.feedback, "ARTIFACTS_DIR": action.artifacts}
-	if state.Worktree != nil {
-		env["BASE_BRANCH"] = state.Worktree.BaseRef
-	}
-	return r.runBashWithEnv(ctx, node, rendered, env)
+	return r.runBashWithEnv(ctx, node, rendered, shellEnvironment(state, action.feedback, action.artifacts))
 }
 
 func (r *Runner) executeScriptAction(ctx context.Context, state *store.RunState, node spec.Node, action actionContext) (execResult, error) {
@@ -77,9 +74,43 @@ func (r *Runner) executeCancelAction(state *store.RunState, node spec.Node, acti
 	}
 	state.CancelRequested = true
 	state.CancelSource = "workflow"
-	state.CancelNodePath = node.ID
+	state.CancelNodePath = canonicalNodePathForState(state, node.ID)
+	state.CancelIteration = activeLoopIteration(state, node.ID)
 	state.CancelReason = reason
 	return execResult{Output: reason, Stdout: reason, ExitCode: 0}, nil
+}
+
+func shellEnvironment(state *store.RunState, feedback, artifactsDir string) map[string]string {
+	env := map[string]string{"ARGUMENTS": state.Input, "FEEDBACK": feedback, "ARTIFACTS_DIR": artifactsDir}
+	if state.Worktree != nil && strings.TrimSpace(state.Worktree.BaseRef) != "" {
+		env["BASE_BRANCH"] = state.Worktree.BaseRef
+	}
+	return env
+}
+
+func canonicalNodePathForState(state *store.RunState, nodeID string) string {
+	if state != nil {
+		if node := state.Nodes[nodeID]; node != nil && node.Path != "" {
+			return node.Path
+		}
+	}
+	return canonicalNodePath(nodeID)
+}
+
+func activeLoopIteration(state *store.RunState, nodeID string) int {
+	if state == nil {
+		return 0
+	}
+	child := state.Nodes[nodeID]
+	for _, node := range state.Nodes {
+		if node == nil || node.LoopIteration <= 0 {
+			continue
+		}
+		if nodeID == strings.TrimPrefix(node.Path, "/") || (child != nil && strings.HasPrefix(child.Path, node.Path+"/")) {
+			return node.LoopIteration
+		}
+	}
+	return 0
 }
 
 func (r *Runner) executeInternalAction(ctx context.Context, state *store.RunState, node spec.Node) (execResult, error) {

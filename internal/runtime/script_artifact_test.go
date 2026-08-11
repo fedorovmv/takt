@@ -22,8 +22,7 @@ func TestScriptCommandStructuredOutputCreatesTypedArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "script-artifact"},
-		Nodes: []spec.Node{{
+		Name: "script-artifact", Nodes: []spec.Node{{
 			ID:     "emit",
 			Script: &spec.ScriptSpec{Runtime: "command", Path: "emit.sh"},
 			OutputFormat: &spec.OutputFormat{Type: "object", Properties: map[string]spec.OutputFormat{
@@ -84,7 +83,7 @@ func TestScriptCanRegisterFileArtifact(t *testing.T) {
 	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\nprintf '# Report\\nhello\\n' > report.md\nprintf 'done\\n'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "file-artifact"}, Nodes: []spec.Node{{
+	wf := &spec.Workflow{Name: "file-artifact", Nodes: []spec.Node{{
 		ID: "report", Script: &spec.ScriptSpec{Runtime: "command", Path: "report.sh"},
 		OutputType: "report", OutputMIME: "text/markdown", OutputPath: "report.md",
 	}}}
@@ -176,7 +175,7 @@ func TestScriptLanguageRuntimes(t *testing.T) {
 			if _, err := exec.LookPath(tc.binary); err != nil {
 				t.Skipf("%s is not installed", tc.binary)
 			}
-			wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: tc.name}, Nodes: []spec.Node{{ID: "run", Script: tc.script}}}
+			wf := &spec.Workflow{Name: tc.name, Nodes: []spec.Node{{ID: "run", Script: tc.script}}}
 			runner := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), "<config>", dir)
 			state, err := runner.Start(context.Background(), "")
 			if err != nil {

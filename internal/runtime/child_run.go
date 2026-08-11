@@ -104,7 +104,7 @@ func (r *Runner) ensureChildRunLink(state *store.RunState, nodeID string, nodeSt
 	nodeState.ChildRunIDs = appendUniqueString(nodeState.ChildRunIDs, childID)
 	state.ChildRunIDs = appendUniqueString(state.ChildRunIDs, childID)
 	eventType := "child_run.linked"
-	data := map[string]any{"child_run_id": childID, "workflow": childWorkflow.Metadata.Name, "workflow_path": childPath, "attempt": nodeState.Attempts}
+	data := map[string]any{"child_run_id": childID, "workflow": childWorkflow.Name, "workflow_path": childPath, "attempt": nodeState.Attempts}
 	if previousID != "" {
 		eventType = "child_run.restarted"
 		data["previous_child_run_id"] = previousID

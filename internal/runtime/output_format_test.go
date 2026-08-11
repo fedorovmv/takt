@@ -12,11 +12,7 @@ import (
 
 func TestStructuredOutputIsValidatedAndNormalized(t *testing.T) {
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1",
-		Kind:       "Workflow",
-		Metadata:   spec.Metadata{Name: "structured"},
-		Defaults:   spec.Defaults{Assistant: "demo", Model: "m"},
-		Nodes: []spec.Node{{
+		Name: "structured", Provider: "demo", Model: "m", Nodes: []spec.Node{{
 			ID:     "route",
 			Prompt: "route",
 			OutputFormat: &spec.OutputFormat{
@@ -49,9 +45,7 @@ func TestStructuredOutputIsValidatedAndNormalized(t *testing.T) {
 
 func TestStructuredOutputPreservesRawStdout(t *testing.T) {
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "raw-stdout"},
-		Defaults: spec.Defaults{Assistant: "demo", Model: "m"},
-		Nodes: []spec.Node{{ID: "route", Prompt: "route", OutputFormat: &spec.OutputFormat{
+		Name: "raw-stdout", Provider: "demo", Model: "m", Nodes: []spec.Node{{ID: "route", Prompt: "route", OutputFormat: &spec.OutputFormat{
 			Type: "object", Properties: map[string]spec.OutputFormat{"workflow": {Type: "string"}}, Required: []string{"workflow"},
 		}}},
 	}
@@ -77,11 +71,7 @@ func TestStructuredOutputPreservesRawStdout(t *testing.T) {
 
 func TestStructuredOutputFailureIsProtocolError(t *testing.T) {
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1",
-		Kind:       "Workflow",
-		Metadata:   spec.Metadata{Name: "structured"},
-		Defaults:   spec.Defaults{Assistant: "demo", Model: "m"},
-		Nodes: []spec.Node{{
+		Name: "structured", Provider: "demo", Model: "m", Nodes: []spec.Node{{
 			ID:     "route",
 			Prompt: "route",
 			OutputFormat: &spec.OutputFormat{
@@ -146,9 +136,7 @@ func TestStructuredOutputIntegerPreservesLargeExactValues(t *testing.T) {
 
 func TestStructuredOutputRetryPolicyPassesValidationFeedback(t *testing.T) {
 	wf := &spec.Workflow{
-		APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "structured-retry"},
-		Defaults: spec.Defaults{Assistant: "demo", Model: "m", Session: "reuse"},
-		Nodes: []spec.Node{{
+		Name: "structured-retry", Provider: "demo", Model: "m", Nodes: []spec.Node{{
 			ID: "route", Prompt: "Choose route.\nFeedback:\n$FEEDBACK",
 			Attempts: spec.AttemptsSpec{Max: 2, RetryOn: []string{"protocol"}, RetrySession: "fresh"},
 			OutputFormat: &spec.OutputFormat{Type: "object", Properties: map[string]spec.OutputFormat{

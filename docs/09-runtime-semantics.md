@@ -242,12 +242,18 @@ Markdown не учитывается. Отсутствие сигнала сох
 `null`/строка, а не как пустой текст. Если source output truncated, signal
 predicate завершается `protocol` до проверки содержимого.
 
-`until.requires` проверяет дополнительные completed/terminal evidence узлов.
+`until.requires` проверяет дополнительные evidence только узлов со статусом
+`completed`; failed/errored/timed_out/cancelled terminal states не участвуют в
+acceptance.
 Обычное несовпадение даёт следующую bounded iteration; отсутствующий или
 не-terminal required evidence — `required_evidence_missing` protocol error.
 `until_bash` выполняется после child DAG, не получает скрытого JSON validator
 контракта и сохраняет `PredicateEvidence` (stdout, stderr, exit code, duration,
 terminal status, truncation, error code) внутри immutable iteration snapshot.
+
+Любая ошибка вычисления predicate сохраняет текущую итерацию до возврата
+ошибки. Failure-like child body node делает safe-stop и не передаёт его exit
+code/output в acceptance.
 
 При выполнении `until` parent node становится `completed`. При исчерпании лимита parent node получает `failed/exit`.
 

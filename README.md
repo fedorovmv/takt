@@ -61,7 +61,7 @@
 - полное совпадение OS exit code и envelope `exit_code`, включая ноль;
 - единый JSON envelope CLI для успеха и ошибок;
 - YAML через поддерживаемый `go.yaml.in/yaml/v3` с Takt-specific strict JSON-field adapter, path-aware `did you mean` и authoring diagnostics;
-- расширенный проверяемый `output_format`, статическая диагностика output/artifact references и строгие `${path}`, `${path?}`, `${path:-default}`;
+- расширенный проверяемый `output_format`, статическая диагностика output/artifact references и строгие `$path`, `$path?`, `$path:-default`;
 - именованные workflow профиля, `workflow list/describe` и селектор `profile:name`;
 - профиль `code` 0.17.0 с 19 процессами разработки, Task Router, user-owned Git scope и deterministic acceptance gates для `plan-to-pr`, внутренними Role/TaskBrief contracts и одиннадцатью встроенными доверенными блоками;
 - управляемые Git worktree: политика workflow, отдельная ветка, безопасное удержание/очистка и `takt worktree list/remove/prune`;
@@ -179,10 +179,7 @@ go build -o bin/takt ./cmd/takt
 Минимальный workflow `takt-demo/workflow.yaml`:
 
 ```yaml
-apiVersion: takt/v1alpha1
-kind: Workflow
-metadata:
-  name: hello
+name: hello
 nodes:
   - id: hello
     bash: printf 'hello from Takt'
@@ -311,12 +308,13 @@ takt run code:comprehensive-pr-review --input "Проверь текущий PR"
 ## Композиция workflow
 
 ```yaml
+name: composition
 nodes:
   - id: implementation
     subworkflow:
       path: workflows/implementation.yaml
       inputs:
-        plan: ${input}
+        plan: $ARGUMENTS
 
   - id: checks
     depends_on: [implementation]
@@ -326,7 +324,7 @@ nodes:
       subworkflow:
         path: workflows/check.yaml
         inputs:
-          name: ${check}
+          name: $FANOUT.item
 ```
 
 `subworkflow` и `foreach` разворачиваются до запуска в обычный DAG, включая дочерний DAG `loop_group`. Публичные ID `implementation` и `checks` остаются доступными для зависимостей и шаблонов, а внутренние ID скрыты из CLI-состояния. `foreach` принимает inline `items` или `items_from.path`, поддерживает `parallel: true` и возвращает JSON-массив результатов в порядке элементов; Markdown-планы Takt не преобразует во внутренний список задач.
@@ -339,7 +337,7 @@ nodes:
 - id: feature
   workflow:
     path: workflows/feature-development.yaml
-    input: ${input}
+    input: $ARGUMENTS
     output_node: summary
 ```
 
@@ -360,10 +358,10 @@ Approval внутри ребёнка можно подтвердить чере�
   depends_on: [classify]
   workflow:
     path: workflows/review.yaml
-    input: "Perspective: ${reviewer}"
+    input: "Perspective: $FANOUT.item"
     isolation: inherit
     fan_out:
-      items_from: nodes.classify.output.reviewers
+      items_from: $classify.output.reviewers
       as: reviewer
       max_parallel: 5
       join: all_success
@@ -390,7 +388,7 @@ Approval внутри ребёнка можно подтвердить чере�
   output_mime: application/json
 ```
 
-Поддерживаются `command`, `python`, `node` и `go`, file/inline source, args, env и working directory. Исходник и dependencies входят в fingerprint. `output_type` сохраняет Output либо `output_path` как снимок с checksum и producer metadata. Downstream-узлы используют `${nodes.build-index.artifacts.plan-index.path}`.
+Поддерживаются `command`, `python`, `node` и `go`, file/inline source, args, env и working directory. Исходник и dependencies входят в fingerprint. `output_type` сохраняет Output либо `output_path` как снимок с checksum и producer metadata. Downstream-узлы используют `$build-index.artifacts.plan-index.path`.
 
 ```bash
 takt artifacts <run-id>

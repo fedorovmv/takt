@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Закрыты review-контракты Archon A1: redaction durable loop evidence и
+  cancel metadata, quote-state shell rendering с fail-closed `BASE_BRANCH`,
+  raw inline scripts через argv/env boundary, predicate snapshots/safe-stop,
+  nearest shared-session selection, foreign-signal ambiguity и schema placement
+  loop fields. README workflow examples переведены на target dialect.
+
 - Реализован Archon-first A0/A1 Workflow contract: target root/provider/model,
   единый `$...` reference lexer/rendering и fail-closed rejection legacy
   `${...}`, `assistant` frontmatter и `apiVersion/kind/metadata/defaults`;

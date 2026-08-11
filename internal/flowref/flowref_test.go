@@ -1,6 +1,7 @@
 package flowref_test
 
 import (
+	"strings"
 	"testing"
 
 	"takt/internal/flowref"
@@ -74,5 +75,50 @@ func TestShellSurfacePreservesPositionalParameters(t *testing.T) {
 	}
 	if got != `printf '%s' "$1"` {
 		t.Fatalf("shell render = %q", got)
+	}
+}
+
+func TestShellSurfaceRejectsReferencesAnywhereInDoubleQuotes(t *testing.T) {
+	for _, source := range []string{
+		`echo "$build.output"`,
+		`echo "prefix=$build.output"`,
+		`echo "$build.output:suffix"`,
+		`value="before $build.output after"`,
+	} {
+		t.Run(source, func(t *testing.T) {
+			_, err := flowref.Render(source, flowref.Shell, func(flowref.Reference) (string, bool) { return "value", true })
+			if err == nil {
+				t.Fatalf("double-quoted Takt reference accepted: %s", source)
+			}
+		})
+	}
+}
+
+func TestShellSurfacePreservesNativeVariablesAndResolvesBareTaktVariables(t *testing.T) {
+	seen := map[string]int{}
+	got, err := flowref.Render(`printf '%s %s %s %s %s %s' "$PATH" "${PATH}" "$?" "$((1 + 1))" "$(true)" $BASE_BRANCH`, flowref.Shell, func(ref flowref.Reference) (string, bool) {
+		seen[ref.Name]++
+		return "main", true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != `printf '%s %s %s %s %s %s' "$PATH" "${PATH}" "$?" "$((1 + 1))" "$(true)" $BASE_BRANCH` {
+		t.Fatalf("shell render = %q", got)
+	}
+	if seen["BASE_BRANCH"] != 1 {
+		t.Fatalf("bare BASE_BRANCH did not resolve: %#v", seen)
+	}
+}
+
+func TestShellSurfaceEscapesReferenceInsideSingleQuotes(t *testing.T) {
+	got, err := flowref.Render(`printf '%s' '$build.output'`, flowref.Shell, func(flowref.Reference) (string, bool) {
+		return "$(touch pwned)'", true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "$(touch pwned)") || !strings.HasSuffix(got, "'\"'\"''") {
+		t.Fatalf("single-quoted render = %q", got)
 	}
 }

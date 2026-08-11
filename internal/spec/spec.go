@@ -4,12 +4,6 @@ import "encoding/json"
 
 const MaxLoopGroupIterations = 64
 
-type Metadata struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
-	Labels      map[string]string `json:"labels,omitempty"`
-}
-
 type Workflow struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description,omitempty"`
@@ -20,20 +14,6 @@ type Workflow struct {
 	Hooks       HookSet           `json:"hooks,omitempty"`
 	Worktree    WorktreeSpec      `json:"worktree,omitempty"`
 	Input       *InputContract    `json:"input,omitempty"`
-
-	// Legacy fields remain available to Go callers that build definitions in
-	// tests, but are deliberately excluded from YAML/JSON authoring. Workflow
-	// loading therefore fails closed on the old root dialect.
-	APIVersion string   `json:"-"`
-	Kind       string   `json:"-"`
-	Metadata   Metadata `json:"-"`
-	Defaults   Defaults `json:"-"`
-}
-
-type Defaults struct {
-	Assistant string `json:"assistant,omitempty"`
-	Model     string `json:"model,omitempty"`
-	Session   string `json:"session,omitempty"`
 }
 
 type Node struct {
@@ -50,9 +30,7 @@ type Node struct {
 	Cancel       string            `json:"cancel,omitempty"`
 	UntilBash    string            `json:"until_bash,omitempty"`
 	Loop         *LoopSpec         `json:"loop,omitempty"`
-	Assistant    string            `json:"-"`
 	Model        string            `json:"model,omitempty"`
-	Session      string            `json:"-"`
 	Executor     string            `json:"executor,omitempty"`
 	Command      string            `json:"command,omitempty"`
 	Prompt       string            `json:"prompt,omitempty"`

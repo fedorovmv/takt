@@ -94,22 +94,6 @@ type StartOptions struct {
 }
 
 func NewWithDependencies(def Definition, deps Dependencies) *Runner {
-	if def.Workflow != nil {
-		// Child fan-out runners are constructed concurrently from one loaded
-		// definition. Keep constructor defaults local instead of mutating that
-		// shared definition while sibling runners are reading it.
-		workflow := *def.Workflow
-		if workflow.Name != "" && workflow.Metadata.Name == "" {
-			workflow.Metadata = spec.Metadata{Name: workflow.Name, Description: workflow.Description, Labels: workflow.Labels}
-		}
-		if workflow.Defaults.Assistant == "" {
-			workflow.Defaults.Assistant = workflow.Provider
-		}
-		if workflow.Defaults.Model == "" {
-			workflow.Defaults.Model = workflow.Model
-		}
-		def.Workflow = &workflow
-	}
 	return &Runner{
 		workflow: def.Workflow, config: def.Config, workflowPath: def.WorkflowPath, configPath: def.ConfigPath,
 		controlWorkspace: def.ControlWorkspace, workspace: def.ControlWorkspace,
@@ -226,7 +210,7 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 	}
 	var worktreeState *store.WorktreeState
 	if worktreeSpec.Enabled {
-		info, prepareErr := gitworktree.Prepare(ctx, r.controlWorkspace, id, r.workflow.Metadata.Name, gitworktree.Options{
+		info, prepareErr := gitworktree.Prepare(ctx, r.controlWorkspace, id, r.workflow.Name, gitworktree.Options{
 			Base: worktreeSpec.Base, BranchPrefix: worktreeSpec.BranchPrefix, AllowDirty: worktreeSpec.AllowDirty,
 		})
 		if prepareErr != nil {
@@ -258,7 +242,7 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 	for _, node := range r.workflow.Nodes {
 		state.Nodes[node.ID] = &store.NodeState{Status: store.NodePending, Path: canonicalNodePath(node.ID), Hidden: node.Hidden, PublicParent: node.PublicParent}
 	}
-	data := map[string]any{"workflow": r.workflow.Metadata.Name, "execution_workspace": r.workspace}
+	data := map[string]any{"workflow": r.workflow.Name, "execution_workspace": r.workspace}
 	if options.ParentRunID != "" {
 		data["parent_run_id"] = options.ParentRunID
 		data["parent_node_id"] = options.ParentNodeID
@@ -647,6 +631,9 @@ func (r *Runner) executeGraph(ctx context.Context, state *store.RunState, nodes 
 				return err
 			}
 		}
+		if state.CancelRequested || r.cancellationRequested(state.ID) {
+			return context.Canceled
+		}
 		if graphTerminal(nodes, state.Nodes) {
 			return nil
 		}
@@ -838,7 +825,7 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 				}
 			}
 			for _, child := range parent.LoopGroup.Nodes {
-				childState := &store.NodeState{Status: store.NodePending, Path: canonicalNodePath(child.ID), Hidden: child.Hidden, PublicParent: child.PublicParent}
+				childState := &store.NodeState{Status: store.NodePending, Path: canonicalNodePath(parent.ID + "__" + child.ID), Hidden: child.Hidden, PublicParent: child.PublicParent}
 				if iteration > 1 && !parent.LoopGroup.FreshContext && previous != nil {
 					if prior, ok := previous[child.ID]; ok && prior.SessionID != "" && (child.Command != "" || child.Prompt != "") {
 						childState.SessionID = prior.SessionID
@@ -858,18 +845,26 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 		local := make(map[string]store.NodeState, len(parent.LoopGroup.Nodes))
 		for _, child := range parent.LoopGroup.Nodes {
 			local[child.ID] = *state.Nodes[child.ID]
-			delete(state.Nodes, child.ID)
-			delete(state.Approvals, child.ID)
 		}
 		check, exists := local[parent.LoopGroup.Until.Node]
 		if !exists {
 			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("until node %q missing", parent.LoopGroup.Until.Node)}
 		}
+		if bodyErr := loopBodyFailure(local); bodyErr != nil {
+			if err := r.persistLoopIteration(state, parent, iteration, local, check, nil, nil, nil, bodyErr); err != nil {
+				return execResult{}, err
+			}
+			return execResult{}, bodyErr
+		}
 		var matchedSignal *string
 		var signalDiagnostic *string
 		if parent.LoopGroup.Until.Signal != "" {
 			if check.OutputTruncated {
-				return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "loop signal", Err: fmt.Errorf("until source %q output was truncated", parent.LoopGroup.Until.Node)}
+				err := &execution.Error{Kind: execution.KindProtocol, Op: "loop signal", Err: fmt.Errorf("until source %q output was truncated", parent.LoopGroup.Until.Node)}
+				if snapshotErr := r.persistLoopIteration(state, parent, iteration, local, check, nil, nil, nil, err); snapshotErr != nil {
+					return execResult{}, snapshotErr
+				}
+				return execResult{}, err
 			}
 			match := MatchSignal(check.Output, parent.LoopGroup.Until.Signal)
 			if match.MatchedSignal != "" {
@@ -884,7 +879,11 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 		satisfied := untilSatisfied(parent.LoopGroup.Until, check, matchedSignal)
 		if requirements, ok := requirementsSatisfied(parent.LoopGroup.Until.Requires, local); !ok {
 			if requirements {
-				return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "loop requires", Err: fmt.Errorf("required_evidence_missing")}
+				err := &execution.Error{Kind: execution.KindProtocol, Op: "loop requires", Err: fmt.Errorf("required_evidence_missing")}
+				if snapshotErr := r.persistLoopIteration(state, parent, iteration, local, check, matchedSignal, signalDiagnostic, nil, err); snapshotErr != nil {
+					return execResult{}, snapshotErr
+				}
+				return execResult{}, err
 			}
 			satisfied = false
 		}
@@ -893,13 +892,25 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 			started := time.Now()
 			rendered, renderErr := renderTemplateSurface(parent.LoopGroup.UntilBash, flowref.Shell, state, local, parentState.Feedback, r.store.ArtifactsDir(state.ID), nil)
 			if renderErr != nil {
-				return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "render until_bash", Err: renderErr}
+				err := &execution.Error{Kind: execution.KindProtocol, Op: "render until_bash", Err: renderErr}
+				evidence := &store.PredicateEvidence{Duration: time.Since(started), TerminalStatus: "errored", ErrorCode: string(execution.KindProtocol)}
+				if snapshotErr := r.persistLoopIteration(state, parent, iteration, local, check, matchedSignal, signalDiagnostic, evidence, err); snapshotErr != nil {
+					return execResult{}, snapshotErr
+				}
+				return execResult{}, err
 			}
-			result, bashErr := r.runBashWithEnv(ctx, parent, rendered, map[string]string{"ARGUMENTS": state.Input, "FEEDBACK": parentState.Feedback, "ARTIFACTS_DIR": r.store.ArtifactsDir(state.ID)})
-			evidence := &store.PredicateEvidence{Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, Duration: time.Since(started), TerminalStatus: "completed", Truncated: result.Truncated}
+			result, bashErr := r.runBashWithEnv(ctx, parent, rendered, shellEnvironment(state, parentState.Feedback, r.store.ArtifactsDir(state.ID)))
+			terminalStatus := "completed"
+			if bashErr != nil {
+				terminalStatus = "failed"
+			}
+			evidence := &store.PredicateEvidence{Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, Duration: time.Since(started), TerminalStatus: terminalStatus, Truncated: result.Truncated}
 			if bashErr != nil {
 				evidence.ErrorCode = string(execution.KindOf(bashErr))
 				if execution.KindOf(bashErr) != execution.KindExit {
+					if snapshotErr := r.persistLoopIteration(state, parent, iteration, local, check, matchedSignal, signalDiagnostic, evidence, bashErr); snapshotErr != nil {
+						return execResult{}, snapshotErr
+					}
 					return execResult{}, bashErr
 				}
 				satisfied = false
@@ -908,21 +919,7 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 			}
 			untilBashEvidence = evidence
 		}
-		historyNodes := cloneLoopNodes(local)
-		parentState.LoopPrevious = cloneLoopNodes(local)
-		if len(parentState.LoopIterations) >= spec.MaxLoopGroupIterations {
-			return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("loop_group %q iteration history exceeds %d entries", parent.ID, spec.MaxLoopGroupIterations)}
-		}
-		parentState.LoopIterations = append(parentState.LoopIterations, store.LoopIterationState{
-			Iteration: iteration, Nodes: historyNodes, UntilNode: parent.LoopGroup.Until.Node,
-			ExitCode: check.ExitCode, Status: check.Status, Satisfied: satisfied, MatchedSignal: matchedSignal, SignalDiagnostic: signalDiagnostic, UntilBash: untilBashEvidence, CompletedAt: time.Now().UTC(),
-		})
-		parentState.LoopIteration = 0
-		if err := r.commit(state, "loop.iteration.completed", parent.ID, map[string]any{
-			"iteration": iteration, "until_node": parent.LoopGroup.Until.Node,
-			"exit_code": check.ExitCode, "status": check.Status, "satisfied": satisfied,
-			"matched_signal": matchedSignal, "signal_diagnostic": signalDiagnostic,
-		}); err != nil {
+		if err := r.persistLoopIteration(state, parent, iteration, local, check, matchedSignal, signalDiagnostic, untilBashEvidence, nil, satisfied); err != nil {
 			return execResult{}, err
 		}
 		if satisfied {
@@ -931,6 +928,88 @@ func (r *Runner) runLoopGroup(ctx context.Context, state *store.RunState, parent
 		previous = local
 	}
 	return execResult{}, &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "loop_group", Err: fmt.Errorf("loop_group %q exhausted %d iterations", parent.ID, parent.LoopGroup.MaxIterations)}
+}
+
+func loopBodyFailure(nodes map[string]store.NodeState) error {
+	for id, node := range nodes {
+		if !node.FailedLike() {
+			continue
+		}
+		kind := execution.KindProtocol
+		switch node.Status {
+		case store.NodeFailed:
+			kind = execution.KindExit
+		case store.NodeCancelled:
+			kind = execution.KindCancelled
+		case store.NodeTimedOut:
+			kind = execution.KindTimedOut
+		}
+		message := node.Error
+		if message == "" {
+			message = fmt.Sprintf("loop body node %q ended with status %s", id, node.Status)
+		}
+		return &execution.Error{Kind: kind, ExitCode: node.ExitCode, Op: "loop body", Err: fmt.Errorf("%s", message)}
+	}
+	return nil
+}
+
+func (r *Runner) persistLoopIteration(state *store.RunState, parent spec.Node, iteration int, local map[string]store.NodeState, check store.NodeState, matchedSignal, signalDiagnostic *string, untilBash *store.PredicateEvidence, predicateErr error, satisfied ...bool) error {
+	parentState := state.Nodes[parent.ID]
+	if len(parentState.LoopIterations) >= spec.MaxLoopGroupIterations {
+		return &execution.Error{Kind: execution.KindInternal, Op: "loop_group", Err: fmt.Errorf("loop_group %q iteration history exceeds %d entries", parent.ID, spec.MaxLoopGroupIterations)}
+	}
+	value := false
+	if len(satisfied) > 0 {
+		value = satisfied[0]
+	}
+	historyNodes := cloneLoopNodes(local)
+	parentState.LoopPrevious = cloneLoopNodes(local)
+	parentState.LoopIterations = append(parentState.LoopIterations, store.LoopIterationState{
+		Iteration: iteration, Nodes: historyNodes, UntilNode: parent.LoopGroup.Until.Node,
+		ExitCode: check.ExitCode, Status: check.Status, Satisfied: value, MatchedSignal: matchedSignal, SignalDiagnostic: signalDiagnostic, UntilBash: untilBash, CompletedAt: time.Now().UTC(),
+	})
+	parentState.LoopIteration = 0
+	for _, child := range parent.LoopGroup.Nodes {
+		delete(state.Nodes, child.ID)
+		delete(state.Approvals, child.ID)
+	}
+	data := map[string]any{
+		"iteration": iteration, "until_node": parent.LoopGroup.Until.Node,
+		"exit_code": check.ExitCode, "status": check.Status, "satisfied": value,
+		"matched_signal": matchedSignal, "signal_diagnostic": signalDiagnostic,
+	}
+	if predicateErr != nil {
+		data["error"] = predicateErr.Error()
+		data["error_code"] = string(execution.KindOf(predicateErr))
+	}
+	return r.commit(state, "loop.iteration.completed", parent.ID, data)
+}
+
+func (r *Runner) loopPredicateNode(id string) bool {
+	if r.workflow == nil {
+		return false
+	}
+	var visit func([]spec.Node) bool
+	visit = func(nodes []spec.Node) bool {
+		for _, parent := range nodes {
+			if parent.LoopGroup == nil {
+				continue
+			}
+			if parent.LoopGroup.Until.Node == id {
+				return true
+			}
+			for _, requirement := range parent.LoopGroup.Until.Requires {
+				if requirement.Node == id {
+					return true
+				}
+			}
+			if visit(parent.LoopGroup.Nodes) {
+				return true
+			}
+		}
+		return false
+	}
+	return visit(r.workflow.Nodes)
 }
 
 func cloneLoopNodes(in map[string]store.NodeState) map[string]store.NodeState {
@@ -962,11 +1041,7 @@ func (r *Runner) runHooks(ctx context.Context, state *store.RunState, node spec.
 		if renderErr != nil {
 			return "fail", renderErr.Error(), &execution.Error{Kind: execution.KindInternal, Op: "render hook", Err: renderErr}
 		}
-		env := map[string]string{"ARGUMENTS": state.Input, "FEEDBACK": feedback, "ARTIFACTS_DIR": artifactsDir}
-		if state.Worktree != nil {
-			env["BASE_BRANCH"] = state.Worktree.BaseRef
-		}
-		result, err := r.runBashWithEnv(ctx, node, rendered, env)
+		result, err := r.runBashWithEnv(ctx, node, rendered, shellEnvironment(state, feedback, artifactsDir))
 		if err == nil && result.ExitCode == 0 {
 			continue
 		}
@@ -1200,7 +1275,11 @@ func (r *Runner) commit(state *store.RunState, eventType, nodeID string, data ma
 			data = map[string]any{}
 		}
 		if _, exists := data["node_path"]; !exists {
-			data["node_path"] = canonicalNodePath(nodeID)
+			path := canonicalNodePath(nodeID)
+			if node := state.Nodes[nodeID]; node != nil && node.Path != "" {
+				path = node.Path
+			}
+			data["node_path"] = path
 		}
 	}
 	if r.redactor == nil {
@@ -1319,7 +1398,7 @@ func untilSatisfied(until spec.UntilSpec, node store.NodeState, matchedSignal *s
 func requirementsSatisfied(requirements []spec.UntilRequirement, nodes map[string]store.NodeState) (bool, bool) {
 	for _, requirement := range requirements {
 		node, ok := nodes[requirement.Node]
-		if !ok || node.Status == store.NodeSkipped || !node.Terminal() {
+		if !ok || node.Status != store.NodeCompleted {
 			return true, false
 		}
 		if requirement.ExitCode != nil && node.ExitCode != *requirement.ExitCode {

@@ -55,6 +55,9 @@ func MatchSignal(output, expected string) SignalMatch {
 	}
 	if expectedOccurrences == 0 {
 		diagnostic := SignalDiagnostic(SignalMissing)
+		if occurrences > 0 {
+			diagnostic = SignalAmbiguous
+		}
 		return SignalMatch{Diagnostic: &diagnostic}
 	}
 	if occurrences != 1 || expectedOccurrences != 1 {

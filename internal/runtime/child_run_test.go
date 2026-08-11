@@ -185,7 +185,7 @@ func mustWriteFile(t *testing.T, path, content string) {
 
 func TestCancellationMarkerStopsRunningNode(t *testing.T) {
 	dir := t.TempDir()
-	wf := &spec.Workflow{APIVersion: "takt/v1alpha1", Kind: "Workflow", Metadata: spec.Metadata{Name: "cancel-running"}, Nodes: []spec.Node{{ID: "slow", Bash: "sleep 30"}}}
+	wf := &spec.Workflow{Name: "cancel-running", Nodes: []spec.Node{{ID: "slow", Bash: "sleep 30"}}}
 	runner := New(wf, &spec.Config{}, "<workflow>", "<config>", dir)
 	type result struct {
 		state *store.RunState

@@ -228,7 +228,34 @@ func isNativeShellVariable(value string) bool {
 // values are never scanned again.
 func Render(source string, surface Surface, resolve func(Reference) (string, bool)) (string, error) {
 	var out strings.Builder
+	var quote byte
 	for i := 0; i < len(source); {
+		if source[i] == '\\' && quote != '\'' && i+1 < len(source) {
+			out.WriteByte(source[i])
+			out.WriteByte(source[i+1])
+			i += 2
+			continue
+		}
+		if source[i] == '"' && quote != '\'' {
+			if quote == '"' {
+				quote = 0
+			} else {
+				quote = '"'
+			}
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
+		if source[i] == '\'' && quote != '"' {
+			if quote == '\'' {
+				quote = 0
+			} else {
+				quote = '\''
+			}
+			out.WriteByte(source[i])
+			i++
+			continue
+		}
 		if source[i] != '$' {
 			out.WriteByte(source[i])
 			i++
@@ -244,6 +271,13 @@ func Render(source string, surface Surface, resolve func(Reference) (string, boo
 			continue
 		}
 		if source[i] == '$' && i+1 < len(source) && source[i+1] == '{' {
+			if surface == Shell {
+				if end, ok := nativeBracedShellVariable(source, i); ok {
+					out.WriteString(source[i:end])
+					i = end
+					continue
+				}
+			}
 			return "", fmt.Errorf("legacy braced references are not supported")
 		}
 		end := referenceEnd(source, i+1)
@@ -270,12 +304,32 @@ func Render(source string, surface Surface, resolve func(Reference) (string, boo
 			}
 			return "", err
 		}
-		if surface == Shell && (ref.Kind != KindBare) && isQuoted(source, i, end) {
+		if surface == Shell && (ref.Kind != KindBare) && quote == '"' {
 			return "", fmt.Errorf("shell reference %s must not be double quoted", token)
 		}
 		if surface == Shell && ref.Kind == KindBare {
-			// Bare shell contexts are supplied through the process environment.
-			out.WriteString(token)
+			// Bare Takt variables are supplied through the process environment.
+			// Resolve them here as a fail-closed existence check while retaining
+			// native shell expansion in the command.
+			value, ok := "", false
+			if resolve != nil {
+				value, ok = resolve(ref)
+			}
+			if !ok {
+				if ref.Default != "" {
+					value, ok = ref.Default, true
+				} else if ref.Optional {
+					value, ok = "", true
+				}
+			}
+			if !ok {
+				return "", fmt.Errorf("unresolved reference %q", token)
+			}
+			if ref.Optional || ref.Default != "" {
+				out.WriteString(shellQuote(value))
+			} else {
+				out.WriteString(token)
+			}
 			i = end
 			continue
 		}
@@ -296,7 +350,11 @@ func Render(source string, surface Surface, resolve func(Reference) (string, boo
 			return "", fmt.Errorf("unresolved reference %q", token)
 		}
 		if surface == Shell {
-			value = shellQuote(value)
+			if quote == '\'' {
+				value = shellEscapeSingleQuoted(value)
+			} else {
+				value = shellQuote(value)
+			}
 		}
 		out.WriteString(value)
 		i = end
@@ -315,6 +373,9 @@ func Scan(source string, surface Surface) ([]Reference, error) {
 }
 
 func referenceEnd(source string, start int) int {
+	if start >= len(source) || source[start] == '?' {
+		return start
+	}
 	i := start
 	for i < len(source) {
 		c := source[i]
@@ -340,6 +401,9 @@ func isPreservedShellToken(token, source string, start, end int) bool {
 	if token == "$USER_MESSAGE" {
 		return false
 	}
+	if len(token) > 1 && reserved[token[1:]] {
+		return false
+	}
 	if strings.HasPrefix(token, "${") {
 		return false
 	}
@@ -358,8 +422,20 @@ func isPreservedShellToken(token, source string, start, end int) bool {
 	return false
 }
 
-func isQuoted(source string, start, end int) bool {
-	return start > 0 && end < len(source) && source[start-1] == '"' && source[end] == '"'
+func nativeBracedShellVariable(source string, start int) (int, bool) {
+	if start+3 >= len(source) || source[start+1] != '{' {
+		return 0, false
+	}
+	end := strings.IndexByte(source[start+2:], '}')
+	if end < 0 {
+		return 0, false
+	}
+	end += start + 2
+	name := source[start+2 : end]
+	if !isNativeShellVariable(name) || reserved[name] {
+		return 0, false
+	}
+	return end + 1, true
 }
 
 func shellQuote(value string) string {
@@ -367,4 +443,8 @@ func shellQuote(value string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func shellEscapeSingleQuoted(value string) string {
+	return strings.ReplaceAll(value, "'", "'\"'\"'")
 }

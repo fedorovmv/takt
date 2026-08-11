@@ -19,22 +19,16 @@ func ValidateReferences(wf *spec.Workflow, cfg *spec.Config, resolver command.Re
 	if cfg == nil {
 		return fmt.Errorf("config is required")
 	}
-	defaults := wf.Defaults
-	if defaults.Assistant == "" {
-		defaults.Assistant = wf.Provider
-	}
-	if defaults.Model == "" {
-		defaults.Model = wf.Model
-	}
+	defaults := effectiveDefaults{Provider: wf.Provider, Model: wf.Model, Context: "fresh"}
 	return validateReferencesRecursive(wf.Nodes, defaults, cfg, resolver, map[string]bool{}, 0)
 }
 
-func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg *spec.Config, resolver command.Resolver, stack map[string]bool, depth int) error {
+func validateReferencesRecursive(nodes []spec.Node, defaults effectiveDefaults, cfg *spec.Config, resolver command.Resolver, stack map[string]bool, depth int) error {
 	if depth > maxGovernedWorkflowDepth {
 		return fmt.Errorf("governed child workflow validation exceeds depth %d", maxGovernedWorkflowDepth)
 	}
 	for _, n := range nodes {
-		assistantName, modelName := n.Assistant, n.Model
+		assistantName, modelName := n.Provider, n.Model
 		if assistantName == "" {
 			assistantName = n.Provider
 		}
@@ -55,7 +49,7 @@ func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg 
 		}
 		if n.Command != "" || n.Prompt != "" {
 			if assistantName == "" {
-				assistantName = defaults.Assistant
+				assistantName = defaults.Provider
 			}
 			if modelName == "" {
 				modelName = defaults.Model
@@ -110,15 +104,15 @@ func validateReferencesRecursive(nodes []spec.Node, defaults spec.Defaults, cfg 
 				return fmt.Errorf("node %q child output_node %q does not exist", n.ID, n.WorkflowRun.OutputNode)
 			}
 		} else if terminals := PublicTerminalIDs(child.Nodes); len(terminals) != 1 {
-			return fmt.Errorf("node %q child workflow %q has %d terminal nodes; set output_node", n.ID, child.Metadata.Name, len(terminals))
+			return fmt.Errorf("node %q child workflow %q has %d terminal nodes; set output_node", n.ID, child.Name, len(terminals))
 		}
 		childResolver := resolver
 		childResolver.Dirs = append(CommandDirsForDefinition(path), childResolver.Dirs...)
 		stack[path] = true
-		err = validateReferencesRecursive(child.Nodes, child.Defaults, cfg, childResolver, stack, depth+1)
+		err = validateReferencesRecursive(child.Nodes, effectiveDefaults{Provider: child.Provider, Model: child.Model, Context: "fresh"}, cfg, childResolver, stack, depth+1)
 		delete(stack, path)
 		if err != nil {
-			return fmt.Errorf("node %q child workflow %q: %w", n.ID, child.Metadata.Name, err)
+			return fmt.Errorf("node %q child workflow %q: %w", n.ID, child.Name, err)
 		}
 	}
 	return nil

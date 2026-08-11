@@ -34,3 +34,14 @@ func TestApprovalOutputFallsBackToDurableAnswer(t *testing.T) {
 		t.Fatalf("approval output = %q", value)
 	}
 }
+
+func TestLoopPreviousIsImplicitlyEmptyOnFirstIteration(t *testing.T) {
+	state := &store.RunState{Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}
+	value, err := renderTemplate("$LOOP_PREV.review.output", state, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value != "" {
+		t.Fatalf("first iteration loop previous = %q, want empty", value)
+	}
+}
