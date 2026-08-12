@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -69,6 +70,9 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 		return nil, err
 	}
 	output = filepath.Clean(output)
+	if err := validateFlowOutput(output, suite, opts.InvocationWorkspace); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(output, 0755); err != nil {
 		return nil, err
 	}
@@ -85,27 +89,28 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 		Environment: EnvironmentIdentity{GOOS: goruntime.GOOS, GOARCH: goruntime.GOARCH, GoVersion: goruntime.Version(), PATHSHA256: hex.EncodeToString(pathHash[:])},
 	}
 	var oracleMetadata, strategyFingerprint string
+	var redactor *redact.Redactor
 	for _, item := range cases {
 		for repeat := 1; repeat <= opts.Repeat; repeat++ {
 			prepared, prepErr := PrepareFlowRepeat(ctx, suite, item, repeat, output, opts.HostPATH)
 			if prepErr != nil {
-				return finishFlowPartial(report, output, opts.Now, prepErr)
+				return finishFlowPartial(report, output, opts.Now, nil, prepErr)
 			}
 			cfg, cfgErr := config.Load(prepared.ConfigPath)
 			if cfgErr != nil {
-				return finishFlowPartial(report, output, opts.Now, cfgErr)
+				return finishFlowPartial(report, output, opts.Now, nil, cfgErr)
 			}
-			redactor := redact.NewFromConfig(cfg)
+			redactor = redact.NewFromConfig(cfg)
 			preflight, metadata, preflightErr := PreflightFlowValidator(ctx, suite.Validator, item.ID, prepared.BaselineWorkspace, item.ExpectedPath, suite.SuiteDir)
 			if preflightErr != nil {
 				_ = preflight
-				return finishFlowPartial(report, output, opts.Now, preflightErr)
+				return finishFlowPartial(report, output, opts.Now, redactor, preflightErr)
 			}
 			if oracleMetadata == "" {
 				oracleMetadata = metadata
 				report.Environment.OracleMetadataSHA256 = metadata
 			} else if oracleMetadata != metadata {
-				return finishFlowPartial(report, output, opts.Now, errors.New("oracle_identity_drift"))
+				return finishFlowPartial(report, output, opts.Now, redactor, errors.New("oracle_identity_drift"))
 			}
 
 			selector := suite.Workflow
@@ -121,7 +126,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 				if callbackErr == nil {
 					callbackErr = errors.New("flow case runner returned no root snapshot")
 				}
-				return finishFlowPartial(report, output, opts.Now, callbackErr)
+				return finishFlowPartial(report, output, opts.Now, redactor, callbackErr)
 			}
 
 			root := result.States[0]
@@ -162,27 +167,29 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			report.Runs = append(report.Runs, record)
 			addSummary(&report.Summary, record)
 			if err := writeFlowRepeatEvidence(output, item, repeat, result, request, validationResult, prepared, redactor); err != nil {
-				return finishFlowPartial(report, output, opts.Now, err)
+				return finishFlowPartial(report, output, opts.Now, redactor, err)
 			}
-			if err := writeFlowReport(output, report, opts.Now); err != nil {
+			if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
 				return report, err
 			}
 			candidateStrategy, strategyErr := flowStrategy(root, prepared.ProfileFingerprint)
 			if strategyErr != nil {
-				return finishFlowPartial(report, output, opts.Now, strategyErr)
+				return finishFlowPartial(report, output, opts.Now, redactor, strategyErr)
 			}
 			if strategyFingerprint == "" {
 				strategyFingerprint = candidateStrategy.Fingerprint
 				report.Strategy = candidateStrategy
 			} else if strategyFingerprint != candidateStrategy.Fingerprint {
-				return finishFlowPartial(report, output, opts.Now, errors.New("strategy_identity_drift"))
+				return finishFlowPartial(report, output, opts.Now, redactor, errors.New("strategy_identity_drift"))
 			}
 			if result.ContextCancelled || ctx.Err() != nil {
 				if opts.KeepWorkspaces {
 					report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "skipped"}
 				} else if cleanupErr := cleanupFlowResult(ctx, result, output, prepared); cleanupErr != nil {
-					report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "error", Error: cleanupErr.Error()}
-					_ = writeFlowReport(output, report, opts.Now)
+					report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "error", Error: cleanupErr.Error(), Paths: flowCleanupPaths(prepared)}
+					if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
+						return report, fmt.Errorf("persist cleanup flow report: %w", err)
+					}
 					return report, cleanupErr
 				} else {
 					report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "completed", Paths: flowCleanupPaths(prepared)}
@@ -191,21 +198,23 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 				if cancelErr == nil {
 					cancelErr = context.Canceled
 				}
-				return finishFlowPartial(report, output, opts.Now, cancelErr)
+				return finishFlowPartial(report, output, opts.Now, redactor, cancelErr)
 			}
 			if paused {
-				return finishFlowPartial(report, output, opts.Now, errors.New("run_paused"))
+				return finishFlowPartial(report, output, opts.Now, redactor, errors.New("run_paused"))
 			}
 			if opts.KeepWorkspaces {
 				report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "skipped"}
 			} else if cleanupErr := cleanupFlowResult(ctx, result, output, prepared); cleanupErr != nil {
-				report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "error", Error: cleanupErr.Error()}
-				_ = writeFlowReport(output, report, opts.Now)
+				report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "error", Error: cleanupErr.Error(), Paths: flowCleanupPaths(prepared)}
+				if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
+					return report, fmt.Errorf("persist cleanup flow report: %w", err)
+				}
 				return report, cleanupErr
 			} else {
 				report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "completed", Paths: flowCleanupPaths(prepared)}
 			}
-			if err := writeFlowReport(output, report, opts.Now); err != nil {
+			if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
 				return report, err
 			}
 		}
@@ -220,7 +229,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	if err != nil {
 		return report, err
 	}
-	if err := writeReport(output, report); err != nil {
+	if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
 		return report, err
 	}
 	for _, gate := range ApplyFlowGates(*suite.Gates, report.Summary) {
@@ -303,16 +312,31 @@ func flowDatasetFingerprint(suite *FlowSuite, cases []FlowCase) string {
 
 func sha256Text(value []byte) string { sum := sha256.Sum256(value); return hex.EncodeToString(sum[:]) }
 
-func writeFlowReport(output string, report *SuiteReport, now func() time.Time) error {
+func writeFlowReport(output string, report *SuiteReport, now func() time.Time, redactor *redact.Redactor) error {
 	finishFlowReport(report)
 	report.FinishedAt = now().UTC()
 	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
-	return writeReport(output, report)
+	data, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	var value any
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if redactor != nil {
+		value = redactor.Any(value)
+	}
+	data, err = json.MarshalIndent(value, "", "  ")
+	if err != nil || !json.Valid(data) {
+		return fmt.Errorf("encode redacted flow report: %w", err)
+	}
+	return writeFlowRaw(filepath.Join(output, "report.json"), data, 0644)
 }
 
-func finishFlowPartial(report *SuiteReport, output string, now func() time.Time, cause error) (*SuiteReport, error) {
+func finishFlowPartial(report *SuiteReport, output string, now func() time.Time, redactor *redact.Redactor, cause error) (*SuiteReport, error) {
 	if report != nil {
-		if err := writeFlowReport(output, report, now); err != nil {
+		if err := writeFlowReport(output, report, now, redactor); err != nil {
 			return report, fmt.Errorf("persist partial flow report: %w", err)
 		}
 	}
@@ -331,4 +355,42 @@ func flowReportPath(output, invocation string) string {
 		return filepath.ToSlash(rel)
 	}
 	return output
+}
+
+func validateFlowOutput(output string, suite *FlowSuite, invocation string) error {
+	if _, err := os.Stat(output); err == nil {
+		return fmt.Errorf("flow evaluation output already exists: %s", output)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	invocationPath := ""
+	if invocation != "" {
+		var err error
+		invocationPath, err = filepath.Abs(invocation)
+		if err != nil {
+			return err
+		}
+		invocationPath = filepath.Clean(invocationPath)
+	}
+	for _, path := range []string{suite.SuiteDir, suite.ResolvedCases} {
+		if path == "" {
+			continue
+		}
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		if filepath.Clean(absolute) == invocationPath {
+			continue
+		}
+		if pathsOverlap(output, filepath.Clean(absolute)) {
+			return fmt.Errorf("flow evaluation output overlaps protected path: %s", path)
+		}
+	}
+	if invocationPath != "" {
+		if invocationPath == output {
+			return fmt.Errorf("flow evaluation output is invocation workspace: %s", invocation)
+		}
+	}
+	return nil
 }

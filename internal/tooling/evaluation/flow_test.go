@@ -2,6 +2,8 @@ package evaluation
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -162,6 +164,73 @@ func TestRunFlowDetectsStrategyDriftBeforeCleanup(t *testing.T) {
 	}})
 	if err == nil || !strings.Contains(err.Error(), "strategy_identity_drift") || report == nil || len(report.Runs) != 2 || cleaned != 1 || report.Strategy.WorkflowFingerprint != "one" {
 		t.Fatalf("report=%+v err=%v cleaned=%d", report, err, cleaned)
+	}
+}
+
+func TestRunFlowRedactsPersistedReport(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	secret := "flow-report-secret"
+	t.Setenv("FLOW_REPORT_SECRET", secret)
+	mustWrite(t, filepath.Join(root, "config.yaml"), "apiVersion: takt/v1alpha1\nkind: Config\nassistants:\n  fake:\n    type: mock\n    env:\n      TOKEN: secret://FLOW_REPORT_SECRET\n", 0644)
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	report, err := RunFlow(context.Background(), FlowRunOptions{SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root, CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+		return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunFailed, ExecutionWorkspace: request.Workspace, Error: secret, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, fmt.Errorf("callback %s", secret)
+	}})
+	if report == nil || (err != nil && !strings.Contains(err.Error(), "flow evaluation gates failed")) {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(root, "out", "report.json"))
+	if readErr != nil || strings.Contains(string(data), secret) || !json.Valid(data) {
+		t.Fatalf("read=%v json=%v report=%s", readErr, json.Valid(data), data)
+	}
+}
+
+func TestRunFlowReturnsPersistenceErrorAfterCleanupFailure(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	_, err := RunFlow(context.Background(), FlowRunOptions{SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root, CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+		return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}, Cleanup: func(context.Context) (*store.RunState, error) {
+			_ = os.Remove(filepath.Join(root, "out", "report.json"))
+			if mkdirErr := os.Mkdir(filepath.Join(root, "out", "report.json"), 0755); mkdirErr != nil {
+				t.Fatal(mkdirErr)
+			}
+			return nil, errors.New("cleanup failed")
+		}}, nil
+	}})
+	if err == nil || !strings.Contains(err.Error(), "persist cleanup flow report") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestRunFlowRejectsExistingOrOverlappingOutputBeforeCallback(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	for _, output := range []string{filepath.Join(root, "existing"), root, filepath.Join(root, "cases", "output")} {
+		if filepath.Base(output) == "existing" {
+			if err := os.Mkdir(output, 0755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		called := false
+		_, err := RunFlow(context.Background(), FlowRunOptions{SuitePath: suitePath, OutputDir: output, InvocationWorkspace: root, CaseRunner: func(context.Context, FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			called = true
+			return FlowCaseRunResult{}, nil
+		}})
+		if err == nil || called {
+			t.Fatalf("output=%s err=%v called=%v", output, err, called)
+		}
+	}
+}
+
+func TestRunFlowAllowsOutputBelowInvocationWorkspace(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	called := false
+	_, err := RunFlow(context.Background(), FlowRunOptions{SuitePath: suitePath, OutputDir: filepath.Join(root, ".takt", "evals", "out"), InvocationWorkspace: root, CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+		called = true
+		return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
+	}})
+	if err != nil || !called {
+		t.Fatalf("err=%v called=%v", err, called)
 	}
 }
 
