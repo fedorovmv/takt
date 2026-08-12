@@ -128,6 +128,9 @@ func LoadFlowSuite(path string) (*FlowSuite, error) {
 	} else if err := validateGates(*s.Gates); err != nil {
 		return nil, err
 	}
+	if err := validateGatePresence(src); err != nil {
+		return nil, err
+	}
 	return &s, nil
 }
 func LoadFlowExpectation(path string) (*FlowExpectation, error) {
@@ -172,10 +175,7 @@ func resolveRelative(dir, p string) string {
 }
 func fileRegular(p string) bool { i, e := os.Stat(p); return e == nil && i.Mode().IsRegular() }
 func validateGates(g FlowGates) error {
-	for name, t := range map[string]FlowThreshold{"validation_error_rate": g.ValidationErrorRate, "valid_rate": g.ValidRate, "false_accept_rate": g.FalseAcceptRate, "false_reject_rate": g.FalseRejectRate, "flow_completion_rate": g.FlowCompletionRate} {
-		if t.Min == nil && t.Max == nil && gatePresent(name, g) {
-			return fmt.Errorf("%s must specify min or max", name)
-		}
+	for _, t := range []FlowThreshold{g.ValidationErrorRate, g.ValidRate, g.FalseAcceptRate, g.FalseRejectRate, g.FlowCompletionRate} {
 		if t.Min != nil && t.Max != nil {
 			return fmt.Errorf("gate must specify exactly one of min or max")
 		}
@@ -190,15 +190,45 @@ func validateGates(g FlowGates) error {
 			return fmt.Errorf("gate rate must be between 0 and 1")
 		}
 	}
-	if g.UnstableCases.Max == nil && g.UnstableCases != (FlowCountThreshold{}) {
-		return fmt.Errorf("unstable_cases requires max")
-	}
 	return nil
 }
-func gatePresent(name string, g FlowGates) bool {
-	b, _ := json.Marshal(g)
-	var m map[string]json.RawMessage
-	_ = json.Unmarshal(b, &m)
-	_, ok := m[name]
-	return ok
+func validateGatePresence(src []byte) error {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(normalizeJSON(src), &root); err != nil {
+		return err
+	}
+	raw, ok := root["gates"]
+	if !ok {
+		return nil
+	}
+	var gates map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &gates); err != nil {
+		return err
+	}
+	for _, name := range []string{"validation_error_rate", "valid_rate", "false_accept_rate", "false_reject_rate", "flow_completion_rate"} {
+		if v, ok := gates[name]; ok {
+			var m map[string]json.RawMessage
+			if err := json.Unmarshal(v, &m); err != nil {
+				return err
+			}
+			if len(m) != 1 {
+				return fmt.Errorf("%s must specify exactly one of min or max", name)
+			}
+			if _, ok := m["min"]; !ok {
+				if _, ok := m["max"]; !ok {
+					return fmt.Errorf("%s must specify min or max", name)
+				}
+			}
+		}
+	}
+	if v, ok := gates["unstable_cases"]; ok {
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(v, &m); err != nil {
+			return err
+		}
+		if _, ok := m["max"]; !ok || len(m) != 1 {
+			return fmt.Errorf("unstable_cases requires max")
+		}
+	}
+	return nil
 }

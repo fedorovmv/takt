@@ -65,3 +65,13 @@ extra: x`))
 		t.Fatal("nul accepted")
 	}
 }
+
+func TestFlowSuiteExplicitGatesReplaceDefaults(t *testing.T) {
+	s, err := LoadFlowSuite(writeFlowTestFile(t, "suite.yaml", flowValid+"gates:\n  validation_error_rate: {max: 0}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Gates.ValidRate.Min != nil || s.Gates.ValidationErrorRate.Max == nil {
+		t.Fatalf("gates=%+v", s.Gates)
+	}
+}
