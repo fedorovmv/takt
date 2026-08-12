@@ -65,6 +65,20 @@ func TestUnknownBuiltin(t *testing.T) {
 	}
 }
 
+func TestBuiltinAndSelectorParts(t *testing.T) {
+	if !IsBuiltin(" code ") || IsBuiltin("missing") || IsBuiltin("") {
+		t.Fatal("unexpected built-in profile result")
+	}
+	name, workflow := SelectorParts(" code : feature-development ")
+	if name != "code" || workflow != "feature-development" {
+		t.Fatalf("selector parts = %q, %q", name, workflow)
+	}
+	name, workflow = SelectorParts(" workflows/local.yaml ")
+	if name != "workflows/local.yaml" || workflow != "" {
+		t.Fatalf("path selector parts = %q, %q", name, workflow)
+	}
+}
+
 func TestCodeProfileShipsNineteenRoutedWorkflows(t *testing.T) {
 	root := t.TempDir()
 	if _, err := Init("code", root, false); err != nil {
