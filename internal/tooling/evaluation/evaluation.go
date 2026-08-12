@@ -787,7 +787,7 @@ func addSummary(summary *Summary, record RunRecord) {
 	}
 	if record.Mode == "flow" {
 		addFlowSummary(summary, record)
-		if record.Validation == nil || record.Validation.Status != "completed" {
+		if record.Validation == nil || record.Validation.Status != "completed" || record.Validation.Result == nil {
 			return
 		}
 		record.QualityExpected = true

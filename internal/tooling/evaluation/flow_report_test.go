@@ -181,6 +181,15 @@ func TestFlowSummaryNullAndMeasuredZeroRates(t *testing.T) {
 	}
 }
 
+func TestFlowValidationWithoutResultDoesNotEnterQualityTotals(t *testing.T) {
+	report := &SuiteReport{Mode: "flow", Summary: newSummary(), Runs: []RunRecord{{Mode: "flow", Status: store.RunFailed, Validation: &FlowValidationRecord{Status: "completed"}}}}
+	addSummary(&report.Summary, report.Runs[0])
+	finishReport(report)
+	if report.Summary.Flow.EvaluatedRuns != 0 || report.Summary.Flow.ValidationErrors != 1 || report.Summary.QualityRuns != 0 || report.Summary.Invalid != 0 {
+		t.Fatalf("summary=%+v", report.Summary)
+	}
+}
+
 func TestApplyFlowGates(t *testing.T) {
 	zero, one := 0.0, 1.0
 	summary := Summary{Flow: &FlowSummary{ValidRate: &one, ValidationErrorRate: &zero, FlowCompletionRate: &one}}
