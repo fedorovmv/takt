@@ -117,6 +117,30 @@ func TestPrepareFlowRepeatModelSlots(t *testing.T) {
 	}
 }
 
+func TestPrepareFlowRepeatRejectsNullFixesPermitted(t *testing.T) {
+	for _, selector := range []string{"code:comprehensive-pr-review", "code:architect"} {
+		t.Run(selector, func(t *testing.T) {
+			input := `{"repository":"acme/repo","pull_request":1,"fixes_permitted":null,"validation_commands":["go test ./..."]}`
+			models := []string{"review"}
+			if selector == "code:architect" {
+				models = []string{"implementation", "review", "routing"}
+			}
+			suite, item := prepareFlowFixture(t, selector, flowConfig(models...), input)
+			if _, err := PrepareFlowRepeat(context.Background(), suite, item, 1, t.TempDir(), "/host/bin"); err == nil || !strings.Contains(err.Error(), "fixes_permitted") {
+				t.Fatalf("expected fixes_permitted error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestPrepareFlowRepeatAcceptsEmptyRepository(t *testing.T) {
+	input := `{"repository":"","pull_request":1,"fixes_permitted":false,"validation_commands":["go test ./..."]}`
+	suite, item := prepareFlowFixture(t, "code:comprehensive-pr-review", flowConfig("review"), input)
+	if _, err := PrepareFlowRepeat(context.Background(), suite, item, 1, t.TempDir(), "/host/bin"); err != nil {
+		t.Fatalf("empty repository should remain a string: %v", err)
+	}
+}
+
 func prepareFlowFixture(t *testing.T, workflow, configText, input string) (*FlowSuite, FlowCase) {
 	t.Helper()
 	root := t.TempDir()

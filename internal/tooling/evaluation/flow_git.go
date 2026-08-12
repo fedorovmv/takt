@@ -158,13 +158,14 @@ func validateFlowPRInput(input []byte, comprehensive bool) error {
 	var repository string
 	var pullRequest int
 	var fixesPermitted bool
-	if err := json.Unmarshal(values["repository"], &repository); err != nil || repository == "" {
+	if err := json.Unmarshal(values["repository"], &repository); err != nil {
 		return fmt.Errorf("workflow input repository must be a string")
 	}
 	if err := json.Unmarshal(values["pull_request"], &pullRequest); err != nil || pullRequest <= 0 {
 		return fmt.Errorf("workflow input pull_request must be a positive integer")
 	}
-	if err := json.Unmarshal(values["fixes_permitted"], &fixesPermitted); err != nil {
+	fixesPermittedValue, ok := values["fixes_permitted"]
+	if !ok || bytes.Equal(bytes.TrimSpace(fixesPermittedValue), []byte("null")) || json.Unmarshal(fixesPermittedValue, &fixesPermitted) != nil {
 		return fmt.Errorf("workflow input fixes_permitted must be a boolean")
 	}
 	if !comprehensive {
