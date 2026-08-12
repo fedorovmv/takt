@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -36,6 +37,18 @@ type FlowSCMPullRequest struct {
 }
 
 var flowSCMRepository = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
+
+type flowGHRepoView struct {
+	NameWithOwner string `json:"nameWithOwner"`
+}
+type flowGHPullRequestView struct {
+	Number      int    `json:"number"`
+	Title       string `json:"title"`
+	State       string `json:"state"`
+	BaseRefName string `json:"baseRefName"`
+	HeadRefName string `json:"headRefName"`
+	URL         string `json:"url"`
+}
 
 func LoadFlowSCMFixture(caseRoot string, require string) (*FlowSCMFixture, error) {
 	if require != "repository" && require != "pull_request" {
@@ -162,4 +175,47 @@ func invalidFlowPatchPath(path string) bool {
 		}
 	}
 	return false
+}
+
+func writeFlowGHFixture(control string, fixture *FlowSCMFixture) error {
+	if fixture == nil {
+		return fmt.Errorf("nil SCM fixture")
+	}
+	dir := filepath.Join(control, ".takt", "eval", "scm-fixture")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	bin := filepath.Join(control, ".takt", "eval", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(bin, "gh"), FakeGHFixture(), 0o755); err != nil {
+		return err
+	}
+	writeJSON := func(name string, value any) error {
+		data, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dir, name), append(data, '\n'), 0o644)
+	}
+	if err := writeJSON("repo-view.json", flowGHRepoView{NameWithOwner: fixture.Repository.Repository}); err != nil {
+		return err
+	}
+	prefix := "https://example.test/" + fixture.Repository.Repository + "/pull/"
+	if err := os.WriteFile(filepath.Join(dir, "pr-url-prefix"), []byte(prefix+"\n"), 0o644); err != nil {
+		return err
+	}
+	if fixture.PullRequest == nil {
+		return writeJSON("pr-list.json", []flowGHPullRequestView{})
+	}
+	pr := fixture.PullRequest
+	view := flowGHPullRequestView{Number: pr.Number, Title: pr.Title, State: pr.State, BaseRefName: pr.Base, HeadRefName: pr.Head, URL: prefix + strconv.Itoa(pr.Number)}
+	if err := writeJSON("pr-view.json", view); err != nil {
+		return err
+	}
+	if err := writeJSON("pr-list.json", []flowGHPullRequestView{view}); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "pr-number"), []byte(strconv.Itoa(pr.Number)+"\n"), 0o644)
 }

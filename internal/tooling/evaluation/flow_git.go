@@ -66,6 +66,17 @@ func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, rep
 	if err := requireFlowModelSlots(selector, cfg.Models); err != nil {
 		return nil, err
 	}
+	if suite.External.GitHub != nil {
+		if err := overlayFlowAssistantEnvironment(cfg, hostPath); err != nil {
+			return nil, err
+		}
+		if err := writeFlowConfig(configPath, cfg); err != nil {
+			return nil, err
+		}
+		if _, err := config.Load(configPath); err != nil {
+			return nil, err
+		}
+	}
 	inputValue, err := flowInputValue(selector, item.InputPath, filepath.Join(control, ".takt", "eval", "input.md"))
 	if err != nil {
 		return nil, err
@@ -210,6 +221,9 @@ func prepareFlowSCM(ctx context.Context, suite *FlowSuite, item FlowCase, contro
 	if err != nil {
 		return "", "", "", err
 	}
+	if err := writeFlowGHFixture(control, fixture); err != nil {
+		return "", "", "", err
+	}
 	if err := initFlowGit(ctx, control, fixture.Repository.BaseBranch); err != nil {
 		return "", "", "", err
 	}
@@ -257,6 +271,37 @@ func prepareFlowSCM(ctx context.Context, suite *FlowSuite, item FlowCase, contro
 		return "", "", "", fmt.Errorf("initial evaluation workspace is dirty: %s", status)
 	}
 	return strings.TrimSpace(base), strings.TrimSpace(head), bareRemote, nil
+}
+
+func overlayFlowAssistantEnvironment(cfg *spec.Config, hostPath string) error {
+	values := map[string]string{
+		"PATH":                "{{workspace}}/.takt/eval/bin:" + hostPath,
+		"FAKE_GH_FIXTURE_DIR": "{{workspace}}/.takt/eval/scm-fixture",
+		"FAKE_GH_STATE_DIR":   "{{workspace}}/.takt/evals/scm",
+	}
+	for name, assistant := range cfg.Assistants {
+		env := make(map[string]string, len(assistant.Env)+len(values))
+		for key, value := range assistant.Env {
+			env[key] = value
+		}
+		for key, value := range values {
+			if current, exists := env[key]; exists && current != value {
+				return fmt.Errorf("assistant %q env %q conflicts with flow evaluation fixture", name, key)
+			}
+			env[key] = value
+		}
+		assistant.Env = env
+		cfg.Assistants[name] = assistant
+	}
+	return nil
+}
+
+func writeFlowConfig(path string, cfg *spec.Config) error {
+	encoded, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(encoded, '\n'), 0o644)
 }
 
 func initFlowGit(ctx context.Context, control, branch string) error {

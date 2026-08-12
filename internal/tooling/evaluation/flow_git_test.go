@@ -36,6 +36,51 @@ func TestPrepareFlowRepeatCommitsProfileBeforeBaseline(t *testing.T) {
 	requireTreeEqualWithoutGit(t, prepared.ControlWorkspace, prepared.BaselineWorkspace)
 }
 
+func TestAssistantEnvOverlayAppliesBeforeBaseline(t *testing.T) {
+	suite, item := prepareFlowFixture(t, "code:feature-development", flowConfig("implementation", "review"), "# task\n")
+	suite.External.GitHub = &FlowGitHubSpec{Mode: "fixture", Require: "repository"}
+	item.SCMPath = filepath.Join(item.Root, "scm")
+	if err := os.MkdirAll(item.SCMPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFlowSCMFiles(t, item.SCMPath, "repository: other/repo\nbase_branch: main\nhead_branch: feature/x\n", "", "")
+	prepared, err := PrepareFlowRepeat(context.Background(), suite, item, 1, t.TempDir(), "/host/bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{".takt/eval/bin/gh", ".takt/eval/scm-fixture/repo-view.json", ".takt/eval/scm-fixture/pr-list.json", ".takt/eval/scm-fixture/pr-url-prefix"} {
+		requireGitTracked(t, prepared.ControlWorkspace, path)
+	}
+	if _, err := os.Stat(filepath.Join(prepared.ControlWorkspace, ".takt", "evals", "scm")); !os.IsNotExist(err) {
+		t.Fatalf("mutable state before run: %v", err)
+	}
+	data, err := os.ReadFile(prepared.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"PATH": "{{workspace}}/.takt/eval/bin:/host/bin"`, `"FAKE_GH_FIXTURE_DIR": "{{workspace}}/.takt/eval/scm-fixture"`, `"FAKE_GH_STATE_DIR": "{{workspace}}/.takt/evals/scm"`} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("config misses %q: %s", want, data)
+		}
+	}
+	if out := gitOutput(t, prepared.ControlWorkspace, "show", "HEAD:.takt/eval/bin/gh"); !strings.Contains(out, "FAKE_GH_FIXTURE_DIR") {
+		t.Fatalf("fake gh not in baseline: %q", out)
+	}
+}
+
+func TestAssistantEnvOverlayRejectsConflictingValues(t *testing.T) {
+	suite, item := prepareFlowFixture(t, "code:feature-development", strings.Replace(flowConfig("implementation", "review"), "type: mock", "type: mock\n    env:\n      PATH: other", 1), "# task\n")
+	suite.External.GitHub = &FlowGitHubSpec{Mode: "fixture", Require: "repository"}
+	item.SCMPath = filepath.Join(item.Root, "scm")
+	if err := os.MkdirAll(item.SCMPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeFlowSCMFiles(t, item.SCMPath, "repository: acme/repo\nbase_branch: main\nhead_branch: feature/x\n", "", "")
+	if _, err := PrepareFlowRepeat(context.Background(), suite, item, 1, t.TempDir(), "/host/bin"); err == nil || !strings.Contains(err.Error(), "PATH") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
 func TestPrepareFlowRepeatUsesCleanIndependentRepeat(t *testing.T) {
 	suite, item := prepareFlowFixture(t, "code:feature-development", flowConfig("implementation", "review"), "# task\n")
 	evidence := t.TempDir()

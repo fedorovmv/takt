@@ -3,10 +3,98 @@ package evaluation
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestFakeGHFixtureContract(t *testing.T) {
+	root := t.TempDir()
+	bin, fixture, state := filepath.Join(root, "bin"), filepath.Join(root, "fixture"), filepath.Join(root, "state")
+	if err := os.MkdirAll(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(fixture, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "gh"), FakeGHFixture(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"repo-view.json":  `{"nameWithOwner":"other/repo"}` + "\n",
+		"issue-view.json": `{"number":9,"repository":{"nameWithOwner":"other/repo"}}` + "\n",
+		"issue-number":    "9\n",
+		"pr-view.json":    `{"number":7,"state":"OPEN","url":"https://example.test/other/repo/pull/7"}` + "\n",
+		"pr-list.json":    `[{"number":7,"state":"OPEN"}]` + "\n",
+		"pr-number":       "7\n",
+		"pr-url-prefix":   "https://example.test/other/repo/pull/\n",
+	} {
+		if err := os.WriteFile(filepath.Join(fixture, name), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env := []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"), "FAKE_GH_FIXTURE_DIR=" + fixture, "FAKE_GH_STATE_DIR=" + state}
+	run := func(args ...string) (string, error) {
+		cmd := exec.Command(filepath.Join(bin, "gh"), args...)
+		cmd.Env = append(os.Environ(), env...)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	for _, call := range [][]string{{"repo", "view", "--json", "nameWithOwner"}, {"issue", "view", "9", "--json", "number"}, {"pr", "view", "7", "--json", "number"}, {"pr", "list", "--json", "number"}} {
+		got, err := run(call...)
+		if err != nil || !strings.Contains(got, "other/repo") && call[0] != "pr" {
+			t.Fatalf("gh %v = %q, %v", call, got, err)
+		}
+	}
+	for want, args := range map[string][]string{"https://example.test/other/repo/pull/8\n": {"pr", "create", "--draft", "--title", "first title", "--body", "first body"}, "https://example.test/other/repo/pull/9\n": {"pr", "create", "--title", "second title", "--body", "second body"}} {
+		got, err := run(args...)
+		if err != nil || got != want {
+			t.Fatalf("gh %v = %q, %v; want %q", args, got, err, want)
+		}
+	}
+	if _, err := run("pr", "view", "1"); err == nil {
+		t.Fatal("wrong PR number succeeded")
+	}
+	if _, err := run("api", "user"); err == nil {
+		t.Fatal("unsupported command succeeded")
+	}
+	log, err := os.ReadFile(filepath.Join(state, "calls.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(log), "first\\ title") || !strings.Contains(string(log), "api user") {
+		t.Fatalf("calls log=%q", log)
+	}
+}
+
+func TestFakeGHFixtureIsolatesState(t *testing.T) {
+	root := t.TempDir()
+	fixture := filepath.Join(root, "fixture")
+	if err := os.MkdirAll(fixture, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"repo-view.json": "{}\n", "pr-list.json": "[]\n", "pr-url-prefix": "https://example.test/acme/repo/pull/\n"} {
+		if err := os.WriteFile(filepath.Join(fixture, name), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "gh"), FakeGHFixture(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []string{filepath.Join(root, "one"), filepath.Join(root, "two")} {
+		cmd := exec.Command(filepath.Join(bin, "gh"), "pr", "create", "--title", "x", "--body", "y")
+		cmd.Env = append(os.Environ(), "FAKE_GH_FIXTURE_DIR="+fixture, "FAKE_GH_STATE_DIR="+state)
+		out, err := cmd.Output()
+		if err != nil || string(out) != "https://example.test/acme/repo/pull/1\n" {
+			t.Fatalf("state %q: %q %v", state, out, err)
+		}
+	}
+}
 
 func TestLoadFlowSCMFixtureStrictContract(t *testing.T) {
 	for _, test := range []struct {
