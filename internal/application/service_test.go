@@ -19,7 +19,7 @@ func TestEvaluationSnapshotIncludesDurableRunTreeWithoutSharingStoreState(t *tes
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
 	now := time.Now().UTC()
 	child := &store.RunState{ID: "snapshot-child", Status: store.RunCompleted, ConfigPath: configPath, Workspace: workspace, CreatedAt: now, UpdatedAt: now, Nodes: map[string]*store.NodeState{"compiled": {Status: store.NodeCompleted, External: &store.ExternalExecutionState{ClaimToken: "secret-claim"}}}, Approvals: map[string]string{}, Artifacts: []store.ArtifactRef{{ID: "child-artifact", ProducerRunID: "snapshot-child"}}}
-	root := &store.RunState{ID: "snapshot-root", Status: store.RunCompleted, ConfigPath: configPath, Workspace: workspace, CreatedAt: now, UpdatedAt: now, Nodes: map[string]*store.NodeState{"visible": {Status: store.NodeCompleted}}, Approvals: map[string]string{}, ChildRunIDs: []string{child.ID}, Artifacts: []store.ArtifactRef{{ID: "root-artifact", ProducerRunID: "snapshot-root"}}}
+	root := &store.RunState{ID: "snapshot-root", Status: store.RunCompleted, ConfigPath: configPath, Workspace: workspace, CreatedAt: now, UpdatedAt: now, Nodes: map[string]*store.NodeState{"visible": {Status: store.NodeCompleted}, "compiled": {Status: store.NodeCompleted, Hidden: true}}, Approvals: map[string]string{}, ChildRunIDs: []string{child.ID}, Artifacts: []store.ArtifactRef{{ID: "root-artifact", ProducerRunID: "snapshot-root"}}}
 	fs := store.FS{Workspace: workspace}
 	if err := fs.Save(child); err != nil {
 		t.Fatal(err)
@@ -28,7 +28,7 @@ func TestEvaluationSnapshotIncludesDurableRunTreeWithoutSharingStoreState(t *tes
 		t.Fatal(err)
 	}
 	for i := 0; i < 1001; i++ {
-		if err := fs.Commit(root, store.Event{Type: "snapshot", RunID: root.ID}); err != nil {
+		if err := fs.Commit(root, store.Event{Type: "snapshot", RunID: root.ID, Data: map[string]any{"counter": i}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -40,7 +40,7 @@ func TestEvaluationSnapshotIncludesDurableRunTreeWithoutSharingStoreState(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(public.ChildRunIDs) != 1 {
+	if len(public.ChildRunIDs) != 1 || public.Nodes["compiled"] != nil {
 		t.Fatalf("public child ids = %#v", public.ChildRunIDs)
 	}
 	snapshot, err := service.RunService.EvaluationSnapshot(root.ID)
@@ -60,13 +60,17 @@ func TestEvaluationSnapshotIncludesDurableRunTreeWithoutSharingStoreState(t *tes
 		t.Fatalf("artifact dirs = %#v", snapshot.ArtifactDirs)
 	}
 	snapshot.States[0].Nodes["visible"].Status = store.NodeFailed
-	snapshot.Events[0].Data = map[string]any{"changed": true}
+	snapshot.Events[0].Data["counter"] = "changed"
 	loaded, err := fs.Load(root.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if loaded.Nodes["visible"].Status != store.NodeCompleted {
 		t.Fatalf("snapshot aliases stored state")
+	}
+	events, err := fs.ReadEvents(root.ID, 0, 1)
+	if err != nil || events[0].Data["counter"] == "changed" {
+		t.Fatalf("snapshot aliases stored events: %#v err=%v", events, err)
 	}
 	if _, err := json.Marshal(snapshot); err != nil {
 		t.Fatal(err)
