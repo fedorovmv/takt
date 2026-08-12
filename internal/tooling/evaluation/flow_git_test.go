@@ -141,6 +141,20 @@ func TestPrepareFlowRepeatAcceptsEmptyRepository(t *testing.T) {
 	}
 }
 
+func TestPrepareFlowRepeatRejectsMissingOrNullRepository(t *testing.T) {
+	for _, input := range []string{
+		`{"pull_request":1,"fixes_permitted":false,"validation_commands":["go test ./..."]}`,
+		`{"repository":null,"pull_request":1,"fixes_permitted":false,"validation_commands":["go test ./..."]}`,
+	} {
+		t.Run(input, func(t *testing.T) {
+			suite, item := prepareFlowFixture(t, "code:comprehensive-pr-review", flowConfig("review"), input)
+			if _, err := PrepareFlowRepeat(context.Background(), suite, item, 1, t.TempDir(), "/host/bin"); err == nil || !strings.Contains(err.Error(), "repository") {
+				t.Fatalf("expected repository error, got %v", err)
+			}
+		})
+	}
+}
+
 func prepareFlowFixture(t *testing.T, workflow, configText, input string) (*FlowSuite, FlowCase) {
 	t.Helper()
 	root := t.TempDir()
