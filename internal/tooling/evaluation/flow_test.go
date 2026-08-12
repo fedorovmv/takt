@@ -276,6 +276,21 @@ func TestRunFlowRejectsOutputSymlinkedIntoCases(t *testing.T) {
 	}
 }
 
+func TestRunFlowReportsOutputRelativeToSymlinkedInvocation(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	invocation := filepath.Join(t.TempDir(), "invocation")
+	if err := os.Symlink(root, invocation); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	report, err := RunFlow(context.Background(), FlowRunOptions{SuitePath: suitePath, OutputDir: filepath.Join(invocation, ".takt", "evals", "out"), InvocationWorkspace: invocation, CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+		return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
+	}})
+	if err != nil || report == nil || report.OutputDir != ".takt/evals/out" {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+}
+
 func flowRequests(requests []FlowCaseRunRequest) []string {
 	out := make([]string, len(requests))
 	for i, request := range requests {

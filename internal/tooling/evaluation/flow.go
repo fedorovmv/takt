@@ -377,7 +377,7 @@ func flowReportPath(output, invocation string) string {
 	if invocation == "" {
 		return output
 	}
-	root, err := filepath.Abs(invocation)
+	root, err := canonicalPath(invocation)
 	if err != nil {
 		return output
 	}
