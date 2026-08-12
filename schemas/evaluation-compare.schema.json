@@ -94,6 +94,18 @@
         },
         "average_time_to_valid_ms": {
           "$ref": "#/$defs/metric"
+        },
+        "flow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["valid_rate", "false_accept_rate", "false_reject_rate", "flow_completion_rate", "validation_error_rate"],
+          "properties": {
+            "valid_rate": {"$ref": "#/$defs/metric"},
+            "false_accept_rate": {"$ref": "#/$defs/metric"},
+            "false_reject_rate": {"$ref": "#/$defs/metric"},
+            "flow_completion_rate": {"$ref": "#/$defs/metric"},
+            "validation_error_rate": {"$ref": "#/$defs/metric"}
+          }
         }
       }
     },
@@ -155,6 +167,12 @@
               "null"
             ],
             "minimum": 0
+          },
+          "baseline_outcome": {
+            "type": ["string", "null"]
+          },
+          "candidate_outcome": {
+            "type": ["string", "null"]
           }
         }
       }

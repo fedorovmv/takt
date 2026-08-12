@@ -1,6 +1,7 @@
 package schemacontract
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func TestSchemaRegistryIsOfflineAndDocumented(t *testing.T) {
@@ -59,6 +62,36 @@ func TestSchemaRegistryIsOfflineAndDocumented(t *testing.T) {
 	sort.Strings(stale)
 	if len(stale) > 0 {
 		t.Fatalf("schemas/README.md contains stale entries: %s", strings.Join(stale, ", "))
+	}
+}
+
+func TestEvaluationSchemasValidateFlowFixtures(t *testing.T) {
+	sha := strings.Repeat("a", 64)
+	metric := map[string]any{"baseline": nil, "candidate": nil, "delta": nil, "delta_percent": nil}
+	flow := map[string]any{"evaluated_runs": 0, "flow_completed": 0, "true_accept": 0, "false_accept": 0, "true_reject": 0, "false_reject": 0, "validation_errors": 0, "valid_rate": nil, "false_accept_rate": nil, "false_reject_rate": nil, "flow_completion_rate": nil, "validation_error_rate": nil}
+	summary := map[string]any{"total": 0, "by_status": map[string]any{}, "attempts": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0, "duration_ms": 0, "answers": 0, "truncated_nodes": 0, "resumed_nodes": 0, "by_assistant": map[string]any{}, "by_assistant_version": map[string]any{}, "by_requested_model": map[string]any{}, "by_resolved_model": map[string]any{}, "usage_by_execution_identity": map[string]any{}, "mixed_execution_identity_nodes": 0, "quality_runs": 0, "valid": 0, "invalid": 0, "valid_at_first_attempt": 0, "scored_runs": 0, "success_at_1": nil, "final_success_rate": nil, "average_attempts_to_valid": nil, "average_score": nil, "cost_per_valid": nil, "amortized_end_to_end_ms_per_valid": nil, "diagnostics_by_severity": map[string]any{}, "diagnostics_by_code": map[string]any{}, "diagnostics_by_fingerprint": map[string]any{}, "average_time_to_valid_ms": nil, "retry_scheduled": 0, "failed_executions": 0, "failed_execution_cost": 0, "stable_valid_cases": 0, "stable_invalid_cases": 0, "unstable_cases": 0, "flow": flow}
+	report := map[string]any{"report_version": "takt-evaluation/v1alpha1", "takt_version": "test", "started_at": "2026-01-01T00:00:00Z", "finished_at": "2026-01-01T00:00:00Z", "duration_ms": 0, "workflow": "w", "config": "c", "cases_dir": "cases", "output_dir": "out", "mode": "flow", "strategy": map[string]any{"id": "s", "fingerprint": sha, "workflow_fingerprint": sha, "config_fingerprint": sha, "commands_fingerprint": sha}, "benchmark": map[string]any{"id": "b", "fingerprint": sha, "dataset_fingerprint": sha, "workspace_fingerprint": sha, "case_count": 1, "validator": map[string]any{}}, "environment": map[string]any{"goos": "x", "goarch": "x", "go_version": "x", "path_sha256": sha, "oracle_metadata_sha256": sha}, "runs": []any{}, "summary": summary}
+	compare := map[string]any{"report_version": "takt-evaluation-compare/v1alpha1", "benchmark": map[string]any{"id": "b", "fingerprint": sha}, "baseline": map[string]any{"id": "a", "fingerprint": sha}, "candidate": map[string]any{"id": "b", "fingerprint": sha}, "metrics": map[string]any{"success_at_1": metric, "final_success_rate": metric, "average_attempts_to_valid": metric, "average_score": metric, "cost_per_valid": metric, "average_time_to_valid_ms": metric, "flow": map[string]any{"valid_rate": metric, "false_accept_rate": metric, "false_reject_rate": metric, "flow_completion_rate": metric, "validation_error_rate": metric}}, "paired_outcomes": map[string]any{"both_valid": 0, "baseline_only_valid": 0, "candidate_only_valid": 0, "both_invalid": 0}, "cases": []any{}}
+	for name, fixture := range map[string]any{"evaluation-report.schema.json": report, "evaluation-compare.schema.json": compare} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "schemas", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		compiler := jsonschema.NewCompiler()
+		document, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := compiler.AddResource(name, document); err != nil {
+			t.Fatal(err)
+		}
+		schema, err := compiler.Compile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := schema.Validate(fixture); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
 	}
 }
 

@@ -281,7 +281,7 @@ assistants:
 		t.Fatalf("diagnostic summary mismatch: %+v", report.Summary)
 	}
 	for _, record := range report.Runs {
-		if record.Quality == nil || !record.Quality.Valid || record.AttemptsToValid != 1 || !record.ValidAtFirstAttempt {
+		if record.Quality == nil || !record.Quality.Valid || record.AttemptsToValid == nil || *record.AttemptsToValid != 1 || !record.ValidAtFirstAttempt {
 			t.Fatalf("quality record mismatch: %+v", record)
 		}
 		node := record.Nodes["implement"]
@@ -335,7 +335,7 @@ func TestFinishReportUsesTotalCostPerValidResult(t *testing.T) {
 		StartedAt: time.Now().Add(-time.Second),
 		Summary:   newSummary(),
 		Runs: []RunRecord{
-			{Cost: 2, DurationMS: 100, AttemptsToValid: 1, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: true, Score: &score}},
+			{Cost: 2, DurationMS: 100, AttemptsToValid: intPointer(1), QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: true, Score: &score}},
 			{Cost: 3, DurationMS: 200, QualityExpected: true, QualityNodeStatus: string(store.NodeCompleted), Quality: &validation.Result{Valid: false}},
 		},
 	}
@@ -567,7 +567,7 @@ nodes:
 	if run.Quality == nil || !run.Quality.Valid || run.QualityNodeStatus != string(store.NodeFailed) || !strings.Contains(run.QualityError, "did not complete: status=failed") {
 		t.Fatalf("failed quality envelope was not preserved: %+v", run)
 	}
-	if run.AttemptsToValid != 0 || run.ValidAtFirstAttempt {
+	if run.AttemptsToValid == nil || *run.AttemptsToValid != 0 || run.ValidAtFirstAttempt {
 		t.Fatalf("failed quality node was treated as valid: %+v", run)
 	}
 	if report.Summary.Valid != 0 || report.Summary.Invalid != 1 || report.Summary.ScoredRuns != 1 || floatValue(report.Summary.AverageScore) != 100 || floatValue(report.Summary.FinalSuccessRate) != 0 {

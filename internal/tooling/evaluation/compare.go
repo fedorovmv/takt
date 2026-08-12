@@ -33,6 +33,8 @@ type CaseComparison struct {
 	Transition             string            `json:"transition"`
 	BaselineTimeToValidMS  *int64            `json:"baseline_time_to_valid_ms"`
 	CandidateTimeToValidMS *int64            `json:"candidate_time_to_valid_ms"`
+	BaselineOutcome        *string           `json:"baseline_outcome"`
+	CandidateOutcome       *string           `json:"candidate_outcome"`
 }
 
 type CategoryComparison struct {
@@ -42,12 +44,21 @@ type CategoryComparison struct {
 }
 
 type CompareMetrics struct {
-	SuccessAt1         MetricComparison `json:"success_at_1"`
-	FinalSuccessRate   MetricComparison `json:"final_success_rate"`
-	AverageAttempts    MetricComparison `json:"average_attempts_to_valid"`
-	AverageScore       MetricComparison `json:"average_score"`
-	CostPerValid       MetricComparison `json:"cost_per_valid"`
-	AverageTimeToValid MetricComparison `json:"average_time_to_valid_ms"`
+	SuccessAt1         MetricComparison    `json:"success_at_1"`
+	FinalSuccessRate   MetricComparison    `json:"final_success_rate"`
+	AverageAttempts    MetricComparison    `json:"average_attempts_to_valid"`
+	AverageScore       MetricComparison    `json:"average_score"`
+	CostPerValid       MetricComparison    `json:"cost_per_valid"`
+	AverageTimeToValid MetricComparison    `json:"average_time_to_valid_ms"`
+	Flow               *FlowCompareMetrics `json:"flow,omitempty"`
+}
+
+type FlowCompareMetrics struct {
+	ValidRate           MetricComparison `json:"valid_rate"`
+	FalseAcceptRate     MetricComparison `json:"false_accept_rate"`
+	FalseRejectRate     MetricComparison `json:"false_reject_rate"`
+	FlowCompletionRate  MetricComparison `json:"flow_completion_rate"`
+	ValidationErrorRate MetricComparison `json:"validation_error_rate"`
 }
 
 type CompareReport struct {
@@ -68,6 +79,9 @@ func Compare(baseline, candidate *SuiteReport) (*CompareReport, error) {
 	if baseline.Benchmark.Fingerprint == "" || candidate.Benchmark.Fingerprint == "" || baseline.Benchmark.Fingerprint != candidate.Benchmark.Fingerprint {
 		return nil, fmt.Errorf("benchmark fingerprints differ: baseline=%q candidate=%q", baseline.Benchmark.Fingerprint, candidate.Benchmark.Fingerprint)
 	}
+	if (baseline.Mode == "flow") != (candidate.Mode == "flow") {
+		return nil, fmt.Errorf("cannot compare flow and workflow evaluation reports")
+	}
 	out := &CompareReport{
 		ReportVersion: CompareReportVersion,
 		Benchmark:     baseline.Benchmark,
@@ -81,6 +95,22 @@ func Compare(baseline, candidate *SuiteReport) (*CompareReport, error) {
 			CostPerValid:       compareMetric(baseline.Summary.CostPerValid, candidate.Summary.CostPerValid, false),
 			AverageTimeToValid: compareMetric(baseline.Summary.AverageTimeToValidMS, candidate.Summary.AverageTimeToValidMS, false),
 		},
+	}
+	if baseline.Mode == "flow" {
+		baseFlow, candidateFlow := baseline.Summary.Flow, candidate.Summary.Flow
+		if baseFlow == nil {
+			baseFlow = &FlowSummary{}
+		}
+		if candidateFlow == nil {
+			candidateFlow = &FlowSummary{}
+		}
+		out.Metrics.Flow = &FlowCompareMetrics{
+			ValidRate:           compareMetric(baseFlow.ValidRate, candidateFlow.ValidRate, true),
+			FalseAcceptRate:     compareMetric(baseFlow.FalseAcceptRate, candidateFlow.FalseAcceptRate, true),
+			FalseRejectRate:     compareMetric(baseFlow.FalseRejectRate, candidateFlow.FalseRejectRate, true),
+			FlowCompletionRate:  compareMetric(baseFlow.FlowCompletionRate, candidateFlow.FlowCompletionRate, true),
+			ValidationErrorRate: compareMetric(baseFlow.ValidationErrorRate, candidateFlow.ValidationErrorRate, true),
+		}
 	}
 	baseRuns := indexRuns(baseline.Runs)
 	candidateRuns := indexRuns(candidate.Runs)
@@ -105,6 +135,7 @@ func Compare(baseline, candidate *SuiteReport) (*CompareReport, error) {
 			CaseID: base.CaseID, Repeat: base.Repeat, Labels: cloneLabels(base.Labels),
 			BaselineValid: baseValid, CandidateValid: candValid, Transition: transition,
 			BaselineTimeToValidMS: base.TimeToValidMS, CandidateTimeToValidMS: cand.TimeToValidMS,
+			BaselineOutcome: outcomePointer(base.Outcome), CandidateOutcome: outcomePointer(cand.Outcome),
 		}
 		out.Cases = append(out.Cases, item)
 		addOutcome(&out.Outcomes, baseValid, candValid)
@@ -190,6 +221,13 @@ func cloneLabels(value map[string]string) map[string]string {
 		out[key] = item
 	}
 	return out
+}
+
+func outcomePointer(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func (r CompareReport) String() string {

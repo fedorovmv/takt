@@ -76,6 +76,7 @@ type SuiteReport struct {
 	Environment   EnvironmentIdentity `json:"environment"`
 	Runs          []RunRecord         `json:"runs"`
 	Summary       Summary             `json:"summary"`
+	Mode          string              `json:"mode,omitempty"`
 }
 
 type StrategyIdentity struct {
@@ -107,9 +108,11 @@ type ValidatorIdentity struct {
 }
 
 type EnvironmentIdentity struct {
-	GOOS      string `json:"goos"`
-	GOARCH    string `json:"goarch"`
-	GoVersion string `json:"go_version"`
+	GOOS                 string `json:"goos"`
+	GOARCH               string `json:"goarch"`
+	GoVersion            string `json:"go_version"`
+	PATHSHA256           string `json:"path_sha256,omitempty"`
+	OracleMetadataSHA256 string `json:"oracle_metadata_sha256,omitempty"`
 }
 
 type Summary struct {
@@ -150,6 +153,7 @@ type Summary struct {
 	StableValidCases            int                       `json:"stable_valid_cases"`
 	StableInvalidCases          int                       `json:"stable_invalid_cases"`
 	UnstableCases               int                       `json:"unstable_cases"`
+	Flow                        *FlowSummary              `json:"flow,omitempty"`
 }
 
 type UsageBreakdown struct {
@@ -168,7 +172,7 @@ type RunRecord struct {
 	Workspace           string                `json:"workspace"`
 	DurationMS          int64                 `json:"duration_ms"`
 	Attempts            int                   `json:"attempts"`
-	AttemptsToValid     int                   `json:"attempts_to_valid"`
+	AttemptsToValid     *int                  `json:"attempts_to_valid"`
 	ValidAtFirstAttempt bool                  `json:"valid_at_first_attempt"`
 	InputTokens         int                   `json:"input_tokens"`
 	OutputTokens        int                   `json:"output_tokens"`
@@ -187,6 +191,11 @@ type RunRecord struct {
 	RetryScheduled      int                   `json:"retry_scheduled"`
 	RetryFingerprints   []string              `json:"retry_fingerprints,omitempty"`
 	Nodes               map[string]NodeRecord `json:"nodes"`
+	Mode                string                `json:"mode,omitempty"`
+	Validation          *FlowValidationRecord `json:"validation,omitempty"`
+	Outcome             string                `json:"outcome,omitempty"`
+	RunPassed           *bool                 `json:"run_passed,omitempty"`
+	Cleanup             *FlowCleanupRecord    `json:"cleanup,omitempty"`
 }
 
 type NodeRecord struct {
@@ -623,6 +632,7 @@ func commitEvaluationState(repo store.Repository, state *store.RunState, event s
 }
 
 func applyQuality(record *RunRecord, state *store.RunState, qualityNode, generationNode string) error {
+	record.AttemptsToValid = intPointer(0)
 	node := state.Nodes[qualityNode]
 	if node == nil {
 		return fmt.Errorf("quality node %q has no runtime state", qualityNode)
@@ -659,7 +669,7 @@ func applyQuality(record *RunRecord, state *store.RunState, qualityNode, generat
 		return fmt.Errorf("generation node %q has no runtime state", generationNode)
 	}
 	if record.Quality.Valid {
-		record.AttemptsToValid = generator.Attempts
+		record.AttemptsToValid = intPointer(generator.Attempts)
 		record.ValidAtFirstAttempt = generator.Attempts == 1
 	}
 	return nil
@@ -775,6 +785,14 @@ func addSummary(summary *Summary, record RunRecord) {
 			}
 		}
 	}
+	if record.Mode == "flow" {
+		addFlowSummary(summary, record)
+		if record.Validation == nil || record.Validation.Status != "completed" {
+			return
+		}
+		record.QualityExpected = true
+		record.Quality = record.Validation.Result
+	}
 	if !record.QualityExpected {
 		return
 	}
@@ -796,12 +814,19 @@ func addSummary(summary *Summary, record RunRecord) {
 }
 
 func qualitySucceeded(record RunRecord) bool {
+	if record.Mode == "flow" {
+		return record.Validation != nil && record.Validation.Status == "completed" && record.Validation.Result != nil && record.Validation.Result.Valid
+	}
 	return record.QualityNodeStatus == string(store.NodeCompleted) && record.Quality != nil && record.Quality.Valid
 }
 
 func finishReport(report *SuiteReport) {
 	report.FinishedAt = time.Now().UTC()
 	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
+	if report.Mode == "flow" {
+		finishFlowReport(report)
+		return
+	}
 	if report.Summary.QualityRuns == 0 {
 		return
 	}
@@ -818,7 +843,9 @@ func finishReport(report *SuiteReport) {
 			scoreTotal += *record.Quality.Score
 		}
 		if qualitySucceeded(record) {
-			attemptsToValid += record.AttemptsToValid
+			if record.AttemptsToValid != nil {
+				attemptsToValid += *record.AttemptsToValid
+			}
 		}
 	}
 	if report.Summary.Valid > 0 {
@@ -861,6 +888,82 @@ func finishReport(report *SuiteReport) {
 		}
 	}
 }
+
+func addFlowSummary(summary *Summary, record RunRecord) {
+	if summary.Flow == nil {
+		summary.Flow = &FlowSummary{}
+	}
+	flow := summary.Flow
+	if record.Status == store.RunCompleted {
+		flow.FlowCompleted++
+	}
+	if record.Validation == nil || record.Validation.Status != "completed" || record.Validation.Result == nil {
+		flow.ValidationErrors++
+		return
+	}
+	flow.EvaluatedRuns++
+	switch record.Outcome {
+	case "true_accept":
+		flow.TrueAccept++
+	case "false_accept":
+		flow.FalseAccept++
+	case "true_reject":
+		flow.TrueReject++
+	case "false_reject":
+		flow.FalseReject++
+	}
+}
+
+func finishFlowReport(report *SuiteReport) {
+	flow := report.Summary.Flow
+	if flow == nil {
+		flow = &FlowSummary{}
+		report.Summary.Flow = flow
+	}
+	if flow.EvaluatedRuns > 0 {
+		flow.ValidRate = floatPointer(float64(flow.TrueAccept) / float64(flow.EvaluatedRuns))
+		flow.FalseAcceptRate = floatPointer(float64(flow.FalseAccept) / float64(flow.EvaluatedRuns))
+		flow.FalseRejectRate = floatPointer(float64(flow.FalseReject) / float64(flow.EvaluatedRuns))
+		report.Summary.FinalSuccessRate = flow.ValidRate
+	}
+	if report.Summary.Total > 0 {
+		flow.FlowCompletionRate = floatPointer(float64(flow.FlowCompleted) / float64(report.Summary.Total))
+		flow.ValidationErrorRate = floatPointer(float64(flow.ValidationErrors) / float64(report.Summary.Total))
+	}
+	var timeTotal int64
+	var timeCount int
+	caseOutcomes := map[string]map[bool]bool{}
+	for _, record := range report.Runs {
+		if record.Mode != "flow" || record.Validation == nil || record.Validation.Status != "completed" || record.Validation.Result == nil {
+			continue
+		}
+		if qualitySucceeded(record) && record.TimeToValidMS != nil {
+			timeTotal += *record.TimeToValidMS
+			timeCount++
+		}
+		set := caseOutcomes[record.CaseID]
+		if set == nil {
+			set = map[bool]bool{}
+			caseOutcomes[record.CaseID] = set
+		}
+		set[qualitySucceeded(record)] = true
+	}
+	if timeCount > 0 {
+		report.Summary.AverageTimeToValidMS = floatPointer(float64(timeTotal) / float64(timeCount))
+	}
+	for _, values := range caseOutcomes {
+		switch {
+		case len(values) > 1:
+			report.Summary.UnstableCases++
+		case values[true]:
+			report.Summary.StableValidCases++
+		default:
+			report.Summary.StableInvalidCases++
+		}
+	}
+}
+
+func intPointer(value int) *int { return &value }
 
 func addExecutionIdentitySummary(summary *Summary, executionRecord ExecutionRecord) {
 	if executionRecord.Assistant != "" {
