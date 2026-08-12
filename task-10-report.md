@@ -10,3 +10,5 @@ Verification:
 - `go test ./tests/e2e -run 'DeepCodeWorkflowBoundary|PlanToPR' -count=1`
 
 No known concerns. Existing plan-to-PR assertions now expect PR `2`, because a pull-request fixture reserves PR `1` and `pr create` starts at the next number by contract.
+
+Review follow-up: made create-order assertions deterministic and restricted the fake command to the supported argv forms. Rejected argv regression tests pass twenty consecutive runs.
