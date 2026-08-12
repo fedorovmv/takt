@@ -91,6 +91,11 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			if prepErr != nil {
 				return finishFlowPartial(report, output, opts.Now, prepErr)
 			}
+			cfg, cfgErr := config.Load(prepared.ConfigPath)
+			if cfgErr != nil {
+				return finishFlowPartial(report, output, opts.Now, cfgErr)
+			}
+			redactor := redact.NewFromConfig(cfg)
 			preflight, metadata, preflightErr := PreflightFlowValidator(ctx, suite.Validator, item.ID, prepared.BaselineWorkspace, item.ExpectedPath, suite.SuiteDir)
 			if preflightErr != nil {
 				_ = preflight
@@ -125,11 +130,6 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			if callbackErr != nil && record.Error == "" {
 				record.Error = callbackErr.Error()
 			}
-			cfg, cfgErr := config.Load(prepared.ConfigPath)
-			if cfgErr != nil {
-				return finishFlowPartial(report, output, opts.Now, cfgErr)
-			}
-			redactor := redact.NewFromConfig(cfg)
 			request := flowAuthoritativeRequest(item, repeat, root, prepared, result.ArtifactDirs)
 			validationResult := FlowValidationExecution{Status: "error"}
 			paused := root.Status == store.RunPausing || root.Status == store.RunPaused
@@ -148,6 +148,9 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 				}
 			}
 			record.Validation = &FlowValidationRecord{Status: validationResult.Status, ErrorCode: validationResult.ErrorCode, Error: validationResult.Error, Result: validationResult.Result, DurationMS: validationResult.Duration.Milliseconds()}
+			if paused {
+				record.Cleanup = &FlowCleanupRecord{Status: "skipped"}
+			}
 			if validationResult.Status == "completed" && validationResult.Result != nil {
 				elapsed := root.UpdatedAt.Sub(root.CreatedAt).Milliseconds() + validationResult.Duration.Milliseconds()
 				if elapsed < 0 {
@@ -163,6 +166,16 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			}
 			if err := writeFlowReport(output, report, opts.Now); err != nil {
 				return report, err
+			}
+			candidateStrategy, strategyErr := flowStrategy(root, prepared.ProfileFingerprint)
+			if strategyErr != nil {
+				return finishFlowPartial(report, output, opts.Now, strategyErr)
+			}
+			if strategyFingerprint == "" {
+				strategyFingerprint = candidateStrategy.Fingerprint
+				report.Strategy = candidateStrategy
+			} else if strategyFingerprint != candidateStrategy.Fingerprint {
+				return finishFlowPartial(report, output, opts.Now, errors.New("strategy_identity_drift"))
 			}
 			if result.ContextCancelled || ctx.Err() != nil {
 				if opts.KeepWorkspaces {
@@ -195,16 +208,6 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			if err := writeFlowReport(output, report, opts.Now); err != nil {
 				return report, err
 			}
-			candidateStrategy, strategyErr := flowStrategy(root, prepared.ProfileFingerprint)
-			if strategyErr != nil {
-				return finishFlowPartial(report, output, opts.Now, strategyErr)
-			}
-			if strategyFingerprint == "" {
-				strategyFingerprint = candidateStrategy.Fingerprint
-				report.Strategy = candidateStrategy
-			} else if strategyFingerprint != candidateStrategy.Fingerprint {
-				return finishFlowPartial(report, output, opts.Now, errors.New("strategy_identity_drift"))
-			}
 		}
 	}
 	finishFlowReport(report)
@@ -212,8 +215,8 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
 	report.Benchmark.DatasetFingerprint = flowDatasetFingerprint(suite, cases)
 	report.Benchmark.Fingerprint, err = hashJSON(struct {
-		Suite, Cases, Validator, Protocol, Path, Repeat, Oracle, OS, Arch, Go string
-	}{sha256Text(suite.Source), report.Benchmark.DatasetFingerprint, validatorFingerprint, FlowValidatorProtocol, report.Environment.PATHSHA256, fmt.Sprint(opts.Repeat), oracleMetadata, goruntime.GOOS, goruntime.GOARCH, goruntime.Version()})
+		Suite, Cases, Validator, ValidatorID, ValidatorVersion, Protocol, Path, Repeat, Oracle, OS, Arch, Go string
+	}{sha256Text(suite.Source), report.Benchmark.DatasetFingerprint, validatorFingerprint, suite.Validator.ID, suite.Validator.Version, FlowValidatorProtocol, report.Environment.PATHSHA256, fmt.Sprint(opts.Repeat), oracleMetadata, goruntime.GOOS, goruntime.GOARCH, goruntime.Version()})
 	if err != nil {
 		return report, err
 	}
@@ -236,7 +239,11 @@ func flowAuthoritativeRequest(item FlowCase, repeat int, root *store.RunState, p
 	if artifacts == "" && root.ExecutionWorkspace != "" {
 		artifacts = filepath.Join(root.ExecutionWorkspace, ".takt", "runs", root.ID, "artifacts")
 	}
-	return FlowValidationRequest{ProtocolVersion: FlowValidatorProtocol, Type: "validation_request", CaseID: item.ID, Repeat: repeat, Workspace: root.ExecutionWorkspace, Baseline: prepared.BaselineWorkspace, ExpectedPath: item.ExpectedPath, Run: FlowValidationRun{ID: root.ID, Status: root.Status, ArtifactsDir: artifacts}}
+	request := FlowValidationRequest{ProtocolVersion: FlowValidatorProtocol, Type: "validation_request", CaseID: item.ID, Repeat: repeat, Workspace: root.ExecutionWorkspace, Baseline: prepared.BaselineWorkspace, ExpectedPath: item.ExpectedPath, Run: FlowValidationRun{ID: root.ID, Status: root.Status, ArtifactsDir: artifacts}}
+	if item.SCMPath != "" {
+		request.ExternalState = &FlowValidationExternal{SCMDir: item.SCMPath}
+	}
+	return request
 }
 
 func recordFromFlowSnapshots(caseID string, repeat int, workspace string, states []*store.RunState) RunRecord {
@@ -305,7 +312,9 @@ func writeFlowReport(output string, report *SuiteReport, now func() time.Time) e
 
 func finishFlowPartial(report *SuiteReport, output string, now func() time.Time, cause error) (*SuiteReport, error) {
 	if report != nil {
-		_ = writeFlowReport(output, report, now)
+		if err := writeFlowReport(output, report, now); err != nil {
+			return report, fmt.Errorf("persist partial flow report: %w", err)
+		}
 	}
 	return report, cause
 }

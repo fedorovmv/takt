@@ -915,6 +915,9 @@ func addFlowSummary(summary *Summary, record RunRecord) {
 }
 
 func finishFlowReport(report *SuiteReport) {
+	report.Summary.StableValidCases = 0
+	report.Summary.StableInvalidCases = 0
+	report.Summary.UnstableCases = 0
 	flow := report.Summary.Flow
 	if flow == nil {
 		flow = &FlowSummary{}
