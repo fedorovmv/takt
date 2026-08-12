@@ -88,6 +88,9 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 		}
 		switch state.Status {
 		case store.RunWaiting:
+			if ctx.Err() != nil {
+				return e.cancelFlowCase(ctx, app, runID)
+			}
 			if answer == "" {
 				return e.flowSnapshot(app, runID, state, nil)
 			}
