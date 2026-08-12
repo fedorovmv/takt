@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
@@ -55,6 +56,44 @@ func TestRecordFromFlowStatesUsesRootUsageAndUniqueActionNodes(t *testing.T) {
 	}
 	if _, ok := record.Nodes["root/loop[001]/body"]; !ok {
 		t.Fatalf("loop snapshot missing: %+v", record.Nodes)
+	}
+}
+
+func TestRecordFromFlowStatesDiscoversLoopChildAndGrandchild(t *testing.T) {
+	root := &store.RunState{ID: "root", Nodes: map[string]*store.NodeState{
+		"loop": {LoopIterations: []store.LoopIterationState{{Iteration: 1, Nodes: map[string]store.NodeState{
+			"child": {ChildRunID: "child-run"},
+		}}}},
+	}}
+	child := &store.RunState{ID: "child-run", Nodes: map[string]*store.NodeState{
+		"child-action": {Attempts: 1, Executions: []store.ExecutionState{{Attempt: 1, Status: store.NodeCompleted, Assistant: "child"}}},
+		"grandchild":   {ChildRunID: "grandchild-run"},
+	}}
+	grandchild := &store.RunState{ID: "grandchild-run", Nodes: map[string]*store.NodeState{
+		"grandchild-action": {Attempts: 1, Executions: []store.ExecutionState{{Attempt: 1, Status: store.NodeCompleted, Assistant: "grandchild"}}},
+	}}
+	record := recordFromFlowStates("case", 1, "workspace", root, flowReportStore{"child-run": child, "grandchild-run": grandchild})
+	childNode := record.Nodes["root/child-run/child-action"]
+	grandchildNode := record.Nodes["root/child-run/grandchild-run/grandchild-action"]
+	if record.Attempts != 2 || len(record.Nodes) != 2 || len(childNode.Executions) != 1 || childNode.Executions[0].Assistant != "child" || len(grandchildNode.Executions) != 1 || grandchildNode.Executions[0].Assistant != "grandchild" {
+		t.Fatalf("record=%+v", record)
+	}
+}
+
+func TestFinishFlowReportRetainsQualityAggregation(t *testing.T) {
+	score := 80.0
+	diagnostic := validation.Diagnostic{Severity: "warning", Code: "CHECK"}
+	report := &SuiteReport{Mode: "flow", StartedAt: time.Now().Add(-time.Second), Summary: newSummary(), Runs: []RunRecord{
+		{CaseID: "valid", Mode: "flow", Status: store.RunCompleted, Cost: 2, DurationMS: 100, Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: true, Score: &score, Diagnostics: []validation.Diagnostic{diagnostic}}}, Nodes: map[string]NodeRecord{}},
+		{CaseID: "invalid", Mode: "flow", Status: store.RunCompleted, Cost: 3, DurationMS: 200, Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: false}}, Nodes: map[string]NodeRecord{}},
+	}}
+	for i := range report.Runs {
+		ClassifyFlowRecord(&report.Runs[i])
+		addSummary(&report.Summary, report.Runs[i])
+	}
+	finishReport(report)
+	if report.Summary.SuccessAt1 != nil || report.Summary.AverageAttemptsToValid != nil || report.Summary.Valid != 1 || report.Summary.QualityRuns != 2 || report.Summary.ScoredRuns != 1 || floatValue(report.Summary.AverageScore) != 80 || floatValue(report.Summary.CostPerValid) != 5 || report.Summary.AmortizedEndToEndMSPerValid == nil || report.Summary.DiagnosticsByCode["CHECK"] != 1 || report.Summary.DiagnosticsBySeverity["warning"] != 1 {
+		t.Fatalf("summary=%+v", report.Summary)
 	}
 }
 

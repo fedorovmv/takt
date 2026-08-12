@@ -930,6 +930,22 @@ func finishFlowReport(report *SuiteReport) {
 		flow.FlowCompletionRate = floatPointer(float64(flow.FlowCompleted) / float64(report.Summary.Total))
 		flow.ValidationErrorRate = floatPointer(float64(flow.ValidationErrors) / float64(report.Summary.Total))
 	}
+	var scored int
+	var scoreTotal float64
+	for _, record := range report.Runs {
+		if record.Quality != nil && record.Quality.Score != nil {
+			scored++
+			scoreTotal += *record.Quality.Score
+		}
+	}
+	if report.Summary.Valid > 0 {
+		report.Summary.CostPerValid = floatPointer(report.Summary.Cost / float64(report.Summary.Valid))
+		report.Summary.AmortizedEndToEndMSPerValid = floatPointer(float64(report.Summary.DurationMS) / float64(report.Summary.Valid))
+	}
+	if scored > 0 {
+		report.Summary.ScoredRuns = scored
+		report.Summary.AverageScore = floatPointer(scoreTotal / float64(scored))
+	}
 	var timeTotal int64
 	var timeCount int
 	caseOutcomes := map[string]map[bool]bool{}

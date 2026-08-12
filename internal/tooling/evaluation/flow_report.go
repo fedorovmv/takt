@@ -102,33 +102,59 @@ func recordFromFlowStates(caseID string, repeat int, workspace string, state *st
 	if repository == nil {
 		return record
 	}
-	for _, node := range state.Nodes {
-		if node == nil {
+	loadFlowChildren(&record, state.ID, state, repository, map[string]bool{state.ID: true})
+	return record
+}
+
+func loadFlowChildren(record *RunRecord, prefix string, state *store.RunState, repository store.Repository, seen map[string]bool) {
+	for _, id := range flowChildRunIDs(state.Nodes) {
+		if seen[id] {
 			continue
 		}
-		childIDs := append([]string(nil), node.ChildRunIDs...)
-		if node.ChildRunID != "" {
-			childIDs = append(childIDs, node.ChildRunID)
+		seen[id] = true
+		child, err := repository.Load(id)
+		if err != nil || child == nil {
+			continue
 		}
-		for _, child := range node.ChildRuns {
-			if child.RunID != "" {
-				childIDs = append(childIDs, child.RunID)
-			}
-		}
-		sort.Strings(childIDs)
-		seen := map[string]bool{}
-		for _, id := range childIDs {
-			if id == "" || seen[id] {
+		childPrefix := prefix + "/" + id
+		addFlowStateNodes(record, childPrefix, child.Nodes)
+		loadFlowChildren(record, childPrefix, child, repository, seen)
+	}
+}
+
+func flowChildRunIDs(nodes map[string]*store.NodeState) []string {
+	ids, seen := []string{}, map[string]bool{}
+	var visit func(map[string]*store.NodeState)
+	visit = func(values map[string]*store.NodeState) {
+		for _, node := range values {
+			if node == nil {
 				continue
 			}
-			seen[id] = true
-			child, err := repository.Load(id)
-			if err == nil && child != nil {
-				addFlowStateNodes(&record, state.ID+"/"+id, child.Nodes)
+			for _, id := range append(append([]string(nil), node.ChildRunIDs...), node.ChildRunID) {
+				if id != "" && !seen[id] {
+					seen[id] = true
+					ids = append(ids, id)
+				}
+			}
+			for _, child := range node.ChildRuns {
+				if child.RunID != "" && !seen[child.RunID] {
+					seen[child.RunID] = true
+					ids = append(ids, child.RunID)
+				}
+			}
+			for _, iteration := range node.LoopIterations {
+				loopNodes := make(map[string]*store.NodeState, len(iteration.Nodes))
+				for id, item := range iteration.Nodes {
+					copy := item
+					loopNodes[id] = &copy
+				}
+				visit(loopNodes)
 			}
 		}
 	}
-	return record
+	visit(nodes)
+	sort.Strings(ids)
+	return ids
 }
 
 func addFlowStateNodes(record *RunRecord, prefix string, nodes map[string]*store.NodeState) {
