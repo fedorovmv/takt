@@ -110,6 +110,16 @@ func TestPrepareFlowRepeatUsesRepeatLocalRemote(t *testing.T) {
 	}
 }
 
+func TestPreparedFlowIdentityIncludesCommitsAndRemotePathHash(t *testing.T) {
+	identity := flowPreparedIdentity(&PreparedFlowRepeat{BaseCommit: "base", HeadCommit: "head", BareRemote: "/private/repeat-001/origin.git"})
+	if identity == "" || identity == flowPreparedIdentity(&PreparedFlowRepeat{BaseCommit: "base", HeadCommit: "other", BareRemote: "/private/repeat-001/origin.git"}) || identity == flowPreparedIdentity(&PreparedFlowRepeat{BaseCommit: "base", HeadCommit: "head", BareRemote: "/private/repeat-002/origin.git"}) {
+		t.Fatalf("prepared identity does not include SCM state: %q", identity)
+	}
+	if strings.Contains(identity, "/private/") {
+		t.Fatalf("prepared identity leaks remote path: %q", identity)
+	}
+}
+
 func writeFlowSCMFixture(t *testing.T, repository, pullRequest, patch string) string {
 	t.Helper()
 	root := t.TempDir()

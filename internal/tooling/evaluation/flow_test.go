@@ -151,6 +151,14 @@ func TestRunFlowBenchmarkIdentityIncludesValidatorVersion(t *testing.T) {
 	}
 }
 
+func TestFlowBenchmarkIdentityIncludesPreparedSCMIdentity(t *testing.T) {
+	base := flowBenchmarkFingerprint("suite", "cases", "validator", "id", "version", "path", "oracle", 1, []string{"prepared-one"})
+	changed := flowBenchmarkFingerprint("suite", "cases", "validator", "id", "version", "path", "oracle", 1, []string{"prepared-two"})
+	if base == changed {
+		t.Fatal("prepared SCM identity did not affect benchmark fingerprint")
+	}
+}
+
 func TestRunFlowDetectsStrategyDriftBeforeCleanup(t *testing.T) {
 	root, suitePath := writeFlowRunSuite(t, "case")
 	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)

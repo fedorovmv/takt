@@ -92,6 +92,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 		Environment: EnvironmentIdentity{GOOS: goruntime.GOOS, GOARCH: goruntime.GOARCH, GoVersion: goruntime.Version(), PATHSHA256: hex.EncodeToString(pathHash[:])},
 	}
 	var oracleMetadata, strategyFingerprint string
+	preparedIdentities := make([]string, 0, len(cases)*opts.Repeat)
 	redactor := redact.NewFromEnvironment()
 	for _, item := range cases {
 		for repeat := 1; repeat <= opts.Repeat; repeat++ {
@@ -99,6 +100,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			if prepErr != nil {
 				return finishFlowPartial(report, output, opts.Now, nil, prepErr)
 			}
+			preparedIdentities = append(preparedIdentities, flowPreparedIdentity(prepared))
 			cfg, cfgErr := config.Load(prepared.ConfigPath)
 			if cfgErr != nil {
 				return finishFlowPartial(report, output, opts.Now, nil, cfgErr)
@@ -226,12 +228,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	report.FinishedAt = opts.Now().UTC()
 	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
 	report.Benchmark.DatasetFingerprint = flowDatasetFingerprint(suite, cases)
-	report.Benchmark.Fingerprint, err = hashJSON(struct {
-		Suite, Cases, Validator, ValidatorID, ValidatorVersion, Protocol, Path, Repeat, Oracle, OS, Arch, Go string
-	}{sha256Text(suite.Source), report.Benchmark.DatasetFingerprint, validatorFingerprint, suite.Validator.ID, suite.Validator.Version, FlowValidatorProtocol, report.Environment.PATHSHA256, fmt.Sprint(opts.Repeat), oracleMetadata, goruntime.GOOS, goruntime.GOARCH, goruntime.Version()})
-	if err != nil {
-		return report, err
-	}
+	report.Benchmark.Fingerprint = flowBenchmarkFingerprint(sha256Text(suite.Source), report.Benchmark.DatasetFingerprint, validatorFingerprint, suite.Validator.ID, suite.Validator.Version, report.Environment.PATHSHA256, oracleMetadata, opts.Repeat, preparedIdentities)
 	if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
 		return report, err
 	}
@@ -335,6 +332,25 @@ func flowDatasetFingerprint(suite *FlowSuite, cases []FlowCase) string {
 	}
 	hash, _ := hashJSON(entries)
 	return hash
+}
+
+func flowPreparedIdentity(prepared *PreparedFlowRepeat) string {
+	if prepared == nil {
+		return ""
+	}
+	remoteHash := sha256.Sum256([]byte(prepared.BareRemote))
+	identity, _ := hashJSON(struct {
+		BaseCommit, HeadCommit, BareRemotePathSHA256 string
+	}{prepared.BaseCommit, prepared.HeadCommit, hex.EncodeToString(remoteHash[:])})
+	return identity
+}
+
+func flowBenchmarkFingerprint(suite, cases, validator, validatorID, validatorVersion, path, oracle string, repeat int, prepared []string) string {
+	fingerprint, _ := hashJSON(struct {
+		Suite, Cases, Validator, ValidatorID, ValidatorVersion, Protocol, Path, Repeat, Oracle, OS, Arch, Go string
+		Prepared                                                                                             []string
+	}{suite, cases, validator, validatorID, validatorVersion, FlowValidatorProtocol, path, fmt.Sprint(repeat), oracle, goruntime.GOOS, goruntime.GOARCH, goruntime.Version(), prepared})
+	return fingerprint
 }
 
 func sha256Text(value []byte) string { sum := sha256.Sum256(value); return hex.EncodeToString(sum[:]) }
