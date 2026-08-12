@@ -1434,6 +1434,7 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
 - Modify: `tests/e2e/evaluation_contracts_test.go`
 - Modify: `internal/testsupport/cmd/takt-fake-code-agent/main.go`
 - Modify: `internal/tooling/evaluation/flow_case_test.go`
+- Modify: `internal/profile/builtin/code/commands/review-intake.md`
 
 **Interfaces:**
 - Exact selectors: `code:feature-development`, `code:comprehensive-pr-review`, `code:architect`.
@@ -1445,13 +1446,25 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   absolute `takt-fake-code-agent` argv, models
   `implementation|review|routing`, and
   assistant env `FAKE_FLOW_EVAL_SMOKE=1`. Feature uses GitHub `repository`; review
-  and architect use `pull_request`. Validator helper returns valid only when the
+  and architect use `pull_request`. Use PR number `17` for comprehensive and `27`
+  for architect in both `input.md` and the corresponding
+  `scm/pull-request.yaml`; do not reuse one number for both cases. Validator helper returns valid only when the
   execution workspace exists, `go test ./...` passes, and expected artifacts/SCM
   call log exist. Comprehensive and architect inputs are strict PR JSON;
   comprehensive additionally includes `validation_commands:["go test ./..."]`;
   feature input is Markdown.
   Configure all behavior through copied assistant env; never call
   `os.Setenv` in the E2E process.
+
+  Add `TestProductionFlowEvaluationReviewIntakeRequiresPullRequest` in
+  `tests/e2e/evaluation_contracts_test.go`. Run the built
+  `takt-fake-code-agent` directly with `FAKE_FLOW_EVAL_SMOKE=1`,
+  `TAKT_WORKSPACE=<t.TempDir()>`, and stdin containing a `TAKT_PHASE:
+  review-intake` prompt whose JSON object omits `pull_request`. Put an executable
+  test `gh` shim first on PATH; the shim creates a marker file and exits `0` for
+  every argv. Assert the fake agent exits non-zero and the marker does not exist.
+  This test must fail against the current fallback because it invokes the shim.
+
   Assert:
 
   - feature record/events contain completed `implement`, `validate-agent`,
@@ -1460,10 +1473,14 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
     `validation.md`, `pr.md`, `pr-url.txt`, `summary.md`; oracle ran before cleanup;
   - comprehensive record/events contain completed root `review`, root `summary`,
     and expanded `review-acceptance-gate`; oracle target equals the prepared head
-    checkout; fake-gh log contains `pr view`;
+    checkout; one fake-gh log line has `strings.Fields(line)` exactly equal to
+    `[]string{"pr", "view", "17", "--json",
+    "number,title,state,baseRefName,headRefName"}`;
   - architect observes exactly one waiting approval `approve`, applies `approved`,
     then contains completed `sweep`, `plan`, `implement`, expanded smart-review
-    children, and `summary`; oracle sees the retained managed worktree.
+    children, and `summary`; oracle sees the retained managed worktree; fake-gh log
+    contains one line whose `strings.Fields` exactly equal the same five values
+    with `"27"` in place of `"17"`.
 
 - [ ] **Step 2: Add the production DAG inventory assertion.**
 
@@ -1517,9 +1534,20 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   duplicate compilation. A topology/slot mismatch triggers design review, not an
   automatic table update.
 
+  Resolve `review-intake` with the existing command resolver and assert its body
+  contains exactly one `$ARGUMENTS` occurrence. This is the production input
+  propagation contract: the runtime renders that reference from `RunState.Input`;
+  it does not append input to assistant prompts implicitly.
+
 - [ ] **Step 3: Run tests and confirm the missing fixture behaviors.**
 
   Run `go test ./tests/e2e ./internal/tooling/evaluation -run 'ProductionFlowEvaluation|FlowInventory' -count=1`.
+  Expected: `TestProductionFlowEvaluationReviewIntakeRequiresPullRequest` fails
+  because the current fallback invokes the test `gh` shim, and `FlowInventory`
+  fails because the production command does not yet contain `$ARGUMENTS`. The
+  comprehensive smoke may pass through the current hard-coded fallback and is not
+  accepted as red evidence; architect may fail only because its fixture number is
+  deliberately different. Fix unrelated fixture/build failures before Step 4.
 
 - [ ] **Step 4: Add the exact fake-agent smoke behavior.**
 
@@ -1546,13 +1574,33 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   `renderedArtifactPath(prompt, baseName)` which requires exactly one
   backtick-enclosed absolute path ending in `/<baseName>`. Do not guess the Run
   artifacts directory from workspace or Run ID. Existing phased commands continue
-  to use their `ARTIFACT_PATH:` marker and fake-gh calls. For `review-intake`, add
-  a regexp for exact JSON field `"pull_request": <positive integer>` and pass that
-  number to `gh pr view` instead of the current hard-coded `1`; fail if the field is
-  absent in flow-eval smoke mode. Existing phased review
+  to use their `ARTIFACT_PATH:` marker and fake-gh calls.
+
+  In `review-intake.md`, insert this exact block after “Establish the exact
+  pull-request review scope before any reviewer runs.” and before the parsing
+  instruction:
+
+  ```text
+  Workflow input (strict JSON):
+
+  $ARGUMENTS
+  ```
+
+  This is a production bug fix, not eval-only prompt decoration: the command says
+  it parses workflow input, while runtime supplies `RunState.Input` to assistant
+  prompts only through an explicit `$ARGUMENTS` reference. Do not change runtime
+  prompt assembly, the selected workflow YAML files, or any other command file.
+
+  For the fake agent's `review-intake` handler, add a regexp for exact JSON field
+  `"pull_request": <positive integer>` and pass the captured number to `gh pr view`
+  instead of the current hard-coded `1`. In flow-eval smoke mode, an absent field
+  must call `fail`; there is no default PR number, environment fallback, fixture
+  lookup, or case-name inference. Make the Step 1 focused subprocess assertion
+  green, then prove the two production E2E cases record exactly the full
+  `gh pr view` argv for PR 17 and PR 27 specified above. Existing phased review
   handlers are reused unchanged. Every
   output-format node emits its current exact JSON envelope; generic command nodes
-  may emit a concise string. Do not modify production workflow or command files.
+  may emit a concise string.
 
 - [ ] **Step 5: Run Slice 2 checks and commit.**
 
@@ -1560,7 +1608,7 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   gofmt -w internal/testsupport/cmd/takt-fake-code-agent/main.go tests/e2e/evaluation_contracts_test.go internal/tooling/evaluation/flow_case_test.go
   go test ./tests/e2e ./internal/tooling/evaluation -run 'ProductionFlowEvaluation|FlowInventory' -count=1
   go test ./internal/tooling/evaluation -run 'FlowSCM|FakeGH' -count=1
-  git add tests/e2e/evaluation_contracts_test.go internal/testsupport/cmd/takt-fake-code-agent/main.go internal/tooling/evaluation/flow_case_test.go
+  git add tests/e2e/evaluation_contracts_test.go internal/testsupport/cmd/takt-fake-code-agent/main.go internal/tooling/evaluation/flow_case_test.go internal/profile/builtin/code/commands/review-intake.md
   git commit -m "test: prove production flows through evaluation"
   ```
 
@@ -2062,3 +2110,4 @@ Start empty. Each implementation deviation is one row; never delete prior rows.
 
 | Task | Observed fact and source | Planned instruction | Applied mechanical change | Verification |
 |---|---|---|---|---|
+| 11 | `internal/profile/builtin/code/commands/review-intake.md` requires parsing JSON input but contains no `$ARGUMENTS`; `internal/runtime/assistant_node.go` renders only explicit references and does not append `RunState.Input`. | Extract `pull_request` from the exact production prompt while forbidding production command changes. | Human-approved production contract repair: add exactly one `$ARGUMENTS` block to `review-intake.md`; keep fake-agent extraction fail-closed and use distinct PR numbers 17/27 to prove propagation. No runtime or workflow YAML change. | `FlowInventory` locks one occurrence; focused missing-field subprocess test; production E2E asserts `pr view 17` and `pr view 27`. |
