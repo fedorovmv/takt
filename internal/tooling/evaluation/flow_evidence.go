@@ -94,7 +94,7 @@ func WriteFlowEvidence(root string, item FlowEvidence, redactor *redact.Redactor
 		return err
 	}
 	if item.SCMDir != "" {
-		if err := CopyFlowTree(item.SCMDir, filepath.Join(repeatRoot, "scm")); err != nil {
+		if err := copyFlowEvidenceTree(item.SCMDir, filepath.Join(repeatRoot, "scm"), redactor); err != nil {
 			return fmt.Errorf("copy SCM evidence: %w", err)
 		}
 	}
@@ -116,12 +116,60 @@ func writeFlowJSON(path string, value any, redactor *redact.Redactor) error {
 		return err
 	}
 	if redactor != nil {
-		data, _ = redactor.Bytes(data)
+		var structured any
+		if err := json.Unmarshal(data, &structured); err != nil {
+			return err
+		}
+		data, err = json.MarshalIndent(redactor.Any(structured), "", "  ")
+		if err != nil {
+			return err
+		}
 	}
 	if !json.Valid(data) {
 		return fmt.Errorf("redacted JSON is invalid: %s", filepath.Base(path))
 	}
 	return writeFlowRaw(path, data, 0644)
+}
+
+func copyFlowEvidenceTree(source, destination string, redactor *redact.Redactor) error {
+	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlink forbidden: %s", path)
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(destination, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("non-regular file forbidden: %s", path)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		textual := utf8.Valid(data) && !strings.ContainsRune(string(data), 0)
+		if redactor != nil {
+			redacted, matched := redactor.Bytes(data)
+			if !textual && matched {
+				return fmt.Errorf("binary file contains known secret: %s", path)
+			}
+			if textual {
+				data = redacted
+			}
+		}
+		return writeFlowRaw(target, data, info.Mode())
+	})
 }
 
 func writeFlowBytes(path string, data []byte, redactor *redact.Redactor) error {
@@ -280,6 +328,9 @@ func CleanupFlowRepeat(root string, paths FlowCleanupPaths) error {
 		if canonicalTarget == canonicalRoot || !pathContains(canonicalRoot, canonicalTarget) {
 			return fmt.Errorf("cleanup target escapes evidence root: %s", target)
 		}
+		if !flowCleanupLayout(canonicalRoot, canonicalTarget) {
+			return fmt.Errorf("cleanup target is not an eval workspace: %s", target)
+		}
 		targets = append(targets, canonicalTarget)
 	}
 	for _, target := range targets {
@@ -288,6 +339,18 @@ func CleanupFlowRepeat(root string, paths FlowCleanupPaths) error {
 		}
 	}
 	return nil
+}
+
+func flowCleanupLayout(root, target string) bool {
+	rel, err := filepath.Rel(root, target)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) != 4 || parts[0] != "workspaces" || !strings.HasPrefix(parts[2], "repeat-") {
+		return false
+	}
+	return parts[3] == "control" || parts[3] == "baseline" || parts[3] == "origin.git"
 }
 
 func canonicalFlowPath(path string) (string, error) {
