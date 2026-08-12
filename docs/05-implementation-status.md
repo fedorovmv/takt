@@ -162,6 +162,13 @@ Deterministic fixture доказывает measurement correctness. Production q
 
 Первый live Go-срез на пяти production-shaped cases выполнен с моделями Qwen. Pi/Qwen 3.6 `repeat=3` дал direct `14/15` и repair `14/15 → 15/15` с одним exact resume. Текущий OpenCode/Qwen3-Coder-Next дал direct `15/15` и repair `13/15 → 15/15`: два `GOFMT_FAILED` восстановлены exact resume, failed executions отсутствуют, все cases stable-valid. Сохранённый OpenCode/Qwen 3.6 evidence заметно хуже: прямой `aihub-sbt` дал `0/15 → 0/15`, `aihub-proxy` до исправления SSE — `0/15 → 6/15`, а post-fix smoke без transport failures — `0/5 → 0/5` из-за отсутствия tool calls. Measurement path подтверждён; влияние compact rewrite и преимущество repair при уже валидном direct не заявляются. Время provider не используется для вывода; production-shaped evidence не закрывает production evaluation.
 
+### Production flow
+
+`eval flow` executes isolated flow suites through the application control path,
+persists repeat evidence and supports `eval flow init` for a validator-free
+skeleton. Deterministic fake-process contracts cover report persistence and
+worktree ordering; live provider evaluation remains separate evidence.
+
 ## Предметные поставки
 
 - профиль `code` 0.17.0: 19 workflow, deterministic `plan-to-pr` acceptance и trusted block catalog;

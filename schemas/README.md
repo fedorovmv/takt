@@ -35,6 +35,9 @@
 - `evaluation-matrix-report.schema.json` — итог `takt-evaluation-matrix/v1alpha1` со строго типизированными strategy summaries, usage breakdown, comparisons и gate results.
 - `flow-evaluation-suite.schema.json` — strict production flow evaluation suite.
 - `evaluation-validator-request.schema.json` — validator invocation protocol.
+
+Flow suites are created with `takt eval flow init`; the scaffold intentionally
+does not generate a validator or any executable code.
 - `task-case-manifest.schema.json` — task-level cases с ожидаемым route/status и минимальной ревизией плана;
 - `task-evaluation-matrix.schema.json` — matrix для полного `Task Router → Dynamic Plan → replan` контура;
 - `task-evaluation-report.schema.json` — task-level report с route accuracy, plan revisions, replanner runs, pairwise outcomes и gates.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"takt/internal/application"
@@ -44,6 +45,17 @@ func (e evaluationEngine) Flow(ctx context.Context, req tooling.FlowEvaluationRe
 		SuitePath: req.SuitePath, CaseID: req.CaseID, OutputDir: req.OutputDir, InvocationWorkspace: req.InvocationWorkspace,
 		Repeat: req.Repeat, KeepWorkspaces: req.KeepWorkspaces, Now: time.Now, HostPATH: hostPATH, CaseRunner: e.runFlowCase,
 	})
+}
+
+func (evaluationEngine) FlowInit(_ context.Context, workflowSelector, output string) (any, error) {
+	absOutput, err := filepath.Abs(output)
+	if err != nil {
+		return nil, err
+	}
+	if err := evaluation.InitFlowSuite(workflowSelector, absOutput); err != nil {
+		return nil, err
+	}
+	return map[string]any{"output": absOutput, "created": true}, nil
 }
 
 func (e evaluationEngine) runFlowCase(ctx context.Context, req evaluation.FlowCaseRunRequest) (evaluation.FlowCaseRunResult, error) {

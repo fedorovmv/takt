@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -28,6 +29,19 @@ func TestFeatureCorpusManifest(t *testing.T) {
 		got[i] = c.ID
 		if c.Expectation == nil || c.SCMPath == "" {
 			t.Fatalf("case %s missing expectation/scm", c.ID)
+		}
+		var oracle struct {
+			AllowedPaths []string `json:"allowed_paths"`
+			Scenarios    []string `json:"scenarios"`
+			Artifacts    []string `json:"required_artifacts"`
+			RequirePR    bool     `json:"require_pr"`
+			RequirePush  bool     `json:"require_push"`
+		}
+		if err := json.Unmarshal(c.Expectation.Oracle, &oracle); err != nil {
+			t.Fatal(err)
+		}
+		if len(oracle.AllowedPaths) != 5 || len(oracle.Scenarios) == 0 || len(oracle.Artifacts) != 5 || !oracle.RequirePR || !oracle.RequirePush {
+			t.Fatalf("case %s oracle=%+v", c.ID, oracle)
 		}
 		cmd := exec.Command("go", "test", "./...")
 		cmd.Dir = filepath.Join(c.WorkspacePath)

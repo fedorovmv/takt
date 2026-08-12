@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added `takt eval flow` isolated production-flow suites, durable repeat evidence,
+  and `takt eval flow init` validator-free scaffolding.
+
 - Уточнены shell-контексты для single-quoted `$(` и `case` pattern без
   рассинхронизации quote-state; `fresh_context` теперь действует только на
   первую попытку итерации `N > 1`, а retry продолжает управляться

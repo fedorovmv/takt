@@ -127,8 +127,29 @@ func TestEvalFlowParsesOnlyItsContract(t *testing.T) {
 	if err := evalCmd(context.Background(), []string{"flow", "suite.yaml", "--repeat", "0"}); err == nil || !strings.Contains(err.Error(), "repeat must be positive") {
 		t.Fatalf("repeat error = %v", err)
 	}
-	if err := evalCmd(context.Background(), []string{"flow", "init"}); err == nil || err.Error() != "eval flow init is not available until the authoring slice is installed" {
+	if err := evalCmd(context.Background(), []string{"flow", "init"}); err == nil || !strings.Contains(err.Error(), "usage: takt eval flow init") {
 		t.Fatalf("init error = %v", err)
+	}
+}
+
+func TestEvalFlowInitRequiresSelectorAndOutput(t *testing.T) {
+	if err := evalCmd(context.Background(), []string{"flow", "init"}); err == nil || !strings.Contains(err.Error(), "usage: takt eval flow init") {
+		t.Fatalf("init error = %v", err)
+	}
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+	if err := evalCmd(context.Background(), []string{"flow", "init", "code:feature-development", "--output", "flow", "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "flow", "suite.yaml")); err != nil {
+		t.Fatal(err)
 	}
 }
 
