@@ -92,6 +92,9 @@ func LoadFlowSuite(path string) (*FlowSuite, error) {
 	if strings.TrimSpace(s.Validator.ID) == "" || strings.TrimSpace(s.Validator.Version) == "" || len(s.Validator.Command) == 0 || strings.TrimSpace(s.Validator.Command[0]) == "" {
 		return nil, fmt.Errorf("validator id, version, and command are required")
 	}
+	if strings.TrimSpace(s.Validator.Path) == "" {
+		return nil, fmt.Errorf("validator path is required")
+	}
 	if s.Validator.MaxOutputBytes <= 0 {
 		return nil, fmt.Errorf("validator max_output_bytes must be positive")
 	}
@@ -169,7 +172,10 @@ func resolveRelative(dir, p string) string {
 }
 func fileRegular(p string) bool { i, e := os.Stat(p); return e == nil && i.Mode().IsRegular() }
 func validateGates(g FlowGates) error {
-	for _, t := range []FlowThreshold{g.ValidationErrorRate, g.ValidRate, g.FalseAcceptRate, g.FalseRejectRate, g.FlowCompletionRate} {
+	for name, t := range map[string]FlowThreshold{"validation_error_rate": g.ValidationErrorRate, "valid_rate": g.ValidRate, "false_accept_rate": g.FalseAcceptRate, "false_reject_rate": g.FalseRejectRate, "flow_completion_rate": g.FlowCompletionRate} {
+		if t.Min == nil && t.Max == nil && gatePresent(name, g) {
+			return fmt.Errorf("%s must specify min or max", name)
+		}
 		if t.Min != nil && t.Max != nil {
 			return fmt.Errorf("gate must specify exactly one of min or max")
 		}
@@ -184,5 +190,15 @@ func validateGates(g FlowGates) error {
 			return fmt.Errorf("gate rate must be between 0 and 1")
 		}
 	}
+	if g.UnstableCases.Max == nil && g.UnstableCases != (FlowCountThreshold{}) {
+		return fmt.Errorf("unstable_cases requires max")
+	}
 	return nil
+}
+func gatePresent(name string, g FlowGates) bool {
+	b, _ := json.Marshal(g)
+	var m map[string]json.RawMessage
+	_ = json.Unmarshal(b, &m)
+	_, ok := m[name]
+	return ok
 }
