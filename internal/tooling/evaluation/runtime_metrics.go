@@ -19,6 +19,13 @@ func applyRuntimeMetrics(record *RunRecord, state *store.RunState, repository st
 	if err != nil {
 		return
 	}
+	applyRuntimeMetricsFromEvents(record, state, events, qualityNode)
+}
+
+func applyRuntimeMetricsFromEvents(record *RunRecord, state *store.RunState, events []store.Event, qualityNode string) {
+	if record == nil || state == nil {
+		return
+	}
 	var qualityCompletedAt time.Time
 	for _, event := range events {
 		switch event.Type {
