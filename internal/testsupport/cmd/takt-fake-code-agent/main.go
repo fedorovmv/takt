@@ -14,6 +14,8 @@ import (
 
 var artifactRE = regexp.MustCompile(`(?m)^ARTIFACT_PATH:\s*(.+?)\s*$`)
 var phaseRE = regexp.MustCompile(`(?m)^TAKT_PHASE:\s*([A-Za-z0-9._-]+)\s*$`)
+var pullRequestRE = regexp.MustCompile(`"pull_request"\s*:\s*([1-9][0-9]*)`)
+var renderedArtifactRE = regexp.MustCompile("`([^`]+)`")
 
 type checkpoint struct {
 	Status       string    `json:"status"`
@@ -52,7 +54,14 @@ func main() {
 			}
 			evidence = []string{strings.TrimSpace(string(out))}
 		case "review-intake":
-			out, err := exec.Command("gh", "pr", "view", "1", "--json", "number,title,state,baseRefName,headRefName").CombinedOutput()
+			pullRequest := "1"
+			if os.Getenv("FAKE_FLOW_EVAL_SMOKE") == "1" {
+				pullRequest = match(pullRequestRE, prompt)
+				if pullRequest == "" {
+					fail(fmt.Errorf("flow evaluation review input has no positive pull_request"))
+				}
+			}
+			out, err := exec.Command("gh", "pr", "view", pullRequest, "--json", "number,title,state,baseRefName,headRefName").CombinedOutput()
 			if err != nil {
 				status, code, summary = "failed", "PR_NOT_FOUND", string(out)
 			}
@@ -131,6 +140,11 @@ func main() {
 
 func handleGeneric(prompt string) {
 	lower := strings.ToLower(prompt)
+	if os.Getenv("FAKE_FLOW_EVAL_SMOKE") == "1" {
+		if handleFlowEvaluationSmoke(prompt) {
+			return
+		}
+	}
 	if strings.Contains(lower, "semantic task router for takt") {
 		if strings.TrimSpace(os.Getenv("FAKE_TASK_ROUTER_FORCE_TEMPLATE")) != "" {
 			fmt.Print(`{"apiVersion":"takt/v1alpha1","kind":"TaskRoute","route":"template","template":"simple-reliable","reason":"fixture baseline forces the stable template","confidence":0.9,"signals":[],"controls":{"inspect_first":false,"baseline":false,"independent_tests":false,"enhanced_review":false,"max_parallel":2}}`)
@@ -212,6 +226,97 @@ func handleGeneric(prompt string) {
 		return
 	}
 	fmt.Print(`{"status":"ready","code":"FIXTURE_READY","summary":"generic fixture","evidence":["fixture"],"artifact_path":"fixture"}`)
+}
+
+func handleFlowEvaluationSmoke(prompt string) bool {
+	workspace := os.Getenv("TAKT_WORKSPACE")
+	if workspace == "" {
+		fail(fmt.Errorf("TAKT_WORKSPACE is required for flow evaluation smoke"))
+	}
+	writeArtifact := func(name, body string) {
+		path, err := renderedArtifactPath(prompt, name)
+		if err != nil {
+			fail(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			fail(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			fail(err)
+		}
+	}
+	switch {
+	case strings.Contains(prompt, "Implement the requested change"):
+		if err := os.WriteFile(filepath.Join(workspace, "smoke.txt"), []byte("flow evaluation smoke\n"), 0o644); err != nil {
+			fail(err)
+		}
+		writeArtifact("implementation.md", "fixture implementation\n")
+	case strings.Contains(prompt, "Validate the current implementation"):
+		cmd := exec.Command("go", "test", "./...")
+		cmd.Dir = workspace
+		if out, err := cmd.CombinedOutput(); err != nil {
+			fail(fmt.Errorf("go test ./...: %s", strings.TrimSpace(string(out))))
+		}
+		writeArtifact("validation.md", "fixture validation\n")
+	case strings.Contains(prompt, "Create or update a pull request"):
+		if err := os.MkdirAll(filepath.Join(workspace, ".takt", "evals", "scm"), 0o755); err != nil {
+			fail(err)
+		}
+		status := exec.Command("git", "status", "--porcelain")
+		status.Dir = workspace
+		out, err := status.Output()
+		if err != nil {
+			fail(err)
+		}
+		if strings.TrimSpace(string(out)) != "" {
+			for _, argv := range [][]string{{"git", "add", "--all"}, {"git", "commit", "-m", "fixture flow evaluation"}} {
+				cmd := exec.Command(argv[0], argv[1:]...)
+				cmd.Dir = workspace
+				if output, err := cmd.CombinedOutput(); err != nil {
+					fail(fmt.Errorf("%s: %s", strings.Join(argv, " "), strings.TrimSpace(string(output))))
+				}
+			}
+		}
+		push := exec.Command("git", "push", "origin", "HEAD")
+		push.Dir = workspace
+		if out, err := push.CombinedOutput(); err != nil {
+			fail(fmt.Errorf("git push origin HEAD: %s", strings.TrimSpace(string(out))))
+		}
+		url, err := exec.Command("gh", "pr", "create", "--draft", "--title", "fixture PR", "--body", "fixture body").CombinedOutput()
+		if err != nil {
+			fail(fmt.Errorf("gh pr create: %s", strings.TrimSpace(string(url))))
+		}
+		writeArtifact("pr.md", "fixture pull request\n")
+		writeArtifact("pr-url.txt", string(url))
+	case strings.Contains(prompt, "Summarize the completed workflow"):
+		writeArtifact("summary.md", "fixture summary\n")
+	case strings.Contains(prompt, "Perform an architectural sweep"):
+		writeArtifact("architecture.md", "fixture architecture\n")
+	case strings.Contains(prompt, "Create a concrete implementation plan"):
+		writeArtifact("plan.md", "fixture plan\n")
+	default:
+		return false
+	}
+	fmt.Print("fixture flow evaluation smoke")
+	return true
+}
+
+func renderedArtifactPath(prompt, baseName string) (string, error) {
+	matches := renderedArtifactRE.FindAllStringSubmatch(prompt, -1)
+	var found string
+	for _, match := range matches {
+		path := match[1]
+		if filepath.IsAbs(path) && filepath.Base(path) == baseName {
+			if found != "" {
+				return "", fmt.Errorf("multiple rendered artifact paths for %s", baseName)
+			}
+			found = path
+		}
+	}
+	if found == "" {
+		return "", fmt.Errorf("missing rendered artifact path for %s", baseName)
+	}
+	return found, nil
 }
 
 func codeFor(phase string) string {

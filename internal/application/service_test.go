@@ -129,6 +129,31 @@ nodes:
 	}
 }
 
+func TestStartPreservesRawJSONProfileInput(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	profileDir := filepath.Join(workspace, ".takt", "profiles", "json")
+	workflowPath := filepath.Join(profileDir, "workflow.yaml")
+	mustWriteControlTest(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteControlTest(t, filepath.Join(profileDir, "profile.yaml"), "apiVersion: takt/v1alpha1\nkind: Profile\nmetadata: {name: json}\nworkflow: workflow.yaml\nconfig: ../../../config.yaml\ninput: {format: json, preserve_path: true}\n")
+	mustWriteControlTest(t, workflowPath, "name: json-input\nnodes:\n  - id: done\n    bash: 'true'\n")
+	input := `{"validation_commands":["go test ./..."]}`
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: "json", ConfigPath: configPath, Input: input})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.State.Input != input {
+		t.Fatalf("input=%q", started.State.Input)
+	}
+}
+
 func TestCommitRedactedUsesRunSpecificConfig(t *testing.T) {
 	workspace := t.TempDir()
 	defaultConfig := filepath.Join(workspace, "default.yaml")

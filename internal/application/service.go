@@ -272,7 +272,7 @@ func (s *RunService) prepareStart(ctx context.Context, request StartRequest) (*p
 	}
 	input := request.Input
 	inputCandidate := request.Input
-	if request.Input != "" && !filepath.IsAbs(inputCandidate) {
+	if request.Input != "" && !filepath.IsAbs(inputCandidate) && !json.Valid([]byte(inputCandidate)) {
 		inputCandidate = filepath.Join(s.workspace, inputCandidate)
 	}
 	if resolved != nil {

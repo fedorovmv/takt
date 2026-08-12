@@ -39,6 +39,22 @@ func TestInitResolveAndPrepareMarkdownInput(t *testing.T) {
 	}
 }
 
+func TestCodeReviewWorkflowsPreserveJSONInput(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"comprehensive-pr-review", "architect"} {
+		resolved, err := Resolve("code:"+name, workspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := resolved.EffectiveInput(); got.Format != "json" || !got.PreservePath {
+			t.Fatalf("%s input=%+v", name, got)
+		}
+	}
+}
+
 func TestResolveNamedWorkflow(t *testing.T) {
 	root := t.TempDir()
 	if _, err := Init("code", root, false); err != nil {

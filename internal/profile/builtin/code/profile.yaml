@@ -44,6 +44,12 @@ inputs:
   smart-pr-review:
     format: json
     preserve_path: true
+  comprehensive-pr-review:
+    format: json
+    preserve_path: true
+  architect:
+    format: json
+    preserve_path: true
   piv-loop:
     format: json
     preserve_path: true
