@@ -1,11 +1,16 @@
 package evaluation
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func writeFlowTestFile(t *testing.T, name, body string) string {
@@ -42,10 +47,13 @@ func TestFlowSuiteContracts(t *testing.T) {
 	if s.Gates == nil || s.Gates.ValidRate.Min == nil {
 		t.Fatal("defaults")
 	}
-	for _, bad := range []string{"validator: {}", "validator:\n  id: x\n  version: x\n  command: [go]\n  path: x\n  timeout: 0s\n  max_output_bytes: 1", "validator:\n  id: x\n  version: x\n  command: [go]\n  path: x\n  timeout: 1s\n  max_output_bytes: 1\ngates: {validation_error_rate: {}}", "validator:\n  id: x\n  version: x\n  command: [go]\n  path: x\n  timeout: 1s\n  max_output_bytes: 1\ngates: {unstable_cases: {}}"} {
-		_, e := LoadFlowSuite(writeFlowTestFile(t, "bad.yaml", strings.Replace(flowValid, "validator:", bad, 1)))
-		if e == nil {
-			t.Fatalf("accepted bad")
+	for _, bad := range []string{
+		strings.Replace(flowValid, "path: validator", "path: validator\ntimeout: 0s", 1),
+		flowValid + "gates: {validation_error_rate: {}}\n",
+		flowValid + "gates: {unstable_cases: {}}\n",
+	} {
+		if _, e := LoadFlowSuite(writeFlowTestFile(t, "bad.yaml", bad)); e == nil {
+			t.Fatalf("accepted bad: %q", bad)
 		}
 	}
 }
@@ -73,5 +81,40 @@ func TestFlowSuiteExplicitGatesReplaceDefaults(t *testing.T) {
 	}
 	if s.Gates.ValidRate.Min != nil || s.Gates.ValidationErrorRate.Max == nil {
 		t.Fatalf("gates=%+v", s.Gates)
+	}
+}
+
+func TestFlowSchemasCompileOffline(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		good, bad []byte
+	}{
+		{"flow-evaluation-suite.schema.json", []byte(`{"version":"takt-flow-evaluation/v1alpha1","workflow":"x","config":"c","cases":{"directory":"cases"},"validator":{"id":"v","version":"1","command":["go"],"path":"p","timeout":"1s","max_output_bytes":1}}`), []byte(`{"version":"bad"}`)},
+		{"evaluation-validator-request.schema.json", []byte(`{"protocol_version":"takt-evaluation-validator/v1alpha1","type":"validation_request","case_id":"c","repeat":1,"workspace":"w","baseline_workspace":"b","expected_path":"e","run":{"id":"i","status":"completed","artifacts_dir":"a"}}`), []byte(`{"type":"validation_request"}`)},
+	} {
+		b, err := os.ReadFile(filepath.Join("..", "..", "..", "schemas", tc.name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(b) == "" {
+			t.Fatal(tc.name)
+		}
+		c := jsonschema.NewCompiler()
+		if err := c.AddResource(tc.name, bytes.NewReader(b)); err != nil {
+			t.Fatal(err)
+		}
+		sch, err := c.Compile(tc.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v any
+		json.Unmarshal(tc.good, &v)
+		if err := sch.Validate(v); err != nil {
+			t.Fatal(err)
+		}
+		json.Unmarshal(tc.bad, &v)
+		if err := sch.Validate(v); err == nil {
+			t.Fatal("accepted bad", tc.name)
+		}
 	}
 }
