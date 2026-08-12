@@ -105,7 +105,11 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
 
 - [ ] **Step 1: Write failing strict-loader tests.**
 
-  Add table tests for: the full accepted suite, missing workflow/config/cases/validator, unknown field suggestion, invalid duration/output budget/rate, unsupported GitHub mode/require, default gates, explicit-gates-replace-defaults, and expectation unknown top-level field.
+  Add table tests for: the full accepted suite, missing required
+  workflow/config/cases/validator fields, a non-existent but syntactically valid
+  config path accepted at suite-load time, unknown field suggestion, invalid
+  duration/output budget/rate, unsupported GitHub mode/require, default gates,
+  explicit-gates-replace-defaults, and expectation unknown top-level field.
 
   ```go
   func TestLoadFlowSuiteStrictContract(t *testing.T) {
@@ -227,7 +231,13 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   preserve exact source bytes for identity. Resolve `config`, `cases.directory`,
   `validator.path`, and an argv[0] containing `/` against the suite directory;
   leave a bare executable name such as `go` unchanged in `ResolvedCommand` for
-  `exec.LookPath`. Require non-empty validator ID/version,
+  `exec.LookPath`. For `config`, canonical means only `filepath.Abs` followed by
+  `filepath.Clean`: `LoadFlowSuite` must not call `os.Stat`, `EvalSymlinks`, or
+  `config.Load` for `ResolvedConfig`, because the committed corpus intentionally
+  references an ignored host-local `config.yaml`. `PrepareFlowRepeat` in Task 3
+  must read and load that exact resolved file before invoking the execution
+  callback; a missing or invalid config is therefore a preparation error before
+  the first assistant call. Require non-empty validator ID/version,
   non-empty command/argv[0], `timeout > 0`, `max_output_bytes > 0`, exactly one of
   `min|max` for each present rate gate, only `max` for unstable cases, and all
   rates in `[0,1]`. Apply the exact defaults below only when the `gates` key is
@@ -435,7 +445,7 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   ```go
   var productionFlowModelSlots = map[string][]string{
       "code:feature-development":       {"implementation", "review"},
-      "code:comprehensive-pr-review": {"implementation", "review"},
+      "code:comprehensive-pr-review":   {"review"},
       "code:architect":                 {"implementation", "review", "routing"},
   }
   ```
@@ -1457,8 +1467,23 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
 
 - [ ] **Step 2: Add the production DAG inventory assertion.**
 
-  Load the materialized workflow closure with existing `workflow.Load` and assert
-  these exact source-level lists, in YAML order:
+  Call existing `workflow.Load` separately for each of these exact six paths:
+
+  ```text
+  internal/profile/builtin/code/workflows/feature-development.yaml
+  internal/profile/builtin/code/workflows/comprehensive-pr-review.yaml
+  internal/profile/builtin/code/workflows/review-block.yaml
+  internal/profile/builtin/code/workflows/review-perspective.yaml
+  internal/profile/builtin/code/workflows/architect.yaml
+  internal/profile/builtin/code/workflows/smart-review-block.yaml
+  ```
+
+  For each returned workflow, filter to nodes with `Hidden == false` and
+  `PublicParent == ""`, preserve slice order, and assert the exact lists below.
+  `workflow.Load` expands subworkflows in the one definition it returns and
+  validates governed child files while traversing them; it does not return a
+  reusable multi-file closure object. Do not derive the child-file assertions by
+  walking the expanded root:
 
   ```text
   feature-development.yaml:
@@ -1476,15 +1501,21 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
     sweep, approve, plan, implement, review, summary
   smart-review-block.yaml:
     scope, classify, reviews, synthesize, fixes, validate
-  review-perspective.yaml:
-    review
   ```
 
-  Walk command front matter plus workflow defaults with the existing workflow/
-  command loaders and assert the Task 3 slot table exactly: feature
-  `{implementation,review}`, comprehensive `{implementation,review}`, architect
-  `{implementation,review,routing}`. Do not use `GetRun` or duplicate compilation.
-  A topology/slot mismatch triggers design review, not an automatic table update.
+  Build three fixed file groups: feature is `feature-development.yaml`;
+  comprehensive is `comprehensive-pr-review.yaml`, `review-block.yaml`, and
+  `review-perspective.yaml`; architect is `architect.yaml`,
+  `smart-review-block.yaml`, and `review-perspective.yaml`. From each separately
+  loaded workflow collect `Node.Model` only for nodes with `Command != ""` or
+  `Prompt != ""`, remove empty strings and duplicates, then sort with
+  `sort.Strings`. `workflow.Load` has already applied the effective workflow and
+  node defaults; do not replace a non-empty `Node.Model` with command front
+  matter. Assert the Task 3 table exactly: feature
+  `{implementation,review}`, comprehensive `{review}`, architect
+  `{implementation,review,routing}`. Do not use `GetRun`, inspect config, or
+  duplicate compilation. A topology/slot mismatch triggers design review, not an
+  automatic table update.
 
 - [ ] **Step 3: Run tests and confirm the missing fixture behaviors.**
 
@@ -1663,7 +1694,11 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   validator, fixture mode, case IDs, and expected schema. Require every skeleton
   to build but return `ErrNotImplemented`. Copy in one shared test-only reference
   `du.go` and prove all three expectations pass the Task 12 validator without
-  weakening their hidden scenarios.
+  weakening their hidden scenarios. Run this loader-only part on a clean checkout
+  without `examples/flow-evaluation/mini-du/config.yaml`; it proves the Task 1
+  contract that `LoadFlowSuite` resolves but does not materialize or validate the
+  ignored config. These corpus-manifest tests must not call `PrepareFlowRepeat`
+  and must not create the ignored repository-local `config.yaml`.
 
 - [ ] **Step 2: Run focused tests and confirm red.**
 
@@ -1750,6 +1785,13 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   reference simplification preserves behavior and passes. Assert source
   `workspace/` is the base tree and `baseline_workspace` after SCM preparation is
   the patched head; never validate architect smell against the unpatched base.
+  The loader-only assertions run without the ignored repository-local
+  `config.yaml`. For the preparation assertions, copy the complete
+  `examples/flow-evaluation/mini-du` tree with `CopyFlowTree` to a fresh
+  `t.TempDir()`, copy `config.opencode.example.yaml` within that temporary tree to
+  `config.yaml`, load the copied review/architect suites, and pass only those
+  copied suites and cases to `PrepareFlowRepeat`. Never create the ignored
+  repository-local `config.yaml`.
 
 - [ ] **Step 2: Run focused tests and confirm red.**
 
@@ -1982,16 +2024,17 @@ commits remain allowed.
 
 ## Design Unknowns Audit
 
-**Gate: READY.** Audit rerun against commit `2f0b862` after the plan was made
-literal for GPT-5.6-luna. There are no open P0 or P1 items.
+**Gate: READY.** The territory audit was run against implementation baseline
+`2f0b862`; the follow-up review of plan commit `57dca53` is incorporated below.
+There are no open P0 or P1 items.
 
 | ID | Finding | Resolution locked in this plan |
 |---|---|---|
 | U-01 | `GetRun` hides compiled nodes, so it cannot provide per-attempt model/usage for exact production DAGs. | Task 8 adds one read-only `EvaluationSnapshot` application query; tooling never receives Store. |
-| U-02 | Public `Events` pages at 1000 and events do not contain every execution identity. | Snapshot returns all events with `ReadEvents(...,0)` plus full durable state. |
+| U-02 | Public application `RunService.Events` limits one request to at most 1000 events and events do not contain every execution identity. | Snapshot bypasses that public paging method at the consumer-owned port and returns all events with `RunQueryStore.ReadEvents(id,0,0)` plus full durable state. |
 | U-03 | `WorktreeService.Remove` rejects waiting Runs. | Evidence first; cleanup closure performs cancel → terminal reload → force remove. |
 | U-04 | Direct `$ARTIFACTS_DIR` Markdown files are not all registered as `ArtifactRef`. | Task 6 walks the bounded Run artifacts directory and preserves registered provenance when present. |
-| U-05 | `profile.PrepareInput` preserves Markdown paths, but review-intake and comprehensive deterministic validation require raw JSON `state.Input`. | Task 3 passes a stable copied path for feature and strict byte-for-byte JSON for comprehensive/architect; Task 8 forwards `InputValue` unchanged. |
+| U-05 | For Markdown with `preserve_path`, `profile.PrepareInput` reads the file and prepends `# Takt input` plus an absolute `Source file:` header; review-intake and comprehensive deterministic validation instead require raw JSON `state.Input`. | Task 3 passes the stable copied path through normal preparation for feature and strict byte-for-byte JSON for comprehensive/architect; Task 8 forwards `InputValue` unchanged. |
 | U-06 | `{{workspace}}` is the managed execution worktree. | Task 10 commits fake-gh and immutable SCM fixtures before managed-worktree creation. |
 | U-07 | Architect's nested smart review reads a PR. | Architect corpus uses `fixture/pull_request`; no real GitHub fallback or smoke-only production behavior. |
 | U-08 | Existing evaluation runtime metrics accept a Store, violating the new application-only path. | Task 7 factors event-slice metrics; old mode keeps its repository adapter. |
