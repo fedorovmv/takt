@@ -185,6 +185,9 @@ func CopyFlowTree(src, dst string) error {
 		if cp != nil {
 			return cp
 		}
+		if err := os.Chmod(target, info.Mode().Perm()); err != nil {
+			return err
+		}
 		return ce
 	})
 }
@@ -233,6 +236,8 @@ func FingerprintFlowCase(c FlowCase) (string, error) {
 					return "", err
 				}
 			}
+		} else if !st.Mode().IsRegular() {
+			return "", fmt.Errorf("non-regular surface: %s", s.root)
 		} else if err := hashOne(h, s.name, filepath.Dir(s.root), s.root); err != nil {
 			return "", err
 		}

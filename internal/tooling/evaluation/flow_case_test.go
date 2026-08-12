@@ -39,3 +39,37 @@ func TestDiscoverFlowCasesContainment(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFlowCaseSCMAndFingerprintMode(t *testing.T) {
+	root := makeFlowCaseTree(t, []string{"x"})
+	cdir := filepath.Join(root, "cases", "x")
+	os.Mkdir(filepath.Join(cdir, "scm"), 0755)
+	os.WriteFile(filepath.Join(cdir, "scm", "a"), []byte("a"), 0644)
+	cases, err := DiscoverFlowCases(filepath.Join(root, "suite.yaml"), &FlowSuite{Cases: FlowCasesSpec{Directory: "cases"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cases[0].SCMPath == "" {
+		t.Fatal("missing scm")
+	}
+	before := cases[0].Fingerprint
+	os.Chmod(filepath.Join(cdir, "workspace", "x"), 0755)
+	after, err := FingerprintFlowCase(cases[0])
+	if err != nil || before == after {
+		t.Fatal("mode change not fingerprinted")
+	}
+}
+func TestCopyFlowTreePreservesExistingMode(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+	f := filepath.Join(src, "x")
+	os.WriteFile(f, []byte("x"), 0644)
+	os.WriteFile(filepath.Join(dst, "x"), []byte("old"), 0600)
+	if err := CopyFlowTree(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := os.Stat(filepath.Join(dst, "x"))
+	if st.Mode().Perm() != 0644 {
+		t.Fatalf("mode %o", st.Mode().Perm())
+	}
+}
