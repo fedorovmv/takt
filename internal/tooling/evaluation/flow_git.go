@@ -70,10 +70,7 @@ func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, rep
 	if err != nil {
 		return nil, err
 	}
-	if err := initFlowGit(ctx, control); err != nil {
-		return nil, err
-	}
-	head, err := runFlowGit(ctx, control, nil, "rev-parse", "HEAD")
+	base, head, bareRemote, err := prepareFlowSCM(ctx, suite, item, control, root)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +93,9 @@ func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, rep
 		InputValue:         inputValue,
 		ProfileFingerprint: profileFingerprint,
 		HostPATHHash:       hex.EncodeToString(pathHash[:]),
-		BaseCommit:         strings.TrimSpace(head),
-		HeadCommit:         strings.TrimSpace(head),
+		BaseCommit:         base,
+		HeadCommit:         head,
+		BareRemote:         bareRemote,
 		Repeat:             repeat,
 	}, nil
 }
@@ -194,8 +192,75 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 	return nil
 }
 
-func initFlowGit(ctx context.Context, control string) error {
-	if _, err := runFlowGit(ctx, control, nil, "init", "-b", "main"); err != nil {
+func prepareFlowSCM(ctx context.Context, suite *FlowSuite, item FlowCase, control, repeatRoot string) (string, string, string, error) {
+	if suite.External.GitHub == nil {
+		if err := initFlowGit(ctx, control, "main"); err != nil {
+			return "", "", "", err
+		}
+		if err := commitFlowBaseline(ctx, control, "takt eval baseline"); err != nil {
+			return "", "", "", err
+		}
+		head, err := runFlowGit(ctx, control, nil, "rev-parse", "HEAD")
+		return strings.TrimSpace(head), strings.TrimSpace(head), "", err
+	}
+	if suite.External.GitHub.Mode != "fixture" {
+		return "", "", "", fmt.Errorf("unsupported github fixture mode")
+	}
+	fixture, err := LoadFlowSCMFixture(item.Root, suite.External.GitHub.Require)
+	if err != nil {
+		return "", "", "", err
+	}
+	if err := initFlowGit(ctx, control, fixture.Repository.BaseBranch); err != nil {
+		return "", "", "", err
+	}
+	if err := commitFlowBaseline(ctx, control, "takt eval base"); err != nil {
+		return "", "", "", err
+	}
+	base, err := runFlowGit(ctx, control, nil, "rev-parse", "HEAD")
+	if err != nil {
+		return "", "", "", err
+	}
+	if _, err := runFlowGit(ctx, control, nil, "checkout", "-b", fixture.Repository.HeadBranch); err != nil {
+		return "", "", "", err
+	}
+	if fixture.PullRequest != nil {
+		if _, err := runFlowGit(ctx, control, nil, "apply", "--check", "--whitespace=error-all", filepath.Join(item.Root, "scm", "head.patch")); err != nil {
+			return "", "", "", err
+		}
+		if _, err := runFlowGit(ctx, control, nil, "apply", "--whitespace=error-all", filepath.Join(item.Root, "scm", "head.patch")); err != nil {
+			return "", "", "", err
+		}
+		if err := commitFlowBaseline(ctx, control, "takt eval pull request head"); err != nil {
+			return "", "", "", err
+		}
+	}
+	head, err := runFlowGit(ctx, control, nil, "rev-parse", "HEAD")
+	if err != nil {
+		return "", "", "", err
+	}
+	bareRemote := filepath.Join(repeatRoot, "origin.git")
+	if _, err := runFlowGit(ctx, control, nil, "init", "--bare", bareRemote); err != nil {
+		return "", "", "", err
+	}
+	if _, err := runFlowGit(ctx, control, nil, "remote", "add", "origin", bareRemote); err != nil {
+		return "", "", "", err
+	}
+	if _, err := runFlowGit(ctx, control, nil, "push", "origin", fixture.Repository.BaseBranch+":refs/heads/"+fixture.Repository.BaseBranch, fixture.Repository.HeadBranch+":refs/heads/"+fixture.Repository.HeadBranch); err != nil {
+		return "", "", "", err
+	}
+	if _, err := runFlowGit(ctx, control, nil, "checkout", fixture.Repository.HeadBranch); err != nil {
+		return "", "", "", err
+	}
+	if status, err := runFlowGit(ctx, control, nil, "status", "--porcelain"); err != nil {
+		return "", "", "", err
+	} else if status != "" {
+		return "", "", "", fmt.Errorf("initial evaluation workspace is dirty: %s", status)
+	}
+	return strings.TrimSpace(base), strings.TrimSpace(head), bareRemote, nil
+}
+
+func initFlowGit(ctx context.Context, control, branch string) error {
+	if _, err := runFlowGit(ctx, control, nil, "init", "-b", branch); err != nil {
 		return err
 	}
 	if _, err := runFlowGit(ctx, control, nil, "config", "user.name", "Takt Eval"); err != nil {
@@ -204,11 +269,15 @@ func initFlowGit(ctx context.Context, control string) error {
 	if _, err := runFlowGit(ctx, control, nil, "config", "user.email", "eval@takt.invalid"); err != nil {
 		return err
 	}
+	return nil
+}
+
+func commitFlowBaseline(ctx context.Context, control, message string) error {
 	if _, err := runFlowGit(ctx, control, nil, "add", "--all"); err != nil {
 		return err
 	}
 	dates := []string{"GIT_AUTHOR_DATE=2000-01-01T00:00:00Z", "GIT_COMMITTER_DATE=2000-01-01T00:00:00Z"}
-	if _, err := runFlowGit(ctx, control, dates, "commit", "-m", "takt eval baseline"); err != nil {
+	if _, err := runFlowGit(ctx, control, dates, "commit", "-m", message); err != nil {
 		return err
 	}
 	status, err := runFlowGit(ctx, control, nil, "status", "--porcelain")
