@@ -101,8 +101,8 @@ func TestFinishFlowReportIsIdempotentAcrossPartialWrites(t *testing.T) {
 }
 
 func TestFlowAuthoritativeRequestIncludesSCM(t *testing.T) {
-	request := flowAuthoritativeRequest(FlowCase{ID: "case", SCMPath: "/scm", ExpectedPath: "/expected"}, 2, &store.RunState{ID: "run", Status: store.RunFailed, ExecutionWorkspace: "/workspace"}, &PreparedFlowRepeat{BaselineWorkspace: "/baseline"}, map[string]string{"run": "/artifacts"})
-	if request.ExternalState == nil || request.ExternalState.SCMDir != "/scm" || request.Run.ArtifactsDir != "/artifacts" {
+	request := flowAuthoritativeRequest(FlowCase{ID: "case", SCMPath: "/corpus/scm", ExpectedPath: "/expected"}, 2, &store.RunState{ID: "run", Status: store.RunFailed, ExecutionWorkspace: "/workspace"}, &PreparedFlowRepeat{BaselineWorkspace: "/baseline"}, map[string]string{"run": "/artifacts"})
+	if request.ExternalState == nil || request.ExternalState.SCMDir != "/workspace/.takt/evals/scm" || request.Run.ArtifactsDir != "/artifacts" {
 		t.Fatalf("request=%+v", request)
 	}
 }
@@ -185,6 +185,32 @@ func TestRunFlowRedactsPersistedReport(t *testing.T) {
 	}
 }
 
+func TestRunFlowKeepsPriorCaseSecretsRedacted(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "a", "b")
+	first, second := "first-flow-secret", "second-flow-secret"
+	t.Setenv("FIRST_FLOW_SECRET", first)
+	t.Setenv("SECOND_FLOW_SECRET", second)
+	mustWrite(t, filepath.Join(root, "config.yaml"), "apiVersion: takt/v1alpha1\nkind: Config\nassistants:\n  fake:\n    type: mock\n    env:\n      TOKEN: secret://FIRST_FLOW_SECRET\n", 0644)
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	report, err := RunFlow(context.Background(), FlowRunOptions{SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root, CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+		secret := first
+		if strings.Contains(request.Workspace, "/b/") {
+			secret = second
+		} else {
+			mustWrite(t, filepath.Join(root, "config.yaml"), "apiVersion: takt/v1alpha1\nkind: Config\nassistants:\n  fake:\n    type: mock\n    env:\n      TOKEN: secret://SECOND_FLOW_SECRET\n", 0644)
+		}
+		return FlowCaseRunResult{States: []*store.RunState{{ID: filepath.Base(request.Workspace), Status: store.RunFailed, ExecutionWorkspace: request.Workspace, Error: secret, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
+	}})
+	if report == nil || (err != nil && !strings.Contains(err.Error(), "flow evaluation gates failed")) {
+		t.Fatalf("report=%+v err=%v", report, err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(root, "out", "report.json"))
+	returned, marshalErr := json.Marshal(report)
+	if readErr != nil || marshalErr != nil || strings.Contains(string(data), first) || strings.Contains(string(data), second) || strings.Contains(string(returned), first) || strings.Contains(string(returned), second) {
+		t.Fatalf("read=%v marshal=%v report=%s returned=%s", readErr, marshalErr, data, returned)
+	}
+}
+
 func TestRunFlowReturnsPersistenceErrorAfterCleanupFailure(t *testing.T) {
 	root, suitePath := writeFlowRunSuite(t, "case")
 	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
@@ -230,6 +256,22 @@ func TestRunFlowAllowsOutputBelowInvocationWorkspace(t *testing.T) {
 		return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
 	}})
 	if err != nil || !called {
+		t.Fatalf("err=%v called=%v", err, called)
+	}
+}
+
+func TestRunFlowRejectsOutputSymlinkedIntoCases(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	link := filepath.Join(root, "out-link")
+	if err := os.Symlink(filepath.Join(root, "cases"), link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	called := false
+	_, err := RunFlow(context.Background(), FlowRunOptions{SuitePath: suitePath, OutputDir: filepath.Join(link, "new"), InvocationWorkspace: root, CaseRunner: func(context.Context, FlowCaseRunRequest) (FlowCaseRunResult, error) {
+		called = true
+		return FlowCaseRunResult{}, nil
+	}})
+	if err == nil || called {
 		t.Fatalf("err=%v called=%v", err, called)
 	}
 }

@@ -17,6 +17,19 @@ type Redactor struct {
 	values []string
 }
 
+// Merge adds every known secret from other to r.
+func (r *Redactor) Merge(other *Redactor) {
+	if r == nil || other == nil {
+		return
+	}
+	other.mu.RLock()
+	values := append([]string(nil), other.values...)
+	other.mu.RUnlock()
+	for _, value := range values {
+		r.AddSecret(value)
+	}
+}
+
 func NewFromEnvironment() *Redactor {
 	r := &Redactor{}
 	for _, entry := range os.Environ() {

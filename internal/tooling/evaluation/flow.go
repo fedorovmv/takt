@@ -69,7 +69,10 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	output = filepath.Clean(output)
+	output, err = canonicalPath(output)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateFlowOutput(output, suite, opts.InvocationWorkspace); err != nil {
 		return nil, err
 	}
@@ -89,7 +92,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 		Environment: EnvironmentIdentity{GOOS: goruntime.GOOS, GOARCH: goruntime.GOARCH, GoVersion: goruntime.Version(), PATHSHA256: hex.EncodeToString(pathHash[:])},
 	}
 	var oracleMetadata, strategyFingerprint string
-	var redactor *redact.Redactor
+	redactor := redact.NewFromEnvironment()
 	for _, item := range cases {
 		for repeat := 1; repeat <= opts.Repeat; repeat++ {
 			prepared, prepErr := PrepareFlowRepeat(ctx, suite, item, repeat, output, opts.HostPATH)
@@ -100,7 +103,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			if cfgErr != nil {
 				return finishFlowPartial(report, output, opts.Now, nil, cfgErr)
 			}
-			redactor = redact.NewFromConfig(cfg)
+			redactor.Merge(redact.NewFromConfig(cfg))
 			preflight, metadata, preflightErr := PreflightFlowValidator(ctx, suite.Validator, item.ID, prepared.BaselineWorkspace, item.ExpectedPath, suite.SuiteDir)
 			if preflightErr != nil {
 				_ = preflight
@@ -240,6 +243,26 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	return report, nil
 }
 
+func redactFlowReport(report *SuiteReport, redactor *redact.Redactor) error {
+	if report == nil || redactor == nil {
+		return nil
+	}
+	data, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	data, err = json.Marshal(redactor.Any(json.RawMessage(data)))
+	if err != nil {
+		return err
+	}
+	var redactedReport SuiteReport
+	if err := json.Unmarshal(data, &redactedReport); err != nil {
+		return err
+	}
+	*report = redactedReport
+	return nil
+}
+
 func flowAuthoritativeRequest(item FlowCase, repeat int, root *store.RunState, prepared *PreparedFlowRepeat, artifactDirs map[string]string) FlowValidationRequest {
 	artifacts := ""
 	if artifactDirs != nil {
@@ -249,8 +272,8 @@ func flowAuthoritativeRequest(item FlowCase, repeat int, root *store.RunState, p
 		artifacts = filepath.Join(root.ExecutionWorkspace, ".takt", "runs", root.ID, "artifacts")
 	}
 	request := FlowValidationRequest{ProtocolVersion: FlowValidatorProtocol, Type: "validation_request", CaseID: item.ID, Repeat: repeat, Workspace: root.ExecutionWorkspace, Baseline: prepared.BaselineWorkspace, ExpectedPath: item.ExpectedPath, Run: FlowValidationRun{ID: root.ID, Status: root.Status, ArtifactsDir: artifacts}}
-	if item.SCMPath != "" {
-		request.ExternalState = &FlowValidationExternal{SCMDir: item.SCMPath}
+	if item.SCMPath != "" && root.ExecutionWorkspace != "" {
+		request.ExternalState = &FlowValidationExternal{SCMDir: filepath.Join(root.ExecutionWorkspace, ".takt", "evals", "scm")}
 	}
 	return request
 }
@@ -270,7 +293,11 @@ func recordFromFlowSnapshots(caseID string, repeat int, workspace string, states
 }
 
 func writeFlowRepeatEvidence(output string, item FlowCase, repeat int, result FlowCaseRunResult, request FlowValidationRequest, execution FlowValidationExecution, prepared *PreparedFlowRepeat, redactor *redact.Redactor) error {
-	return WriteFlowEvidence(output, FlowEvidence{CaseID: item.ID, Repeat: repeat, States: result.States, Request: request, Validation: execution, Artifacts: result.Artifacts, ArtifactDirs: result.ArtifactDirs, PreparedHeadCommit: prepared.HeadCommit, SCMDir: item.SCMPath}, redactor)
+	scmDir := ""
+	if request.ExternalState != nil {
+		scmDir = request.ExternalState.SCMDir
+	}
+	return WriteFlowEvidence(output, FlowEvidence{CaseID: item.ID, Repeat: repeat, States: result.States, Request: request, Validation: execution, Artifacts: result.Artifacts, ArtifactDirs: result.ArtifactDirs, PreparedHeadCommit: prepared.HeadCommit, SCMDir: scmDir}, redactor)
 }
 
 func cleanupFlowResult(ctx context.Context, result FlowCaseRunResult, output string, prepared *PreparedFlowRepeat) error {
@@ -316,6 +343,9 @@ func writeFlowReport(output string, report *SuiteReport, now func() time.Time, r
 	finishFlowReport(report)
 	report.FinishedAt = now().UTC()
 	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
+	if err := redactFlowReport(report, redactor); err != nil {
+		return err
+	}
 	data, err := json.Marshal(report)
 	if err != nil {
 		return err
@@ -366,7 +396,7 @@ func validateFlowOutput(output string, suite *FlowSuite, invocation string) erro
 	invocationPath := ""
 	if invocation != "" {
 		var err error
-		invocationPath, err = filepath.Abs(invocation)
+		invocationPath, err = canonicalPath(invocation)
 		if err != nil {
 			return err
 		}
@@ -376,7 +406,7 @@ func validateFlowOutput(output string, suite *FlowSuite, invocation string) erro
 		if path == "" {
 			continue
 		}
-		absolute, err := filepath.Abs(path)
+		absolute, err := canonicalPath(path)
 		if err != nil {
 			return err
 		}
