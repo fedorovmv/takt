@@ -4,3 +4,5 @@ examples/**/.takt/
 examples/**/route.yaml
 examples/**/counter.txt
 .superpowers/brainstorm/*
+# Host-specific production flow evaluation config.
+/examples/flow-evaluation/mini-du/config.yaml

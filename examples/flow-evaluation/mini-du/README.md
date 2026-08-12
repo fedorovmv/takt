@@ -8,3 +8,5 @@ one `takt-validation/v1alpha1` result. Product failures are measured as
 The candidate contract is `mini-du [-s] [-k] PATH...`. The validator builds the
 candidate, rejects delegation to host `du`, compares fixed filesystem scenarios
 against host `du -k`, and checks the declared path/artifact/SCM requirements.
+Copy exactly one host-specific config example to `config.yaml` before running
+the suite; the generated file is intentionally ignored by git.
