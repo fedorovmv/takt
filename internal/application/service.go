@@ -551,6 +551,9 @@ func (s *RunService) Answer(ctx context.Context, runID, requestedNodeID, value s
 	target.Approvals[nodeID] = value
 	if ns := target.Nodes[nodeID]; ns != nil {
 		ns.Status = store.NodePending
+		// The waiting approval consumed an execution attempt before suspension;
+		// answering it resumes the same node execution, not a retry budget.
+		ns.Attempts = 0
 	}
 	target.Status = store.RunRunning
 	target.Waiting = nil
