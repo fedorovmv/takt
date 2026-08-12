@@ -33,10 +33,11 @@ func TestDiscoverFlowCasesIsOrderedAndSelfContained(t *testing.T) {
 }
 func TestDiscoverFlowCasesContainment(t *testing.T) {
 	root := makeFlowCaseTree(t, []string{"ok"})
-	os.WriteFile(filepath.Join(root, "cases", "ok", "workspace", "link"), []byte("x"), 0644)
-	_, err := DiscoverFlowCases(filepath.Join(root, "suite.yaml"), &FlowSuite{Cases: FlowCasesSpec{Directory: "cases"}}, "ok")
-	if err != nil {
+	if err := os.Symlink("x", filepath.Join(root, "cases", "ok", "workspace", "link")); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := DiscoverFlowCases(filepath.Join(root, "suite.yaml"), &FlowSuite{Cases: FlowCasesSpec{Directory: "cases"}}, "ok"); err == nil {
+		t.Fatal("expected symlink rejection")
 	}
 }
 
