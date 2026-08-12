@@ -1,0 +1,7 @@
+number: 17
+title: Fix hardlink accounting
+base: main
+head: eval/review-hardlink-bug
+state: OPEN
+ci_status: passed
+fixes_permitted: true

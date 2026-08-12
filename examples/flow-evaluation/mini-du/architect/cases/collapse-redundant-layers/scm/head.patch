@@ -1,0 +1,21 @@
+diff --git a/internal/application/service.go b/internal/application/service.go
+index 0000000..1111111 100644
+--- a/internal/application/service.go
++++ b/internal/application/service.go
+@@ -0,0 +1,2 @@
++package application
++func Run() {}
+diff --git a/internal/domain/usage.go b/internal/domain/usage.go
+index 0000000..1111111 100644
+--- a/internal/domain/usage.go
++++ b/internal/domain/usage.go
+@@ -0,0 +1,2 @@
++package domain
++type Usage struct{}
+diff --git a/internal/adapters/fs/adapter.go b/internal/adapters/fs/adapter.go
+index 0000000..1111111 100644
+--- a/internal/adapters/fs/adapter.go
++++ b/internal/adapters/fs/adapter.go
+@@ -0,0 +1,2 @@
++package fs
++func Open() {}

@@ -1,0 +1,4 @@
+oracle:
+  allowed_paths: [cmd/mini-du/**, internal/du/**, go.mod, go.sum, Makefile]
+  required_artifacts: [review-report.md, validation-report.md, post-review-validation-commands.json, summary.md]
+  scenarios: [multiple]

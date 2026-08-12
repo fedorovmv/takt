@@ -1,0 +1,5 @@
+oracle:
+  allowed_paths: [cmd/mini-du/**, internal/du/**, internal/factory/**, go.mod, go.sum, Makefile]
+  required_artifacts: [architecture.md, plan.md, implementation.md, review-report.md, validation-report.md, summary.md]
+  forbidden_identifiers: [factory.NewUsageService]
+  scenarios: [empty, nested]

@@ -1,0 +1,14 @@
+diff --git a/internal/registry/registry.go b/internal/registry/registry.go
+index 0000000..1111111 100644
+--- a/internal/registry/registry.go
++++ b/internal/registry/registry.go
+@@ -0,0 +1,2 @@
++package registry
++var DefaultStrategy = "default"
+diff --git a/internal/strategy/strategy.go b/internal/strategy/strategy.go
+index 0000000..1111111 100644
+--- a/internal/strategy/strategy.go
++++ b/internal/strategy/strategy.go
+@@ -0,0 +1,2 @@
++package strategy
++var Default = "default"
