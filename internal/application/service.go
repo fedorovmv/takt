@@ -212,10 +212,10 @@ func (s *RunService) Start(ctx context.Context, request StartRequest) (*StartRes
 			return &StartResult{RunID: runID, Accepted: true}, nil
 		case <-ticker.C:
 			state, loadErr := runStore.Load(runID)
-			if loadErr == nil && state.Status != store.RunWaiting {
+			if loadErr == nil && terminalRun(state.Status) {
 				return &StartResult{RunID: runID, Accepted: true, State: state.PublicView()}, nil
 			}
-			if !errors.Is(loadErr, os.ErrNotExist) {
+			if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
 				return nil, loadErr
 			}
 		case <-deadline.C:
