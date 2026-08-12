@@ -11,29 +11,42 @@ require_file() {
   [ -f "$fixture_dir/$1" ] || { printf 'missing fake gh fixture: %s\n' "$1" >&2; exit 2; }
 }
 
+valid_view_args() {
+  [ "$#" -eq 0 ] || { [ "$#" -eq 2 ] && [ "$1" = "--json" ] && [ -n "$2" ]; }
+}
+
+valid_create_args() {
+  draft=0
+  if [ "${1:-}" = "--draft" ]; then draft=1; shift; fi
+  [ "$#" -eq 4 ] && [ "$1" = "--title" ] && [ -n "$2" ] && [ "$3" = "--body" ] && [ -n "$4" ]
+}
+
 case "${1:-} ${2:-}" in
   "issue view")
     require_file issue-number
     require_file issue-view.json
-    [ "${3:-}" = "$(cat "$fixture_dir/issue-number")" ] || { printf 'unknown issue number\n' >&2; exit 2; }
+    [ "$#" -ge 3 ] && [ "$3" = "$(cat "$fixture_dir/issue-number")" ] && valid_view_args "${@:4}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
     cat "$fixture_dir/issue-view.json"
     ;;
   "repo view")
     require_file repo-view.json
+    valid_view_args "${@:3}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
     cat "$fixture_dir/repo-view.json"
     ;;
   "pr view")
     require_file pr-number
     require_file pr-view.json
-    [ "${3:-}" = "$(cat "$fixture_dir/pr-number")" ] || { printf 'unknown pull request number\n' >&2; exit 2; }
+    [ "$#" -ge 3 ] && [ "$3" = "$(cat "$fixture_dir/pr-number")" ] && valid_view_args "${@:4}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
     cat "$fixture_dir/pr-view.json"
     ;;
   "pr list")
     require_file pr-list.json
+    valid_view_args "${@:3}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
     cat "$fixture_dir/pr-list.json"
     ;;
   "pr create")
     require_file pr-url-prefix
+    valid_create_args "${@:3}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
     count_file="$state_dir/pr-count"
     if [ -f "$count_file" ]; then
       count="$(cat "$count_file")"

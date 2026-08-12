@@ -47,10 +47,16 @@ func TestFakeGHFixtureContract(t *testing.T) {
 			t.Fatalf("gh %v = %q, %v", call, got, err)
 		}
 	}
-	for want, args := range map[string][]string{"https://example.test/other/repo/pull/8\n": {"pr", "create", "--draft", "--title", "first title", "--body", "first body"}, "https://example.test/other/repo/pull/9\n": {"pr", "create", "--title", "second title", "--body", "second body"}} {
-		got, err := run(args...)
-		if err != nil || got != want {
-			t.Fatalf("gh %v = %q, %v; want %q", args, got, err, want)
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"pr", "create", "--draft", "--title", "first title", "--body", "first body"}, "https://example.test/other/repo/pull/8\n"},
+		{[]string{"pr", "create", "--title", "second title", "--body", "second body"}, "https://example.test/other/repo/pull/9\n"},
+	} {
+		got, err := run(test.args...)
+		if err != nil || got != test.want {
+			t.Fatalf("gh %v = %q, %v; want %q", test.args, got, err, test.want)
 		}
 	}
 	if _, err := run("pr", "view", "1"); err == nil {
@@ -65,6 +71,41 @@ func TestFakeGHFixtureContract(t *testing.T) {
 	}
 	if !strings.Contains(string(log), "first\\ title") || !strings.Contains(string(log), "api user") {
 		t.Fatalf("calls log=%q", log)
+	}
+}
+
+func TestFakeGHFixtureRejectsUnsupportedArgv(t *testing.T) {
+	root := t.TempDir()
+	bin, fixture, state := filepath.Join(root, "bin"), filepath.Join(root, "fixture"), filepath.Join(root, "state")
+	if err := os.MkdirAll(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(fixture, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "gh"), FakeGHFixture(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"repo-view.json": "{}\n", "issue-view.json": "{}\n", "issue-number": "1\n", "pr-view.json": "{}\n", "pr-list.json": "[]\n", "pr-number": "1\n", "pr-url-prefix": "https://example.test/acme/repo/pull/\n",
+	} {
+		if err := os.WriteFile(filepath.Join(fixture, name), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{
+		{"issue", "view", "1", "--repo", "acme/repo"},
+		{"repo", "view", "--json"},
+		{"pr", "view", "1", "--json", "number", "--extra"},
+		{"pr", "list", "--state", "open"},
+		{"pr", "create", "--title", "x"},
+		{"pr", "create", "--title", "x", "--body", "y", "--repo", "acme/repo"},
+	} {
+		cmd := exec.Command(filepath.Join(bin, "gh"), args...)
+		cmd.Env = append(os.Environ(), "FAKE_GH_FIXTURE_DIR="+fixture, "FAKE_GH_STATE_DIR="+state)
+		if err := cmd.Run(); err == nil {
+			t.Fatalf("gh %v succeeded", args)
+		}
 	}
 }
 
