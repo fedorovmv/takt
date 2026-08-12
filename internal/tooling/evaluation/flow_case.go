@@ -64,6 +64,14 @@ func DiscoverFlowCases(suitePath string, suite *FlowSuite, onlyID string) ([]Flo
 	for _, id := range ids {
 		root := filepath.Join(dir, id)
 		c := FlowCase{ID: id, Root: root, InputPath: filepath.Join(root, "input.md"), ExpectedPath: filepath.Join(root, "expected.yaml"), WorkspacePath: filepath.Join(root, "workspace")}
+		if st, e := os.Stat(filepath.Join(root, "scm")); e == nil {
+			if !st.IsDir() {
+				return nil, fmt.Errorf("case %s scm is not a directory", id)
+			}
+			c.SCMPath = filepath.Join(root, "scm")
+		} else if !os.IsNotExist(e) {
+			return nil, e
+		}
 		if err := validateRegular(c.InputPath); err != nil {
 			return nil, fmt.Errorf("case %s input.md: %w", id, err)
 		}
@@ -114,12 +122,12 @@ func validateTree(root string) error {
 			return fmt.Errorf("symlink forbidden: %s", rel)
 		}
 		parts := strings.Split(filepath.ToSlash(rel), "/")
-		for _, p := range parts {
+		for i, p := range parts {
 			if p == ".git" {
 				return fmt.Errorf(".git forbidden: %s", rel)
 			}
-			if p == ".takt" && len(parts) > 1 {
-				switch parts[1] {
+			if p == ".takt" && i+1 < len(parts) {
+				switch parts[i+1] {
 				case "eval", "runs", "worktrees", "evals":
 					return fmt.Errorf("reserved .takt path: %s", rel)
 				}
@@ -164,7 +172,6 @@ func CopyFlowTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		defer in.Close()
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return err
 		}
@@ -173,6 +180,7 @@ func CopyFlowTree(src, dst string) error {
 			return err
 		}
 		_, cp := io.Copy(out, in)
+		in.Close()
 		ce := out.Close()
 		if cp != nil {
 			return cp
@@ -202,6 +210,16 @@ func FingerprintFlowCase(c FlowCase) (string, error) {
 					return fmt.Errorf("symlink forbidden: %s", p)
 				}
 				if !e.IsDir() {
+					if e.Type()&os.ModeSymlink != 0 {
+						return fmt.Errorf("symlink forbidden: %s", p)
+					}
+					info, ierr := e.Info()
+					if ierr != nil {
+						return ierr
+					}
+					if !info.Mode().IsRegular() {
+						return fmt.Errorf("non-regular file: %s", p)
+					}
 					files = append(files, p)
 				}
 				return nil
