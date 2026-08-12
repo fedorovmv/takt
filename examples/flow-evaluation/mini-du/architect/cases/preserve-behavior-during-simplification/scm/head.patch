@@ -5,7 +5,8 @@ index 1111111..2222222 100644
 @@ -1,3 +1,3 @@
  package registry
  
- var Base = "base"
+-var Base = "base"
++var DefaultStrategy = "default"
 diff --git a/internal/strategy/strategy.go b/internal/strategy/strategy.go
 index 1111111..2222222 100644
 --- a/internal/strategy/strategy.go
@@ -13,4 +14,5 @@ index 1111111..2222222 100644
 @@ -1,3 +1,3 @@
  package strategy
  
- var Base = "base"
+-var Base = "base"
++var Default = "default"
