@@ -33,6 +33,8 @@
 - `evaluation-matrix.schema.json` — сравнительная matrix стратегий, baseline, repeat и regression gates;
 - `evaluation-compare.schema.json` — попарное baseline/candidate сравнение по case ID + repeat;
 - `evaluation-matrix-report.schema.json` — итог `takt-evaluation-matrix/v1alpha1` со строго типизированными strategy summaries, usage breakdown, comparisons и gate results.
+- `flow-evaluation-suite.schema.json` — strict production flow evaluation suite.
+- `evaluation-validator-request.schema.json` — validator invocation protocol.
 - `task-case-manifest.schema.json` — task-level cases с ожидаемым route/status и минимальной ревизией плана;
 - `task-evaluation-matrix.schema.json` — matrix для полного `Task Router → Dynamic Plan → replan` контура;
 - `task-evaluation-report.schema.json` — task-level report с route accuracy, plan revisions, replanner runs, pairwise outcomes и gates.
