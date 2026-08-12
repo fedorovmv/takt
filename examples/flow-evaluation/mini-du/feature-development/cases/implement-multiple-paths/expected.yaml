@@ -1,0 +1,6 @@
+oracle:
+  allowed_paths: [cmd/mini-du/**, internal/du/**, go.mod, go.sum, Makefile]
+  required_artifacts: [implementation.md, validation.md, pr.md, pr-url.txt, summary.md]
+  require_pr: true
+  require_push: true
+  scenarios: [multiple, unicode, spaces, mixed-missing]

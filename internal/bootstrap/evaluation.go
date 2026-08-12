@@ -3,7 +3,11 @@ package bootstrap
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
 
+	"takt/internal/application"
 	"takt/internal/assistant"
 	"takt/internal/domainadapter"
 	"takt/internal/redact"
@@ -30,6 +34,157 @@ func (e evaluationEngine) Run(ctx context.Context, req tooling.EvaluationRunRequ
 
 func (e evaluationEngine) Benchmark(ctx context.Context, req tooling.EvaluationBenchmarkRequest) (any, error) {
 	return evaluation.RunMatrix(ctx, evaluation.MatrixRunOptions{ExecutionFactory: e.executionFactory, MatrixPath: req.MatrixPath, OutputDir: req.OutputDir, Repeat: req.Repeat, Replace: req.Replace})
+}
+
+func (e evaluationEngine) Flow(ctx context.Context, req tooling.FlowEvaluationRequest) (any, error) {
+	hostPATH := os.Getenv("PATH")
+	if hostPATH == "" {
+		return nil, fmt.Errorf("flow evaluation requires non-empty host PATH")
+	}
+	return evaluation.RunFlow(ctx, evaluation.FlowRunOptions{
+		SuitePath: req.SuitePath, CaseID: req.CaseID, OutputDir: req.OutputDir, InvocationWorkspace: req.InvocationWorkspace,
+		Repeat: req.Repeat, KeepWorkspaces: req.KeepWorkspaces, Now: time.Now, HostPATH: hostPATH, CaseRunner: e.runFlowCase,
+	})
+}
+
+func (evaluationEngine) FlowInit(_ context.Context, workflowSelector, output string) (any, error) {
+	absOutput, err := filepath.Abs(output)
+	if err != nil {
+		return nil, err
+	}
+	if err := evaluation.InitFlowSuite(workflowSelector, absOutput); err != nil {
+		return nil, err
+	}
+	return map[string]any{"output": absOutput, "created": true}, nil
+}
+
+func (e evaluationEngine) runFlowCase(ctx context.Context, req evaluation.FlowCaseRunRequest) (evaluation.FlowCaseRunResult, error) {
+	app, err := New(req.Workspace, req.ConfigPath)
+	if err != nil {
+		return evaluation.FlowCaseRunResult{}, err
+	}
+	started, err := app.Core.RunService.Start(ctx, application.StartRequest{
+		Selector: req.Selector, Input: req.InputValue, ConfigPath: req.ConfigPath,
+		Detached: true, KeepWorktree: true,
+	})
+	if err != nil {
+		return evaluation.FlowCaseRunResult{}, err
+	}
+	if started.RunID == "" {
+		return evaluation.FlowCaseRunResult{}, fmt.Errorf("flow evaluation start returned no run ID")
+	}
+	return e.pollFlowCase(ctx, app, started.RunID, req.ApprovalAnswer)
+}
+
+func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, answer string) (evaluation.FlowCaseRunResult, error) {
+	poll := func() (*store.RunState, error) { return app.Core.RunService.GetRun(runID) }
+	for {
+		state, err := poll()
+		if err != nil {
+			if ctx.Err() != nil {
+				return e.cancelFlowCase(ctx, app, runID)
+			}
+			return evaluation.FlowCaseRunResult{}, err
+		}
+		switch state.Status {
+		case store.RunWaiting:
+			if ctx.Err() != nil {
+				return e.cancelFlowCase(ctx, app, runID)
+			}
+			if answer == "" {
+				return e.flowSnapshot(app, runID, state, nil)
+			}
+			if state.Waiting == nil {
+				return evaluation.FlowCaseRunResult{}, fmt.Errorf("waiting run %s has no waiting state", runID)
+			}
+			// approval.requested makes waiting durable before the starting runner
+			// commits node.suspended. Wait for that quiescent state before Answer.
+			if node := state.Nodes[state.Waiting.NodeID]; node == nil || node.Status != store.NodeWaiting || node.Attempts != 0 {
+				break
+			}
+			if _, err := app.Core.RunService.Answer(ctx, runID, state.Waiting.NodeID, answer); err != nil {
+				if ctx.Err() != nil {
+					return e.cancelFlowCase(ctx, app, runID)
+				}
+				return evaluation.FlowCaseRunResult{}, err
+			}
+		case store.RunCompleted, store.RunFailed, store.RunCancelled, store.RunAbandoned, store.RunPausing, store.RunPaused:
+			return e.flowSnapshot(app, runID, state, nil)
+		}
+		select {
+		case <-ctx.Done():
+			return e.cancelFlowCase(ctx, app, runID)
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
+
+func (e evaluationEngine) cancelFlowCase(ctx context.Context, app *App, runID string) (evaluation.FlowCaseRunResult, error) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if state, err := app.Core.RunService.GetRun(runID); err == nil && (terminalFlowRun(state.Status) || state.Status == store.RunPausing || state.Status == store.RunPaused) {
+		return e.flowSnapshot(app, runID, state, ctx.Err())
+	}
+	if _, err := app.Core.RunService.Cancel(cleanupCtx, runID, "flow evaluation context cancelled"); err != nil {
+		if state, loadErr := app.Core.RunService.GetRun(runID); loadErr == nil && (terminalFlowRun(state.Status) || state.Status == store.RunPausing || state.Status == store.RunPaused) {
+			return e.flowSnapshot(app, runID, state, ctx.Err())
+		}
+		return evaluation.FlowCaseRunResult{}, err
+	}
+	for cleanupCtx.Err() == nil {
+		state, err := app.Core.RunService.GetRun(runID)
+		if err == nil && (terminalFlowRun(state.Status) || state.Status == store.RunPausing || state.Status == store.RunPaused) {
+			return e.flowSnapshot(app, runID, state, ctx.Err())
+		}
+		select {
+		case <-cleanupCtx.Done():
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	return evaluation.FlowCaseRunResult{}, ctx.Err()
+}
+
+func terminalFlowRun(status string) bool {
+	return status == store.RunCompleted || status == store.RunFailed || status == store.RunCancelled || status == store.RunAbandoned
+}
+
+func (e evaluationEngine) flowSnapshot(app *App, runID string, observed *store.RunState, callbackErr error) (evaluation.FlowCaseRunResult, error) {
+	snapshot, err := app.Core.RunService.EvaluationSnapshot(runID)
+	if err != nil {
+		return evaluation.FlowCaseRunResult{}, err
+	}
+	result := evaluation.FlowCaseRunResult{States: snapshot.States, Events: snapshot.Events, Artifacts: snapshot.Artifacts, ArtifactDirs: snapshot.ArtifactDirs, ContextCancelled: callbackErr != nil}
+	result.Cleanup = func(ctx context.Context) (*store.RunState, error) {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		latest, err := app.Core.RunService.GetRun(runID)
+		if err != nil {
+			return nil, err
+		}
+		if latest.Worktree == nil || !latest.Worktree.Enabled {
+			return latest, nil
+		}
+		if latest.Status == store.RunPausing || latest.Status == store.RunPaused {
+			return latest, nil
+		}
+		if latest.Status == store.RunWaiting {
+			if _, err := app.Core.RunService.Cancel(cleanupCtx, runID, "flow evaluation cleanup"); err != nil {
+				return nil, err
+			}
+			for !terminalFlowRun(latest.Status) {
+				if cleanupCtx.Err() != nil {
+					return nil, cleanupCtx.Err()
+				}
+				time.Sleep(50 * time.Millisecond)
+				latest, err = app.Core.RunService.GetRun(runID)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		return app.Core.WorktreeService.Remove(cleanupCtx, runID, true)
+	}
+	return result, callbackErr
 }
 
 func (evaluationEngine) TaskBenchmark(ctx context.Context, req tooling.EvaluationBenchmarkRequest) (any, error) {

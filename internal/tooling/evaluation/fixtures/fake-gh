@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fixture_dir="${FAKE_GH_FIXTURE_DIR:?FAKE_GH_FIXTURE_DIR is required}"
+state_dir="${FAKE_GH_STATE_DIR:?FAKE_GH_STATE_DIR is required}"
+mkdir -p "$state_dir"
+printf '%q ' "$@" >> "$state_dir/calls.log"
+printf '\n' >> "$state_dir/calls.log"
+
+require_file() {
+  [ -f "$fixture_dir/$1" ] || { printf 'missing fake gh fixture: %s\n' "$1" >&2; exit 2; }
+}
+
+valid_view_args() {
+  [ "$#" -eq 0 ] || { [ "$#" -eq 2 ] && [ "$1" = "--json" ] && [ -n "$2" ]; }
+}
+
+valid_create_args() {
+  draft=0
+  if [ "${1:-}" = "--draft" ]; then draft=1; shift; fi
+  [ "$#" -eq 4 ] && [ "$1" = "--title" ] && [ -n "$2" ] && [ "$3" = "--body" ] && [ -n "$4" ]
+}
+
+case "${1:-} ${2:-}" in
+  "issue view")
+    require_file issue-number
+    require_file issue-view.json
+    [ "$#" -ge 3 ] && [ "$3" = "$(cat "$fixture_dir/issue-number")" ] && valid_view_args "${@:4}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
+    cat "$fixture_dir/issue-view.json"
+    ;;
+  "repo view")
+    require_file repo-view.json
+    valid_view_args "${@:3}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
+    cat "$fixture_dir/repo-view.json"
+    ;;
+  "pr view")
+    require_file pr-number
+    require_file pr-view.json
+    [ "$#" -ge 3 ] && [ "$3" = "$(cat "$fixture_dir/pr-number")" ] && valid_view_args "${@:4}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
+    cat "$fixture_dir/pr-view.json"
+    ;;
+  "pr list")
+    require_file pr-list.json
+    valid_view_args "${@:3}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
+    cat "$fixture_dir/pr-list.json"
+    ;;
+  "pr create")
+    require_file pr-url-prefix
+    valid_create_args "${@:3}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
+    count_file="$state_dir/pr-count"
+    if [ -f "$count_file" ]; then
+      count="$(cat "$count_file")"
+    elif [ -f "$fixture_dir/pr-number" ]; then
+      count="$(cat "$fixture_dir/pr-number")"
+    else
+      count=0
+    fi
+    count=$((count + 1))
+    printf '%s' "$count" > "$count_file"
+    printf '%s%s\n' "$(cat "$fixture_dir/pr-url-prefix")" "$count"
+    ;;
+  *)
+    printf 'unsupported fake gh command:' >&2
+    printf ' %q' "$@" >&2
+    printf '\n' >&2
+    exit 2
+    ;;
+esac

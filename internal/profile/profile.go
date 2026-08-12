@@ -55,7 +55,7 @@ func Init(name, destination string, force bool) (string, error) {
 		return "", fmt.Errorf("profile name is required")
 	}
 	root := filepath.Join(destination, ".takt", "profiles", name)
-	if _, err := fs.Stat(builtins, "builtin/"+name+"/profile.yaml"); err != nil {
+	if !IsBuiltin(name) {
 		return "", fmt.Errorf("unknown built-in profile %q", name)
 	}
 	if info, err := os.Stat(root); err == nil && info.IsDir() && !force {
@@ -114,7 +114,7 @@ func Init(name, destination string, force bool) (string, error) {
 }
 
 func Resolve(selector, workspace string) (*Resolved, error) {
-	name, workflowName := splitSelector(selector)
+	name, workflowName := SelectorParts(selector)
 	candidates := []string{
 		filepath.Join(workspace, ".takt", "profiles", name, "profile.yaml"),
 	}
@@ -133,7 +133,16 @@ func Resolve(selector, workspace string) (*Resolved, error) {
 	return nil, fmt.Errorf("profile %q was not found; run 'takt init %s' first", name, name)
 }
 
-func splitSelector(selector string) (string, string) {
+func IsBuiltin(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	_, err := fs.Stat(builtins, "builtin/"+name+"/profile.yaml")
+	return err == nil
+}
+
+func SelectorParts(selector string) (string, string) {
 	selector = strings.TrimSpace(selector)
 	name, workflowName, found := strings.Cut(selector, ":")
 	if !found {

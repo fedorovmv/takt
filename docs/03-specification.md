@@ -885,6 +885,22 @@ takt eval benchmark <matrix.yaml> [--output <dir>] [--repeat N] [--replace]
 takt eval compare <baseline-output-dir> <candidate-output-dir>
 ```
 
+### Production flow evaluation
+
+`takt eval flow <suite.yaml> [--case ID] [--repeat N] [--output DIR]
+[--keep-workspaces] [--json]` runs sequential isolated production-shaped cases.
+The strict `takt-flow-evaluation/v1alpha1` suite declares `workflow`, `config`,
+`cases.directory`, a validator command/path/timeout/output limit, and gates.
+Each repeat persists `cases/<case>/repeat-<NNN>/run.json`,
+`validation-request.json`, `validation-result.json`, and `artifacts/manifest.json`;
+`report.json` remains the canonical `takt-evaluation/v1alpha1` output. Validator
+stdout alone is decoded as `takt-validation/v1alpha1`; agent text is not proof.
+Gate failure returns non-zero only after report persistence.
+
+`takt eval flow init <workflow-selector> --output <directory>` creates only a
+suite skeleton and one example case. It never creates a validator or executable
+setup: add `config.yaml`, implement `./validator`, and replace the example case.
+
 Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status`, `children`, `artifacts`, `cancel`, `command run` и `eval` используют JSON по умолчанию.
 
 `eval run` выполняет preflight до создания output: нормализованные `case_id` должны быть уникальны, а `workspace-template` и `output` не могут совпадать или быть вложены друг в друга, включая пути через символические ссылки. До запуска вычисляются fingerprints workflow, config, Markdown-команд, упорядоченного набора заданий, копируемого workspace template и указанного валидатора.

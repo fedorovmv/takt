@@ -39,6 +39,34 @@ nodes:
 	}
 }
 
+func TestDetachedStartReturnsBeforeLongRunCompletes(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, workflowPath, `name: detached-running
+nodes:
+  - id: slow
+    bash: sleep 2
+`)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Now()
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Detached: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(startedAt); elapsed >= time.Second {
+		t.Fatalf("detached start waited %s for terminal state", elapsed)
+	}
+	if started.State == nil || started.State.Status != store.RunRunning {
+		t.Fatalf("start result = %#v", started)
+	}
+	waitRunStatus(t, service, started.RunID, store.RunCompleted, 3*time.Second)
+}
+
 func TestRunOperationsListAttentionSummaryPauseAndResume(t *testing.T) {
 	workspace := t.TempDir()
 	configPath := filepath.Join(workspace, "config.yaml")

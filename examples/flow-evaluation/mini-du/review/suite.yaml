@@ -1,0 +1,15 @@
+version: takt-flow-evaluation/v1alpha1
+workflow: code:comprehensive-pr-review
+config: ../config.yaml
+cases: {directory: cases}
+external:
+  github: {mode: fixture, require: pull_request}
+validator:
+  id: mini-du
+  version: "1"
+  command: [go, run, ../../validator]
+  path: ../../validator
+  timeout: 2m
+  max_output_bytes: 1048576
+gates:
+  validation_error_rate: {max: 0}

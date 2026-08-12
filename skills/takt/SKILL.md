@@ -415,6 +415,7 @@ takt run .takt/workflows/main.yaml \
 - `references/workflows.md` — поля workflow, переменные, зависимости и статусы;
 - `references/patterns.md` — готовые композиции;
 - `references/troubleshooting.md` — диагностика типовых ошибок;
+- `references/evaluation.md` — только при создании, запуске или диагностике flow evaluation suite;
 - `assets/validated-agent-profile/` — копируемый стартовый профиль.
 
 ## Evidence, baseline и external reconciliation

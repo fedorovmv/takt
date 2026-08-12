@@ -1,0 +1,7 @@
+number: 27
+title: Add service factory
+base: main
+head: eval/remove-single-implementation-factories
+state: OPEN
+ci_status: passed
+fixes_permitted: true

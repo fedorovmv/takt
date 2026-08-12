@@ -1,0 +1,7 @@
+number: 18
+title: Preserve paths with spaces
+base: main
+head: eval/review-path-with-spaces
+state: OPEN
+ci_status: passed
+fixes_permitted: true

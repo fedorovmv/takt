@@ -39,6 +39,22 @@ func TestInitResolveAndPrepareMarkdownInput(t *testing.T) {
 	}
 }
 
+func TestCodeReviewWorkflowsPreserveJSONInput(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"comprehensive-pr-review", "architect"} {
+		resolved, err := Resolve("code:"+name, workspace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := resolved.EffectiveInput(); got.Format != "json" || !got.PreservePath {
+			t.Fatalf("%s input=%+v", name, got)
+		}
+	}
+}
+
 func TestResolveNamedWorkflow(t *testing.T) {
 	root := t.TempDir()
 	if _, err := Init("code", root, false); err != nil {
@@ -62,6 +78,23 @@ func TestResolveNamedWorkflow(t *testing.T) {
 func TestUnknownBuiltin(t *testing.T) {
 	if _, err := Init("missing", t.TempDir(), false); err == nil {
 		t.Fatal("expected unknown profile error")
+	}
+}
+
+func TestIsBuiltin(t *testing.T) {
+	if !IsBuiltin(" code ") || IsBuiltin("missing") || IsBuiltin("") {
+		t.Fatal("unexpected built-in profile result")
+	}
+}
+
+func TestSelectorParts(t *testing.T) {
+	name, workflow := SelectorParts(" code : feature-development ")
+	if name != "code" || workflow != "feature-development" {
+		t.Fatalf("selector parts = %q, %q", name, workflow)
+	}
+	name, workflow = SelectorParts(" workflows/local.yaml ")
+	if name != "workflows/local.yaml" || workflow != "" {
+		t.Fatalf("path selector parts = %q, %q", name, workflow)
 	}
 }
 

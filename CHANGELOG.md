@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Исправлены контракты production-flow evaluation: fingerprint повторов больше не
+  зависит от абсолютного пути remote, `require_push` проверяет текущую ветку,
+  baseline mutation имеет приоритет над timeout/cancel, default output получает
+  UTC timestamp, JSON input передаётся через профильный файл, а отрицательный
+  `unstable_cases.max` отклоняется. Detached start сохраняет ранний ответ для
+  non-waiting durable state и не гоняет immediate approval answer с persistence.
+
+- Added `takt eval flow` isolated production-flow suites, durable repeat evidence,
+  and `takt eval flow init` validator-free scaffolding.
+
 - Уточнены shell-контексты для single-quoted `$(` и `case` pattern без
   рассинхронизации quote-state; `fresh_context` теперь действует только на
   первую попытку итерации `N > 1`, а retry продолжает управляться

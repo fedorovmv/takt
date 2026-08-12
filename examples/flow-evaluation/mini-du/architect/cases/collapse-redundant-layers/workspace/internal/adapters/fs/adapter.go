@@ -1,0 +1,3 @@
+package fs
+
+func Base() {}

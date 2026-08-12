@@ -2,14 +2,80 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"takt/internal/runcontrol"
 	"takt/internal/store"
 )
+
+func TestEvaluationSnapshotIncludesDurableRunTreeWithoutSharingStoreState(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	now := time.Now().UTC()
+	child := &store.RunState{ID: "snapshot-child", Status: store.RunCompleted, ConfigPath: configPath, Workspace: workspace, CreatedAt: now, UpdatedAt: now, Nodes: map[string]*store.NodeState{"compiled": {Status: store.NodeCompleted, External: &store.ExternalExecutionState{ClaimToken: "secret-claim"}}}, Approvals: map[string]string{}, Artifacts: []store.ArtifactRef{{ID: "child-artifact", ProducerRunID: "snapshot-child"}}}
+	root := &store.RunState{ID: "snapshot-root", Status: store.RunCompleted, ConfigPath: configPath, Workspace: workspace, CreatedAt: now, UpdatedAt: now, Nodes: map[string]*store.NodeState{"visible": {Status: store.NodeCompleted}, "compiled": {Status: store.NodeCompleted, Hidden: true}}, Approvals: map[string]string{}, ChildRunIDs: []string{child.ID}, Artifacts: []store.ArtifactRef{{ID: "root-artifact", ProducerRunID: "snapshot-root"}}}
+	fs := store.FS{Workspace: workspace}
+	if err := fs.Save(child); err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.Save(root); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 1001; i++ {
+		if err := fs.Commit(root, store.Event{Type: "snapshot", RunID: root.ID, Data: map[string]any{"counter": i}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, err := service.RunService.GetRun(root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(public.ChildRunIDs) != 1 || public.Nodes["compiled"] != nil {
+		t.Fatalf("public child ids = %#v", public.ChildRunIDs)
+	}
+	snapshot, err := service.RunService.EvaluationSnapshot(root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Root != snapshot.States[0] || len(snapshot.States) != 2 || len(snapshot.Events) != 1001 {
+		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	if snapshot.States[1].Nodes["compiled"].External.ClaimToken != "" {
+		t.Fatalf("claim token leaked: %#v", snapshot.States[1].Nodes["compiled"].External)
+	}
+	if got := snapshot.Artifacts[0].ID; got != "child-artifact" {
+		t.Fatalf("artifacts not sorted: %#v", snapshot.Artifacts)
+	}
+	if snapshot.ArtifactDirs[root.ID] != fs.ArtifactsDir(root.ID) || snapshot.ArtifactDirs[child.ID] != fs.ArtifactsDir(child.ID) {
+		t.Fatalf("artifact dirs = %#v", snapshot.ArtifactDirs)
+	}
+	snapshot.States[0].Nodes["visible"].Status = store.NodeFailed
+	snapshot.Events[0].Data["counter"] = "changed"
+	loaded, err := fs.Load(root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Nodes["visible"].Status != store.NodeCompleted {
+		t.Fatalf("snapshot aliases stored state")
+	}
+	events, err := fs.ReadEvents(root.ID, 0, 1)
+	if err != nil || events[0].Data["counter"] == "changed" {
+		t.Fatalf("snapshot aliases stored events: %#v err=%v", events, err)
+	}
+	if _, err := json.Marshal(snapshot); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestAnswerRedactsKnownSecretBeforePersistence(t *testing.T) {
 	workspace := t.TempDir()
@@ -60,6 +126,32 @@ nodes:
 	}
 	if got := persisted.Approvals["approve"]; got != "<redacted>" {
 		t.Fatalf("persisted approval=%q", got)
+	}
+}
+
+func TestStartReadsRelativeInputWhoseNameIsValidJSON(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	profileDir := filepath.Join(workspace, ".takt", "profiles", "json")
+	workflowPath := filepath.Join(profileDir, "workflow.yaml")
+	mustWriteControlTest(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteControlTest(t, filepath.Join(profileDir, "profile.yaml"), "apiVersion: takt/v1alpha1\nkind: Profile\nmetadata: {name: json}\nworkflow: workflow.yaml\nconfig: ../../../config.yaml\ninput: {format: json, preserve_path: true}\n")
+	mustWriteControlTest(t, workflowPath, "name: json-input\nnodes:\n  - id: done\n    bash: 'true'\n")
+	input := `{"validation_commands":["go test ./..."]}`
+	mustWriteControlTest(t, filepath.Join(workspace, "123"), input)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: "json", ConfigPath: configPath, Input: "123"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.State.Input != input {
+		t.Fatalf("input=%q", started.State.Input)
 	}
 }
 

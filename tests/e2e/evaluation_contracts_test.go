@@ -4,9 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
+
+	"takt/internal/runtime"
+	"takt/internal/spec"
+	"takt/internal/workflow"
 )
 
 func TestRouteDSLE2EContract(t *testing.T) {
@@ -217,6 +223,301 @@ gates:
 	failingOut := filepath.Join(tmp, "failing")
 	takt(t, nil, "eval", "benchmark", failingMatrix, "--output", failingOut, "--replace", "--json").RequireFailure(t)
 	requireFileContains(t, filepath.Join(failingOut, "benchmark.json"), `"passed": false`)
+}
+
+func TestFlowEvaluationContract(t *testing.T) {
+	if os.Getenv("TAKT_FLOW_E2E_VALIDATOR") == "1" {
+		fmt.Print(`{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":true,"metadata":{"validator":"flow-e2e"}}`)
+		os.Exit(0)
+	}
+	root := t.TempDir()
+	caseRoot := filepath.Join(root, "cases", "accept")
+	if err := os.MkdirAll(filepath.Join(caseRoot, "workspace"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, caseRoot, "input.md", "input\n")
+	writeFile(t, caseRoot, "expected.yaml", "oracle: {expected: true}\n")
+	writeFile(t, filepath.Join(caseRoot, "workspace"), "main.txt", "base\n")
+	fakeAssistant := binary(t, "takt-fake-assistant")
+	workflow := writeFile(t, root, "flow.yaml", "name: flow-e2e\nprovider: fixture\nmodel: fixture\nworktree:\n  enabled: true\nnodes:\n  - id: done\n    prompt: complete this evaluation case\n")
+	config := writeFile(t, root, "config.yaml", fmt.Sprintf("apiVersion: takt/v1alpha1\nkind: Config\nmodels:\n  fixture:\n    provider: fixture\n    id: fixture\nassistants:\n  fixture:\n    type: process\n    protocol: takt-assistant/v1alpha2\n    argv: [%q, %q]\n", fakeAssistant, "--case=success"))
+	_ = workflow
+	_ = config
+	suite := writeFile(t, root, "suite.yaml", fmt.Sprintf("version: takt-flow-evaluation/v1alpha1\nworkflow: flow.yaml\nconfig: config.yaml\ncases: {directory: cases}\nvalidator:\n  id: flow-e2e\n  version: '1'\n  command: [%q, %q, %q]\n  path: flow.yaml\n  timeout: 10s\n  max_output_bytes: 4096\ngates:\n  valid_rate: {min: 1}\n", os.Args[0], "-test.run=TestFlowEvaluationContract", "--"))
+	output := filepath.Join(t.TempDir(), "output")
+	report := resultObject(t, takt(t, []string{"TAKT_FLOW_E2E_VALIDATOR=1"}, "eval", "flow", suite, "--output", output, "--json").RequireSuccess(t).JSON(t))
+	if report["report_version"] != "takt-evaluation/v1alpha1" || report["mode"] != "flow" || report["summary"].(map[string]any)["flow"].(map[string]any)["true_accept"] != float64(1) {
+		t.Fatalf("report=%#v", report)
+	}
+	if _, err := os.Stat(filepath.Join(output, "report.json")); err != nil {
+		t.Fatal(err)
+	}
+	evidence := filepath.Join(output, "cases", "accept", "repeat-001")
+	for _, path := range []string{"run.json", "validation-request.json", "validation-result.json", filepath.Join("artifacts", "manifest.json")} {
+		if _, err := os.Stat(filepath.Join(evidence, path)); err != nil {
+			t.Fatalf("missing evidence %s: %v", path, err)
+		}
+	}
+	writeFile(t, root, "flow.yaml", "name: flow-e2e-failing\nprovider: fixture\nmodel: fixture\nworktree:\n  enabled: true\nnodes:\n  - id: done\n    bash: 'exit 1'\n")
+	failingOutput := filepath.Join(t.TempDir(), "failing-output")
+	takt(t, []string{"TAKT_FLOW_E2E_VALIDATOR=1"}, "eval", "flow", suite, "--output", failingOutput, "--json").RequireFailure(t).Contains(t, "flow evaluation gates failed")
+	if _, err := os.Stat(filepath.Join(failingOutput, "report.json")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProductionFlowEvaluation(t *testing.T) {
+	if os.Getenv("TAKT_PRODUCTION_FLOW_VALIDATOR") == "1" {
+		var request struct {
+			Workspace string `json:"workspace"`
+			Run       struct {
+				ArtifactsDir string `json:"artifacts_dir"`
+			} `json:"run"`
+			ExternalState *struct {
+				SCMDir string `json:"scm_dir"`
+			} `json:"external_state"`
+		}
+		if err := json.NewDecoder(os.Stdin).Decode(&request); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if _, err := os.Stat(request.Workspace); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if request.Run.ArtifactsDir == "" {
+			fmt.Print(`{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":true}`)
+			os.Exit(0)
+		}
+		check := exec.Command("go", "test", "./...")
+		check.Dir = request.Workspace
+		if output, err := check.CombinedOutput(); err != nil {
+			fmt.Fprintln(os.Stderr, string(output))
+			os.Exit(1)
+		}
+		if request.ExternalState == nil {
+			fmt.Fprintln(os.Stderr, "missing SCM state")
+			os.Exit(1)
+		}
+		if _, err := os.ReadFile(filepath.Join(request.ExternalState.SCMDir, "calls.log")); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if _, err := os.Stat(request.Run.ArtifactsDir); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Print(`{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":true}`)
+		os.Exit(0)
+	}
+
+	fake := binary(t, "takt-fake-code-agent")
+	for _, tc := range []struct {
+		name, selector, require string
+		pullRequest             int
+		input                   string
+		wantNodes               []string
+		wantArtifacts           []string
+		wantGH                  string
+	}{
+		{"feature", "code:feature-development", "repository", 0, "# Implement the smoke change\n", []string{"implement", "validate-agent", "validate", "create-pr", "summary"}, []string{"implementation.md", "validation.md", "pr.md", "pr-url.txt", "summary.md"}, "pr create"},
+		{"comprehensive", "code:comprehensive-pr-review", "pull_request", 17, `{"repository":"example/mini-du","pull_request":17,"fixes_permitted":true,"validation_commands":["go test ./..."]}`, []string{"review", "summary", "review-acceptance-gate"}, nil, "pr view"},
+		{"architect", "code:architect", "pull_request", 27, `{"repository":"example/mini-du","pull_request":27,"fixes_permitted":true}`, []string{"sweep", "plan", "implement", "review", "summary", "scope", "classify"}, []string{"architecture.md", "plan.md", "implementation.md", "summary.md"}, "pr view"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			suite := writeProductionFlowSuite(t, root, tc.selector, tc.require, tc.pullRequest, tc.input, fake)
+			output := filepath.Join(t.TempDir(), "output")
+			args := []string{"eval", "flow", suite, "--output", output, "--keep-workspaces", "--json"}
+			report := resultObject(t, takt(t, []string{"TAKT_PRODUCTION_FLOW_VALIDATOR=1"}, args...).RequireSuccess(t).JSON(t))
+			run := report["runs"].([]any)[0].(map[string]any)
+			if run["status"] != "completed" {
+				t.Fatalf("run=%#v", run)
+			}
+			nodes := run["nodes"].(map[string]any)
+			for _, id := range tc.wantNodes {
+				node, ok := flowNode(nodes, id)
+				if !ok || node["status"] != "completed" {
+					t.Fatalf("node %q=%#v", id, node)
+				}
+			}
+			evidence := filepath.Join(output, "cases", "smoke", "repeat-001")
+			request := decodeJSONFile(t, filepath.Join(evidence, "validation-request.json"))
+			if request["workspace"] == "" {
+				t.Fatalf("validator did not observe retained execution workspace: %#v", request)
+			}
+			external := request["external_state"].(map[string]any)
+			log := filepath.Join(external["scm_dir"].(string), "calls.log")
+			requireFileContains(t, log, tc.wantGH)
+			if tc.pullRequest > 0 {
+				requireGHCall(t, log, []string{"pr", "view", fmt.Sprint(tc.pullRequest), "--json", "number,title,state,baseRefName,headRefName"})
+			}
+			for _, artifact := range tc.wantArtifacts {
+				requireEvidenceArtifact(t, evidence, artifact)
+			}
+			if tc.name == "feature" {
+				origin := filepath.Join(output, "workspaces", "smoke", "repeat-001", "origin.git")
+				if out := git(t, root, "--git-dir", origin, "show-ref", "--heads"); !strings.Contains(out, "fixture-head") {
+					t.Fatalf("origin refs=%s", out)
+				}
+			}
+		})
+	}
+}
+
+func flowNode(nodes map[string]any, id string) (map[string]any, bool) {
+	for path, raw := range nodes {
+		if strings.HasSuffix(path, "/"+id) {
+			node, ok := raw.(map[string]any)
+			return node, ok
+		}
+	}
+	return nil, false
+}
+
+func TestProductionFlowEvaluationReviewIntakeRequiresPullRequest(t *testing.T) {
+	workspace, bin := t.TempDir(), t.TempDir()
+	marker := filepath.Join(t.TempDir(), "gh-called")
+	writeFile(t, bin, "gh", "#!/bin/sh\ntouch \"$FAKE_GH_SHIM_MARKER\"\n")
+	if err := os.Chmod(filepath.Join(bin, "gh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(binary(t, "takt-fake-code-agent"))
+	cmd.Env = append(os.Environ(), "FAKE_FLOW_EVAL_SMOKE=1", "TAKT_WORKSPACE="+workspace, "FAKE_GH_SHIM_MARKER="+marker, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cmd.Stdin = strings.NewReader("TAKT_PHASE: review-intake\n{\"repository\":\"example/mini-du\",\"fixes_permitted\":true}\n")
+	if err := cmd.Run(); err == nil {
+		t.Fatal("review-intake without pull_request unexpectedly succeeded")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("review-intake invoked gh without pull_request: %v", err)
+	}
+}
+
+func writeProductionFlowSuite(t *testing.T, root, selector, require string, pullRequest int, input, fake string) string {
+	t.Helper()
+	caseRoot := filepath.Join(root, "cases", "smoke")
+	writeFile(t, caseRoot, "input.md", input)
+	writeFile(t, caseRoot, "expected.yaml", "oracle: {}\n")
+	writeFile(t, caseRoot, "workspace/go.mod", "module example.test/flow-smoke\n\ngo 1.23\n")
+	writeFile(t, caseRoot, "workspace/smoke_test.go", "package smoke\n\nimport \"testing\"\n\nfunc TestSmoke(t *testing.T) {}\n")
+	writeFile(t, caseRoot, "workspace/head.txt", "baseline\n")
+	writeFile(t, caseRoot, "scm/repository.yaml", "repository: example/mini-du\nbase_branch: main\nhead_branch: fixture-head\n")
+	if require == "pull_request" {
+		writeFile(t, caseRoot, "scm/pull-request.yaml", fmt.Sprintf("number: %d\ntitle: Fixture pull request\nbase: main\nhead: fixture-head\nstate: OPEN\nci_status: passed\nfixes_permitted: true\n", pullRequest))
+		writeFile(t, caseRoot, "scm/head.patch", "diff --git a/head.txt b/head.txt\nindex e69de29..a77fa51 100644\n--- a/head.txt\n+++ b/head.txt\n@@ -1 +1 @@\n-baseline\n+fixture head\n")
+	}
+	config := writeFile(t, root, "config.yaml", fmt.Sprintf("apiVersion: takt/v1alpha1\nkind: Config\ndefault_assistant: fixture\nmodels:\n  implementation: {provider: fixture, id: implementation}\n  review: {provider: fixture, id: review}\n  routing: {provider: fixture, id: routing}\nassistants:\n  fixture:\n    type: process\n    argv: [%q]\n    env:\n      FAKE_FLOW_EVAL_SMOKE: \"1\"\n    capabilities: [tool_policy, skills, sandbox_filesystem]\n", fake))
+	_ = config
+	return writeFile(t, root, "suite.yaml", fmt.Sprintf("version: takt-flow-evaluation/v1alpha1\nworkflow: %s\nconfig: config.yaml\ncases: {directory: cases}\napprovals: {default: approved}\nexternal: {github: {mode: fixture, require: %s}}\nvalidator:\n  id: production-flow-e2e\n  version: '1'\n  command: [%q, %q]\n  path: %q\n  timeout: 30s\n  max_output_bytes: 1048576\ngates: {valid_rate: {min: 1}}\n", selector, require, os.Args[0], "-test.run=^TestProductionFlowEvaluation$", os.Args[0]))
+}
+
+func requireGHCall(t *testing.T, path string, want []string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if strings.Join(unquoteGHCall(t, line), "\x00") == strings.Join(want, "\x00") {
+			return
+		}
+	}
+	t.Fatalf("missing gh argv %v in %q", want, data)
+}
+
+func unquoteGHCall(t *testing.T, line string) []string {
+	t.Helper()
+	var fields []string
+	for len(strings.TrimSpace(line)) > 0 {
+		line = strings.TrimSpace(line)
+		if line[0] != '\'' {
+			fields = append(fields, strings.Fields(line)...)
+			break
+		}
+		end := strings.Index(line[1:], "'")
+		if end < 0 {
+			t.Fatalf("invalid fake gh call %q", line)
+		}
+		fields = append(fields, line[1:end+1])
+		line = line[end+2:]
+	}
+	for i := range fields {
+		fields[i] = strings.ReplaceAll(fields[i], `\,`, ",")
+	}
+	return fields
+}
+
+func requireEvidenceArtifact(t *testing.T, evidence, baseName string) {
+	t.Helper()
+	manifest := decodeJSONFile(t, filepath.Join(evidence, "artifacts", "manifest.json"))
+	for _, raw := range manifest["artifacts"].([]any) {
+		artifact := raw.(map[string]any)
+		if strings.HasSuffix(artifact["source_path"].(string), "/"+baseName) {
+			return
+		}
+	}
+	t.Fatalf("artifact %q absent from %#v", baseName, manifest)
+}
+
+func TestFlowInventory(t *testing.T) {
+	paths := map[string][]string{
+		"feature-development.yaml":     {"implement", "validate-agent", "validate", "create-pr", "summary"},
+		"comprehensive-pr-review.yaml": {"review", "summary"},
+		"review-block.yaml":            {"scope", "perspectives", "reviews", "synthesize", "fixes", "validate", "post-review-validation-commands", "review-acceptance-gate"},
+		"review-perspective.yaml":      {"review"},
+		"architect.yaml":               {"sweep", "approve", "plan", "implement", "review", "summary"},
+		"smart-review-block.yaml":      {"scope", "classify", "reviews", "synthesize", "fixes", "validate"},
+	}
+	loaded := map[string]*spec.Workflow{}
+	for name, want := range paths {
+		wf, err := workflow.Load(filepath.Join(repoRoot, "internal", "profile", "builtin", "code", "workflows", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded[name] = wf
+		var got []string
+		for _, node := range wf.Nodes {
+			if !node.Hidden && node.PublicParent == "" {
+				got = append(got, node.ID)
+			}
+		}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("%s nodes=%v want=%v", name, got, want)
+		}
+	}
+	for _, tc := range []struct {
+		name  string
+		files []string
+		want  []string
+	}{
+		{"feature", []string{"feature-development.yaml"}, []string{"implementation", "review"}},
+		{"comprehensive", []string{"comprehensive-pr-review.yaml", "review-block.yaml", "review-perspective.yaml"}, []string{"review"}},
+		{"architect", []string{"architect.yaml", "smart-review-block.yaml", "review-perspective.yaml"}, []string{"implementation", "review", "routing"}},
+	} {
+		models := map[string]bool{}
+		for _, name := range tc.files {
+			for _, node := range loaded[name].Nodes {
+				if (node.Command != "" || node.Prompt != "") && node.Model != "" {
+					models[node.Model] = true
+				}
+			}
+		}
+		got := make([]string, 0, len(models))
+		for model := range models {
+			got = append(got, model)
+		}
+		sort.Strings(got)
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Fatalf("%s models=%v want=%v", tc.name, got, tc.want)
+		}
+	}
+	command, err := runtime.NewCommandResolver(filepath.Join(repoRoot, "internal", "profile", "builtin", "code", "workflows", "review-block.yaml"), repoRoot, repoRoot).Resolve("review-intake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(command.Body, "$ARGUMENTS") != 1 {
+		t.Fatalf("review-intake $ARGUMENTS count=%d", strings.Count(command.Body, "$ARGUMENTS"))
+	}
 }
 
 func decodeJSONFile(t *testing.T, path string) map[string]any {

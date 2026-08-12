@@ -472,20 +472,21 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
 
   ```text
   code:feature-development -> <control>/.takt/eval/input.md path
-  code:comprehensive-pr-review -> byte-for-byte input.md content
-  code:architect           -> byte-for-byte input.md content
+  code:comprehensive-pr-review -> <control>/.takt/eval/input.md path after strict JSON validation
+  code:architect           -> <control>/.takt/eval/input.md path after strict JSON validation
   all other selector/path values -> <control>/.takt/eval/input.md path
   ```
 
-  The comprehensive and architect content must be one strict JSON object containing at least
+  The comprehensive and architect source must be one strict JSON object containing at least
   `repository` (string), `pull_request` (positive integer), `fixes_permitted`
   (boolean); comprehensive additionally requires non-empty unique
   `validation_commands` (array of strings). This exception is required by the
   exact DAGs: both reach `review-intake`, which parses PR JSON, and comprehensive's
-  `script.runtime: validation` calls `json.Unmarshal(state.Input)`. Passing the
-  Markdown-preserved path would prepend a source-file header and break those
-  contracts. Do not change profile input semantics or production workflows to hide
-  this fact. Pass `InputValue` unchanged to `RunService.Start.Input`.
+  `script.runtime: validation` calls `json.Unmarshal(state.Input)`. Their profile
+  input format is `json`, so normal `profile.PrepareInput` reads the copied file
+  byte-for-byte without a Markdown header. Do not special-case inline JSON in the
+  shared `RunService.Start` input contract. Pass the absolute copied input path as
+  `InputValue` unchanged to `RunService.Start.Input`.
 
 - [ ] **Step 5: Verify effective config without duplicating model resolution.**
 
@@ -594,7 +595,8 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   `validator_start`, and overflow or Decode failure to `validator_protocol`.
   Any non-zero process exit remains `status:error` even when stdout is a valid
   envelope. Fingerprint baseline with `hashPath` immediately before and after the
-  process; any change overrides product output with `status:error`,
+  process, including after timeout or caller cancellation; any change overrides
+  every other validator classification with `status:error`,
   `error_code=baseline_modified`. Never put stderr into `validation.Result`.
 
   `PreflightFlowValidator` uses `Repeat:0`, `run.id="preflight"`,
@@ -1178,9 +1180,15 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   }
   ```
 
+  `RunService.Start` keeps its existing detached contract and may return as soon as
+  any durable state exists. Do not make shared detached starts wait for terminal
+  state; all terminal/waiting observation belongs to the polling loop below.
+
   `Start` errors before non-empty Run ID return an empty result and error. Poll
   `GetRun` every 50ms. On `waiting` with a non-empty answer, require
-  `state.Waiting != nil` and call `Answer(ctx,runID,state.Waiting.NodeID,answer)`;
+  `state.Waiting != nil`, then wait until that node is durably suspended
+  (`status=waiting`, `attempts=0`) before calling
+  `Answer(ctx,runID,state.Waiting.NodeID,answer)`;
   the same answer applies to each encountered approval. Return waiting immediately
   when answer is empty. Return terminal completed/failed/cancelled/abandoned and
   pausing/paused observations after calling `EvaluationSnapshot`.
@@ -1305,9 +1313,11 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   assert clean.
 
   The agent-input `baseline/` is copied only after this history exists. Record
-  `BaseCommit`, `HeadCommit`, and `BareRemote` in `PreparedFlowRepeat`; include the
-  two commit IDs and a SHA-256 of the bare remote absolute path in the prepared
-  case identity. The portable report must not expose the absolute remote path.
+  `BaseCommit`, `HeadCommit`, and `BareRemote` in `PreparedFlowRepeat`; include only
+  the two commit IDs in prepared case identity. The absolute bare-remote path is
+  mutable output placement, not experiment identity: including it would make two
+  otherwise identical reports incomparable. The portable report must not expose
+  the absolute remote path.
 
 - [ ] **Step 5: Run focused tests and commit.**
 
@@ -1777,6 +1787,11 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   implement-symlink-and-hardlink: symlink,hardlink,kibibytes
   ```
 
+  `require_push` resolves the candidate's current branch with
+  `git branch --show-current` and compares candidate `HEAD` with
+  `origin.git:refs/heads/<current-branch>`. Never read bare `origin.git/HEAD`:
+  `git init --bare` may leave it pointing to an absent default branch.
+
   Suite uses workflow `code:feature-development`, config `../config.yaml`, cases
   `cases`, GitHub `fixture/repository`, validator command
   `[go, run, ../../validator]`, path `../../validator`, timeout `2m`, output budget
@@ -2111,3 +2126,4 @@ Start empty. Each implementation deviation is one row; never delete prior rows.
 | Task | Observed fact and source | Planned instruction | Applied mechanical change | Verification |
 |---|---|---|---|---|
 | 11 | `internal/profile/builtin/code/commands/review-intake.md` requires parsing JSON input but contains no `$ARGUMENTS`; `internal/runtime/assistant_node.go` renders only explicit references and does not append `RunState.Input`. | Extract `pull_request` from the exact production prompt while forbidding production command changes. | Human-approved production contract repair: add exactly one `$ARGUMENTS` block to `review-intake.md`; keep fake-agent extraction fail-closed and use distinct PR numbers 17/27 to prove propagation. No runtime or workflow YAML change. | `FlowInventory` locks one occurrence; focused missing-field subprocess test; production E2E asserts `pr view 17` and `pr view 27`. |
+| Corrective review | Absolute output paths in benchmark identity prevent comparison; bare remote `HEAD` does not identify the pushed feature branch; shared detached/input changes escaped eval scope; validator mutation precedence, timestamped output, and non-negative unstable gate were not implemented literally. | Preserve portable identity and existing application contracts while making eval own polling/input preparation. | Remove bare path from identity; check pushed current branch; restore early detached return for any durable state and wait for durable `node.suspended` in eval before approval answer; revert shared input special case; re-hash baseline before timeout/cancel classification; derive default `<suite>/<UTC timestamp>` output; reject negative `unstable_cases.max`. | Focused regression tests for each contract plus production-flow/corpus gates. |

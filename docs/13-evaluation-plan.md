@@ -151,6 +151,17 @@ takt eval run <workflow> \
 
 `examples/route-dsl-eval` проверяет инфраструктуру с fake adapter. `examples/route-dsl-benchmark` содержит agent-neutral matrix на 25 regression/production-shaped synthetic cases; live запуск использует configured coding-agent и штатный валидатор.
 
+## Production flow evaluation
+
+`takt eval flow` evaluates cases sequentially: every case/repeat receives a fresh
+control workspace and produces `cases/<case>/repeat-<NNN>/` evidence containing
+the durable run snapshot, validator request/result and artifact manifest. The
+report distinguishes `true_accept`, `false_accept`, `true_reject` and
+`false_reject`; rates use evaluated runs as their denominator. Fake SCM fixtures
+are deterministic test inputs, not a security boundary or evidence of a remote
+provider effect. Start a new suite with `takt eval flow init <selector> --output
+DIR`; deterministic executable validation, not agent text, owns correctness.
+
 ## 9. Критерий полезности Takt
 
 Takt подтверждает ценность, если новая стратегия добавляется изменением workflow/config/commands, общий benchmark запускается без изменения runtime, а отчёт позволяет доказательно связать результат с точной моделью, стратегией, набором заданий и валидатором.

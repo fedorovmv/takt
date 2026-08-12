@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"takt/internal/tooling/evaluation"
 )
 
 func TestPackageDistributionBoundary(t *testing.T) {
@@ -324,13 +326,12 @@ func TestDeepCodeWorkflowBoundary(t *testing.T) {
 	tmp := t.TempDir()
 	project, remote := filepath.Join(tmp, "project"), filepath.Join(tmp, "remote.git")
 	fakeBin, ghState := filepath.Join(tmp, "bin"), filepath.Join(tmp, "gh-state")
-	for _, dir := range []string{project, fakeBin, ghState} {
+	for _, dir := range []string{project, fakeBin} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	copyFile(t, filepath.Join(repoRoot, "scripts", "fixtures", "fake-gh"), filepath.Join(fakeBin, "gh"), 0o755)
-	env := []string{"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"), "FAKE_GH_STATE_DIR=" + ghState}
+	env := installFakeGH(t, fakeBin, ghState)
 	run(t, tmp, nil, nil, "git", "init", "--bare", remote).RequireSuccess(t)
 	run(t, tmp, nil, nil, "git", "init", "-b", "main", project).RequireSuccess(t)
 	git(t, project, "config", "user.name", "Takt Fixture")
@@ -390,7 +391,7 @@ assistants:
 	if len(expected) != 0 {
 		t.Fatalf("missing artifacts=%v", expected)
 	}
-	requireFileContains(t, filepath.Join(ghState, "pr-count"), "1")
+	requireFileContains(t, filepath.Join(ghState, "pr-count"), "2")
 	if !strings.Contains(git(t, project, "--git-dir="+remote, "show-ref", "--heads"), "refs/heads/takt/") {
 		t.Fatal("managed takt branch missing")
 	}
@@ -418,14 +419,14 @@ func TestPlanToPRAcceptance(t *testing.T) {
 		wantPR     string
 		wantNodes  map[string]string
 	}{
-		{name: "happy", validation: []string{"test -s app.txt"}, wantStatus: "completed", wantPR: "1", wantNodes: map[string]string{"git-prepare": "completed", "confirm-plan": "completed", "implement": "completed", "validation-commands": "completed", "validate": "completed", "validation-gate": "completed", "scope-check": "completed", "create-pr": "completed", "pr-result-gate": "completed", "review": "completed", "scope-check-after-review": "completed", "summary": "completed", "acceptance-gate": "completed"}},
+		{name: "happy", validation: []string{"test -s app.txt"}, wantStatus: "completed", wantPR: "2", wantNodes: map[string]string{"git-prepare": "completed", "confirm-plan": "completed", "implement": "completed", "validation-commands": "completed", "validate": "completed", "validation-gate": "completed", "scope-check": "completed", "create-pr": "completed", "pr-result-gate": "completed", "review": "completed", "scope-check-after-review": "completed", "summary": "completed", "acceptance-gate": "completed"}},
 		{name: "missing artifact", env: []string{"FAKE_OMIT_ARTIFACT_PHASE=plan-intake"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "0", wantNodes: map[string]string{"confirm-plan": "errored"}},
 		{name: "false validation", validation: []string{"false"}, wantStatus: "failed", wantPR: "0", wantNodes: map[string]string{"validation-gate": "failed"}},
 		{name: "blocked implementation", env: []string{"FAKE_BLOCK_PHASE=plan-implementation"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "0", wantNodes: map[string]string{"validation-gate": "failed"}},
 		{name: "scope drift", env: []string{"FAKE_EXTRA_CHANGE_PATH=docs/extra.md"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "0", wantNodes: map[string]string{"scope-check": "failed"}},
 		{name: "blocked PR", env: []string{"FAKE_BLOCK_PHASE=pr-finalize"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "0", wantNodes: map[string]string{"pr-result-gate": "failed"}},
-		{name: "unresolved review", env: []string{"FAKE_REVIEW_CHANGES_REQUIRED=1", "FAKE_BLOCK_PHASE=review-fix"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "1", wantNodes: map[string]string{"review": "failed", "acceptance-gate": "failed"}},
-		{name: "incomplete summary", env: []string{"FAKE_BLOCK_PHASE=workflow-final-summary"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "1", wantNodes: map[string]string{"acceptance-gate": "failed"}},
+		{name: "unresolved review", env: []string{"FAKE_REVIEW_CHANGES_REQUIRED=1", "FAKE_BLOCK_PHASE=review-fix"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "2", wantNodes: map[string]string{"review": "failed", "acceptance-gate": "failed"}},
+		{name: "incomplete summary", env: []string{"FAKE_BLOCK_PHASE=workflow-final-summary"}, validation: []string{"test -s app.txt"}, wantStatus: "failed", wantPR: "2", wantNodes: map[string]string{"acceptance-gate": "failed"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -497,12 +498,12 @@ func newPlanToPRFixture(t *testing.T, validation []string) planToPRFixture {
 	remote := filepath.Join(tmp, "remote.git")
 	fakeBin := filepath.Join(tmp, "bin")
 	ghState := filepath.Join(tmp, "gh-state")
-	for _, dir := range []string{project, fakeBin, ghState} {
+	for _, dir := range []string{project, fakeBin} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	copyFile(t, filepath.Join(repoRoot, "scripts", "fixtures", "fake-gh"), filepath.Join(fakeBin, "gh"), 0o755)
+	env := installFakeGH(t, fakeBin, ghState)
 	git(t, tmp, "init", "--bare", remote)
 	git(t, tmp, "init", "-b", "main", project)
 	git(t, project, "config", "user.name", "Takt Fixture")
@@ -535,7 +536,35 @@ assistants:
 	git(t, project, "remote", "add", "origin", remote)
 	git(t, project, "push", "-u", "origin", "main")
 	inputPath := writeFile(t, tmp, "plan-to-pr.json", fmt.Sprintf(`{"repository":"acme/repo","plan_path":"PLAN.md","base_branch":"main","draft_pr":true,"validation_commands":%s,"allowed_paths":["app.txt"]}`, mustJSON(t, validation)))
-	return planToPRFixture{project: project, ghState: ghState, env: []string{"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"), "FAKE_GH_STATE_DIR=" + ghState}, input: inputPath}
+	return planToPRFixture{project: project, ghState: ghState, env: env, input: inputPath}
+}
+
+func installFakeGH(t *testing.T, fakeBin, stateDir string) []string {
+	t.Helper()
+	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fakeBin, "gh"), evaluation.FakeGHFixture(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture := filepath.Join(filepath.Dir(fakeBin), "gh-fixture")
+	if err := os.MkdirAll(fixture, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"repo-view.json":  `{"nameWithOwner":"acme/repo"}` + "\n",
+		"issue-view.json": `{"number":1,"title":"Fix fixture behavior","body":"The fixture must update app.txt","state":"OPEN","labels":[{"name":"bug"}]}` + "\n",
+		"issue-number":    "1\n",
+		"pr-view.json":    `{"number":1,"title":"Fixture PR","state":"OPEN","baseRefName":"main","headRefName":"fixture-head","url":"https://example.test/acme/repo/pull/1"}` + "\n",
+		"pr-list.json":    "[]\n",
+		"pr-number":       "1\n",
+		"pr-url-prefix":   "https://example.test/acme/repo/pull/\n",
+	} {
+		if err := os.WriteFile(filepath.Join(fixture, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return []string{"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"), "FAKE_GH_FIXTURE_DIR=" + fixture, "FAKE_GH_STATE_DIR=" + stateDir}
 }
 
 func persistedPlanToPRState(t *testing.T, project string) map[string]any {

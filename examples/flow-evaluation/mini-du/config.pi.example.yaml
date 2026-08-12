@@ -1,0 +1,14 @@
+apiVersion: takt/v1alpha1
+kind: Config
+models:
+  implementation: {provider: replace, id: replace-with-model}
+  review: {provider: replace, id: replace-with-model}
+  routing: {provider: replace, id: replace-with-model}
+assistants:
+  pi:
+    type: pi
+    binary: pi
+    project_trust: approve
+    max_output_bytes: 10485760
+    env:
+      FAKE_FLOW_EVAL_SMOKE: "1"

@@ -1,0 +1,7 @@
+number: 28
+title: Add layered usage service
+base: main
+head: eval/collapse-redundant-layers
+state: OPEN
+ci_status: passed
+fixes_permitted: true

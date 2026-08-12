@@ -68,6 +68,9 @@
     },
     "summary": {
       "$ref": "#/$defs/summary"
+    },
+    "mode": {
+      "const": "flow"
     }
   },
   "$defs": {
@@ -185,6 +188,12 @@
         },
         "go_version": {
           "type": "string"
+        },
+        "path_sha256": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "oracle_metadata_sha256": {
+          "$ref": "#/$defs/fingerprint"
         }
       }
     },
@@ -354,7 +363,7 @@
           "minimum": 0
         },
         "attempts_to_valid": {
-          "type": "integer",
+          "type": ["integer", "null"],
           "minimum": 0
         },
         "valid_at_first_attempt": {
@@ -435,6 +444,21 @@
             "type": "string",
             "pattern": "^sha256:[a-f0-9]{64}$"
           }
+        },
+        "mode": {
+          "const": "flow"
+        },
+        "validation": {
+          "$ref": "#/$defs/flowValidation"
+        },
+        "outcome": {
+          "enum": ["true_accept", "false_accept", "true_reject", "false_reject"]
+        },
+        "run_passed": {
+          "type": ["boolean", "null"]
+        },
+        "cleanup": {
+          "$ref": "#/$defs/flowCleanup"
         }
       }
     },
@@ -678,7 +702,51 @@
         "unstable_cases": {
           "type": "integer",
           "minimum": 0
+        },
+        "flow": {
+          "$ref": "#/$defs/flowSummary"
         }
+      }
+    },
+    "flowValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "duration_ms"],
+      "properties": {
+        "status": {"type": "string"},
+        "error_code": {"type": "string"},
+        "error": {"type": "string"},
+        "result": {"$ref": "#/$defs/validationResult"},
+        "duration_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "flowCleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {"type": "string"},
+        "error": {"type": "string"},
+        "paths": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "flowSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evaluated_runs", "flow_completed", "true_accept", "false_accept", "true_reject", "false_reject", "validation_errors", "valid_rate", "false_accept_rate", "false_reject_rate", "flow_completion_rate", "validation_error_rate"],
+      "properties": {
+        "evaluated_runs": {"type": "integer", "minimum": 0},
+        "flow_completed": {"type": "integer", "minimum": 0},
+        "true_accept": {"type": "integer", "minimum": 0},
+        "false_accept": {"type": "integer", "minimum": 0},
+        "true_reject": {"type": "integer", "minimum": 0},
+        "false_reject": {"type": "integer", "minimum": 0},
+        "validation_errors": {"type": "integer", "minimum": 0},
+        "valid_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "false_accept_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "false_reject_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "flow_completion_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "validation_error_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
       }
     },
     "execution": {

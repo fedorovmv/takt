@@ -1,0 +1,7 @@
+diff --git a/notes/unrelated.txt b/notes/unrelated.txt
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/notes/unrelated.txt
+@@ -0,0 +1 @@
++This file is outside the review scope.

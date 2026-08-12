@@ -1,0 +1,7 @@
+number: 29
+title: Add default strategy registry
+base: main
+head: eval/preserve-behavior-during-simplification
+state: OPEN
+ci_status: passed
+fixes_permitted: true
