@@ -65,10 +65,13 @@ func TestUnknownBuiltin(t *testing.T) {
 	}
 }
 
-func TestBuiltinAndSelectorParts(t *testing.T) {
+func TestIsBuiltin(t *testing.T) {
 	if !IsBuiltin(" code ") || IsBuiltin("missing") || IsBuiltin("") {
 		t.Fatal("unexpected built-in profile result")
 	}
+}
+
+func TestSelectorParts(t *testing.T) {
 	name, workflow := SelectorParts(" code : feature-development ")
 	if name != "code" || workflow != "feature-development" {
 		t.Fatalf("selector parts = %q, %q", name, workflow)

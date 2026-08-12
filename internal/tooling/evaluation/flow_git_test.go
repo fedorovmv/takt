@@ -18,6 +18,12 @@ func TestPrepareFlowRepeatCommitsProfileBeforeBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireGitClean(t, prepared.ControlWorkspace)
+	if branch := strings.TrimSpace(gitOutput(t, prepared.ControlWorkspace, "branch", "--show-current")); branch != "main" {
+		t.Fatalf("branch = %q", branch)
+	}
+	if dates := gitOutput(t, prepared.ControlWorkspace, "show", "-s", "--format=%aI%n%cI", "HEAD"); dates != "2000-01-01T00:00:00+00:00\n2000-01-01T00:00:00+00:00\n" {
+		t.Fatalf("commit dates = %q", dates)
+	}
 	requireGitTracked(t, prepared.ControlWorkspace, ".takt/profiles/code/workflows/feature-development.yaml")
 	requireGitTracked(t, prepared.ControlWorkspace, ".takt/eval/input.md")
 	requireFileContains(t, filepath.Join(prepared.ControlWorkspace, ".takt", "config.yaml"), "fake-implementation")
