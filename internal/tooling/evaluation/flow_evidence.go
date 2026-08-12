@@ -347,10 +347,22 @@ func flowCleanupLayout(root, target string) bool {
 		return false
 	}
 	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) != 4 || parts[0] != "workspaces" || !strings.HasPrefix(parts[2], "repeat-") {
+	if len(parts) != 4 || parts[0] != "workspaces" || !flowRepeatDir(parts[2]) {
 		return false
 	}
 	return parts[3] == "control" || parts[3] == "baseline" || parts[3] == "origin.git"
+}
+
+func flowRepeatDir(value string) bool {
+	if len(value) != len("repeat-")+3 || !strings.HasPrefix(value, "repeat-") {
+		return false
+	}
+	for _, b := range value[len("repeat-"):] {
+		if b < '0' || b > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func canonicalFlowPath(path string) (string, error) {

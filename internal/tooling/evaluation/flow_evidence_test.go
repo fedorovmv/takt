@@ -255,6 +255,19 @@ func TestCleanupFlowRepeatPreservesKeepPausedAndRejectsEscapes(t *testing.T) {
 	}
 }
 
+func TestCleanupFlowRepeatRejectsNonCanonicalRepeatDirectory(t *testing.T) {
+	root := t.TempDir()
+	for _, repeat := range []string{"repeat-x", "repeat-1", "repeat-0000"} {
+		target := filepath.Join(root, "workspaces", "case", repeat, "control")
+		if err := os.MkdirAll(target, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := CleanupFlowRepeat(root, FlowCleanupPaths{ControlWorkspace: target, Created: []string{target}}); err == nil {
+			t.Fatalf("accepted non-canonical repeat path %q", repeat)
+		}
+	}
+}
+
 func evidenceSHA256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
