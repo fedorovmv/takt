@@ -3,13 +3,14 @@ package cli
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"takt/internal/bootstrap"
 	"takt/internal/tooling"
 )
 
 func evalCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: takt eval <run|report|benchmark|task-benchmark|compare> [flags]")
+		return fmt.Errorf("usage: takt eval <flow|run|report|benchmark|task-benchmark|compare> [flags]")
 	}
 	app, err := bootstrap.New(".", ".takt/config.yaml")
 	if err != nil {
@@ -17,6 +18,40 @@ func evalCmd(ctx context.Context, args []string) error {
 	}
 	service := app.Tooling.Evaluation
 	switch args[0] {
+	case "flow":
+		if len(args) == 2 && args[1] == "init" {
+			return fmt.Errorf("eval flow init is not available until the authoring slice is installed")
+		}
+		fs := newFlagSet("eval flow")
+		caseID := fs.String("case", "", "run one case")
+		repeat := fs.Int("repeat", 1, "number of repetitions per case")
+		outputDir := fs.String("output", ".takt/evals/latest", "evaluation output directory")
+		keepWorkspaces := fs.Bool("keep-workspaces", false, "retain case workspaces")
+		jsonOut := fs.Bool("json", true, "JSON output")
+		values := map[string]bool{"--case": true, "--repeat": true, "--output": true, "--keep-workspaces": false, "--json": false}
+		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt eval flow <suite.yaml> [--case ID] [--repeat N] [--output DIR] [--keep-workspaces] [--json]")
+		}
+		if *repeat <= 0 {
+			return fmt.Errorf("repeat must be positive")
+		}
+		invocation, err := filepath.Abs(".")
+		if err != nil {
+			return err
+		}
+		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces})
+		if err != nil {
+			if report != nil {
+				if printErr := printResult(*jsonOut, report); printErr != nil {
+					return printErr
+				}
+			}
+			return err
+		}
+		return printResult(*jsonOut, report)
 	case "run":
 		fs := newFlagSet("eval run")
 		configPath := fs.String("config", ".takt/config.yaml", "config path")
@@ -136,6 +171,6 @@ func evalCmd(ctx context.Context, args []string) error {
 		}
 		return printResult(*jsonOut, report)
 	default:
-		return fmt.Errorf("usage: takt eval <run|report|benchmark|task-benchmark|compare> [flags]")
+		return fmt.Errorf("usage: takt eval <flow|run|report|benchmark|task-benchmark|compare> [flags]")
 	}
 }

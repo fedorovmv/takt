@@ -69,6 +69,16 @@ type EventsResult struct {
 	TimedOut      bool          `json:"timed_out,omitempty"`
 }
 
+// EvaluationSnapshot is the complete durable run tree used only by evaluation.
+// It deliberately retains compiled nodes that public run views hide.
+type EvaluationSnapshot struct {
+	Root         *store.RunState
+	States       []*store.RunState
+	Events       []store.Event
+	Artifacts    []store.ArtifactRef
+	ArtifactDirs map[string]string
+}
+
 func (s *CatalogService) ListWorkflows(profileName string) ([]WorkflowListEntry, error) {
 	resolved, err := profile.Resolve(profileName, s.workspace)
 	if err != nil {
@@ -361,6 +371,107 @@ func (s *RunService) GetRun(runID string) (*store.RunState, error) {
 		return nil, err
 	}
 	return state.PublicView(), nil
+}
+
+func (s *RunService) EvaluationSnapshot(runID string) (*EvaluationSnapshot, error) {
+	root, err := s.store.Load(runID)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := &EvaluationSnapshot{ArtifactDirs: map[string]string{}}
+	queue := []*store.RunState{root}
+	seen := map[string]bool{}
+	artifactSeen := map[string]bool{}
+	for len(queue) > 0 {
+		state := queue[0]
+		queue = queue[1:]
+		if state == nil || seen[state.ID] {
+			continue
+		}
+		seen[state.ID] = true
+		clone, err := cloneEvaluationState(state)
+		if err != nil {
+			return nil, err
+		}
+		snapshot.States = append(snapshot.States, clone)
+		snapshot.ArtifactDirs[state.ID] = s.store.ArtifactsDir(state.ID)
+		events, err := s.store.ReadEvents(state.ID, 0, 0)
+		if err != nil {
+			return nil, err
+		}
+		snapshot.Events = append(snapshot.Events, events...)
+		for _, artifact := range clone.Artifacts {
+			key := artifact.ProducerRunID + "\x00" + artifact.ID
+			if artifactSeen[key] {
+				continue
+			}
+			artifactSeen[key] = true
+			snapshot.Artifacts = append(snapshot.Artifacts, artifact)
+		}
+		for _, childID := range state.ChildRunIDs {
+			if seen[childID] {
+				continue
+			}
+			child, err := s.store.Load(childID)
+			if err != nil {
+				return nil, fmt.Errorf("load child run %s: %w", childID, err)
+			}
+			queue = append(queue, child)
+		}
+	}
+	snapshot.Root = snapshot.States[0]
+	sort.Slice(snapshot.Events, func(i, j int) bool {
+		if snapshot.Events[i].Time.Equal(snapshot.Events[j].Time) {
+			if snapshot.Events[i].RunID == snapshot.Events[j].RunID {
+				return snapshot.Events[i].Revision < snapshot.Events[j].Revision
+			}
+			return snapshot.Events[i].RunID < snapshot.Events[j].RunID
+		}
+		return snapshot.Events[i].Time.Before(snapshot.Events[j].Time)
+	})
+	sort.Slice(snapshot.Artifacts, func(i, j int) bool {
+		if snapshot.Artifacts[i].ProducerRunID == snapshot.Artifacts[j].ProducerRunID {
+			return snapshot.Artifacts[i].ID < snapshot.Artifacts[j].ID
+		}
+		return snapshot.Artifacts[i].ProducerRunID < snapshot.Artifacts[j].ProducerRunID
+	})
+	return snapshot, nil
+}
+
+func cloneEvaluationState(state *store.RunState) (*store.RunState, error) {
+	data, err := json.Marshal(state)
+	if err != nil {
+		return nil, err
+	}
+	var clone store.RunState
+	if err := json.Unmarshal(data, &clone); err != nil {
+		return nil, err
+	}
+	for _, node := range clone.Nodes {
+		clearEvaluationClaimTokens(node)
+	}
+	return &clone, nil
+}
+
+func clearEvaluationClaimTokens(node *store.NodeState) {
+	if node == nil {
+		return
+	}
+	if node.External != nil {
+		node.External.ClaimToken = ""
+	}
+	for id := range node.LoopPrevious {
+		item := node.LoopPrevious[id]
+		clearEvaluationClaimTokens(&item)
+		node.LoopPrevious[id] = item
+	}
+	for i := range node.LoopIterations {
+		for id := range node.LoopIterations[i].Nodes {
+			item := node.LoopIterations[i].Nodes[id]
+			clearEvaluationClaimTokens(&item)
+			node.LoopIterations[i].Nodes[id] = item
+		}
+	}
 }
 
 func (s *RunService) Resume(ctx context.Context, runID string) (*store.RunState, error) {

@@ -219,6 +219,40 @@ gates:
 	requireFileContains(t, filepath.Join(failingOut, "benchmark.json"), `"passed": false`)
 }
 
+func TestFlowEvaluationContract(t *testing.T) {
+	if os.Getenv("TAKT_FLOW_E2E_VALIDATOR") == "1" {
+		fmt.Print(`{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":true,"metadata":{"validator":"flow-e2e"}}`)
+		os.Exit(0)
+	}
+	root := t.TempDir()
+	caseRoot := filepath.Join(root, "cases", "accept")
+	if err := os.MkdirAll(filepath.Join(caseRoot, "workspace"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, caseRoot, "input.md", "input\n")
+	writeFile(t, caseRoot, "expected.yaml", "oracle: {expected: true}\n")
+	writeFile(t, filepath.Join(caseRoot, "workspace"), "main.txt", "base\n")
+	workflow := writeFile(t, root, "flow.yaml", "name: flow-e2e\nworktree:\n  enabled: true\nnodes:\n  - id: done\n    bash: 'true'\n")
+	config := writeFile(t, root, "config.yaml", "apiVersion: takt/v1alpha1\nkind: Config\n")
+	_ = workflow
+	_ = config
+	suite := writeFile(t, root, "suite.yaml", fmt.Sprintf("version: takt-flow-evaluation/v1alpha1\nworkflow: flow.yaml\nconfig: config.yaml\ncases: {directory: cases}\nvalidator:\n  id: flow-e2e\n  version: '1'\n  command: [%q, %q, %q]\n  path: flow.yaml\n  timeout: 10s\n  max_output_bytes: 4096\ngates:\n  valid_rate: {min: 1}\n", os.Args[0], "-test.run=TestFlowEvaluationContract", "--"))
+	output := filepath.Join(t.TempDir(), "output")
+	report := resultObject(t, takt(t, []string{"TAKT_FLOW_E2E_VALIDATOR=1"}, "eval", "flow", suite, "--output", output, "--json").RequireSuccess(t).JSON(t))
+	if report["report_version"] != "takt-evaluation/v1alpha1" || report["mode"] != "flow" || report["summary"].(map[string]any)["flow"].(map[string]any)["true_accept"] != float64(1) {
+		t.Fatalf("report=%#v", report)
+	}
+	if _, err := os.Stat(filepath.Join(output, "report.json")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, root, "flow.yaml", "name: flow-e2e-failing\nworktree:\n  enabled: true\nnodes:\n  - id: done\n    bash: 'exit 1'\n")
+	failingOutput := filepath.Join(t.TempDir(), "failing-output")
+	takt(t, []string{"TAKT_FLOW_E2E_VALIDATOR=1"}, "eval", "flow", suite, "--output", failingOutput, "--json").RequireFailure(t).Contains(t, "flow evaluation gates failed")
+	if _, err := os.Stat(filepath.Join(failingOutput, "report.json")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func decodeJSONFile(t *testing.T, path string) map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(path)

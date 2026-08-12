@@ -123,6 +123,15 @@ func TestJSONModeDefaults(t *testing.T) {
 	}
 }
 
+func TestEvalFlowParsesOnlyItsContract(t *testing.T) {
+	if err := evalCmd(context.Background(), []string{"flow", "suite.yaml", "--repeat", "0"}); err == nil || !strings.Contains(err.Error(), "repeat must be positive") {
+		t.Fatalf("repeat error = %v", err)
+	}
+	if err := evalCmd(context.Background(), []string{"flow", "init"}); err == nil || err.Error() != "eval flow init is not available until the authoring slice is installed" {
+		t.Fatalf("init error = %v", err)
+	}
+}
+
 func TestAnswerAcceptsPublicSubworkflowNodeID(t *testing.T) {
 	dir := t.TempDir()
 	workflowPath := filepath.Join(dir, "workflow.yaml")

@@ -2,14 +2,76 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"takt/internal/runcontrol"
 	"takt/internal/store"
 )
+
+func TestEvaluationSnapshotIncludesDurableRunTreeWithoutSharingStoreState(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	now := time.Now().UTC()
+	child := &store.RunState{ID: "snapshot-child", Status: store.RunCompleted, ConfigPath: configPath, Workspace: workspace, CreatedAt: now, UpdatedAt: now, Nodes: map[string]*store.NodeState{"compiled": {Status: store.NodeCompleted, External: &store.ExternalExecutionState{ClaimToken: "secret-claim"}}}, Approvals: map[string]string{}, Artifacts: []store.ArtifactRef{{ID: "child-artifact", ProducerRunID: "snapshot-child"}}}
+	root := &store.RunState{ID: "snapshot-root", Status: store.RunCompleted, ConfigPath: configPath, Workspace: workspace, CreatedAt: now, UpdatedAt: now, Nodes: map[string]*store.NodeState{"visible": {Status: store.NodeCompleted}}, Approvals: map[string]string{}, ChildRunIDs: []string{child.ID}, Artifacts: []store.ArtifactRef{{ID: "root-artifact", ProducerRunID: "snapshot-root"}}}
+	fs := store.FS{Workspace: workspace}
+	if err := fs.Save(child); err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.Save(root); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 1001; i++ {
+		if err := fs.Commit(root, store.Event{Type: "snapshot", RunID: root.ID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, err := service.RunService.GetRun(root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(public.ChildRunIDs) != 1 {
+		t.Fatalf("public child ids = %#v", public.ChildRunIDs)
+	}
+	snapshot, err := service.RunService.EvaluationSnapshot(root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Root != snapshot.States[0] || len(snapshot.States) != 2 || len(snapshot.Events) != 1001 {
+		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	if snapshot.States[1].Nodes["compiled"].External.ClaimToken != "" {
+		t.Fatalf("claim token leaked: %#v", snapshot.States[1].Nodes["compiled"].External)
+	}
+	if got := snapshot.Artifacts[0].ID; got != "child-artifact" {
+		t.Fatalf("artifacts not sorted: %#v", snapshot.Artifacts)
+	}
+	if snapshot.ArtifactDirs[root.ID] != fs.ArtifactsDir(root.ID) || snapshot.ArtifactDirs[child.ID] != fs.ArtifactsDir(child.ID) {
+		t.Fatalf("artifact dirs = %#v", snapshot.ArtifactDirs)
+	}
+	snapshot.States[0].Nodes["visible"].Status = store.NodeFailed
+	snapshot.Events[0].Data = map[string]any{"changed": true}
+	loaded, err := fs.Load(root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Nodes["visible"].Status != store.NodeCompleted {
+		t.Fatalf("snapshot aliases stored state")
+	}
+	if _, err := json.Marshal(snapshot); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestAnswerRedactsKnownSecretBeforePersistence(t *testing.T) {
 	workspace := t.TempDir()
