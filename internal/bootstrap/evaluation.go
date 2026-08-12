@@ -102,18 +102,18 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 func (e evaluationEngine) cancelFlowCase(ctx context.Context, app *App, runID string) (evaluation.FlowCaseRunResult, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if state, err := app.Core.RunService.GetRun(runID); err == nil && terminalFlowRun(state.Status) {
+	if state, err := app.Core.RunService.GetRun(runID); err == nil && (terminalFlowRun(state.Status) || state.Status == store.RunPausing || state.Status == store.RunPaused) {
 		return e.flowSnapshot(app, runID, state, ctx.Err())
 	}
 	if _, err := app.Core.RunService.Cancel(cleanupCtx, runID, "flow evaluation context cancelled"); err != nil {
-		if state, loadErr := app.Core.RunService.GetRun(runID); loadErr == nil && terminalFlowRun(state.Status) {
+		if state, loadErr := app.Core.RunService.GetRun(runID); loadErr == nil && (terminalFlowRun(state.Status) || state.Status == store.RunPausing || state.Status == store.RunPaused) {
 			return e.flowSnapshot(app, runID, state, ctx.Err())
 		}
 		return evaluation.FlowCaseRunResult{}, err
 	}
 	for cleanupCtx.Err() == nil {
 		state, err := app.Core.RunService.GetRun(runID)
-		if err == nil && terminalFlowRun(state.Status) {
+		if err == nil && (terminalFlowRun(state.Status) || state.Status == store.RunPausing || state.Status == store.RunPaused) {
 			return e.flowSnapshot(app, runID, state, ctx.Err())
 		}
 		select {
