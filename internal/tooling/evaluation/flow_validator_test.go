@@ -68,6 +68,46 @@ func TestRunFlowValidatorTimeoutAndCancellation(t *testing.T) {
 	})
 }
 
+func TestRunFlowValidatorCancellationBeatsBaselineModified(t *testing.T) {
+	d := t.TempDir()
+	for _, name := range []string{"workspace", "baseline", "expected"} {
+		if err := os.Mkdir(filepath.Join(d, name), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	signal := filepath.Join(d, "mutated")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", "mutate-sleep")
+	t.Setenv("TAKT_FLOW_VALIDATOR_SIGNAL", signal)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan FlowValidationExecution, 1)
+	spec := flowValidatorSpec(t, 256)
+	req := flowValidatorRequest(d)
+	go func() { result <- RunFlowValidator(ctx, spec, req, d) }()
+	deadline := time.Now().Add(time.Second)
+	for {
+		if _, err := os.Stat(signal); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("validator did not mutate baseline")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	got := <-result
+	if got.Status != "error" || got.ErrorCode != "validator_cancelled" {
+		t.Fatalf("execution=%+v", got)
+	}
+}
+
+func TestRunFlowValidatorTimeoutBeatsBaselineModified(t *testing.T) {
+	got := runFlowValidatorFixture(t, "mutate-sleep", "")
+	if got.Status != "error" || got.ErrorCode != "validator_timeout" {
+		t.Fatalf("execution=%+v", got)
+	}
+}
+
 func TestRunFlowValidatorSendsExactRequest(t *testing.T) {
 	d := t.TempDir()
 	for _, name := range []string{"workspace", "baseline", "expected"} {
@@ -152,14 +192,18 @@ func runFlowValidatorFixture(t *testing.T, mode, requestPath string, contexts ..
 	if strings.Contains(mode, "|stderr=") {
 		limit = 128
 	}
-	return RunFlowValidator(ctx, flowValidatorSpec(t, limit), flowValidatorRequest(d), d)
+	spec := flowValidatorSpec(t, limit)
+	if strings.Contains(mode, "sleep") {
+		spec.Timeout = 20 * time.Millisecond
+	}
+	return RunFlowValidator(ctx, spec, flowValidatorRequest(d), d)
 }
 
 func flowValidatorSpec(t *testing.T, limit int) FlowValidatorSpec {
 	t.Helper()
 	return FlowValidatorSpec{
 		ResolvedCommand: []string{os.Args[0], "-test.run=TestFlowValidatorHelperProcess", "--"},
-		Timeout:         20 * time.Millisecond,
+		Timeout:         time.Second,
 		MaxOutputBytes:  limit,
 	}
 }
@@ -197,7 +241,18 @@ func TestFlowValidatorHelperProcess(t *testing.T) {
 	}
 	if strings.Contains(mode, "|mutate") {
 		_ = os.WriteFile(filepath.Join(request.Baseline, "changed"), []byte("changed"), 0600)
+		if signal := os.Getenv("TAKT_FLOW_VALIDATOR_SIGNAL"); signal != "" {
+			_ = os.WriteFile(signal, []byte("mutated"), 0600)
+		}
 		mode = strings.TrimSuffix(mode, "|mutate")
+	}
+	if mode == "mutate-sleep" {
+		_ = os.WriteFile(filepath.Join(request.Baseline, "changed"), []byte("changed"), 0600)
+		if signal := os.Getenv("TAKT_FLOW_VALIDATOR_SIGNAL"); signal != "" {
+			_ = os.WriteFile(signal, []byte("mutated"), 0600)
+		}
+		time.Sleep(time.Second)
+		os.Exit(0)
 	}
 	if i := strings.Index(mode, "|stderr="); i >= 0 {
 		fmt.Fprint(os.Stderr, mode[i+len("|stderr="):])
