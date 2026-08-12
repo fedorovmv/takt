@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +68,44 @@ func TestRunWritesOneInvalidEnvelopeForProductFailure(t *testing.T) {
 	var result validationResult
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || result.Valid {
 		t.Fatalf("stdout=%s err=%v", stdout.String(), err)
+	}
+}
+
+func TestHasPushChecksCurrentBranchInsteadOfBareRemoteHEAD(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	remote := filepath.Join(root, "origin.git")
+	gitTest(t, root, "init", "--bare", remote)
+	gitTest(t, root, "init", "-b", "feature", workspace)
+	gitTest(t, workspace, "config", "user.name", "Takt Test")
+	gitTest(t, workspace, "config", "user.email", "takt@example.test")
+	if err := os.WriteFile(filepath.Join(workspace, "value"), []byte("one"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	gitTest(t, workspace, "add", "value")
+	gitTest(t, workspace, "commit", "-m", "one")
+	gitTest(t, workspace, "remote", "add", "origin", remote)
+	gitTest(t, workspace, "push", "-u", "origin", "feature")
+	if cmd := exec.Command("git", "--git-dir="+remote, "rev-parse", "HEAD"); cmd.Run() == nil {
+		t.Fatal("fixture unexpectedly has a valid bare HEAD")
+	}
+	if !hasPush(workspace) {
+		t.Fatal("pushed current branch was not detected")
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "value"), []byte("two"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	gitTest(t, workspace, "commit", "-am", "two")
+	if hasPush(workspace) {
+		t.Fatal("unpushed current branch was accepted")
+	}
+}
+
+func gitTest(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 }
 

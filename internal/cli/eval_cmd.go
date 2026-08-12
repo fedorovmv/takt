@@ -42,7 +42,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		fs := newFlagSet("eval flow")
 		caseID := fs.String("case", "", "run one case")
 		repeat := fs.Int("repeat", 1, "number of repetitions per case")
-		outputDir := fs.String("output", ".takt/evals/latest", "evaluation output directory")
+		outputDir := fs.String("output", "", "evaluation output directory")
 		keepWorkspaces := fs.Bool("keep-workspaces", false, "retain case workspaces")
 		jsonOut := fs.Bool("json", true, "JSON output")
 		values := map[string]bool{"--case": true, "--repeat": true, "--output": true, "--keep-workspaces": false, "--json": false}

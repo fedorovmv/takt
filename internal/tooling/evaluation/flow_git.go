@@ -152,7 +152,7 @@ func flowInputValue(selector, source, copied string) (string, error) {
 	if err := validateFlowPRInput(b, selector == "code:comprehensive-pr-review"); err != nil {
 		return "", err
 	}
-	return string(b), nil
+	return copied, nil
 }
 
 func validateFlowPRInput(input []byte, comprehensive bool) error {

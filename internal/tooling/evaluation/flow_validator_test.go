@@ -68,7 +68,7 @@ func TestRunFlowValidatorTimeoutAndCancellation(t *testing.T) {
 	})
 }
 
-func TestRunFlowValidatorCancellationBeatsBaselineModified(t *testing.T) {
+func TestRunFlowValidatorBaselineModifiedBeatsCancellation(t *testing.T) {
 	d := t.TempDir()
 	for _, name := range []string{"workspace", "baseline", "expected"} {
 		if err := os.Mkdir(filepath.Join(d, name), 0755); err != nil {
@@ -96,14 +96,14 @@ func TestRunFlowValidatorCancellationBeatsBaselineModified(t *testing.T) {
 	}
 	cancel()
 	got := <-result
-	if got.Status != "error" || got.ErrorCode != "validator_cancelled" {
+	if got.Status != "error" || got.ErrorCode != "baseline_modified" {
 		t.Fatalf("execution=%+v", got)
 	}
 }
 
-func TestRunFlowValidatorTimeoutBeatsBaselineModified(t *testing.T) {
+func TestRunFlowValidatorBaselineModifiedBeatsTimeout(t *testing.T) {
 	got := runFlowValidatorFixture(t, "mutate-sleep", "")
-	if got.Status != "error" || got.ErrorCode != "validator_timeout" {
+	if got.Status != "error" || got.ErrorCode != "baseline_modified" {
 		t.Fatalf("execution=%+v", got)
 	}
 }
@@ -193,8 +193,10 @@ func runFlowValidatorFixture(t *testing.T, mode, requestPath string, contexts ..
 		limit = 128
 	}
 	spec := flowValidatorSpec(t, limit)
-	if strings.Contains(mode, "sleep") {
+	if mode == "sleep" {
 		spec.Timeout = 20 * time.Millisecond
+	} else if mode == "mutate-sleep" {
+		spec.Timeout = 200 * time.Millisecond
 	}
 	return RunFlowValidator(ctx, spec, flowValidatorRequest(d), d)
 }
@@ -203,7 +205,7 @@ func flowValidatorSpec(t *testing.T, limit int) FlowValidatorSpec {
 	t.Helper()
 	return FlowValidatorSpec{
 		ResolvedCommand: []string{os.Args[0], "-test.run=TestFlowValidatorHelperProcess", "--"},
-		Timeout:         time.Second,
+		Timeout:         5 * time.Second,
 		MaxOutputBytes:  limit,
 	}
 }

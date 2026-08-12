@@ -80,18 +80,18 @@ func RunFlowValidator(ctx context.Context, spec FlowValidatorSpec, req FlowValid
 	if !stdout.Truncated() && !stderr.Truncated() {
 		result.Result, _ = validation.Decode(result.Stdout)
 	}
-	if ctx.Err() != nil {
-		return flowValidationErrorWithOutput("validator_cancelled", ctx.Err(), result)
-	}
-	if timedCtx.Err() != nil {
-		return flowValidationErrorWithOutput("validator_timeout", timedCtx.Err(), result)
-	}
 	after, hashErr := hashPath(req.Baseline)
 	if hashErr != nil {
 		return flowValidationErrorWithOutput("baseline_modified", hashErr, result)
 	}
 	if before != after {
 		return flowValidationErrorWithOutput("baseline_modified", errors.New("validator modified baseline workspace"), result)
+	}
+	if ctx.Err() != nil {
+		return flowValidationErrorWithOutput("validator_cancelled", ctx.Err(), result)
+	}
+	if timedCtx.Err() != nil {
+		return flowValidationErrorWithOutput("validator_timeout", timedCtx.Err(), result)
 	}
 	if runErr != nil {
 		var exitErr *exec.ExitError

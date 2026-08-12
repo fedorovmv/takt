@@ -57,6 +57,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
+	startedAt := opts.Now().UTC()
 	suite, err := LoadFlowSuite(opts.SuitePath)
 	if err != nil {
 		return nil, err
@@ -65,7 +66,18 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	output, err := filepath.Abs(opts.OutputDir)
+	outputDir := opts.OutputDir
+	if outputDir == "" {
+		suiteName := strings.Trim(safeCaseID.ReplaceAllString(filepath.Base(filepath.Dir(suite.SuitePath)), "-"), "-.")
+		if suiteName == "" {
+			return nil, errors.New("flow evaluation suite name is empty after sanitization")
+		}
+		if opts.InvocationWorkspace == "" {
+			return nil, errors.New("invocation workspace is required for default flow evaluation output")
+		}
+		outputDir = filepath.Join(opts.InvocationWorkspace, ".takt", "evals", suiteName, startedAt.Format("20060102T150405.000000000Z"))
+	}
+	output, err := filepath.Abs(outputDir)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +97,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 		return nil, fmt.Errorf("fingerprint validator: %w", err)
 	}
 	report := &SuiteReport{
-		ReportVersion: ReportVersion, TaktVersion: version.Value, StartedAt: opts.Now().UTC(),
+		ReportVersion: ReportVersion, TaktVersion: version.Value, StartedAt: startedAt,
 		Workflow: suite.Workflow, Config: suite.Config, CasesDir: suite.Cases.Directory,
 		OutputDir: flowReportPath(output, opts.InvocationWorkspace), Mode: "flow", Summary: newSummary(),
 		Benchmark:   BenchmarkIdentity{ID: filepath.Base(suite.SuitePath), CaseCount: len(cases), ValidationProtocol: FlowValidatorProtocol, Validator: ValidatorIdentity{ID: suite.Validator.ID, Version: suite.Validator.Version, Path: suite.Validator.Path, Fingerprint: validatorFingerprint}},
@@ -338,10 +350,9 @@ func flowPreparedIdentity(prepared *PreparedFlowRepeat) string {
 	if prepared == nil {
 		return ""
 	}
-	remoteHash := sha256.Sum256([]byte(prepared.BareRemote))
 	identity, _ := hashJSON(struct {
-		BaseCommit, HeadCommit, BareRemotePathSHA256 string
-	}{prepared.BaseCommit, prepared.HeadCommit, hex.EncodeToString(remoteHash[:])})
+		BaseCommit, HeadCommit string
+	}{prepared.BaseCommit, prepared.HeadCommit})
 	return identity
 }
 

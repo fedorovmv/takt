@@ -326,11 +326,19 @@ func hasPush(workspace string) bool {
 	if err != nil {
 		return false
 	}
+	remotePath := strings.TrimSpace(string(remote))
+	if !filepath.IsAbs(remotePath) {
+		remotePath = filepath.Join(workspace, remotePath)
+	}
+	branch, err := exec.Command("git", "-C", workspace, "branch", "--show-current").Output()
+	if err != nil || len(bytes.TrimSpace(branch)) == 0 {
+		return false
+	}
 	head, err := exec.Command("git", "-C", workspace, "rev-parse", "HEAD").Output()
 	if err != nil {
 		return false
 	}
-	ref, err := exec.Command("git", "--git-dir="+strings.TrimSpace(string(remote)), "rev-parse", "HEAD").Output()
+	ref, err := exec.Command("git", "--git-dir="+remotePath, "rev-parse", "refs/heads/"+strings.TrimSpace(string(branch))).Output()
 	return err == nil && bytes.Equal(bytes.TrimSpace(head), bytes.TrimSpace(ref))
 }
 

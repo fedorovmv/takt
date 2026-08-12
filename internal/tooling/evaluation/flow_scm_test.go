@@ -239,13 +239,13 @@ func TestPrepareFlowRepeatUsesRepeatLocalRemote(t *testing.T) {
 	}
 }
 
-func TestPreparedFlowIdentityIncludesCommitsAndRemotePathHash(t *testing.T) {
+func TestPreparedFlowIdentityIncludesCommitsButNotRemotePath(t *testing.T) {
 	identity := flowPreparedIdentity(&PreparedFlowRepeat{BaseCommit: "base", HeadCommit: "head", BareRemote: "/private/repeat-001/origin.git"})
-	if identity == "" || identity == flowPreparedIdentity(&PreparedFlowRepeat{BaseCommit: "base", HeadCommit: "other", BareRemote: "/private/repeat-001/origin.git"}) || identity == flowPreparedIdentity(&PreparedFlowRepeat{BaseCommit: "base", HeadCommit: "head", BareRemote: "/private/repeat-002/origin.git"}) {
+	if identity == "" || identity == flowPreparedIdentity(&PreparedFlowRepeat{BaseCommit: "base", HeadCommit: "other", BareRemote: "/private/repeat-001/origin.git"}) {
 		t.Fatalf("prepared identity does not include SCM state: %q", identity)
 	}
-	if strings.Contains(identity, "/private/") {
-		t.Fatalf("prepared identity leaks remote path: %q", identity)
+	if other := flowPreparedIdentity(&PreparedFlowRepeat{BaseCommit: "base", HeadCommit: "head", BareRemote: "/private/repeat-002/origin.git"}); identity != other {
+		t.Fatalf("remote output path changed identity: %q != %q", identity, other)
 	}
 }
 

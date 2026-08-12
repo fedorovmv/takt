@@ -212,7 +212,7 @@ func (s *RunService) Start(ctx context.Context, request StartRequest) (*StartRes
 			return &StartResult{RunID: runID, Accepted: true}, nil
 		case <-ticker.C:
 			state, loadErr := runStore.Load(runID)
-			if loadErr == nil && terminalRun(state.Status) {
+			if loadErr == nil {
 				return &StartResult{RunID: runID, Accepted: true, State: state.PublicView()}, nil
 			}
 			if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
@@ -272,7 +272,7 @@ func (s *RunService) prepareStart(ctx context.Context, request StartRequest) (*p
 	}
 	input := request.Input
 	inputCandidate := request.Input
-	if request.Input != "" && !filepath.IsAbs(inputCandidate) && !json.Valid([]byte(inputCandidate)) {
+	if request.Input != "" && !filepath.IsAbs(inputCandidate) {
 		inputCandidate = filepath.Join(s.workspace, inputCandidate)
 	}
 	if resolved != nil {

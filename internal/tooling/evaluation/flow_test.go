@@ -299,6 +299,26 @@ func TestRunFlowReportsOutputRelativeToSymlinkedInvocation(t *testing.T) {
 	}
 }
 
+func TestRunFlowDerivesTimestampedDefaultOutput(t *testing.T) {
+	suiteRoot, suitePath := writeFlowRunSuite(t, "case")
+	invocation := t.TempDir()
+	now := time.Date(2026, 8, 13, 12, 34, 56, 123456789, time.FixedZone("other", 3*60*60))
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	report, err := RunFlow(context.Background(), FlowRunOptions{SuitePath: suitePath, InvocationWorkspace: invocation, Now: func() time.Time { return now }, CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+		return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(".takt", "evals", filepath.Base(suiteRoot), "20260813T093456.123456789Z")
+	if report.OutputDir != want {
+		t.Fatalf("output_dir=%q want %q", report.OutputDir, want)
+	}
+	if _, err := os.Stat(filepath.Join(invocation, want, "report.json")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func flowRequests(requests []FlowCaseRunRequest) []string {
 	out := make([]string, len(requests))
 	for i, request := range requests {

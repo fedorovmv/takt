@@ -50,6 +50,7 @@ func TestFlowSuiteContracts(t *testing.T) {
 		strings.Replace(flowValid, "path: validator", "path: validator\ntimeout: 0s", 1),
 		flowValid + "gates: {validation_error_rate: {}}\n",
 		flowValid + "gates: {unstable_cases: {}}\n",
+		flowValid + "gates: {unstable_cases: {max: -1}}\n",
 	} {
 		if _, e := LoadFlowSuite(writeFlowTestFile(t, "bad.yaml", bad)); e == nil {
 			t.Fatalf("accepted bad: %q", bad)

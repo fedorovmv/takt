@@ -155,8 +155,14 @@ func TestPrepareFlowRepeatModelSlots(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if test.selector != "code:feature-development" && prepared.InputValue != input {
-				t.Fatalf("JSON input = %q", prepared.InputValue)
+			if test.selector != "code:feature-development" {
+				want := filepath.Join(prepared.ControlWorkspace, ".takt", "eval", "input.md")
+				if prepared.InputValue != want {
+					t.Fatalf("JSON input path = %q want %q", prepared.InputValue, want)
+				}
+				if got, readErr := os.ReadFile(prepared.InputValue); readErr != nil || string(got) != input {
+					t.Fatalf("JSON input content = %q err=%v", got, readErr)
+				}
 			}
 		})
 	}

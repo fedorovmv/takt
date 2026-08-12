@@ -175,6 +175,9 @@ func resolveRelative(dir, p string) string {
 }
 func fileRegular(p string) bool { i, e := os.Stat(p); return e == nil && i.Mode().IsRegular() }
 func validateGates(g FlowGates) error {
+	if g.UnstableCases.Max != nil && *g.UnstableCases.Max < 0 {
+		return fmt.Errorf("unstable_cases max must be non-negative")
+	}
 	for _, t := range []FlowThreshold{g.ValidationErrorRate, g.ValidRate, g.FalseAcceptRate, g.FalseRejectRate, g.FlowCompletionRate} {
 		if t.Min != nil && t.Max != nil {
 			return fmt.Errorf("gate must specify exactly one of min or max")

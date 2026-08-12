@@ -97,6 +97,11 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 			if state.Waiting == nil {
 				return evaluation.FlowCaseRunResult{}, fmt.Errorf("waiting run %s has no waiting state", runID)
 			}
+			// approval.requested makes waiting durable before the starting runner
+			// commits node.suspended. Wait for that quiescent state before Answer.
+			if node := state.Nodes[state.Waiting.NodeID]; node == nil || node.Status != store.NodeWaiting || node.Attempts != 0 {
+				break
+			}
 			if _, err := app.Core.RunService.Answer(ctx, runID, state.Waiting.NodeID, answer); err != nil {
 				if ctx.Err() != nil {
 					return e.cancelFlowCase(ctx, app, runID)
