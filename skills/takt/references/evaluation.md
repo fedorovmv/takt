@@ -20,6 +20,9 @@ takt eval flow evals/feature/suite.yaml --case example --repeat 1 --output evals
 
 For the bundled mini-du live corpus, use `make eval-smoke`, `make eval-feature`,
 `make eval-review`, or `make eval-architect` from the repository root.
+The live flow targets fail after five minutes without assistant progress. Set
+`EVAL_IDLE_TIMEOUT=10m` before `make` only when the provider legitimately needs
+a longer silent interval; tool and assistant message events reset the timer.
 
 Inspect `report.json` and `cases/<id>/repeat-001/` evidence before changing a
 workflow or validator. Do not treat fake SCM fixtures as a remote provider or

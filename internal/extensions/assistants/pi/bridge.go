@@ -18,6 +18,8 @@ const (
 	EventSessionStarted         = core.EventSessionStarted
 	EventSessionResumed         = core.EventSessionResumed
 	EventMessage                = core.EventMessage
+	EventToolStarted            = core.EventToolStarted
+	EventToolCompleted          = core.EventToolCompleted
 	EventUsage                  = core.EventUsage
 	EventDiagnostic             = core.EventDiagnostic
 	EventCompleted              = core.EventCompleted
@@ -30,4 +32,5 @@ var (
 	compactJSON       = core.CompactJSON
 	newLimitedBuffer  = core.NewLimitedBuffer
 	mergeCapabilities = core.MergeCapabilities
+	emitEvent         = core.Emit
 )

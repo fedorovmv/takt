@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"takt/internal/application"
+	"takt/internal/assistant"
 	"takt/internal/store"
 	"takt/internal/tooling/evaluation"
 )
@@ -48,7 +50,7 @@ func TestTraceFlowRunningNodesReportsCurrentDurableStatus(t *testing.T) {
 	traceFlowRunningNodes(func(line string) { trace = append(trace, line) }, state)
 	state.Nodes["active"].Attempts = 2
 	traceFlowRunningNodes(func(line string) { trace = append(trace, line) }, state)
-	if got, want := strings.Join(trace, "\n"), "node.running node=active attempt=0\nnode.running node=active attempt=2"; got != want {
+	if got, want := strings.Join(trace, "\n"), "node.active node=active attempt=0 awaiting=assistant_progress_or_completion\nnode.active node=active attempt=2 awaiting=assistant_progress_or_completion"; got != want {
 		t.Fatalf("trace=%q want=%q", got, want)
 	}
 }
@@ -70,6 +72,32 @@ func TestTraceFlowChildFailuresFromSnapshot(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("trace missing %q:\n%s", want, joined)
 		}
+	}
+}
+
+func TestTraceEvaluationAssistantEventShowsSafeProgress(t *testing.T) {
+	var trace []string
+	write := func(line string) { trace = append(trace, line) }
+	traceEvaluationAssistantEvent(write, "child-1", "implement", assistant.Event{Type: assistant.EventToolStarted, Tool: "read", Input: json.RawMessage(`{"path":"internal/du/du.go"}`)})
+	traceEvaluationAssistantEvent(write, "child-1", "implement", assistant.Event{Type: assistant.EventMessage, Message: strings.Repeat("result ", 40)})
+	joined := strings.Join(trace, "\n")
+	for _, want := range []string{`assistant.tool.started run=child-1 node=implement tool=read model= session= path="internal/du/du.go"`, `assistant.message run=child-1 node=implement model= session= text="result result`} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("trace missing %q:\n%s", want, joined)
+		}
+	}
+	if len(trace[1]) > 260 {
+		t.Fatalf("message preview is too large: %d", len(trace[1]))
+	}
+}
+
+func TestTraceEvaluationAssistantFailureShowsIdleTimeout(t *testing.T) {
+	var trace []string
+	traceEvaluationAssistantEvent(func(line string) { trace = append(trace, line) }, "run-1", "review", assistant.Event{
+		Type: assistant.EventFailed, Message: "assistant idle timeout: node idle timeout exceeded", SessionID: "session-1",
+	})
+	if got := strings.Join(trace, "\n"); !strings.Contains(got, `assistant.failed run=run-1 node=review session=session-1 error="assistant idle timeout: node idle timeout exceeded"`) {
+		t.Fatalf("trace=%q", got)
 	}
 }
 

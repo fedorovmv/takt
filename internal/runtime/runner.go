@@ -46,19 +46,21 @@ func (e *RunFailedError) Error() string {
 }
 
 type Runner struct {
-	workflow         *spec.Workflow
-	config           *spec.Config
-	workflowPath     string
-	configPath       string
-	controlWorkspace string
-	workspace        string
-	commands         command.Resolver
-	store            store.Repository
-	assistants       assistant.Resolver
-	adapters         domainadapter.Resolver
-	redactor         *redact.Redactor
-	startOptions     StartOptions
-	inheritedPolicy  assistant.Policy
+	workflow             *spec.Workflow
+	config               *spec.Config
+	workflowPath         string
+	configPath           string
+	controlWorkspace     string
+	workspace            string
+	commands             command.Resolver
+	store                store.Repository
+	assistants           assistant.Resolver
+	adapters             domainadapter.Resolver
+	redactor             *redact.Redactor
+	startOptions         StartOptions
+	inheritedPolicy      assistant.Policy
+	assistantEvents      func(string, string, assistant.Event)
+	assistantIdleTimeout time.Duration
 }
 
 // Definition is the immutable workflow definition and path context supplied
@@ -74,11 +76,13 @@ type Definition struct {
 // Dependencies are runtime capabilities supplied by the composition root.
 // The interfaces remain deliberately concrete-to-domain rather than generic DI.
 type Dependencies struct {
-	Commands   command.Resolver
-	Store      store.Repository
-	Assistants assistant.Resolver
-	Adapters   domainadapter.Resolver
-	Redactor   *redact.Redactor
+	Commands             command.Resolver
+	Store                store.Repository
+	Assistants           assistant.Resolver
+	Adapters             domainadapter.Resolver
+	Redactor             *redact.Redactor
+	AssistantEvents      func(string, string, assistant.Event)
+	AssistantIdleTimeout time.Duration
 }
 
 type StartOptions struct {
@@ -98,7 +102,9 @@ func NewWithDependencies(def Definition, deps Dependencies) *Runner {
 		workflow: def.Workflow, config: def.Config, workflowPath: def.WorkflowPath, configPath: def.ConfigPath,
 		controlWorkspace: def.ControlWorkspace, workspace: def.ControlWorkspace,
 		commands: deps.Commands, store: deps.Store, assistants: deps.Assistants, adapters: deps.Adapters,
-		redactor: deps.Redactor,
+		redactor:             deps.Redactor,
+		assistantEvents:      deps.AssistantEvents,
+		assistantIdleTimeout: deps.AssistantIdleTimeout,
 	}
 }
 

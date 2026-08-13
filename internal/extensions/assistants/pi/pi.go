@@ -113,7 +113,7 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 	}()
 	processWait := newPiProcessWait(cmd)
 
-	client := &piRPCClient{stdin: stdin, records: records, streamErr: streamErr, process: processWait}
+	client := &piRPCClient{stdin: stdin, records: records, streamErr: streamErr, process: processWait, request: req}
 	finish := func(result Result, runErr error) (Result, error) {
 		result.AssistantVersion = version
 		_ = stdin.Close()
@@ -151,6 +151,7 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		cancel()
 		return finish(Result{ExitCode: -1}, protocolPiError("decode initial state", err))
 	}
+	client.request.SessionID = stateBefore.SessionID
 	statsBeforeRaw, err := client.call(ctx, "stats-before", map[string]any{"type": "get_session_stats"})
 	if err != nil {
 		cancel()
@@ -492,6 +493,7 @@ type piRPCClient struct {
 	streamErr <-chan error
 	process   *piProcessWait
 	backlog   []piRPCRecord
+	request   Request
 }
 
 type piProcessWait struct {
@@ -652,6 +654,11 @@ func (c *piRPCClient) next(ctx context.Context, match func(piRPCRecord) bool) (p
 					return piRPCRecord{}, protocolPiError("extension UI", fmt.Errorf("interactive Pi extension request %q is unsupported", ui.Method))
 				}
 			}
+			if event, ok := piProgressEvent(record); ok {
+				event.SessionID = c.request.SessionID
+				event.Provider = c.request.Model.Provider
+				emitEvent(c.request, event)
+			}
 			if transientPiRPCRecord(record.Type) {
 				continue
 			}
@@ -660,6 +667,51 @@ func (c *piRPCClient) next(ctx context.Context, match func(piRPCRecord) bool) (p
 			}
 			c.backlog = append(c.backlog, record)
 		}
+	}
+}
+
+func piProgressEvent(record piRPCRecord) (core.Event, bool) {
+	switch record.Type {
+	case "tool_execution_start", "tool_execution_end":
+		var value struct {
+			CallID  string          `json:"toolCallId"`
+			Tool    string          `json:"toolName"`
+			Args    json.RawMessage `json:"args"`
+			IsError bool            `json:"isError"`
+		}
+		if json.Unmarshal(record.Raw, &value) != nil || value.CallID == "" || value.Tool == "" {
+			return core.Event{}, false
+		}
+		typeName := EventToolStarted
+		if record.Type == "tool_execution_end" {
+			typeName = EventToolCompleted
+		}
+		return core.Event{Type: typeName, Tool: value.Tool, CallID: value.CallID, Input: value.Args, Data: map[string]any{"error": value.IsError}}, true
+	case "message_end":
+		var value struct {
+			Message struct {
+				Role    string `json:"role"`
+				Content []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(record.Raw, &value) != nil || value.Message.Role != "assistant" {
+			return core.Event{}, false
+		}
+		var parts []string
+		for _, content := range value.Message.Content {
+			if content.Type == "text" && strings.TrimSpace(content.Text) != "" {
+				parts = append(parts, strings.TrimSpace(content.Text))
+			}
+		}
+		if len(parts) == 0 {
+			return core.Event{}, false
+		}
+		return core.Event{Type: EventMessage, Message: strings.Join(parts, "\n")}, true
+	default:
+		return core.Event{}, false
 	}
 }
 
@@ -728,7 +780,7 @@ func readPiRPC(reader io.Reader, capture *limitedBuffer, recordLimit int, record
 
 func transientPiRPCRecord(recordType string) bool {
 	switch recordType {
-	case "message_update", "tool_execution_update", "extension_ui_request":
+	case "message_update", "tool_execution_start", "tool_execution_update", "tool_execution_end", "extension_ui_request":
 		return true
 	default:
 		return false

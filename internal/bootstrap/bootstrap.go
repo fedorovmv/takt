@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"path/filepath"
+	"time"
 
 	"takt/internal/appapi"
 	"takt/internal/application"
@@ -43,6 +44,10 @@ type App struct {
 }
 
 func New(workspace, configPath string) (*App, error) {
+	return newApp(workspace, configPath, nil, 0)
+}
+
+func newApp(workspace, configPath string, assistantEvents func(string, string, assistant.Event), assistantIdleTimeout time.Duration) (*App, error) {
 	absWorkspace, err := filepath.Abs(workspace)
 	if err != nil {
 		return nil, err
@@ -77,11 +82,13 @@ func New(workspace, configPath string) (*App, error) {
 	}
 	coreDeps.RunnerFactory = func(def runtime.Definition, options application.RunnerOptions) *runtime.Runner {
 		deps := runtime.Dependencies{
-			Commands:   runtime.NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
-			Store:      store.FS{Workspace: def.ControlWorkspace},
-			Assistants: assistant.Factory{Config: def.Config, Providers: providers},
-			Adapters:   domainadapter.Factory{Config: def.Config},
-			Redactor:   redact.NewFromConfig(def.Config),
+			Commands:             runtime.NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
+			Store:                store.FS{Workspace: def.ControlWorkspace},
+			Assistants:           assistant.Factory{Config: def.Config, Providers: providers},
+			Adapters:             domainadapter.Factory{Config: def.Config},
+			Redactor:             redact.NewFromConfig(def.Config),
+			AssistantEvents:      assistantEvents,
+			AssistantIdleTimeout: assistantIdleTimeout,
 		}
 		if options.Commands != nil {
 			deps.Commands = *options.Commands

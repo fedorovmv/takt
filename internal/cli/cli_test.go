@@ -131,6 +131,9 @@ func TestEvalFlowParsesOnlyItsContract(t *testing.T) {
 	if err := evalCmd(context.Background(), []string{"flow", "init"}); err == nil || !strings.Contains(err.Error(), "usage: takt eval flow init") {
 		t.Fatalf("init error = %v", err)
 	}
+	if err := evalCmd(context.Background(), []string{"flow", "suite.yaml", "--assistant-idle-timeout", "0s"}); err == nil || !strings.Contains(err.Error(), "assistant-idle-timeout must be positive") {
+		t.Fatalf("idle timeout error = %v", err)
+	}
 }
 
 func TestEvalTraceWritesElapsedProgress(t *testing.T) {

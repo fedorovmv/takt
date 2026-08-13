@@ -9,6 +9,7 @@ import (
 
 	"takt/internal/assistant"
 	"takt/internal/execution"
+	"takt/internal/redact"
 	"takt/internal/spec"
 	"takt/internal/store"
 )
@@ -47,6 +48,49 @@ func TestAssistantIdleTimeoutUsesEventActivity(t *testing.T) {
 	var failed *RunFailedError
 	if !errors.As(err, &failed) || state.ErrorCode != string(execution.KindTimedOut) {
 		t.Fatalf("state=%#v err=%v", state, err)
+	}
+}
+
+func TestAssistantIdleTimeoutUsesRuntimeDefaultWhenNodeOmitsIt(t *testing.T) {
+	dir := t.TempDir()
+	workflow := &spec.Workflow{Name: "idle", Provider: "demo", Model: "model", Nodes: []spec.Node{{ID: "agent", Prompt: "work", Timeout: "2s"}}}
+	config := &spec.Config{Models: map[string]spec.ModelSpec{"model": {Provider: "demo", ID: "demo"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	runner := NewWithDependencies(Definition{Workflow: workflow, Config: config, WorkflowPath: filepath.Join(dir, "workflow.yaml"), ConfigPath: filepath.Join(dir, "config.yaml"), ControlWorkspace: dir}, Dependencies{
+		Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) {
+			return adapterFunc(func(ctx context.Context, request assistant.Request) (assistant.Result, error) {
+				<-ctx.Done()
+				return assistant.Result{}, context.Cause(ctx)
+			}), nil
+		}), Redactor: redact.NewFromConfig(config), AssistantIdleTimeout: 40 * time.Millisecond,
+	})
+	state, err := runner.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected default idle timeout")
+	}
+	if state.ErrorCode != string(execution.KindTimedOut) || state.Nodes["agent"].Status != store.NodeTimedOut {
+		t.Fatalf("state=%#v err=%v", state, err)
+	}
+}
+
+func TestAssistantNodeIdleTimeoutOverridesRuntimeDefault(t *testing.T) {
+	dir := t.TempDir()
+	workflow := &spec.Workflow{Name: "idle", Provider: "demo", Model: "model", Nodes: []spec.Node{{ID: "agent", Prompt: "work", IdleTimeout: "30ms", Timeout: "2s"}}}
+	config := &spec.Config{Models: map[string]spec.ModelSpec{"model": {Provider: "demo", ID: "demo"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	started := time.Now()
+	runner := NewWithDependencies(Definition{Workflow: workflow, Config: config, WorkflowPath: filepath.Join(dir, "workflow.yaml"), ConfigPath: filepath.Join(dir, "config.yaml"), ControlWorkspace: dir}, Dependencies{
+		Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) {
+			return adapterFunc(func(ctx context.Context, request assistant.Request) (assistant.Result, error) {
+				<-ctx.Done()
+				return assistant.Result{}, context.Cause(ctx)
+			}), nil
+		}), Redactor: redact.NewFromConfig(config), AssistantIdleTimeout: time.Second,
+	})
+	state, err := runner.Start(context.Background(), "")
+	if err == nil || state.ErrorCode != string(execution.KindTimedOut) {
+		t.Fatalf("state=%#v err=%v", state, err)
+	}
+	if elapsed := time.Since(started); elapsed >= 500*time.Millisecond {
+		t.Fatalf("node idle_timeout did not override runtime default: %s", elapsed)
 	}
 }
 

@@ -2,10 +2,12 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"takt/internal/application"
@@ -44,7 +46,7 @@ func (e evaluationEngine) Flow(ctx context.Context, req tooling.FlowEvaluationRe
 	}
 	return evaluation.RunFlow(ctx, evaluation.FlowRunOptions{
 		SuitePath: req.SuitePath, CaseID: req.CaseID, OutputDir: req.OutputDir, InvocationWorkspace: req.InvocationWorkspace,
-		Repeat: req.Repeat, KeepWorkspaces: req.KeepWorkspaces, Now: time.Now, HostPATH: hostPATH, CaseRunner: e.runFlowCase, Trace: req.Trace,
+		Repeat: req.Repeat, KeepWorkspaces: req.KeepWorkspaces, Now: time.Now, HostPATH: hostPATH, CaseRunner: e.runFlowCase, Trace: req.Trace, AssistantIdleTimeout: req.AssistantIdleTimeout,
 	})
 }
 
@@ -60,7 +62,9 @@ func (evaluationEngine) FlowInit(_ context.Context, workflowSelector, output str
 }
 
 func (e evaluationEngine) runFlowCase(ctx context.Context, req evaluation.FlowCaseRunRequest) (evaluation.FlowCaseRunResult, error) {
-	app, err := New(req.Workspace, req.ConfigPath)
+	app, err := newApp(req.Workspace, req.ConfigPath, func(runID, nodeID string, event assistant.Event) {
+		traceEvaluationAssistantEvent(req.Trace, runID, nodeID, event)
+	}, req.AssistantIdleTimeout)
 	if err != nil {
 		return evaluation.FlowCaseRunResult{}, err
 	}
@@ -76,6 +80,61 @@ func (e evaluationEngine) runFlowCase(ctx context.Context, req evaluation.FlowCa
 	}
 	traceEvaluation(req.Trace, "run.accepted run=%s", started.RunID)
 	return e.pollFlowCase(ctx, app, started.RunID, req.ApprovalAnswer, req.Trace)
+}
+
+func traceEvaluationAssistantEvent(trace func(string), runID, nodeID string, event assistant.Event) {
+	if trace == nil {
+		return
+	}
+	switch event.Type {
+	case assistant.EventSessionStarted, assistant.EventSessionResumed:
+		traceEvaluation(trace, "assistant.%s run=%s node=%s assistant=%v model=%v/%v attempt=%v session=%s", event.Type, runID, nodeID, event.Data["assistant"], event.Provider, event.Data["model_id"], event.Data["attempt"], event.SessionID)
+	case assistant.EventToolStarted, assistant.EventToolCompleted:
+		line := fmt.Sprintf("assistant.%s run=%s node=%s tool=%s model=%s session=%s", event.Type, runID, nodeID, event.Tool, event.Provider, event.SessionID)
+		if summary := traceToolInput(event.Input); summary != "" {
+			line += " " + summary
+		}
+		if event.Type == assistant.EventToolCompleted {
+			line += fmt.Sprintf(" error=%v", event.Data["error"])
+		}
+		trace(line)
+	case assistant.EventMessage:
+		message := strings.Join(strings.Fields(event.Message), " ")
+		if len(message) > 160 {
+			message = message[:160] + "..."
+		}
+		if message != "" {
+			traceEvaluation(trace, "assistant.message run=%s node=%s model=%s session=%s text=%q", runID, nodeID, event.Provider, event.SessionID, message)
+		}
+	case assistant.EventUsage:
+		if event.Usage != nil {
+			traceEvaluation(trace, "assistant.usage run=%s node=%s input=%d output=%d cost=%.6g", runID, nodeID, event.Usage.InputTokens, event.Usage.OutputTokens, event.Usage.Cost)
+		}
+	case assistant.EventCompleted:
+		traceEvaluation(trace, "assistant.%s run=%s node=%s session=%s", event.Type, runID, nodeID, event.SessionID)
+	case assistant.EventFailed:
+		traceEvaluation(trace, "assistant.failed run=%s node=%s session=%s error=%q", runID, nodeID, event.SessionID, strings.Join(strings.Fields(event.Message), " "))
+	}
+}
+
+func traceToolInput(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value map[string]any
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	for _, key := range []string{"path", "command", "query", "pattern"} {
+		if text, ok := value[key].(string); ok && text != "" {
+			text = strings.Join(strings.Fields(text), " ")
+			if len(text) > 120 {
+				text = text[:120] + "..."
+			}
+			return fmt.Sprintf("%s=%q", key, text)
+		}
+	}
+	return ""
 }
 
 func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, answer string, trace func(string)) (evaluation.FlowCaseRunResult, error) {
@@ -102,7 +161,7 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 				traceEvaluationEvent(trace, event)
 			}
 			revision = events.NextRevision
-			if lastRunningTrace.IsZero() || time.Since(lastRunningTrace) >= 10*time.Second {
+			if lastRunningTrace.IsZero() || time.Since(lastRunningTrace) >= 30*time.Second {
 				traceFlowRunningNodes(trace, state)
 				lastRunningTrace = time.Now()
 			}
@@ -148,7 +207,7 @@ func traceFlowRunningNodes(trace func(string), state *store.RunState) {
 		if node == nil || node.Status != store.NodeRunning {
 			continue
 		}
-		traceEvaluation(trace, "node.running node=%s attempt=%d", id, node.Attempts)
+		traceEvaluation(trace, "node.active node=%s attempt=%d awaiting=assistant_progress_or_completion", id, node.Attempts)
 	}
 }
 
@@ -162,6 +221,9 @@ func traceEvaluationEvent(trace func(string), event store.Event) {
 	}
 	if attempt, ok := event.Data["attempt"]; ok {
 		line += fmt.Sprintf(" attempt=%v", attempt)
+	}
+	if code, ok := event.Data["code"]; ok {
+		line += fmt.Sprintf(" code=%v", code)
 	}
 	trace(line)
 }

@@ -113,6 +113,7 @@ type EnvironmentIdentity struct {
 	GoVersion            string `json:"go_version"`
 	PATHSHA256           string `json:"path_sha256,omitempty"`
 	OracleMetadataSHA256 string `json:"oracle_metadata_sha256,omitempty"`
+	AssistantIdleTimeout string `json:"assistant_idle_timeout,omitempty"`
 }
 
 type Summary struct {

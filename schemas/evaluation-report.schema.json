@@ -194,6 +194,9 @@
         },
         "oracle_metadata_sha256": {
           "$ref": "#/$defs/fingerprint"
+        },
+        "assistant_idle_timeout": {
+          "type": "string"
         }
       }
     },

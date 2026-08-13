@@ -194,6 +194,17 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 		emitSuccess(writer, state, opts)
 	case "huge-transient-record":
 		writeJSON(writer, map[string]any{"type": "message_update", "message": map[string]any{"role": "assistant", "content": strings.Repeat("x", 4096)}})
+	case "live-events":
+		writeJSON(writer, map[string]any{"type": "tool_execution_start", "toolCallId": "call-1", "toolName": "read", "args": map[string]any{"path": "main.go"}})
+		writeJSON(writer, map[string]any{"type": "tool_execution_end", "toolCallId": "call-1", "toolName": "read", "isError": false})
+		writeJSON(writer, map[string]any{"type": "message_end", "message": map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "inspected main.go"}}}})
+		emitSuccess(writer, state, opts)
+	case "tool-then-hang":
+		writeJSON(writer, map[string]any{"type": "tool_execution_start", "toolCallId": "call-1", "toolName": "bash", "args": map[string]any{"command": "go test ./..."}})
+		writeJSON(writer, map[string]any{"type": "tool_execution_end", "toolCallId": "call-1", "toolName": "bash", "isError": false})
+		for {
+			time.Sleep(time.Hour)
+		}
 	case "agent-failure":
 		message := assistantMessage(opts, "", "error", "fake model failure")
 		state.finish("", []any{message})

@@ -10,11 +10,13 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"sort"
 	"strings"
 	"time"
 
 	"takt/internal/config"
 	"takt/internal/redact"
+	"takt/internal/spec"
 	"takt/internal/store"
 	"takt/internal/version"
 )
@@ -22,6 +24,7 @@ import (
 type FlowCaseRunRequest struct {
 	Workspace, Selector, ConfigPath, InputValue, ApprovalAnswer string
 	Trace                                                       func(string)
+	AssistantIdleTimeout                                        time.Duration
 }
 
 type FlowCaseRunResult struct {
@@ -43,6 +46,7 @@ type FlowRunOptions struct {
 	HostPATH                                          string
 	CaseRunner                                        FlowCaseRunner
 	Trace                                             func(string)
+	AssistantIdleTimeout                              time.Duration
 }
 
 type FlowGateFailureError struct{ Report *SuiteReport }
@@ -52,6 +56,9 @@ func (e *FlowGateFailureError) Error() string { return "flow evaluation gates fa
 func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	if opts.CaseRunner == nil {
 		return nil, errors.New("flow case runner is required")
+	}
+	if opts.AssistantIdleTimeout <= 0 {
+		opts.AssistantIdleTimeout = 5 * time.Minute
 	}
 	if opts.Repeat <= 0 {
 		opts.Repeat = 1
@@ -93,6 +100,8 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	if err := os.MkdirAll(output, 0755); err != nil {
 		return nil, err
 	}
+	traceFlow(opts.Trace, "evaluation.start suite=%s workflow=%s case=%s repeat=%d assistant_idle_timeout=%s output=%s", suite.SuitePath, suite.Workflow, opts.CaseID, opts.Repeat, opts.AssistantIdleTimeout, output)
+	traceFlow(opts.Trace, "evaluation.plan phases=prepare->validator_preflight->workflow->validator->evidence->report")
 	pathHash := sha256.Sum256([]byte(opts.HostPATH))
 	validatorFingerprint, err := hashPath(suite.Validator.ResolvedPath)
 	if err != nil {
@@ -103,7 +112,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 		Workflow: suite.Workflow, Config: suite.Config, CasesDir: suite.Cases.Directory,
 		OutputDir: flowReportPath(output, opts.InvocationWorkspace), Mode: "flow", Summary: newSummary(),
 		Benchmark:   BenchmarkIdentity{ID: filepath.Base(suite.SuitePath), CaseCount: len(cases), ValidationProtocol: FlowValidatorProtocol, Validator: ValidatorIdentity{ID: suite.Validator.ID, Version: suite.Validator.Version, Path: suite.Validator.Path, Fingerprint: validatorFingerprint}},
-		Environment: EnvironmentIdentity{GOOS: goruntime.GOOS, GOARCH: goruntime.GOARCH, GoVersion: goruntime.Version(), PATHSHA256: hex.EncodeToString(pathHash[:])},
+		Environment: EnvironmentIdentity{GOOS: goruntime.GOOS, GOARCH: goruntime.GOARCH, GoVersion: goruntime.Version(), PATHSHA256: hex.EncodeToString(pathHash[:]), AssistantIdleTimeout: opts.AssistantIdleTimeout.String()},
 	}
 	var oracleMetadata, strategyFingerprint string
 	preparedIdentities := make([]string, 0, len(cases)*opts.Repeat)
@@ -116,11 +125,13 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 				return finishFlowPartial(report, output, opts.Now, nil, prepErr)
 			}
 			preparedIdentities = append(preparedIdentities, flowPreparedIdentity(prepared))
+			traceFlow(opts.Trace, "case.prepared case=%s repeat=%d workspace=%s", item.ID, repeat, prepared.ControlWorkspace)
 			cfg, cfgErr := config.Load(prepared.ConfigPath)
 			if cfgErr != nil {
 				return finishFlowPartial(report, output, opts.Now, nil, cfgErr)
 			}
 			redactor.Merge(redact.NewFromConfig(cfg))
+			traceFlow(opts.Trace, "config.loaded assistant=%s models=%s", cfg.DefaultAssistant, flowModelSummary(cfg))
 			traceFlow(opts.Trace, "validator.preflight case=%s repeat=%d", item.ID, repeat)
 			preflight, metadata, preflightErr := PreflightFlowValidator(ctx, suite.Validator, item.ID, prepared.BaselineWorkspace, item.ExpectedPath, suite.SuiteDir)
 			if preflightErr != nil {
@@ -142,7 +153,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			if item.Expectation != nil && item.Expectation.Takt.ApprovalAnswer != "" {
 				approval = item.Expectation.Takt.ApprovalAnswer
 			}
-			result, callbackErr := opts.CaseRunner(ctx, FlowCaseRunRequest{Workspace: prepared.ControlWorkspace, Selector: selector, ConfigPath: prepared.ConfigPath, InputValue: prepared.InputValue, ApprovalAnswer: approval, Trace: opts.Trace})
+			result, callbackErr := opts.CaseRunner(ctx, FlowCaseRunRequest{Workspace: prepared.ControlWorkspace, Selector: selector, ConfigPath: prepared.ConfigPath, InputValue: prepared.InputValue, ApprovalAnswer: approval, Trace: opts.Trace, AssistantIdleTimeout: opts.AssistantIdleTimeout})
 			if len(result.States) == 0 || result.States[0] == nil {
 				if callbackErr == nil {
 					callbackErr = errors.New("flow case runner returned no root snapshot")
@@ -186,6 +197,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 				record.TimeToValidMS = &elapsed
 				ClassifyFlowRecord(&record)
 			}
+			traceFlow(opts.Trace, "case.result case=%s repeat=%d run=%s status=%s outcome=%s valid=%t diagnostic=%s", item.ID, repeat, root.ID, record.Status, record.Outcome, validationResult.Result != nil && validationResult.Result.Valid, flowValidationDiagnostic(validationResult))
 			report.Runs = append(report.Runs, record)
 			addSummary(&report.Summary, record)
 			if err := writeFlowRepeatEvidence(output, item, repeat, result, request, validationResult, prepared, redactor); err != nil {
@@ -250,7 +262,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	report.FinishedAt = opts.Now().UTC()
 	report.DurationMS = report.FinishedAt.Sub(report.StartedAt).Milliseconds()
 	report.Benchmark.DatasetFingerprint = flowDatasetFingerprint(suite, cases)
-	report.Benchmark.Fingerprint = flowBenchmarkFingerprint(sha256Text(suite.Source), report.Benchmark.DatasetFingerprint, validatorFingerprint, suite.Validator.ID, suite.Validator.Version, report.Environment.PATHSHA256, oracleMetadata, opts.Repeat, preparedIdentities)
+	report.Benchmark.Fingerprint = flowBenchmarkFingerprint(sha256Text(suite.Source), report.Benchmark.DatasetFingerprint, validatorFingerprint, suite.Validator.ID, suite.Validator.Version, report.Environment.PATHSHA256, oracleMetadata, opts.Repeat, opts.AssistantIdleTimeout, preparedIdentities)
 	if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
 		return report, err
 	}
@@ -261,6 +273,30 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 		}
 	}
 	return report, nil
+}
+
+func flowModelSummary(cfg *spec.Config) string {
+	if cfg == nil || len(cfg.Models) == 0 {
+		return "none"
+	}
+	names := make([]string, 0, len(cfg.Models))
+	for name := range cfg.Models {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	values := make([]string, 0, len(names))
+	for _, name := range names {
+		model := cfg.Models[name]
+		values = append(values, fmt.Sprintf("%s=%s/%s", name, model.Provider, model.ID))
+	}
+	return strings.Join(values, ",")
+}
+
+func flowValidationDiagnostic(result FlowValidationExecution) string {
+	if result.Result != nil && len(result.Result.Diagnostics) > 0 {
+		return result.Result.Diagnostics[0].Code
+	}
+	return result.ErrorCode
 }
 
 func traceFlow(trace func(string), format string, args ...any) {
@@ -373,11 +409,11 @@ func flowPreparedIdentity(prepared *PreparedFlowRepeat) string {
 	return identity
 }
 
-func flowBenchmarkFingerprint(suite, cases, validator, validatorID, validatorVersion, path, oracle string, repeat int, prepared []string) string {
+func flowBenchmarkFingerprint(suite, cases, validator, validatorID, validatorVersion, path, oracle string, repeat int, assistantIdleTimeout time.Duration, prepared []string) string {
 	fingerprint, _ := hashJSON(struct {
-		Suite, Cases, Validator, ValidatorID, ValidatorVersion, Protocol, Path, Repeat, Oracle, OS, Arch, Go string
-		Prepared                                                                                             []string
-	}{suite, cases, validator, validatorID, validatorVersion, FlowValidatorProtocol, path, fmt.Sprint(repeat), oracle, goruntime.GOOS, goruntime.GOARCH, goruntime.Version(), prepared})
+		Suite, Cases, Validator, ValidatorID, ValidatorVersion, Protocol, Path, Repeat, Oracle, OS, Arch, Go, AssistantIdleTimeout string
+		Prepared                                                                                                                   []string
+	}{suite, cases, validator, validatorID, validatorVersion, FlowValidatorProtocol, path, fmt.Sprint(repeat), oracle, goruntime.GOOS, goruntime.GOARCH, goruntime.Version(), assistantIdleTimeout.String(), prepared})
 	return fingerprint
 }
 

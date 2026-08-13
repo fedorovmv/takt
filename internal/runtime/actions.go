@@ -153,7 +153,11 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 		result, err := r.executeExternalNode(state, node, resolved)
 		return normalizeStructuredResult(result, err, node.OutputFormat, "validate structured output")
 	}
-	idle, idleErr := newIdleMonitor(ctx, node.IdleTimeout)
+	idleTimeout := node.IdleTimeout
+	if idleTimeout == "" && r.assistantIdleTimeout > 0 {
+		idleTimeout = r.assistantIdleTimeout.String()
+	}
+	idle, idleErr := newIdleMonitor(ctx, idleTimeout)
 	if idleErr != nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "node idle timeout", Err: idleErr}
 	}
@@ -167,12 +171,19 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	if err != nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: err}
 	}
-	collector := &assistantEventCollector{onEvent: idle.Touch}
+	collector := &assistantEventCollector{onEvent: idle.Touch, observe: func(event assistant.Event) {
+		if r.assistantEvents != nil {
+			r.assistantEvents(state.ID, node.ID, redactAssistantEvent(r.redactor, event))
+		}
+	}}
 	sessionEvent := assistant.EventSessionStarted
 	if resolved.SessionMode == "resume" && resolved.SessionID != "" {
 		sessionEvent = assistant.EventSessionResumed
 	}
-	collector.Emit(assistant.Event{Type: sessionEvent, Provider: resolved.Model.Provider, SessionID: resolved.SessionID, Data: map[string]any{"assistant": resolved.AssistantName, "attempt": state.Nodes[node.ID].Attempts}})
+	collector.Emit(assistant.Event{Type: sessionEvent, Provider: resolved.Model.Provider, SessionID: resolved.SessionID, Data: map[string]any{
+		"assistant": resolved.AssistantName, "attempt": state.Nodes[node.ID].Attempts, "session_mode": resolved.SessionMode,
+		"model_name": resolved.ModelName, "model_id": resolved.Model.ID,
+	}})
 	request := assistant.Request{
 		RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts,
 		Prompt: resolved.Prompt, Workspace: r.workspace, ModelName: resolved.ModelName, Model: resolved.Model,

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"takt/internal/bootstrap"
@@ -48,17 +49,21 @@ func evalCmd(ctx context.Context, args []string) error {
 		repeat := fs.Int("repeat", 1, "number of repetitions per case")
 		outputDir := fs.String("output", "", "evaluation output directory")
 		keepWorkspaces := fs.Bool("keep-workspaces", false, "retain case workspaces")
+		assistantIdleTimeout := fs.Duration("assistant-idle-timeout", 5*time.Minute, "fail an assistant node after this long without progress")
 		trace := fs.Bool("trace", false, "write live durable progress to stderr")
 		jsonOut := fs.Bool("json", true, "JSON output")
-		values := map[string]bool{"--case": true, "--repeat": true, "--output": true, "--keep-workspaces": false, "--trace": false, "--json": false}
+		values := map[string]bool{"--case": true, "--repeat": true, "--output": true, "--assistant-idle-timeout": true, "--keep-workspaces": false, "--trace": false, "--json": false}
 		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
 			return err
 		}
 		if fs.NArg() != 1 {
-			return fmt.Errorf("usage: takt eval flow <suite.yaml> [--case ID] [--repeat N] [--output DIR] [--keep-workspaces] [--trace] [--json]")
+			return fmt.Errorf("usage: takt eval flow <suite.yaml> [--case ID] [--repeat N] [--output DIR] [--assistant-idle-timeout DURATION] [--keep-workspaces] [--trace] [--json]")
 		}
 		if *repeat <= 0 {
 			return fmt.Errorf("repeat must be positive")
+		}
+		if *assistantIdleTimeout <= 0 {
+			return fmt.Errorf("assistant-idle-timeout must be positive")
 		}
 		invocation, err := filepath.Abs(".")
 		if err != nil {
@@ -68,7 +73,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		if *trace {
 			traceFn = newEvalTrace(os.Stderr, time.Now)
 		}
-		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces, Trace: traceFn})
+		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces, Trace: traceFn, AssistantIdleTimeout: *assistantIdleTimeout})
 		if err != nil {
 			if report != nil {
 				if printErr := printResult(*jsonOut, report); printErr != nil {
@@ -203,7 +208,10 @@ func evalCmd(ctx context.Context, args []string) error {
 
 func newEvalTrace(writer io.Writer, now func() time.Time) func(string) {
 	started := now()
+	var mu sync.Mutex
 	return func(line string) {
+		mu.Lock()
+		defer mu.Unlock()
 		fmt.Fprintf(writer, "[%s] %s\n", now().Sub(started).Truncate(time.Second), line)
 	}
 }

@@ -167,8 +167,11 @@ Deterministic fixture доказывает measurement correctness. Production q
 `eval flow` executes isolated flow suites through the application control path,
 persists repeat evidence and supports `eval flow init` for a validator-free
 skeleton. `--trace` streams elapsed suite stages, durable root progress and
-terminal child Run/node statuses to stderr. Pi RPC excludes cumulative partial/UI noise from durable stdout while
-retaining strict per-record limits. Deterministic contracts cover report
+terminal child Run/node statuses plus live bounded Pi tool/message progress to
+stderr. Pi RPC excludes cumulative partial/UI noise from durable stdout while
+retaining strict per-record limits. Flow evaluation applies a configurable `5m`
+assistant idle fallback when a production node has no explicit `idle_timeout`;
+provider stalls therefore end durably as `timed_out`. Deterministic contracts cover report
 persistence and worktree ordering; live Pi evidence has confirmed fresh/exact
 resume and a completed production `implement` node, while a complete multi-node
 quality result remains separate evidence.

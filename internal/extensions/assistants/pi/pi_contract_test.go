@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	core "takt/internal/assistant"
 	"takt/internal/execution"
 	"takt/internal/spec"
 )
@@ -135,6 +136,38 @@ func TestPiRunPreservesContextPriorityWithRealOverflow(t *testing.T) {
 }
 
 func TestPiAdapterContract(t *testing.T) {
+	t.Run("emits compact live tool and message events", func(t *testing.T) {
+		req := fakePiRequest(t.TempDir())
+		var events []string
+		req.Emit = func(event core.Event) {
+			events = append(events, event.Type+":"+event.Tool+":"+event.Message+":"+string(event.Input))
+		}
+		if _, err := fakePi("live-events").Run(context.Background(), req); err != nil {
+			t.Fatal(err)
+		}
+		joined := strings.Join(events, "\n")
+		for _, want := range []string{"tool.started:read::", `"path":"main.go"`, "tool.completed:read::", "message::inspected main.go:"} {
+			if !strings.Contains(joined, want) {
+				t.Fatalf("events missing %q:\n%s", want, joined)
+			}
+		}
+	})
+
+	t.Run("stops after completed tool when provider turn stalls", func(t *testing.T) {
+		req := fakePiRequest(t.TempDir())
+		var events []string
+		req.Emit = func(event core.Event) { events = append(events, event.Type+":"+event.Tool) }
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+		_, err := fakePi("tool-then-hang").Run(ctx, req)
+		if execution.KindOf(err) != execution.KindTimedOut {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+		if got := strings.Join(events, "\n"); !strings.Contains(got, "tool.started:bash") || !strings.Contains(got, "tool.completed:bash") {
+			t.Fatalf("tool progress missing before timeout:\n%s", got)
+		}
+	})
+
 	t.Run("success and request mapping", func(t *testing.T) {
 		result, err := fakePi("success").Run(context.Background(), fakePiRequest(t.TempDir()))
 		if err != nil {

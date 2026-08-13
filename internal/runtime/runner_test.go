@@ -1062,6 +1062,44 @@ func TestPiOverflowContextStateIntegration(t *testing.T) {
 	}
 }
 
+func TestPiToolThenProviderStallUsesAssistantIdleTimeout(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "takt-fake-pi")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", binary, "./internal/testsupport/cmd/takt-fake-pi")
+	build.Dir = root
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fake Pi: %v: %s", err, output)
+	}
+	dir := t.TempDir()
+	wf := &spec.Workflow{Name: "pi-stall", Provider: "pi", Model: "m", Nodes: []spec.Node{{ID: "agent", Prompt: "run"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "openai", ID: "fake-model"}}}
+	adapter := assistantpi.NewPi(spec.AssistantSpec{Type: "pi", Binary: binary, Args: []string{"--fake-case", "tool-then-hang"}, ProjectTrust: "approve", MaxOutputBytes: 64 * 1024})
+	var observed []string
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: filepath.Join(dir, "workflow.yaml"), ConfigPath: filepath.Join(dir, "config.yaml"), ControlWorkspace: dir}, Dependencies{
+		Store: store.FS{Workspace: dir}, Redactor: redact.NewFromConfig(cfg), AssistantIdleTimeout: 500 * time.Millisecond,
+		Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }),
+		AssistantEvents: func(_, _ string, event assistant.Event) {
+			observed = append(observed, event.Type+":"+event.Tool+":"+event.Message)
+		},
+	})
+	state, runErr := r.Start(context.Background(), "")
+	if runErr == nil || state.Nodes["agent"].Status != store.NodeTimedOut || state.Nodes["agent"].ErrorCode != string(execution.KindTimedOut) {
+		t.Fatalf("state=%#v err=%v", state, runErr)
+	}
+	joined := strings.Join(observed, "\n")
+	for _, want := range []string{"tool.started:bash:", "tool.completed:bash:", "failed::assistant idle timeout"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("observer missing %q:\n%s", want, joined)
+		}
+	}
+}
+
 func TestPiAssistantResumesSessionAcrossRetry(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
@@ -1623,6 +1661,43 @@ func TestAssistantEventsAreNormalizedAndPersisted(t *testing.T) {
 	want := []string{"assistant.session.started", "assistant.tool.started", "assistant.tool.completed", "assistant.message", "assistant.usage", "assistant.completed"}
 	if strings.Join(types, ",") != strings.Join(want, ",") {
 		t.Fatalf("assistant event types = %#v, want %#v", types, want)
+	}
+}
+
+func TestAssistantEventObserverReceivesProgressBeforeAdapterReturns(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{Name: "assistant-live-events", Provider: "demo", Model: "large", Nodes: []spec.Node{{ID: "agent", Prompt: "review"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"large": {Provider: "provider-x", ID: "model-x"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	observed := make(chan assistant.Event, 16)
+	release := make(chan struct{})
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: filepath.Join(dir, "workflow.yaml"), ConfigPath: filepath.Join(dir, "config.yaml"), ControlWorkspace: dir}, Dependencies{
+		Commands: NewCommandResolver(filepath.Join(dir, "workflow.yaml"), dir, dir), Store: store.FS{Workspace: dir}, Redactor: redact.NewFromConfig(cfg),
+		Assistants: resolverFunc(func(string) (assistant.Adapter, error) {
+			return adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
+				assistant.Emit(req, assistant.Event{Type: assistant.EventMessage, Message: "working"})
+				<-release
+				return assistant.Result{Output: "done"}, nil
+			}), nil
+		}),
+		AssistantEvents: func(runID, nodeID string, event assistant.Event) { observed <- event },
+	})
+	done := make(chan error, 1)
+	go func() { _, err := r.Start(context.Background(), ""); done <- err }()
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case event := <-observed:
+			if event.Message == "working" {
+				goto observed
+			}
+		case <-deadline:
+			t.Fatal("live event was not observed before adapter returned")
+		}
+	}
+observed:
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -888,7 +888,7 @@ takt eval compare <baseline-output-dir> <candidate-output-dir>
 ### Production flow evaluation
 
 `takt eval flow <suite.yaml> [--case ID] [--repeat N] [--output DIR]
-[--keep-workspaces] [--trace] [--json]` runs sequential isolated production-shaped cases.
+[--assistant-idle-timeout DURATION] [--keep-workspaces] [--trace] [--json]` runs sequential isolated production-shaped cases.
 The strict `takt-flow-evaluation/v1alpha1` suite declares `workflow`, `config`,
 `cases.directory`, a validator command/path/timeout/output limit, and gates.
 Each repeat persists `cases/<case>/repeat-<NNN>/run.json`,
@@ -898,8 +898,13 @@ stdout alone is decoded as `takt-validation/v1alpha1`; agent text is not proof.
 Gate failure returns non-zero only after report persistence.
 `--trace` writes elapsed suite stages, durable root Run/node events and terminal
 child Run/node statuses to stderr while stdout remains the final JSON result.
-While a root node has no new durable event, a periodic `node.running` line
-reports its current persisted status.
+Bundled Pi tool start/completion and bounded assistant message previews are
+reported live without persisting transient RPC partials. After 30 seconds with
+no root durable transition, `node.active` reports the current persisted status.
+`--assistant-idle-timeout` defaults to `5m` and supplies an eval-only fallback
+for assistant nodes that omit `idle_timeout`; explicit node values win. Valid
+assistant tool/message events reset the timer, and expiry is persisted as
+`node.timed_out` with `error_code=timed_out` before validation and report writing.
 
 `takt eval flow init <workflow-selector> --output <directory>` creates only a
 suite skeleton and one example case. It never creates a validator or executable

@@ -5,6 +5,13 @@
 - Added `make eval-smoke`, `eval-feature`, `eval-review`, and `eval-architect`
   as short entrypoints for the bundled live Pi evaluation corpus.
 
+- Flow trace now identifies suite/workflow/config/model/output, emits bounded
+  live Pi tool/message progress for root and child Runs, reports the measured
+  outcome/validator diagnostic, and reduces unchanged node status to 30-second
+  `node.active` lines. `eval flow` also supplies a configurable 5-minute idle
+  fallback, so a provider that stops after a tool result fails as `timed_out`
+  instead of keeping the evaluation alive indefinitely.
+
 - Pi RPC больше не сохраняет кумулятивные `message_update`, transient tool
   updates и fire-and-forget extension UI в durable stdout; одиночная oversized
   запись всё ещё fail-closed. `takt eval flow --trace` показывает suite stages,

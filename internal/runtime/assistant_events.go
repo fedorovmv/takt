@@ -1,12 +1,14 @@
 package runtime
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
 	"takt/internal/assistant"
 	"takt/internal/execution"
+	"takt/internal/redact"
 	"takt/internal/store"
 )
 
@@ -17,6 +19,7 @@ type assistantEventCollector struct {
 	events  []assistant.Event
 	err     error
 	onEvent func()
+	observe func(assistant.Event)
 }
 
 func (c *assistantEventCollector) Emit(event assistant.Event) {
@@ -41,9 +44,28 @@ func (c *assistantEventCollector) Emit(event assistant.Event) {
 		c.mu.Unlock()
 		return
 	}
+	if c.observe != nil {
+		c.observe(event)
+	}
 	c.mu.Lock()
 	c.events = append(c.events, event)
 	c.mu.Unlock()
+}
+
+func redactAssistantEvent(redactor *redact.Redactor, event assistant.Event) assistant.Event {
+	event.Message = redactor.String(event.Message)
+	if len(event.Input) > 0 {
+		if value, ok := redactor.Any(event.Input).(json.RawMessage); ok {
+			event.Input = value
+		}
+	}
+	if len(event.Output) > 0 {
+		if value, ok := redactor.Any(event.Output).(json.RawMessage); ok {
+			event.Output = value
+		}
+	}
+	event.Data = redactor.Map(event.Data)
+	return event
 }
 
 func (c *assistantEventCollector) Result() ([]assistant.Event, error) {

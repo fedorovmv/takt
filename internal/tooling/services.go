@@ -3,6 +3,7 @@ package tooling
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"takt/internal/assistant"
 	cfgpkg "takt/internal/config"
@@ -32,6 +33,7 @@ type FlowEvaluationRequest struct {
 	Repeat                                            int
 	KeepWorkspaces                                    bool
 	Trace                                             func(string)
+	AssistantIdleTimeout                              time.Duration
 }
 
 type EvaluationEngine interface {

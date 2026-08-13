@@ -1,6 +1,7 @@
 GO_TEST_P ?= 8
 PI_SMOKE_PROVIDER ?= aihub
 PI_SMOKE_MODEL ?= Qwen/Qwen3.6-27B
+EVAL_IDLE_TIMEOUT ?= 5m
 
 .PHONY: build test race vet fmt contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract architecture-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract host-integration-typescript simple-reliable-contract evidence-routing-contract e2e journeys smoke check demo eval-smoke eval-feature eval-review eval-architect
 
@@ -32,15 +33,18 @@ eval-smoke:
 
 eval-feature:
 	@test -f examples/flow-evaluation/mini-du/config.yaml || { echo 'missing examples/flow-evaluation/mini-du/config.yaml'; exit 1; }
-	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/feature-development/suite.yaml --case implement-basic --trace --json >/dev/null
+	@echo 'Starting live feature evaluation: workflow=code:feature-development case=implement-basic assistant_idle_timeout=$(EVAL_IDLE_TIMEOUT)'
+	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/feature-development/suite.yaml --case implement-basic --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
 
 eval-review:
 	@test -f examples/flow-evaluation/mini-du/config.yaml || { echo 'missing examples/flow-evaluation/mini-du/config.yaml'; exit 1; }
-	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/review/suite.yaml --case review-hardlink-bug --trace --json >/dev/null
+	@echo 'Starting live review evaluation: workflow=code:comprehensive-pr-review case=review-hardlink-bug assistant_idle_timeout=$(EVAL_IDLE_TIMEOUT)'
+	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/review/suite.yaml --case review-hardlink-bug --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
 
 eval-architect:
 	@test -f examples/flow-evaluation/mini-du/config.yaml || { echo 'missing examples/flow-evaluation/mini-du/config.yaml'; exit 1; }
-	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/architect/suite.yaml --case collapse-redundant-layers --trace --json >/dev/null
+	@echo 'Starting live architect evaluation: workflow=code:architect case=collapse-redundant-layers assistant_idle_timeout=$(EVAL_IDLE_TIMEOUT)'
+	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/architect/suite.yaml --case collapse-redundant-layers --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
 
 opencode-contracts:
 	go test ./internal/assistant -run 'OpenCode|VersionProbe' -count=1
