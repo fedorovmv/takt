@@ -888,7 +888,7 @@ takt eval compare <baseline-output-dir> <candidate-output-dir>
 ### Production flow evaluation
 
 `takt eval flow <suite.yaml> [--case ID] [--repeat N] [--output DIR]
-[--keep-workspaces] [--json]` runs sequential isolated production-shaped cases.
+[--keep-workspaces] [--trace] [--json]` runs sequential isolated production-shaped cases.
 The strict `takt-flow-evaluation/v1alpha1` suite declares `workflow`, `config`,
 `cases.directory`, a validator command/path/timeout/output limit, and gates.
 Each repeat persists `cases/<case>/repeat-<NNN>/run.json`,
@@ -896,6 +896,9 @@ Each repeat persists `cases/<case>/repeat-<NNN>/run.json`,
 `report.json` remains the canonical `takt-evaluation/v1alpha1` output. Validator
 stdout alone is decoded as `takt-validation/v1alpha1`; agent text is not proof.
 Gate failure returns non-zero only after report persistence.
+`--trace` writes elapsed suite stages and durable Run/node events to stderr while
+stdout remains the final JSON result. While a node has no new durable event, a
+periodic `node.running` line reports its current persisted status.
 
 `takt eval flow init <workflow-selector> --output <directory>` creates only a
 suite skeleton and one example case. It never creates a validator or executable

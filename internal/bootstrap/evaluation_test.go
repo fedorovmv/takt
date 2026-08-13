@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,46 @@ import (
 	"takt/internal/store"
 	"takt/internal/tooling/evaluation"
 )
+
+func TestFlowEvaluationTraceReportsDurableEvents(t *testing.T) {
+	workspace := t.TempDir()
+	config := filepath.Join(workspace, "config.yaml")
+	workflow := filepath.Join(workspace, "workflow.yaml")
+	if err := os.WriteFile(config, []byte("apiVersion: takt/v1alpha1\nkind: Config\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workflow, []byte("name: flow-trace\nnodes:\n  - id: done\n    bash: 'true'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var trace []string
+	_, err := (evaluationEngine{}).runFlowCase(context.Background(), evaluation.FlowCaseRunRequest{
+		Workspace: workspace, Selector: workflow, ConfigPath: config,
+		Trace: func(line string) { trace = append(trace, line) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(trace, "\n")
+	for _, want := range []string{"run.accepted", "run.started", "node.started node=done", "node.completed node=done", "run.completed"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("trace missing %q:\n%s", want, joined)
+		}
+	}
+}
+
+func TestTraceFlowRunningNodesReportsCurrentDurableStatus(t *testing.T) {
+	state := &store.RunState{Nodes: map[string]*store.NodeState{
+		"pending": {Status: store.NodePending},
+		"active":  {Status: store.NodeRunning},
+	}}
+	var trace []string
+	traceFlowRunningNodes(func(line string) { trace = append(trace, line) }, state)
+	state.Nodes["active"].Attempts = 2
+	traceFlowRunningNodes(func(line string) { trace = append(trace, line) }, state)
+	if got, want := strings.Join(trace, "\n"), "node.running node=active attempt=0\nnode.running node=active attempt=2"; got != want {
+		t.Fatalf("trace=%q want=%q", got, want)
+	}
+}
 
 func TestFlowEvaluationCaseReturnsDetachedSnapshotAndDefersCleanup(t *testing.T) {
 	workspace := t.TempDir()
@@ -84,7 +125,7 @@ func TestFlowEvaluationCancellationDuringAnswerReturnsSnapshot(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	result, err := (evaluationEngine{}).pollFlowCase(ctx, app, started.RunID, "yes")
+	result, err := (evaluationEngine{}).pollFlowCase(ctx, app, started.RunID, "yes", nil)
 	if err != context.Canceled || !result.ContextCancelled || len(result.States) == 0 || result.States[0].Status != store.RunCancelled {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}

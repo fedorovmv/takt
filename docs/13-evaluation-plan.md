@@ -161,6 +161,8 @@ report distinguishes `true_accept`, `false_accept`, `true_reject` and
 are deterministic test inputs, not a security boundary or evidence of a remote
 provider effect. Start a new suite with `takt eval flow init <selector> --output
 DIR`; deterministic executable validation, not agent text, owns correctness.
+Use `--trace` for live runs: progress and durable Run/node events are written to
+stderr, while stdout remains the final machine-readable JSON report.
 
 ## 9. Критерий полезности Takt
 

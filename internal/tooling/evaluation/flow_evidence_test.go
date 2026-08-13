@@ -127,6 +127,18 @@ func TestFlowEvidenceRedactsSCMAndStructuredJSON(t *testing.T) {
 	}
 }
 
+func TestFlowEvidenceAllowsAbsentSCMState(t *testing.T) {
+	root := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "not-created")
+	err := WriteFlowEvidence(root, FlowEvidence{CaseID: "case", Repeat: 1, SCMDir: missing}, &redact.Redactor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "cases", "case", "repeat-001", "scm")); !os.IsNotExist(err) {
+		t.Fatalf("scm evidence unexpectedly exists: %v", err)
+	}
+}
+
 func TestFlowEvidenceRejectsUnsafeSCMAndArtifacts(t *testing.T) {
 	for _, tc := range []struct {
 		name, file string

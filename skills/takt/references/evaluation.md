@@ -15,9 +15,9 @@ the assistant response—decides correctness.
 Run a case with:
 
 ```bash
-takt eval flow evals/feature/suite.yaml --case example --repeat 1 --output evals/out
+takt eval flow evals/feature/suite.yaml --case example --repeat 1 --output evals/out --trace
 ```
 
 Inspect `report.json` and `cases/<id>/repeat-001/` evidence before changing a
 workflow or validator. Do not treat fake SCM fixtures as a remote provider or
-security boundary.
+security boundary. Trace progress is printed to stderr; stdout stays valid JSON.

@@ -94,8 +94,12 @@ func WriteFlowEvidence(root string, item FlowEvidence, redactor *redact.Redactor
 		return err
 	}
 	if item.SCMDir != "" {
-		if err := copyFlowEvidenceTree(item.SCMDir, filepath.Join(repeatRoot, "scm"), redactor); err != nil {
-			return fmt.Errorf("copy SCM evidence: %w", err)
+		if _, err := os.Stat(item.SCMDir); err == nil {
+			if err := copyFlowEvidenceTree(item.SCMDir, filepath.Join(repeatRoot, "scm"), redactor); err != nil {
+				return fmt.Errorf("copy SCM evidence: %w", err)
+			}
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("stat SCM evidence: %w", err)
 		}
 	}
 	manifest, files, err := collectFlowArtifacts(item, redactor)

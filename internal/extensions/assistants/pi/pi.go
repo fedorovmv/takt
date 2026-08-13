@@ -104,7 +104,7 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 
 	records := make(chan piRPCRecord, 64)
 	streamErr := make(chan error, 2)
-	go readPiRPC(stdoutPipe, stdout, records, streamErr)
+	go readPiRPC(stdoutPipe, stdout, limit, records, streamErr)
 	go func() {
 		_, copyErr := io.Copy(stderr, stderrPipe)
 		if copyErr != nil && !errors.Is(copyErr, os.ErrClosed) {
@@ -652,6 +652,9 @@ func (c *piRPCClient) next(ctx context.Context, match func(piRPCRecord) bool) (p
 					return piRPCRecord{}, protocolPiError("extension UI", fmt.Errorf("interactive Pi extension request %q is unsupported", ui.Method))
 				}
 			}
+			if transientPiRPCRecord(record.Type) {
+				continue
+			}
 			if match(record) {
 				return record, nil
 			}
@@ -673,19 +676,19 @@ func (c *piRPCClient) waitProcess(ctx context.Context) error {
 	return err
 }
 
-func readPiRPC(reader io.Reader, capture *limitedBuffer, records chan<- piRPCRecord, errs chan<- error) {
+func readPiRPC(reader io.Reader, capture *limitedBuffer, recordLimit int, records chan<- piRPCRecord, errs chan<- error) {
 	defer close(records)
 	buffered := bufio.NewReaderSize(reader, 64*1024)
 	var line bytes.Buffer
 	for {
 		fragment, err := buffered.ReadSlice('\n')
 		if len(fragment) > 0 {
-			_, _ = capture.Write(fragment)
-			if capture.Truncated() {
+			_, _ = line.Write(fragment)
+			if recordLimit > 0 && line.Len() > recordLimit {
+				_, _ = capture.Write(line.Bytes())
 				errs <- fmt.Errorf("pi stdout exceeded max_output_bytes")
 				return
 			}
-			_, _ = line.Write(fragment)
 		}
 		if errors.Is(err, bufio.ErrBufferFull) {
 			continue
@@ -703,6 +706,13 @@ func readPiRPC(reader io.Reader, capture *limitedBuffer, records chan<- piRPCRec
 					return
 				}
 				record.Raw = append(record.Raw[:0], trimmed...)
+				if !transientPiRPCRecord(record.Type) {
+					_, _ = capture.Write(line.Bytes())
+					if capture.Truncated() {
+						errs <- fmt.Errorf("pi stdout exceeded max_output_bytes")
+						return
+					}
+				}
 				records <- record
 			}
 			line.Reset()
@@ -713,6 +723,15 @@ func readPiRPC(reader io.Reader, capture *limitedBuffer, records chan<- piRPCRec
 			}
 			return
 		}
+	}
+}
+
+func transientPiRPCRecord(recordType string) bool {
+	switch recordType {
+	case "message_update", "tool_execution_update", "extension_ui_request":
+		return true
+	default:
+		return false
 	}
 }
 

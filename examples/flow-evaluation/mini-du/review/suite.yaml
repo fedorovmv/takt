@@ -7,8 +7,8 @@ external:
 validator:
   id: mini-du
   version: "1"
-  command: [go, run, ../../validator]
-  path: ../../validator
+  command: [go, run, ../validator]
+  path: ../validator
   timeout: 2m
   max_output_bytes: 1048576
 gates:

@@ -8,12 +8,34 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"takt/internal/execution"
 	"takt/internal/spec"
 )
+
+type testDeadlineContext struct {
+	context.Context
+	done chan struct{}
+	once sync.Once
+}
+
+func newTestDeadlineContext() (*testDeadlineContext, context.CancelFunc) {
+	ctx := &testDeadlineContext{Context: context.Background(), done: make(chan struct{})}
+	return ctx, func() { ctx.once.Do(func() { close(ctx.done) }) }
+}
+
+func (c *testDeadlineContext) Done() <-chan struct{} { return c.done }
+func (c *testDeadlineContext) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
 
 func fakePi(caseName string) Pi {
 	return NewPi(spec.AssistantSpec{
@@ -75,8 +97,8 @@ func TestPiRunPreservesContextPriorityWithRealOverflow(t *testing.T) {
 			caseName: "timeout-overflow",
 			wantKind: execution.KindTimedOut,
 			context: func(adapter *Pi) (context.Context, context.CancelFunc) {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				adapter.onOutputTruncated = func() { <-ctx.Done() }
+				ctx, cancel := newTestDeadlineContext()
+				adapter.onOutputTruncated = cancel
 				return ctx, cancel
 			},
 		},
@@ -335,6 +357,28 @@ func TestPiAdapterContract(t *testing.T) {
 		}
 		if result.Output != "fake Pi completed" {
 			t.Fatalf("unexpected output: %q", result.Output)
+		}
+	})
+
+	t.Run("transient RPC noise does not consume durable output budget", func(t *testing.T) {
+		result, err := fakePi("transient-rpc-noise").Run(context.Background(), fakePiRequest(t.TempDir()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Truncated {
+			t.Fatalf("transient RPC records exhausted output budget: stdout=%d", len(result.Stdout))
+		}
+		if strings.Contains(result.Stdout, "message_update") || strings.Contains(result.Stdout, "setTitle") {
+			t.Fatalf("transient RPC records leaked into durable stdout: %s", result.Stdout)
+		}
+	})
+
+	t.Run("single transient RPC record cannot bypass output limit", func(t *testing.T) {
+		adapter := fakePi("huge-transient-record")
+		adapter.spec.MaxOutputBytes = 512
+		result, err := adapter.Run(context.Background(), fakePiRequest(t.TempDir()))
+		if execution.KindOf(err) != execution.KindProtocol || !result.Truncated {
+			t.Fatalf("unexpected transient record result: kind=%s result=%+v err=%v", execution.KindOf(err), result, err)
 		}
 	})
 

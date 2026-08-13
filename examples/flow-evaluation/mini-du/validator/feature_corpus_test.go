@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -18,6 +19,9 @@ func TestFeatureCorpusManifest(t *testing.T) {
 	}
 	if suite.Workflow != "code:feature-development" || suite.Config != "../config.yaml" || suite.External.GitHub == nil || suite.External.GitHub.Require != "repository" {
 		t.Fatalf("suite=%+v", suite)
+	}
+	if _, err := os.Stat(suite.Validator.ResolvedPath); err != nil {
+		t.Fatalf("validator path %q: %v", suite.Validator.ResolvedPath, err)
 	}
 	cases, err := evaluation.DiscoverFlowCases(suite.SuitePath, suite, "")
 	if err != nil {

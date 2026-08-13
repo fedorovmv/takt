@@ -3,7 +3,11 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"time"
+
 	"takt/internal/bootstrap"
 	"takt/internal/tooling"
 )
@@ -44,13 +48,14 @@ func evalCmd(ctx context.Context, args []string) error {
 		repeat := fs.Int("repeat", 1, "number of repetitions per case")
 		outputDir := fs.String("output", "", "evaluation output directory")
 		keepWorkspaces := fs.Bool("keep-workspaces", false, "retain case workspaces")
+		trace := fs.Bool("trace", false, "write live durable progress to stderr")
 		jsonOut := fs.Bool("json", true, "JSON output")
-		values := map[string]bool{"--case": true, "--repeat": true, "--output": true, "--keep-workspaces": false, "--json": false}
+		values := map[string]bool{"--case": true, "--repeat": true, "--output": true, "--keep-workspaces": false, "--trace": false, "--json": false}
 		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
 			return err
 		}
 		if fs.NArg() != 1 {
-			return fmt.Errorf("usage: takt eval flow <suite.yaml> [--case ID] [--repeat N] [--output DIR] [--keep-workspaces] [--json]")
+			return fmt.Errorf("usage: takt eval flow <suite.yaml> [--case ID] [--repeat N] [--output DIR] [--keep-workspaces] [--trace] [--json]")
 		}
 		if *repeat <= 0 {
 			return fmt.Errorf("repeat must be positive")
@@ -59,7 +64,11 @@ func evalCmd(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces})
+		var traceFn func(string)
+		if *trace {
+			traceFn = newEvalTrace(os.Stderr, time.Now)
+		}
+		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces, Trace: traceFn})
 		if err != nil {
 			if report != nil {
 				if printErr := printResult(*jsonOut, report); printErr != nil {
@@ -189,5 +198,12 @@ func evalCmd(ctx context.Context, args []string) error {
 		return printResult(*jsonOut, report)
 	default:
 		return fmt.Errorf("usage: takt eval <flow|run|report|benchmark|task-benchmark|compare> [flags]")
+	}
+}
+
+func newEvalTrace(writer io.Writer, now func() time.Time) func(string) {
+	started := now()
+	return func(line string) {
+		fmt.Fprintf(writer, "[%s] %s\n", now().Sub(started).Truncate(time.Second), line)
 	}
 }

@@ -46,6 +46,29 @@ func TestRunFlowUsesLexicalCaseRepeatOrderAndPreflightsBeforeCallback(t *testing
 	}
 }
 
+func TestRunFlowTracesCaseStages(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	var trace []string
+	_, err := RunFlow(context.Background(), FlowRunOptions{
+		SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root, HostPATH: "host-path",
+		Trace: func(line string) { trace = append(trace, line) },
+		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			request.Trace("run.accepted run=run")
+			return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(trace, "\n")
+	for _, want := range []string{"case.prepare case=case repeat=1", "validator.preflight case=case", "run.accepted run=run", "validator.completed case=case", "evidence.written case=case", "report.written path="} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("trace missing %q:\n%s", want, joined)
+		}
+	}
+}
+
 func TestRunFlowSkipsValidatorForPausedAndCallerCancellation(t *testing.T) {
 	root, suitePath := writeFlowRunSuite(t, "case")
 	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)

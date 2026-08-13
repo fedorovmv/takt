@@ -43,7 +43,7 @@ func (e evaluationEngine) Flow(ctx context.Context, req tooling.FlowEvaluationRe
 	}
 	return evaluation.RunFlow(ctx, evaluation.FlowRunOptions{
 		SuitePath: req.SuitePath, CaseID: req.CaseID, OutputDir: req.OutputDir, InvocationWorkspace: req.InvocationWorkspace,
-		Repeat: req.Repeat, KeepWorkspaces: req.KeepWorkspaces, Now: time.Now, HostPATH: hostPATH, CaseRunner: e.runFlowCase,
+		Repeat: req.Repeat, KeepWorkspaces: req.KeepWorkspaces, Now: time.Now, HostPATH: hostPATH, CaseRunner: e.runFlowCase, Trace: req.Trace,
 	})
 }
 
@@ -73,11 +73,14 @@ func (e evaluationEngine) runFlowCase(ctx context.Context, req evaluation.FlowCa
 	if started.RunID == "" {
 		return evaluation.FlowCaseRunResult{}, fmt.Errorf("flow evaluation start returned no run ID")
 	}
-	return e.pollFlowCase(ctx, app, started.RunID, req.ApprovalAnswer)
+	traceEvaluation(req.Trace, "run.accepted run=%s", started.RunID)
+	return e.pollFlowCase(ctx, app, started.RunID, req.ApprovalAnswer, req.Trace)
 }
 
-func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, answer string) (evaluation.FlowCaseRunResult, error) {
+func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, answer string, trace func(string)) (evaluation.FlowCaseRunResult, error) {
 	poll := func() (*store.RunState, error) { return app.Core.RunService.GetRun(runID) }
+	var revision uint64
+	lastRunningTrace := time.Time{}
 	for {
 		state, err := poll()
 		if err != nil {
@@ -85,6 +88,23 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 				return e.cancelFlowCase(ctx, app, runID)
 			}
 			return evaluation.FlowCaseRunResult{}, err
+		}
+		if trace != nil {
+			events, err := app.Core.RunService.Events(ctx, runID, revision, 200, 0)
+			if err != nil {
+				if ctx.Err() != nil {
+					return e.cancelFlowCase(ctx, app, runID)
+				}
+				return evaluation.FlowCaseRunResult{}, err
+			}
+			for _, event := range events.Events {
+				traceEvaluationEvent(trace, event)
+			}
+			revision = events.NextRevision
+			if lastRunningTrace.IsZero() || time.Since(lastRunningTrace) >= 10*time.Second {
+				traceFlowRunningNodes(trace, state)
+				lastRunningTrace = time.Now()
+			}
 		}
 		switch state.Status {
 		case store.RunWaiting:
@@ -116,6 +136,38 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 			return e.cancelFlowCase(ctx, app, runID)
 		case <-time.After(50 * time.Millisecond):
 		}
+	}
+}
+
+func traceFlowRunningNodes(trace func(string), state *store.RunState) {
+	if trace == nil || state == nil {
+		return
+	}
+	for id, node := range state.Nodes {
+		if node == nil || node.Status != store.NodeRunning {
+			continue
+		}
+		traceEvaluation(trace, "node.running node=%s attempt=%d", id, node.Attempts)
+	}
+}
+
+func traceEvaluationEvent(trace func(string), event store.Event) {
+	if trace == nil {
+		return
+	}
+	line := event.Type
+	if event.NodeID != "" {
+		line += " node=" + event.NodeID
+	}
+	if attempt, ok := event.Data["attempt"]; ok {
+		line += fmt.Sprintf(" attempt=%v", attempt)
+	}
+	trace(line)
+}
+
+func traceEvaluation(trace func(string), format string, args ...any) {
+	if trace != nil {
+		trace(fmt.Sprintf(format, args...))
 	}
 }
 

@@ -185,6 +185,15 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 	case "extension-ui-set-editor-text":
 		writeJSON(writer, map[string]any{"type": "extension_ui_request", "id": "ui-1", "method": "set_editor_text", "text": "updated"})
 		emitSuccess(writer, state, opts)
+	case "transient-rpc-noise":
+		partial := strings.Repeat("x", 4096)
+		for i := 0; i < 32; i++ {
+			writeJSON(writer, map[string]any{"type": "extension_ui_request", "id": fmt.Sprintf("title-%d", i), "method": "setTitle", "title": "working"})
+			writeJSON(writer, map[string]any{"type": "message_update", "message": map[string]any{"role": "assistant", "content": partial}})
+		}
+		emitSuccess(writer, state, opts)
+	case "huge-transient-record":
+		writeJSON(writer, map[string]any{"type": "message_update", "message": map[string]any{"role": "assistant", "content": strings.Repeat("x", 4096)}})
 	case "agent-failure":
 		message := assistantMessage(opts, "", "error", "fake model failure")
 		state.finish("", []any{message})

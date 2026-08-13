@@ -82,7 +82,7 @@
 - aggregate usage по узлам и отдельные execution records по каждой фактической попытке;
 - `takt eval run/report/benchmark/compare` для воспроизводимой оценки и попарного сравнения стратегий: matrix/repeat/gates, fingerprints, true time-to-valid, failed-execution cost, diagnostic stability и category breakdown;
 - `takt eval task-benchmark` для полного `Task Router → template/dynamic → checkpoint → replan → result`: route accuracy, plan revisions, replanner runs, pairwise outcomes и task-level gates;
-- `takt eval flow` для изолированных production-shaped cases с durable repeat evidence; `takt eval flow init code:feature-development --output evals/feature` создаёт только suite/example skeleton, после чего добавь config, validator и initial workspace;
+- `takt eval flow` для изолированных production-shaped cases с durable repeat evidence и `--trace` progress в stderr; `takt eval flow init code:feature-development --output evals/feature` создаёт только suite/example skeleton, после чего добавь config, validator и initial workspace;
 - атрибуция tokens/cost по execution identity; смена assistant, его версии или resolved model между retry помечается как mixed;
 - измеренные нулевые показатели сохраняются как `0`, а недоступные средние значения — как `null`;
 - validation envelope сохраняется при любом terminal status quality-node; успех требует `completed && valid=true`;

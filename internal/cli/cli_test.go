@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	cfgpkg "takt/internal/config"
 	"takt/internal/runtime"
@@ -129,6 +130,17 @@ func TestEvalFlowParsesOnlyItsContract(t *testing.T) {
 	}
 	if err := evalCmd(context.Background(), []string{"flow", "init"}); err == nil || !strings.Contains(err.Error(), "usage: takt eval flow init") {
 		t.Fatalf("init error = %v", err)
+	}
+}
+
+func TestEvalTraceWritesElapsedProgress(t *testing.T) {
+	var output strings.Builder
+	now := time.Unix(10, 0)
+	trace := newEvalTrace(&output, func() time.Time { return now })
+	now = now.Add(3 * time.Second)
+	trace("node.started node=implement")
+	if got, want := output.String(), "[3s] node.started node=implement\n"; got != want {
+		t.Fatalf("trace=%q want=%q", got, want)
 	}
 }
 

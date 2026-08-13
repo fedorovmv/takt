@@ -39,10 +39,22 @@ func TestValidatorPreflightReportsOracleMetadata(t *testing.T) {
 	}
 }
 
+func TestValidatorAcceptsTaktExpectationEnvelope(t *testing.T) {
+	root := t.TempDir()
+	req := testRequest(root)
+	if err := os.WriteFile(req.ExpectedPath, []byte("oracle:\n  allowed_paths: [cmd/mini-du/**]\n  scenarios: [empty]\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := validate(req)
+	if err != nil || !result.Valid {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
 func TestValidatorRejectsInvalidExpectation(t *testing.T) {
 	root := t.TempDir()
 	req := testRequest(root)
-	if err := os.WriteFile(req.ExpectedPath, []byte("allowed_paths: []\nscenarios: [unknown]\n"), 0644); err != nil {
+	if err := os.WriteFile(req.ExpectedPath, []byte("oracle:\n  allowed_paths: []\n  scenarios: [unknown]\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := validate(req); err == nil {
@@ -116,7 +128,7 @@ func testRequest(root string) validatorRequest {
 		}
 	}
 	expected := filepath.Join(root, "expected.yaml")
-	if err := os.WriteFile(expected, []byte("allowed_paths: [cmd/mini-du/**]\nscenarios: [empty]\n"), 0644); err != nil {
+	if err := os.WriteFile(expected, []byte("oracle:\n  allowed_paths: [cmd/mini-du/**]\n  scenarios: [empty]\n"), 0644); err != nil {
 		panic(err)
 	}
 	return validatorRequest{ProtocolVersion: validatorProtocol, Type: "validation_request", CaseID: "case", Repeat: 1, Workspace: filepath.Join(root, "candidate"), Baseline: filepath.Join(root, "baseline"), ExpectedPath: expected, Run: validatorRun{ID: "preflight", Status: "not_started", ArtifactsDir: filepath.Join(root, "artifacts")}}

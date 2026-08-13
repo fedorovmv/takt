@@ -31,6 +31,7 @@ type FlowEvaluationRequest struct {
 	SuitePath, CaseID, OutputDir, InvocationWorkspace string
 	Repeat                                            int
 	KeepWorkspaces                                    bool
+	Trace                                             func(string)
 }
 
 type EvaluationEngine interface {

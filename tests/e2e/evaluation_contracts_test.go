@@ -328,8 +328,12 @@ func TestProductionFlowEvaluation(t *testing.T) {
 			root := t.TempDir()
 			suite := writeProductionFlowSuite(t, root, tc.selector, tc.require, tc.pullRequest, tc.input, fake)
 			output := filepath.Join(t.TempDir(), "output")
-			args := []string{"eval", "flow", suite, "--output", output, "--keep-workspaces", "--json"}
-			report := resultObject(t, takt(t, []string{"TAKT_PRODUCTION_FLOW_VALIDATOR=1"}, args...).RequireSuccess(t).JSON(t))
+			args := []string{"eval", "flow", suite, "--output", output, "--keep-workspaces", "--trace", "--json"}
+			result := takt(t, []string{"TAKT_PRODUCTION_FLOW_VALIDATOR=1"}, args...).RequireSuccess(t)
+			if !strings.Contains(result.Stderr, "case.prepare case=smoke repeat=1") || !strings.Contains(result.Stderr, "run.accepted run=") || !strings.Contains(result.Stderr, "report.written path=") {
+				t.Fatalf("trace missing from stderr: %s", result.Stderr)
+			}
+			report := resultObject(t, result.JSON(t))
 			run := report["runs"].([]any)[0].(map[string]any)
 			if run["status"] != "completed" {
 				t.Fatalf("run=%#v", run)

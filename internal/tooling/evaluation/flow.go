@@ -21,6 +21,7 @@ import (
 
 type FlowCaseRunRequest struct {
 	Workspace, Selector, ConfigPath, InputValue, ApprovalAnswer string
+	Trace                                                       func(string)
 }
 
 type FlowCaseRunResult struct {
@@ -41,6 +42,7 @@ type FlowRunOptions struct {
 	Now                                               func() time.Time
 	HostPATH                                          string
 	CaseRunner                                        FlowCaseRunner
+	Trace                                             func(string)
 }
 
 type FlowGateFailureError struct{ Report *SuiteReport }
@@ -108,6 +110,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	redactor := redact.NewFromEnvironment()
 	for _, item := range cases {
 		for repeat := 1; repeat <= opts.Repeat; repeat++ {
+			traceFlow(opts.Trace, "case.prepare case=%s repeat=%d", item.ID, repeat)
 			prepared, prepErr := PrepareFlowRepeat(ctx, suite, item, repeat, output, opts.HostPATH)
 			if prepErr != nil {
 				return finishFlowPartial(report, output, opts.Now, nil, prepErr)
@@ -118,6 +121,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 				return finishFlowPartial(report, output, opts.Now, nil, cfgErr)
 			}
 			redactor.Merge(redact.NewFromConfig(cfg))
+			traceFlow(opts.Trace, "validator.preflight case=%s repeat=%d", item.ID, repeat)
 			preflight, metadata, preflightErr := PreflightFlowValidator(ctx, suite.Validator, item.ID, prepared.BaselineWorkspace, item.ExpectedPath, suite.SuiteDir)
 			if preflightErr != nil {
 				_ = preflight
@@ -138,7 +142,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			if item.Expectation != nil && item.Expectation.Takt.ApprovalAnswer != "" {
 				approval = item.Expectation.Takt.ApprovalAnswer
 			}
-			result, callbackErr := opts.CaseRunner(ctx, FlowCaseRunRequest{Workspace: prepared.ControlWorkspace, Selector: selector, ConfigPath: prepared.ConfigPath, InputValue: prepared.InputValue, ApprovalAnswer: approval})
+			result, callbackErr := opts.CaseRunner(ctx, FlowCaseRunRequest{Workspace: prepared.ControlWorkspace, Selector: selector, ConfigPath: prepared.ConfigPath, InputValue: prepared.InputValue, ApprovalAnswer: approval, Trace: opts.Trace})
 			if len(result.States) == 0 || result.States[0] == nil {
 				if callbackErr == nil {
 					callbackErr = errors.New("flow case runner returned no root snapshot")
@@ -169,6 +173,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 					validationResult = RunFlowValidator(ctx, suite.Validator, request, suite.SuiteDir)
 				}
 			}
+			traceFlow(opts.Trace, "validator.%s case=%s repeat=%d valid=%t", validationResult.Status, item.ID, repeat, validationResult.Result != nil && validationResult.Result.Valid)
 			record.Validation = &FlowValidationRecord{Status: validationResult.Status, ErrorCode: validationResult.ErrorCode, Error: validationResult.Error, Result: validationResult.Result, DurationMS: validationResult.Duration.Milliseconds()}
 			if paused {
 				record.Cleanup = &FlowCleanupRecord{Status: "skipped"}
@@ -186,9 +191,11 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			if err := writeFlowRepeatEvidence(output, item, repeat, result, request, validationResult, prepared, redactor); err != nil {
 				return finishFlowPartial(report, output, opts.Now, redactor, err)
 			}
+			traceFlow(opts.Trace, "evidence.written case=%s repeat=%d", item.ID, repeat)
 			if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
 				return report, err
 			}
+			traceFlow(opts.Trace, "report.written path=%s", filepath.Join(output, "report.json"))
 			candidateStrategy, strategyErr := flowStrategy(root, prepared.ProfileFingerprint)
 			if strategyErr != nil {
 				return finishFlowPartial(report, output, opts.Now, redactor, strategyErr)
@@ -222,6 +229,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			}
 			if opts.KeepWorkspaces {
 				report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "skipped"}
+				traceFlow(opts.Trace, "cleanup.skipped case=%s repeat=%d", item.ID, repeat)
 			} else if cleanupErr := cleanupFlowResult(ctx, result, output, prepared); cleanupErr != nil {
 				report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "error", Error: cleanupErr.Error(), Paths: flowCleanupPaths(prepared)}
 				if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
@@ -230,10 +238,12 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 				return report, cleanupErr
 			} else {
 				report.Runs[len(report.Runs)-1].Cleanup = &FlowCleanupRecord{Status: "completed", Paths: flowCleanupPaths(prepared)}
+				traceFlow(opts.Trace, "cleanup.completed case=%s repeat=%d", item.ID, repeat)
 			}
 			if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
 				return report, err
 			}
+			traceFlow(opts.Trace, "report.written path=%s", filepath.Join(output, "report.json"))
 		}
 	}
 	finishFlowReport(report)
@@ -244,12 +254,19 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	if err := writeFlowReport(output, report, opts.Now, redactor); err != nil {
 		return report, err
 	}
+	traceFlow(opts.Trace, "report.written path=%s", filepath.Join(output, "report.json"))
 	for _, gate := range ApplyFlowGates(*suite.Gates, report.Summary) {
 		if !gate.Passed {
 			return report, &FlowGateFailureError{Report: report}
 		}
 	}
 	return report, nil
+}
+
+func traceFlow(trace func(string), format string, args ...any) {
+	if trace != nil {
+		trace(fmt.Sprintf(format, args...))
+	}
 }
 
 func redactFlowReport(report *SuiteReport, redactor *redact.Redactor) error {

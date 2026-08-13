@@ -141,10 +141,13 @@ func loadOracle(file string) (miniDUOracle, error) {
 	if err != nil {
 		return miniDUOracle{}, err
 	}
-	var oracle miniDUOracle
-	if err := yamlcodec.Unmarshal(data, &oracle); err != nil {
-		return oracle, err
+	var envelope struct {
+		Oracle miniDUOracle `json:"oracle"`
 	}
+	if err := yamlcodec.Unmarshal(data, &envelope); err != nil {
+		return miniDUOracle{}, err
+	}
+	oracle := envelope.Oracle
 	if len(oracle.AllowedPaths) == 0 || len(oracle.Scenarios) == 0 {
 		return oracle, errors.New("allowed_paths and scenarios are required")
 	}

@@ -2,6 +2,7 @@ package tooling
 
 import (
 	"context"
+	"reflect"
 	"testing"
 )
 
@@ -34,7 +35,7 @@ func TestFlowEvaluationServiceForwardsRequest(t *testing.T) {
 	engine := &flowEvaluationEngine{}
 	request := FlowEvaluationRequest{SuitePath: "suite.yaml", CaseID: "one", OutputDir: "out", InvocationWorkspace: "work", Repeat: 2, KeepWorkspaces: true}
 	result, err := NewEvaluation(engine).Flow(context.Background(), request)
-	if err != nil || result != "flow" || engine.request != request {
+	if err != nil || result != "flow" || !reflect.DeepEqual(engine.request, request) {
 		t.Fatalf("result=%#v request=%#v err=%v", result, engine.request, err)
 	}
 }

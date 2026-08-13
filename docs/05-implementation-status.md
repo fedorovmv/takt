@@ -166,8 +166,12 @@ Deterministic fixture доказывает measurement correctness. Production q
 
 `eval flow` executes isolated flow suites through the application control path,
 persists repeat evidence and supports `eval flow init` for a validator-free
-skeleton. Deterministic fake-process contracts cover report persistence and
-worktree ordering; live provider evaluation remains separate evidence.
+skeleton. `--trace` streams elapsed suite stages and durable Run/node progress to
+stderr. Pi RPC excludes cumulative partial/UI noise from durable stdout while
+retaining strict per-record limits. Deterministic contracts cover report
+persistence and worktree ordering; live Pi evidence has confirmed fresh/exact
+resume and a completed production `implement` node, while a complete multi-node
+quality result remains separate evidence.
 
 ## Предметные поставки
 
