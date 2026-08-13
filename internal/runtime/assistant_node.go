@@ -315,13 +315,14 @@ func (r *Runner) nodeBinding(node spec.Node) (string, string) {
 
 func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, resolved resolvedAssistantNode) (execResult, error) {
 	ns := state.Nodes[node.ID]
-	if ns.External == nil || ns.External.Attempt != ns.Attempts {
+	providerRetry := retryScope(ns.Retry) == "provider"
+	if ns.External == nil || (!providerRetry && ns.External.Attempt != ns.Attempts) || (providerRetry && ns.External.Status == "failed") {
 		var outputFormat json.RawMessage
 		if node.OutputFormat != nil {
 			outputFormat, _ = json.Marshal(node.OutputFormat)
 		}
 		ns.External = &store.ExternalExecutionState{
-			Status: "pending", Attempt: ns.Attempts, Prompt: resolved.Prompt, Workspace: r.workspace, ToolCalls: map[string]*store.ToolCallState{},
+			Status: "pending", Attempt: externalAttempt(ns), Prompt: resolved.Prompt, Workspace: r.workspace, ToolCalls: map[string]*store.ToolCallState{},
 			IdleTimeout: node.IdleTimeout, LastActivityAt: time.Now().UTC(),
 			Assistant:      resolved.AssistantName,
 			RequestedModel: &store.ModelRef{Name: resolved.ModelName, Provider: resolved.Model.Provider, ID: resolved.Model.ID, Params: cloneParams(resolved.Model.Params)},
@@ -342,7 +343,7 @@ func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, reso
 		state.Waiting = &store.WaitingState{NodeID: node.ID, Message: "external executor must claim and complete this node", Kind: "external_node"}
 		ns.Status = store.NodeWaiting
 		if err := r.commit(state, "external_node.requested", node.ID, map[string]any{
-			"attempt": ns.Attempts, "assistant": resolved.AssistantName, "model": resolved.ModelName,
+			"attempt": ns.External.Attempt, "assistant": resolved.AssistantName, "model": resolved.ModelName,
 			"workspace": r.workspace, "policy": ns.External.Policy,
 		}); err != nil {
 			return execResult{}, err
@@ -390,6 +391,13 @@ func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, reso
 	default:
 		return execResult{}, &execution.Error{Kind: execution.KindProtocol, Op: "external executor", Err: fmt.Errorf("unsupported external status %q", external.Status)}
 	}
+}
+
+func externalAttempt(node *store.NodeState) int {
+	if retryScope(node.Retry) == "provider" {
+		return node.Retry.ProviderAttempt
+	}
+	return node.Attempts
 }
 
 func uniqueStrings(values []string) []string {

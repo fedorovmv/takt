@@ -135,6 +135,70 @@ func TestExternalProviderFailureGetsProviderOrdinal(t *testing.T) {
 	}
 }
 
+func TestExternalProviderRetryRequestsFreshClaimAndCompletes(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{Name: "external-provider-retry", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m", Executor: "external"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := New(wf, cfg, "wf", "cfg", dir)
+	state, err := r.Start(context.Background(), "")
+	if !errors.Is(err, ErrWaiting) {
+		t.Fatalf("initial external request = state=%+v err=%v", state, err)
+	}
+	state, err = r.store.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := state.Nodes["work"].External
+	first.Status = "failed"
+	first.Result = &store.ExternalResultState{ExitCode: 1, ErrorCode: string(execution.KindProviderUnavailable), Error: "unavailable", SessionID: "external-session"}
+	state.Nodes["work"].Status = store.NodePending
+	state.Status, state.Waiting = store.RunRunning, nil
+	if err := r.store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	state, err = r.Resume(context.Background(), state)
+	if !errors.Is(err, ErrWaiting) {
+		t.Fatalf("provider retry handoff = state=%+v err=%v", state, err)
+	}
+	state, err = r.store.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := state.Nodes["work"]
+	if node.Attempts != 1 || node.Retry == nil || node.Retry.Scope != "provider" || node.Retry.ProviderAttempt != 2 || node.External == first || node.External.Status != "pending" || node.External.Attempt != 2 || node.External.SessionID != "external-session" || node.External.SessionMode != "resume" {
+		t.Fatalf("fresh provider handoff = %+v", node)
+	}
+	node.External.Status = "completed"
+	node.External.Result = &store.ExternalResultState{Output: "ok", Stdout: "ok", SessionID: "external-session", Resumed: true}
+	node.Status = store.NodePending
+	state.Nodes["work"] = node
+	state.Status, state.Waiting = store.RunRunning, nil
+	if err := r.store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	state, err = r.Resume(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node = state.Nodes["work"]
+	if node.Status != store.NodeCompleted || node.Attempts != 1 || node.ProviderAttempts != 2 || len(node.Executions) != 2 || node.Executions[0].ProviderAttempt != 1 || node.Executions[1].ProviderAttempt != 2 {
+		t.Fatalf("external provider completion = %+v", node)
+	}
+	events, err := r.store.(store.FS).ReadEvents(state.ID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests := 0
+	for _, event := range events {
+		if event.Type == "external_node.requested" {
+			requests++
+		}
+	}
+	if requests != 2 {
+		t.Fatalf("external requests = %d events=%+v", requests, events)
+	}
+}
+
 func TestProviderRetryDelay(t *testing.T) {
 	for _, test := range []struct {
 		attempt    int

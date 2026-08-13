@@ -156,7 +156,9 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	if node.Executor == "external" {
 		result, err := r.executeExternalNode(state, node, resolved)
 		result.ProviderAttempt = providerAttempt
-		err = validateAssistantSession(ctx, resolved, result.SessionID, err)
+		if !errors.Is(err, ErrWaiting) {
+			err = validateAssistantSession(ctx, resolved, result.SessionID, err)
+		}
 		return normalizeStructuredResult(result, err, node.OutputFormat, "validate structured output")
 	}
 	idleTimeout := node.IdleTimeout

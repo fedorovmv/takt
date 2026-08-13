@@ -245,6 +245,12 @@ func (r *Runner) runProviderExecution(ctx context.Context, state *store.RunState
 	attemptCtx, cancelWatch := r.watchCancellation(attemptCtx, state.ID)
 	defer func() { cancelWatch(); cancel() }()
 	result, execErr := r.execute(attemptCtx, state, node, loopPrevious)
+	if errors.Is(execErr, ErrWaiting) {
+		return ErrWaiting
+	}
+	if errors.Is(execErr, ErrPaused) {
+		return ErrPaused
+	}
 	if err := r.flushAssistantEvents(state, node.ID, result.AssistantEvents, "adapter"); err != nil {
 		return err
 	}
