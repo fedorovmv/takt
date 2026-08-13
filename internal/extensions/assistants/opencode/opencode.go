@@ -123,6 +123,9 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 	if strings.TrimSpace(rawStdout) == "" {
 		result.Output = strings.TrimSpace(rawStderr)
 		if runErr != nil {
+			if execution.IsTransientProviderFailure(0, rawStderr) {
+				return result, &execution.Error{Kind: execution.KindProviderUnavailable, ExitCode: osExitCode, Op: "opencode run", Err: runErr}
+			}
 			return result, &execution.Error{Kind: execution.KindExit, ExitCode: osExitCode, Op: "opencode run", Err: runErr}
 		}
 		return result, &execution.Error{Kind: execution.KindProtocol, ExitCode: -1, Op: "opencode events", Err: fmt.Errorf("opencode produced no JSON events")}
@@ -145,9 +148,19 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 		if result.ExitCode == 0 {
 			result.ExitCode = 1
 		}
-		return result, &execution.Error{Kind: execution.KindExit, ExitCode: result.ExitCode, Op: "opencode agent", Err: errors.New(strings.Join(parsed.Errors, "; "))}
+		message := openCodeErrorMessages(parsed.Errors)
+		if evidence, ok := transientOpenCodeError(parsed.Errors); ok {
+			return result, &execution.Error{Kind: execution.KindProviderUnavailable, ExitCode: result.ExitCode, Op: "opencode agent", Err: errors.New(message), RetryAfter: evidence.RetryAfter}
+		}
+		if runErr != nil && execution.IsTransientProviderFailure(0, rawStderr) {
+			return result, &execution.Error{Kind: execution.KindProviderUnavailable, ExitCode: result.ExitCode, Op: "opencode agent", Err: errors.New(message)}
+		}
+		return result, &execution.Error{Kind: execution.KindExit, ExitCode: result.ExitCode, Op: "opencode agent", Err: errors.New(message)}
 	}
 	if runErr != nil {
+		if execution.IsTransientProviderFailure(0, rawStderr) {
+			return result, &execution.Error{Kind: execution.KindProviderUnavailable, ExitCode: osExitCode, Op: "opencode run", Err: runErr}
+		}
 		return result, &execution.Error{Kind: execution.KindExit, ExitCode: osExitCode, Op: "opencode run", Err: runErr}
 	}
 	if parsed.Usage == nil {
@@ -512,7 +525,13 @@ type decodedOpenCode struct {
 	ResolvedModel *ProtocolModel
 	Usage         *ProtocolUsage
 	Structured    json.RawMessage
-	Errors        []string
+	Errors        []openCodeErrorEvidence
+}
+
+type openCodeErrorEvidence struct {
+	Message    string
+	Status     int
+	RetryAfter time.Duration
 }
 
 func decodeOpenCodeEvents(raw []byte, req Request) (decodedOpenCode, error) {
@@ -529,7 +548,7 @@ func decodeOpenCodeEvents(raw []byte, req Request) (decodedOpenCode, error) {
 	seenSteps := make(map[string]struct{})
 	usage := ProtocolUsage{}
 	usageSeen := false
-	errorsSeen := make([]string, 0)
+	errorsSeen := make([]openCodeErrorEvidence, 0)
 	toolCalls := 0
 	eventCount := 0
 	unknownEvents := 0
@@ -613,7 +632,7 @@ func decodeOpenCodeEvents(raw []byte, req Request) (decodedOpenCode, error) {
 				toolCalls++
 			}
 		case "error":
-			errorsSeen = append(errorsSeen, openCodeErrorMessage(event.Error))
+			errorsSeen = append(errorsSeen, decodeOpenCodeError(event.Error))
 		default:
 			unknownEvents++
 		}
@@ -666,28 +685,79 @@ func decodeOpenCodeEvents(raw []byte, req Request) (decodedOpenCode, error) {
 }
 
 func openCodeErrorMessage(raw json.RawMessage) string {
+	return decodeOpenCodeError(raw).Message
+}
+
+func decodeOpenCodeError(raw json.RawMessage) openCodeErrorEvidence {
+	evidence := openCodeErrorEvidence{Message: "opencode session error"}
 	if len(raw) == 0 {
-		return "opencode session error"
+		return evidence
 	}
-	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return strings.TrimSpace(string(raw))
+	var object struct {
+		Name         string          `json:"name"`
+		Message      string          `json:"message"`
+		StatusCode   json.RawMessage `json:"statusCode"`
+		RetryAfterMS json.RawMessage `json:"retryAfterMs"`
+		Data         struct {
+			Message      string          `json:"message"`
+			StatusCode   json.RawMessage `json:"statusCode"`
+			RetryAfterMS json.RawMessage `json:"retryAfterMs"`
+		} `json:"data"`
 	}
-	if object, ok := value.(map[string]any); ok {
-		if data, ok := object["data"].(map[string]any); ok {
-			if message, ok := data["message"].(string); ok && strings.TrimSpace(message) != "" {
-				return message
-			}
-		}
-		if message, ok := object["message"].(string); ok && strings.TrimSpace(message) != "" {
-			return message
-		}
-		if name, ok := object["name"].(string); ok && strings.TrimSpace(name) != "" {
-			return name
+	if err := json.Unmarshal(raw, &object); err != nil {
+		evidence.Message = strings.TrimSpace(string(raw))
+		return evidence
+	}
+	for _, message := range []string{object.Data.Message, object.Message, object.Name} {
+		if message = strings.TrimSpace(message); message != "" {
+			evidence.Message = message
+			break
 		}
 	}
-	encoded, _ := json.Marshal(value)
-	return string(encoded)
+	evidence.Status = openCodeJSONInt(object.Data.StatusCode)
+	if evidence.Status == 0 {
+		evidence.Status = openCodeJSONInt(object.StatusCode)
+	}
+	retryAfterMS := openCodeJSONInt(object.Data.RetryAfterMS)
+	if len(object.Data.RetryAfterMS) == 0 {
+		retryAfterMS = openCodeJSONInt(object.RetryAfterMS)
+	}
+	if retryAfterMS >= 0 {
+		evidence.RetryAfter = time.Duration(retryAfterMS) * time.Millisecond
+	}
+	return evidence
+}
+
+func openCodeJSONInt(raw json.RawMessage) int {
+	if len(raw) == 0 {
+		return 0
+	}
+	var number json.Number
+	if json.Unmarshal(raw, &number) != nil {
+		return 0
+	}
+	value, err := strconv.Atoi(number.String())
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
+func openCodeErrorMessages(errors []openCodeErrorEvidence) string {
+	messages := make([]string, 0, len(errors))
+	for _, evidence := range errors {
+		messages = append(messages, evidence.Message)
+	}
+	return strings.Join(messages, "; ")
+}
+
+func transientOpenCodeError(errors []openCodeErrorEvidence) (openCodeErrorEvidence, bool) {
+	for _, evidence := range errors {
+		if execution.IsTransientProviderFailure(evidence.Status, evidence.Message) {
+			return evidence, true
+		}
+	}
+	return openCodeErrorEvidence{}, false
 }
 
 func cloneProtocolParams(input map[string]any) map[string]any {

@@ -78,6 +78,21 @@ func main() {
 	case "error-zero-exit":
 		emit(session, "error", map[string]any{"error": map[string]any{"name": "APIError", "data": map[string]any{"message": "provider failed"}}})
 		return
+	case "provider-503", "provider-429", "provider-connection-reset", "provider-401":
+		errorData := map[string]any{"message": "provider failed"}
+		switch opts.caseName {
+		case "provider-503":
+			errorData = map[string]any{"message": "provider service unavailable", "statusCode": 503, "retryAfterMs": 1200}
+		case "provider-429":
+			errorData = map[string]any{"message": "provider rate limit", "statusCode": 429, "retryAfterMs": 250}
+		case "provider-connection-reset":
+			errorData = map[string]any{"message": "provider connection reset", "retryAfterMs": -1}
+		case "provider-401":
+			errorData = map[string]any{"message": "provider unauthorized", "statusCode": 401}
+		}
+		emit(session, "error", map[string]any{"error": map[string]any{"name": "APIError", "data": errorData}})
+		emitStepFinish(session, 101, 17, 0.0042)
+		return
 	case "missing-usage":
 		emitText(session, "fake OpenCode completed")
 		return

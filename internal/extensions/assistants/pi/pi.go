@@ -182,10 +182,15 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		cancel()
 		return finish(Result{SessionID: stateBefore.SessionID, ExitCode: -1}, err)
 	}
-	failure := piAgentFailure(messagesRaw)
+	failure, providerFailure := piAgentFailure(messagesRaw)
 	if failure == "" && len(settled.LastAgentEnd.Raw) > 0 {
-		failure = piAgentFailure(settled.LastAgentEnd.Raw)
+		failure, providerFailure = piAgentFailure(settled.LastAgentEnd.Raw)
 	}
+	autoRetryFailure := piAutoRetryFailure(settled.LastAutoRetryEnd.Raw)
+	if failure == "" {
+		failure = autoRetryFailure
+	}
+	providerFailure = providerFailure || execution.IsTransientProviderFailure(0, autoRetryFailure)
 
 	textRaw, err := client.call(ctx, "last-text", map[string]any{"type": "get_last_assistant_text"})
 	if err != nil {
@@ -249,6 +254,9 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		result.ExitCode = 1
 		if result.Output == "" {
 			result.Output = failure
+		}
+		if providerFailure {
+			return finish(result, &execution.Error{Kind: execution.KindProviderUnavailable, ExitCode: 1, Op: "pi agent", Err: errors.New(failure)})
 		}
 		return finish(result, &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "pi agent", Err: errors.New(failure)})
 	}
@@ -569,6 +577,7 @@ func (c *piRPCClient) waitEvent(ctx context.Context, eventType string) (piRPCRec
 
 type piSettledResult struct {
 	LastAgentEnd     piRPCRecord
+	LastAutoRetryEnd piRPCRecord
 	LowLevelRuns     int
 	AutomaticRetries int
 }
@@ -585,6 +594,8 @@ func (c *piRPCClient) waitAgentSettled(ctx context.Context) (piSettledResult, er
 			result.LowLevelRuns++
 		case "auto_retry_start":
 			result.AutomaticRetries++
+		case "auto_retry_end":
+			result.LastAutoRetryEnd = record
 		}
 	}
 	return result, nil
@@ -938,7 +949,7 @@ func piResolvedModel(raw json.RawMessage, logicalName string, fallback *piModel)
 	return &ProtocolModel{Name: logicalName, Provider: fallback.Provider, ID: fallback.ID}
 }
 
-func piAgentFailure(raw json.RawMessage) string {
+func piAgentFailure(raw json.RawMessage) (string, bool) {
 	var event struct {
 		Messages []struct {
 			Role         string `json:"role"`
@@ -947,7 +958,7 @@ func piAgentFailure(raw json.RawMessage) string {
 		} `json:"messages"`
 	}
 	if json.Unmarshal(raw, &event) != nil {
-		return ""
+		return "", false
 	}
 	for i := len(event.Messages) - 1; i >= 0; i-- {
 		message := event.Messages[i]
@@ -955,14 +966,24 @@ func piAgentFailure(raw json.RawMessage) string {
 			continue
 		}
 		if message.ErrorMessage != "" {
-			return message.ErrorMessage
+			return message.ErrorMessage, execution.IsTransientProviderFailure(0, message.ErrorMessage)
 		}
 		if message.StopReason == "error" || message.StopReason == "aborted" {
-			return "Pi agent stopped with reason " + message.StopReason
+			return "Pi agent stopped with reason " + message.StopReason, false
 		}
+		return "", false
+	}
+	return "", false
+}
+
+func piAutoRetryFailure(raw json.RawMessage) string {
+	var event struct {
+		FinalError string `json:"finalError"`
+	}
+	if json.Unmarshal(raw, &event) != nil {
 		return ""
 	}
-	return ""
+	return strings.TrimSpace(event.FinalError)
 }
 
 func protocolPiError(op string, err error) error {

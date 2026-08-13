@@ -3,6 +3,7 @@ package pi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"os/exec"
@@ -130,6 +131,34 @@ func TestPiRunPreservesContextPriorityWithRealOverflow(t *testing.T) {
 			}
 			if ctx.Err() == nil || ctx.Done() == nil {
 				t.Fatalf("parent context did not complete correctly: err=%v done=%v", ctx.Err(), ctx.Done())
+			}
+		})
+	}
+}
+
+func TestPiProviderFailures(t *testing.T) {
+	for _, caseName := range []string{"provider-503", "provider-429", "provider-connection-reset"} {
+		t.Run(caseName, func(t *testing.T) {
+			result, err := fakePi(caseName).Run(context.Background(), fakePiRequest(t.TempDir()))
+			if execution.KindOf(err) != execution.KindProviderUnavailable {
+				t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+			}
+			var executionErr *execution.Error
+			if !errors.As(err, &executionErr) || executionErr.RetryAfter != 0 {
+				t.Fatalf("Pi internal retry delay leaked as RetryAfter: %+v", executionErr)
+			}
+			if result.SessionID == "" || result.Usage == nil || result.Usage.InputTokens != 111 || result.Usage.OutputTokens != 22 {
+				t.Fatalf("failure lost result identity or usage: %+v", result)
+			}
+			var structured struct {
+				LowLevelRuns     int `json:"low_level_runs"`
+				AutomaticRetries int `json:"automatic_retries"`
+			}
+			if err := json.Unmarshal(result.Structured, &structured); err != nil {
+				t.Fatal(err)
+			}
+			if structured.LowLevelRuns != 1 || structured.AutomaticRetries != 1 {
+				t.Fatalf("unexpected retry counters: %+v", structured)
 			}
 		})
 	}

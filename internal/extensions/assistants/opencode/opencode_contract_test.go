@@ -3,6 +3,7 @@ package opencode
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"os/exec"
@@ -84,6 +85,38 @@ func TestOpenCodeRunPreservesContextPriorityWithRealOverflow(t *testing.T) {
 				t.Fatalf("parent context did not complete correctly: err=%v done=%v", ctx.Err(), ctx.Done())
 			}
 		})
+	}
+}
+
+func TestOpenCodeProviderFailures(t *testing.T) {
+	for _, tc := range []struct {
+		caseName       string
+		wantRetryAfter time.Duration
+	}{
+		{caseName: "provider-503", wantRetryAfter: 1200 * time.Millisecond},
+		{caseName: "provider-429", wantRetryAfter: 250 * time.Millisecond},
+		{caseName: "provider-connection-reset"},
+	} {
+		t.Run(tc.caseName, func(t *testing.T) {
+			result, err := fakeOpenCode(tc.caseName).Run(context.Background(), fakeOpenCodeRequest(t.TempDir()))
+			if execution.KindOf(err) != execution.KindProviderUnavailable {
+				t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+			}
+			var executionErr *execution.Error
+			if !errors.As(err, &executionErr) || executionErr.RetryAfter != tc.wantRetryAfter {
+				t.Fatalf("unexpected RetryAfter: %+v", executionErr)
+			}
+			if result.SessionID == "" || result.Usage == nil || result.Usage.InputTokens != 101 || result.Usage.OutputTokens != 17 {
+				t.Fatalf("failure lost result identity or usage: %+v", result)
+			}
+		})
+	}
+}
+
+func TestDecodeOpenCodeErrorReadsTopLevelNumericEvidence(t *testing.T) {
+	evidence := decodeOpenCodeError(json.RawMessage(`{"message":"overloaded","statusCode":503,"retryAfterMs":75}`))
+	if evidence.Message != "overloaded" || evidence.Status != 503 || evidence.RetryAfter != 75*time.Millisecond {
+		t.Fatalf("unexpected error evidence: %+v", evidence)
 	}
 }
 
@@ -182,6 +215,7 @@ func TestOpenCodeAdapterContract(t *testing.T) {
 		{name: "resume mismatch", caseName: "resume-mismatch", kind: execution.KindProtocol},
 		{name: "malformed event", caseName: "malformed", kind: execution.KindProtocol},
 		{name: "error event with zero process exit", caseName: "error-zero-exit", kind: execution.KindExit},
+		{name: "HTTP 401 error", caseName: "provider-401", kind: execution.KindExit},
 		{name: "process exit", caseName: "exit", kind: execution.KindExit},
 		{name: "missing usage", caseName: "missing-usage", kind: execution.KindProtocol},
 		{name: "negative usage", caseName: "negative-usage", kind: execution.KindProtocol},

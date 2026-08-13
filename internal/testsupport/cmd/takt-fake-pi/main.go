@@ -218,6 +218,20 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 		writeJSON(writer, map[string]any{"type": "message_end", "message": message})
 		writeJSON(writer, map[string]any{"type": "agent_end", "messages": []any{message}, "willRetry": false})
 		writeJSON(writer, map[string]any{"type": "agent_settled"})
+	case "provider-503", "provider-429", "provider-connection-reset":
+		failure := map[string]string{
+			"provider-503":              "provider returned HTTP 503 service unavailable",
+			"provider-429":              "provider returned HTTP 429 too many requests",
+			"provider-connection-reset": "provider connection reset",
+		}[caseName]
+		message := assistantMessage(opts, "", "error", failure)
+		state.finish("", []any{message})
+		writeJSON(writer, map[string]any{"type": "agent_start"})
+		writeJSON(writer, map[string]any{"type": "message_end", "message": message})
+		writeJSON(writer, map[string]any{"type": "auto_retry_start", "attempt": 1, "delayMs": 100})
+		writeJSON(writer, map[string]any{"type": "auto_retry_end", "success": false, "attempt": 1, "finalError": failure})
+		writeJSON(writer, map[string]any{"type": "agent_end", "messages": []any{message}, "willRetry": false})
+		writeJSON(writer, map[string]any{"type": "agent_settled"})
 	case "retry-before-settled":
 		first := assistantMessage(opts, "", "error", "transient fake failure")
 		state.setPartial("partial Pi result", []any{first})
