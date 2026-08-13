@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added `make eval-smoke`, `eval-feature`, `eval-review`, and `eval-architect`
+  as short entrypoints for the bundled live Pi evaluation corpus.
+
 - Pi RPC больше не сохраняет кумулятивные `message_update`, transient tool
   updates и fire-and-forget extension UI в durable stdout; одиночная oversized
   запись всё ещё fail-closed. `takt eval flow --trace` показывает suite stages,

@@ -18,6 +18,9 @@ Run a case with:
 takt eval flow evals/feature/suite.yaml --case example --repeat 1 --output evals/out --trace
 ```
 
+For the bundled mini-du live corpus, use `make eval-smoke`, `make eval-feature`,
+`make eval-review`, or `make eval-architect` from the repository root.
+
 Inspect `report.json` and `cases/<id>/repeat-001/` evidence before changing a
 workflow or validator. Do not treat fake SCM fixtures as a remote provider or
 security boundary. Trace progress is printed to stderr; stdout stays valid JSON.

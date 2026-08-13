@@ -83,6 +83,7 @@
 - `takt eval run/report/benchmark/compare` для воспроизводимой оценки и попарного сравнения стратегий: matrix/repeat/gates, fingerprints, true time-to-valid, failed-execution cost, diagnostic stability и category breakdown;
 - `takt eval task-benchmark` для полного `Task Router → template/dynamic → checkpoint → replan → result`: route accuracy, plan revisions, replanner runs, pairwise outcomes и task-level gates;
 - `takt eval flow` для изолированных production-shaped cases с durable repeat evidence и `--trace` progress в stderr; `takt eval flow init code:feature-development --output evals/feature` создаёт только suite/example skeleton, после чего добавь config, validator и initial workspace;
+- `make eval-smoke|eval-feature|eval-review|eval-architect` запускает готовые live Pi-проверки без ручного набора аргументов; progress и путь `report.json` видны в trace, требуется локальный `examples/flow-evaluation/mini-du/config.yaml`;
 - атрибуция tokens/cost по execution identity; смена assistant, его версии или resolved model между retry помечается как mixed;
 - измеренные нулевые показатели сохраняются как `0`, а недоступные средние значения — как `null`;
 - validation envelope сохраняется при любом terminal status quality-node; успех требует `completed && valid=true`;

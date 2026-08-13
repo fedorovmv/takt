@@ -500,3 +500,21 @@ func TestShellSmokeBudget(t *testing.T) {
 		t.Fatal("shell smoke must not grow its own assertion framework; product assertions belong in Go tests")
 	}
 }
+
+func TestMakefileExposesLiveFlowEvaluationTargets(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	for _, target := range []string{"eval-smoke:", "eval-feature:", "eval-review:", "eval-architect:"} {
+		if !strings.Contains(source, target) {
+			t.Fatalf("Makefile missing %s", target)
+		}
+	}
+	for _, required := range []string{"--trace", "examples/flow-evaluation/mini-du/config.yaml"} {
+		if !strings.Contains(source, required) {
+			t.Fatalf("Makefile eval targets missing %q", required)
+		}
+	}
+}
