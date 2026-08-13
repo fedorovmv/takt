@@ -195,6 +195,10 @@ func providerRetryAfter(err error) time.Duration {
 }
 
 func (r *Runner) scheduleProviderRetry(state *store.RunState, nodeID string, result execResult, err error) error {
+	return r.scheduleProviderRetryWithOwnership(state, nodeID, result, err, false)
+}
+
+func (r *Runner) scheduleProviderRetryWithOwnership(state *store.RunState, nodeID string, result execResult, err error, retainParallelOwnership bool) error {
 	ns := state.Nodes[nodeID]
 	if result.SessionID == "" {
 		return r.finishNodeExecutionError(state, nodeID, execution.KindProtocol, &execution.Error{Kind: execution.KindProtocol, Op: "provider retry", Err: fmt.Errorf("provider-unavailable result omitted session id")}, result)
@@ -211,8 +215,22 @@ func (r *Runner) scheduleProviderRetry(state *store.RunState, nodeID string, res
 	ns.Error, ns.ErrorCode = "", ""
 	ns.Retry = &store.RetryState{Scope: "provider", ProviderAttempt: next, NextAttempt: ns.Attempts, NotBefore: notBefore, Delay: delay.String(), Kind: string(execution.KindProviderUnavailable), Fingerprint: diagnostic.Fingerprint}
 	state.CurrentNode = ""
-	state.CurrentNodes = nil
+	if retainParallelOwnership {
+		state.CurrentNodes = removeCurrentNode(state.CurrentNodes, nodeID)
+	} else {
+		state.CurrentNodes = nil
+	}
 	return r.commit(state, "provider.retry.scheduled", nodeID, map[string]any{"provider_attempt": next, "not_before": notBefore, "delay": delay.String(), "fingerprint": diagnostic.Fingerprint})
+}
+
+func removeCurrentNode(nodes []string, nodeID string) []string {
+	out := nodes[:0]
+	for _, current := range nodes {
+		if current != nodeID {
+			out = append(out, current)
+		}
+	}
+	return out
 }
 
 func (r *Runner) runProviderExecution(ctx context.Context, state *store.RunState, node spec.Node, hooks spec.HookSet, loopPrevious map[string]store.NodeState, max int) error {

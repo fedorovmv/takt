@@ -149,8 +149,14 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	if err != nil {
 		return execResult{}, err
 	}
+	providerAttempt := 1
+	if retry := state.Nodes[node.ID].Retry; retryScope(retry) == "provider" {
+		providerAttempt = retry.ProviderAttempt
+	}
 	if node.Executor == "external" {
 		result, err := r.executeExternalNode(state, node, resolved)
+		result.ProviderAttempt = providerAttempt
+		err = validateAssistantSession(ctx, resolved, result.SessionID, err)
 		return normalizeStructuredResult(result, err, node.OutputFormat, "validate structured output")
 	}
 	idleTimeout := node.IdleTimeout
@@ -205,9 +211,7 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 		}
 	}
 	result, err := adapter.Run(ctx, request)
-	if err == nil && resolved.SessionMode == "resume" && resolved.SessionID != "" && result.SessionID != resolved.SessionID {
-		err = &execution.Error{Kind: execution.KindProtocol, Op: "assistant resume", Err: fmt.Errorf("assistant returned session %q, requested %q", result.SessionID, resolved.SessionID)}
-	}
+	err = validateAssistantSession(ctx, resolved, result.SessionID, err)
 	if execution.KindOf(err) == execution.KindProviderUnavailable && result.SessionID == "" {
 		err = &execution.Error{Kind: execution.KindProtocol, Op: "assistant provider retry", Err: fmt.Errorf("provider-unavailable result omitted session id")}
 	}
@@ -226,15 +230,18 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 		AssistantEvents:  events,
 		RequestedModel:   &store.ModelRef{Name: resolved.ModelName, Provider: resolved.Model.Provider, ID: resolved.Model.ID, Params: cloneParams(resolved.Model.Params)},
 	}
-	if retry := state.Nodes[node.ID].Retry; retryScope(retry) == "provider" {
-		executed.ProviderAttempt = retry.ProviderAttempt
-	} else {
-		executed.ProviderAttempt = 1
-	}
+	executed.ProviderAttempt = providerAttempt
 	if result.ResolvedModel != nil {
 		executed.ResolvedModel = &store.ModelRef{Name: result.ResolvedModel.Name, Provider: result.ResolvedModel.Provider, ID: result.ResolvedModel.ID, Params: cloneParams(result.ResolvedModel.Params)}
 	}
 	return normalizeStructuredResult(executed, err, node.OutputFormat, "validate structured output")
+}
+
+func validateAssistantSession(ctx context.Context, resolved resolvedAssistantNode, sessionID string, err error) error {
+	if resolved.SessionMode != "resume" || resolved.SessionID == "" || sessionID == resolved.SessionID || ctx.Err() != nil {
+		return err
+	}
+	return &execution.Error{Kind: execution.KindProtocol, Op: "assistant resume", Err: fmt.Errorf("assistant returned session %q, requested %q", sessionID, resolved.SessionID)}
 }
 
 func normalizeStructuredResult(result execResult, execErr error, schema *spec.OutputFormat, op string) (execResult, error) {

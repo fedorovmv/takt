@@ -40,6 +40,29 @@ func (f resolverFunc) Resolve(name string) (assistant.Adapter, error) {
 	return f(name)
 }
 
+type providerRetryCaptureStore struct {
+	store.Repository
+	states map[string]*store.RunState
+	events []store.Event
+}
+
+func (s *providerRetryCaptureStore) Commit(state *store.RunState, event store.Event) error {
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	var snapshot store.RunState
+	if err := json.Unmarshal(encoded, &snapshot); err != nil {
+		return err
+	}
+	if s.states == nil {
+		s.states = map[string]*store.RunState{}
+	}
+	s.states[event.Type] = &snapshot
+	s.events = append(s.events, event)
+	return s.Repository.Commit(state, event)
+}
+
 func TestProviderRetryResumesSameSessionWithoutWorkflowRetry(t *testing.T) {
 	dir := t.TempDir()
 	var requests []assistant.Request
@@ -72,6 +95,43 @@ func TestProviderRetryResumesSameSessionWithoutWorkflowRetry(t *testing.T) {
 	}
 	if len(requests) != 3 || requests[0].SessionMode != "fresh" || requests[1].SessionMode != "resume" || requests[1].SessionID != "provider-session" || requests[2].SessionMode != "resume" || requests[2].SessionID != "provider-session" {
 		t.Fatalf("requests = %+v", requests)
+	}
+}
+
+func TestProviderRetrySessionMismatchIsProtocolAndNotRetried(t *testing.T) {
+	dir := t.TempDir()
+	calls := 0
+	adapter := adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
+		calls++
+		if calls == 1 {
+			return assistant.Result{ExitCode: 1, SessionID: "expected-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: time.Millisecond, Err: errors.New("unavailable")}
+		}
+		if req.SessionMode != "resume" || req.SessionID != "expected-session" {
+			t.Fatalf("retry request = %+v", req)
+		}
+		return assistant.Result{ExitCode: 1, SessionID: "wrong-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: time.Millisecond, Err: errors.New("unavailable")}
+	})
+	wf := &spec.Workflow{Name: "provider-mismatch", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected protocol failure")
+	}
+	if calls != 2 || state.Nodes["work"].ErrorCode != string(execution.KindProtocol) || state.Nodes["work"].ProviderAttempts != 2 {
+		t.Fatalf("mismatch state = %+v calls=%d", state.Nodes["work"], calls)
+	}
+}
+
+func TestExternalProviderFailureGetsProviderOrdinal(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{Name: "external-provider", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m", Executor: "external"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := New(wf, cfg, "wf", "cfg", dir)
+	state := &store.RunState{ID: "external-provider", Nodes: map[string]*store.NodeState{"work": {Status: store.NodeRunning, Attempts: 1, External: &store.ExternalExecutionState{Status: "failed", Attempt: 1, Result: &store.ExternalResultState{SessionID: "session", ErrorCode: string(execution.KindProviderUnavailable), Error: "unavailable"}}}}, Approvals: map[string]string{}}
+	result, err := r.executeAssistantAction(context.Background(), state, wf.Nodes[0], r.actionContext(state, wf.Nodes[0], nil))
+	if execution.KindOf(err) != execution.KindProviderUnavailable || result.ProviderAttempt != 1 {
+		t.Fatalf("external provider result = %+v err=%v", result, err)
 	}
 }
 
@@ -132,7 +192,8 @@ func TestProviderRetryLeavesParallelSiblingCompleted(t *testing.T) {
 	})
 	wf := &spec.Workflow{Name: "provider-parallel", Nodes: []spec.Node{{ID: "retry", Prompt: "retry", Provider: "demo", Model: "m"}, {ID: "sibling", Prompt: "sibling", Provider: "demo", Model: "m"}}}
 	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
-	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	capture := &providerRetryCaptureStore{Repository: store.FS{Workspace: dir}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: capture, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
 	state, err := r.Start(context.Background(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -145,6 +206,10 @@ func TestProviderRetryLeavesParallelSiblingCompleted(t *testing.T) {
 	mu.Unlock()
 	if len(retryRequests) != 2 || retryRequests[1].SessionMode != "resume" || retryRequests[1].SessionID != "retry-session" {
 		t.Fatalf("retry requests = %+v", retryRequests)
+	}
+	scheduled := capture.states["provider.retry.scheduled"]
+	if scheduled == nil || len(scheduled.CurrentNodes) != 1 || scheduled.CurrentNodes[0] != "sibling" || scheduled.CurrentNode != "" {
+		t.Fatalf("parallel provider schedule ownership = %+v", scheduled)
 	}
 }
 

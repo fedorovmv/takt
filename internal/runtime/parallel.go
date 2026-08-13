@@ -96,7 +96,7 @@ func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nod
 		accumulateUsage(ns, item.result.Usage)
 		if isProviderRetry(item.err) && item.result.ProviderAttempt > 0 {
 			if item.result.ProviderAttempt < providerRetryMax {
-				if err := r.scheduleProviderRetry(state, node.ID, item.result, item.err); err != nil {
+				if err := r.scheduleProviderRetryWithOwnership(state, node.ID, item.result, item.err, true); err != nil {
 					return err
 				}
 				continue
