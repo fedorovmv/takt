@@ -988,6 +988,9 @@ func finishFlowReport(report *SuiteReport) {
 	var timeCount int
 	caseOutcomes := map[string]map[bool]bool{}
 	for _, record := range report.Runs {
+		if isProviderUnavailableRecord(record) {
+			continue
+		}
 		if record.Mode != "flow" || record.Validation == nil || record.Validation.Status != "completed" || record.Validation.Result == nil {
 			continue
 		}

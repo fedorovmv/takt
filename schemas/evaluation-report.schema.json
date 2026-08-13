@@ -781,6 +781,10 @@
           "type": "integer",
           "minimum": 1
         },
+        "provider_attempt": {
+          "type": "integer",
+          "minimum": 0
+        },
         "status": {
           "type": "string"
         },

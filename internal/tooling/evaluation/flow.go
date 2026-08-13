@@ -195,8 +195,8 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 					elapsed = 0
 				}
 				record.TimeToValidMS = &elapsed
-				ClassifyFlowRecord(&record)
 			}
+			ClassifyFlowRecord(&record)
 			traceFlow(opts.Trace, "case.result case=%s repeat=%d run=%s status=%s outcome=%s valid=%t diagnostic=%s", item.ID, repeat, root.ID, record.Status, record.Outcome, validationResult.Result != nil && validationResult.Result.Valid, flowValidationDiagnostic(validationResult))
 			report.Runs = append(report.Runs, record)
 			addSummary(&report.Summary, record)

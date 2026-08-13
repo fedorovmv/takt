@@ -2,6 +2,7 @@ package evaluation
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -100,7 +101,7 @@ func TestFinishFlowReportRetainsQualityAggregation(t *testing.T) {
 func TestFlowReportSchemaAcceptsReport(t *testing.T) {
 	zero := 0.0
 	sha := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	report := SuiteReport{ReportVersion: ReportVersion, TaktVersion: "test", Strategy: StrategyIdentity{ID: "s", Fingerprint: sha, WorkflowFingerprint: sha, ConfigFingerprint: sha, CommandsFingerprint: sha}, Benchmark: BenchmarkIdentity{ID: "b", Fingerprint: sha, DatasetFingerprint: sha, WorkspaceFingerprint: sha, CaseCount: 1}, Environment: EnvironmentIdentity{}, Mode: "flow", Runs: []RunRecord{{CaseID: "c", Repeat: 1, Status: store.RunCompleted, Workspace: "w", AttemptsToValid: nil, Nodes: map[string]NodeRecord{}, Mode: "flow", Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{ProtocolVersion: validation.ProtocolV1Alpha1, Type: "validation_result", Valid: true}}, Outcome: "true_accept", RunPassed: boolPointer(true)}}, Summary: newSummary()}
+	report := SuiteReport{ReportVersion: ReportVersion, TaktVersion: "test", Strategy: StrategyIdentity{ID: "s", Fingerprint: sha, WorkflowFingerprint: sha, ConfigFingerprint: sha, CommandsFingerprint: sha}, Benchmark: BenchmarkIdentity{ID: "b", Fingerprint: sha, DatasetFingerprint: sha, WorkspaceFingerprint: sha, CaseCount: 1}, Environment: EnvironmentIdentity{}, Mode: "flow", Runs: []RunRecord{{CaseID: "c", Repeat: 1, Status: store.RunCompleted, Workspace: "w", AttemptsToValid: nil, Nodes: map[string]NodeRecord{"work": {Executions: []ExecutionRecord{{Attempt: 1, ProviderAttempt: 1, Status: "completed"}}}}, Mode: "flow", Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{ProtocolVersion: validation.ProtocolV1Alpha1, Type: "validation_result", Valid: true}}, Outcome: "true_accept", RunPassed: boolPointer(true)}}, Summary: newSummary()}
 	report.Summary.Flow = &FlowSummary{ValidRate: &zero, FalseAcceptRate: &zero, FalseRejectRate: &zero, FlowCompletionRate: &zero, ValidationErrorRate: &zero}
 	data, err := json.Marshal(report)
 	if err != nil {
@@ -144,6 +145,27 @@ func TestClassifyFlowRecordLeavesValidatorErrorsAndPausesUnevaluated(t *testing.
 	}
 }
 
+func TestRunFlowClassifiesProviderUnavailableWithoutValidatorResult(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	report, err := RunFlow(context.Background(), FlowRunOptions{
+		SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root,
+		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			return FlowCaseRunResult{States: []*store.RunState{{
+				ID: "run", Status: store.RunFailed, ErrorCode: "provider_unavailable",
+				Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{},
+			}}}, nil
+		},
+	})
+	if _, ok := err.(*FlowGateFailureError); !ok {
+		t.Fatal(err)
+	}
+	record := report.Runs[0]
+	if record.Outcome != "infrastructure_error" || record.RunPassed != nil || record.QualityExpected || record.Quality != nil {
+		t.Fatalf("record=%+v", record)
+	}
+}
+
 func TestFlowSummaryDenominatorsAndStability(t *testing.T) {
 	report := &SuiteReport{Mode: "flow", Summary: newSummary(), Runs: []RunRecord{
 		{CaseID: "stable", Status: store.RunCompleted, Mode: "flow", Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: true}}},
@@ -183,6 +205,23 @@ func TestProviderUnavailableFlowRecordIsExcludedFromQualityRates(t *testing.T) {
 	addSummary(&summary, record)
 	if summary.Flow.EvaluatedRuns != 0 || summary.Flow.InfrastructureErrors != 1 || summary.QualityRuns != 0 || summary.Invalid != 0 || summary.InputTokens != 12 || summary.OutputTokens != 7 {
 		t.Fatalf("provider-unavailable summary = %+v", summary)
+	}
+}
+
+func TestFinishFlowReportExcludesProviderUnavailableFromQualityAggregates(t *testing.T) {
+	score := 80.0
+	timeToValid := int64(10)
+	report := &SuiteReport{Mode: "flow", Summary: newSummary(), Runs: []RunRecord{
+		{CaseID: "quality", Mode: "flow", Status: store.RunCompleted, TimeToValidMS: &timeToValid, Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: true}}, Nodes: map[string]NodeRecord{}},
+		{CaseID: "outage", Mode: "flow", Status: store.RunFailed, ErrorCode: "provider_unavailable", TimeToValidMS: &timeToValid, Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: true, Score: &score}}, Nodes: map[string]NodeRecord{}},
+	}}
+	for i := range report.Runs {
+		ClassifyFlowRecord(&report.Runs[i])
+		addSummary(&report.Summary, report.Runs[i])
+	}
+	finishFlowReport(report)
+	if report.Summary.ScoredRuns != 0 || report.Summary.AverageScore != nil || floatValue(report.Summary.AverageTimeToValidMS) != 10 || report.Summary.StableValidCases != 1 || report.Summary.StableInvalidCases != 0 || report.Summary.UnstableCases != 0 {
+		t.Fatalf("summary=%+v", report.Summary)
 	}
 }
 
