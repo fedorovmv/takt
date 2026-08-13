@@ -717,33 +717,33 @@ func decodeOpenCodeError(raw json.RawMessage) openCodeErrorEvidence {
 			evidence.Message = message
 		}
 	}
-	evidence.Status = openCodeJSONInt(object.Data.StatusCode)
+	evidence.Status, _ = openCodeJSONInt(object.Data.StatusCode)
 	if evidence.Status == 0 {
-		evidence.Status = openCodeJSONInt(object.StatusCode)
+		evidence.Status, _ = openCodeJSONInt(object.StatusCode)
 	}
-	retryAfterMS := openCodeJSONInt(object.Data.RetryAfterMS)
-	if retryAfterMS < 0 || len(object.Data.RetryAfterMS) == 0 {
-		retryAfterMS = openCodeJSONInt(object.RetryAfterMS)
+	retryAfterMS, validRetryAfter := openCodeJSONInt(object.Data.RetryAfterMS)
+	if !validRetryAfter || retryAfterMS < 0 {
+		retryAfterMS, validRetryAfter = openCodeJSONInt(object.RetryAfterMS)
 	}
-	if retryAfterMS >= 0 {
+	if validRetryAfter && retryAfterMS >= 0 {
 		evidence.RetryAfter = time.Duration(retryAfterMS) * time.Millisecond
 	}
 	return evidence
 }
 
-func openCodeJSONInt(raw json.RawMessage) int {
+func openCodeJSONInt(raw json.RawMessage) (int, bool) {
 	if len(raw) == 0 {
-		return 0
+		return 0, false
 	}
 	var number json.Number
 	if json.Unmarshal(raw, &number) != nil {
-		return 0
+		return 0, false
 	}
 	value, err := strconv.Atoi(number.String())
 	if err != nil {
-		return 0
+		return 0, false
 	}
-	return value
+	return value, true
 }
 
 func openCodeErrorMessages(errors []openCodeErrorEvidence) string {

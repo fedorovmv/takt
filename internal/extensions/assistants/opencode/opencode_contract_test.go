@@ -138,6 +138,15 @@ func TestDecodeOpenCodeErrorFallsBackFromNegativeNestedRetryAfter(t *testing.T) 
 	}
 }
 
+func TestDecodeOpenCodeErrorFallsBackFromMalformedNestedRetryAfter(t *testing.T) {
+	for _, nested := range []string{`"later"`, `1.5`} {
+		evidence := decodeOpenCodeError(json.RawMessage(`{"data":{"retryAfterMs":` + nested + `},"retryAfterMs":75}`))
+		if evidence.RetryAfter != 75*time.Millisecond {
+			t.Fatalf("nested retry-after %s hid top-level value: %+v", nested, evidence)
+		}
+	}
+}
+
 func TestOpenCodeAdapterContract(t *testing.T) {
 	t.Run("success and request mapping", func(t *testing.T) {
 		workspace := t.TempDir()
