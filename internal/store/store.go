@@ -78,11 +78,13 @@ type DiagnosticState struct {
 }
 
 type RetryState struct {
-	NextAttempt int       `json:"next_attempt"`
-	NotBefore   time.Time `json:"not_before"`
-	Delay       string    `json:"delay"`
-	Kind        string    `json:"kind,omitempty"`
-	Fingerprint string    `json:"fingerprint,omitempty"`
+	NextAttempt     int       `json:"next_attempt"`
+	NotBefore       time.Time `json:"not_before"`
+	Delay           string    `json:"delay"`
+	Scope           string    `json:"scope,omitempty"`
+	ProviderAttempt int       `json:"provider_attempt,omitempty"`
+	Kind            string    `json:"kind,omitempty"`
+	Fingerprint     string    `json:"fingerprint,omitempty"`
 }
 
 type SandboxState struct {
@@ -94,6 +96,7 @@ type SandboxState struct {
 
 type ExecutionState struct {
 	Attempt          int              `json:"attempt"`
+	ProviderAttempt  int              `json:"provider_attempt,omitempty"`
 	Status           string           `json:"status"`
 	Assistant        string           `json:"assistant,omitempty"`
 	AssistantVersion string           `json:"assistant_version,omitempty"`
@@ -236,6 +239,7 @@ type NodeState struct {
 	ResolvedModel           *ModelRef               `json:"resolved_model,omitempty"`
 	ExitCode                int                     `json:"exit_code,omitempty"`
 	Attempts                int                     `json:"attempts,omitempty"`
+	ProviderAttempts        int                     `json:"provider_attempts,omitempty"`
 	Feedback                string                  `json:"feedback,omitempty"`
 	SessionID               string                  `json:"session_id,omitempty"`
 	Resumed                 bool                    `json:"resumed,omitempty"`

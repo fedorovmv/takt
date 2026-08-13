@@ -262,6 +262,10 @@
           "type": "integer",
           "minimum": 0
         },
+        "provider_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
         "feedback": {
           "type": "string"
         },
@@ -436,6 +440,10 @@
       ],
       "properties": {
         "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "provider_attempt": {
           "type": "integer",
           "minimum": 1
         },
@@ -1013,13 +1021,45 @@
           "type": "string",
           "minLength": 1
         },
+        "scope": {
+          "enum": [
+            "workflow",
+            "provider"
+          ]
+        },
+        "provider_attempt": {
+          "type": "integer",
+          "minimum": 2
+        },
         "kind": {
           "type": "string"
         },
         "fingerprint": {
           "type": "string"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "scope": {
+                "const": "provider"
+              }
+            },
+            "required": [
+              "scope"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider_attempt": {
+                "minimum": 2
+              }
+            },
+            "required": ["provider_attempt"]
+          }
+        }
+      ]
     },
     "sandboxState": {
       "type": "object",

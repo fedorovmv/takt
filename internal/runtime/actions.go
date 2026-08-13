@@ -208,6 +208,9 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	if err == nil && resolved.SessionMode == "resume" && resolved.SessionID != "" && result.SessionID != resolved.SessionID {
 		err = &execution.Error{Kind: execution.KindProtocol, Op: "assistant resume", Err: fmt.Errorf("assistant returned session %q, requested %q", result.SessionID, resolved.SessionID)}
 	}
+	if execution.KindOf(err) == execution.KindProviderUnavailable && result.SessionID == "" {
+		err = &execution.Error{Kind: execution.KindProtocol, Op: "assistant provider retry", Err: fmt.Errorf("provider-unavailable result omitted session id")}
+	}
 	if errors.Is(context.Cause(ctx), ErrIdleTimeout) {
 		err = &execution.Error{Kind: execution.KindTimedOut, ExitCode: -1, Op: "assistant idle timeout", Err: ErrIdleTimeout}
 	}
@@ -222,6 +225,11 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 		AssistantVersion: result.AssistantVersion,
 		AssistantEvents:  events,
 		RequestedModel:   &store.ModelRef{Name: resolved.ModelName, Provider: resolved.Model.Provider, ID: resolved.Model.ID, Params: cloneParams(resolved.Model.Params)},
+	}
+	if retry := state.Nodes[node.ID].Retry; retryScope(retry) == "provider" {
+		executed.ProviderAttempt = retry.ProviderAttempt
+	} else {
+		executed.ProviderAttempt = 1
 	}
 	if result.ResolvedModel != nil {
 		executed.ResolvedModel = &store.ModelRef{Name: result.ResolvedModel.Name, Provider: result.ResolvedModel.Provider, ID: result.ResolvedModel.ID, Params: cloneParams(result.ResolvedModel.Params)}

@@ -31,6 +31,28 @@ var ErrWaiting = fmt.Errorf("workflow is waiting for input")
 var ErrPaused = fmt.Errorf("workflow is paused")
 var ErrAbandoned = fmt.Errorf("workflow was abandoned")
 
+const providerRetryMax = 3
+
+func providerRetryDelay(providerAttempt int, retryAfter time.Duration) time.Duration {
+	if retryAfter > 0 {
+		if retryAfter > time.Minute {
+			return time.Minute
+		}
+		return retryAfter
+	}
+	if providerAttempt == 1 {
+		return 2 * time.Second
+	}
+	return 4 * time.Second
+}
+
+func retryScope(retry *store.RetryState) string {
+	if retry == nil || retry.Scope == "" {
+		return "workflow"
+	}
+	return retry.Scope
+}
+
 type RunFailedError struct {
 	RunID  string
 	NodeID string
@@ -612,7 +634,7 @@ func (r *Runner) executeGraph(ctx context.Context, state *store.RunState, nodes 
 		parallel := make([]spec.Node, 0, len(runnable))
 		sequential := make([]spec.Node, 0, len(runnable))
 		for _, node := range runnable {
-			if parallelEligible(node) {
+			if parallelEligible(node, state.Nodes[node.ID]) {
 				parallel = append(parallel, node)
 			} else {
 				sequential = append(sequential, node)
@@ -672,6 +694,9 @@ func (r *Runner) runNode(ctx context.Context, state *store.RunState, node spec.N
 	hooks := mergeHooks(r.workflow.Hooks, node.Hooks)
 	if node.Internal != nil {
 		hooks = spec.HookSet{}
+	}
+	if retryScope(ns.Retry) == "provider" {
+		return r.runProviderExecution(ctx, state, node, hooks, loopPrevious, max)
 	}
 	for ns.Attempts < max {
 		if r.pauseRequested(state.ID) {
@@ -740,6 +765,7 @@ type execResult struct {
 	AssistantEvents  []assistant.Event
 	DomainOperation  *store.DomainOperationState
 	Sandbox          *store.SandboxState
+	ProviderAttempt  int
 }
 
 func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.Node, loopPrevious map[string]store.NodeState) (execResult, error) {
@@ -1182,12 +1208,15 @@ func recordExecution(node *store.NodeState, result execResult, err error) {
 			status = store.NodeCancelled
 		case execution.KindTimedOut:
 			status = store.NodeTimedOut
+		case execution.KindProviderUnavailable:
+			status = store.NodeFailed
 		default:
 			status = store.NodeErrored
 		}
 	}
 	record := store.ExecutionState{
 		Attempt:          node.Attempts,
+		ProviderAttempt:  result.ProviderAttempt,
 		Status:           status,
 		Assistant:        result.Assistant,
 		AssistantVersion: result.AssistantVersion,
@@ -1208,6 +1237,9 @@ func recordExecution(node *store.NodeState, result execResult, err error) {
 		}
 	}
 	node.Executions = append(node.Executions, record)
+	if result.ProviderAttempt > 0 {
+		node.ProviderAttempts++
+	}
 }
 
 func cloneModelRef(model *store.ModelRef) *store.ModelRef {
@@ -1228,6 +1260,8 @@ func (r *Runner) finishNodeExecutionError(state *store.RunState, nodeID string, 
 		status = store.NodeCancelled
 	case execution.KindTimedOut:
 		status = store.NodeTimedOut
+	case execution.KindProviderUnavailable:
+		status = store.NodeFailed
 	}
 	ns := state.Nodes[nodeID]
 	ns.Status = status
@@ -1531,6 +1565,12 @@ func (r *Runner) awaitRetry(ctx context.Context, state *store.RunState, nodeID s
 		}
 	}
 	completed := ns.Retry
+	if retryScope(completed) == "provider" {
+		ns.Status = store.NodeRunning
+		state.CurrentNode = nodeID
+		state.CurrentNodes = nil
+		return r.commit(state, "provider.retry.ready", nodeID, map[string]any{"provider_attempt": completed.ProviderAttempt, "delay": completed.Delay, "fingerprint": completed.Fingerprint})
+	}
 	ns.Retry = nil
 	return r.commit(state, "node.retry.ready", nodeID, map[string]any{"next_attempt": completed.NextAttempt, "delay": completed.Delay, "fingerprint": completed.Fingerprint})
 }

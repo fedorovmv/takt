@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,6 +38,151 @@ type resolverFunc func(string) (assistant.Adapter, error)
 
 func (f resolverFunc) Resolve(name string) (assistant.Adapter, error) {
 	return f(name)
+}
+
+func TestProviderRetryResumesSameSessionWithoutWorkflowRetry(t *testing.T) {
+	dir := t.TempDir()
+	var requests []assistant.Request
+	adapter := adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
+		requests = append(requests, req)
+		result := assistant.Result{Output: "ok", Stdout: "ok", ExitCode: 0, SessionID: "provider-session", Usage: &assistant.ProtocolUsage{InputTokens: 1, OutputTokens: 2}}
+		if len(requests) < 3 {
+			return result, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: time.Millisecond, Err: errors.New("temporarily unavailable")}
+		}
+		return result, nil
+	})
+	wf := &spec.Workflow{Name: "provider-retry", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m", Attempts: spec.AttemptsSpec{Max: 1}}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := state.Nodes["work"]
+	if node.Attempts != 1 || node.ProviderAttempts != 3 || len(node.Executions) != 3 {
+		t.Fatalf("provider retry accounting = %+v", node)
+	}
+	for index, executionState := range node.Executions {
+		if executionState.Attempt != 1 || executionState.ProviderAttempt != index+1 {
+			t.Fatalf("execution %d = %+v", index, executionState)
+		}
+	}
+	if node.Usage == nil || node.Usage.InputTokens != 3 || node.Usage.OutputTokens != 6 {
+		t.Fatalf("usage = %+v", node.Usage)
+	}
+	if len(requests) != 3 || requests[0].SessionMode != "fresh" || requests[1].SessionMode != "resume" || requests[1].SessionID != "provider-session" || requests[2].SessionMode != "resume" || requests[2].SessionID != "provider-session" {
+		t.Fatalf("requests = %+v", requests)
+	}
+}
+
+func TestProviderRetryDelay(t *testing.T) {
+	for _, test := range []struct {
+		attempt    int
+		retryAfter time.Duration
+		want       time.Duration
+	}{{1, 0, 2 * time.Second}, {2, 0, 4 * time.Second}, {1, time.Second, time.Second}, {1, 30 * time.Second, 30 * time.Second}, {2, 90 * time.Second, time.Minute}} {
+		if got := providerRetryDelay(test.attempt, test.retryAfter); got != test.want {
+			t.Fatalf("providerRetryDelay(%d, %s) = %s, want %s", test.attempt, test.retryAfter, got, test.want)
+		}
+	}
+}
+
+func TestRetryScopeDefaultsOldStateToWorkflow(t *testing.T) {
+	if got := retryScope(nil); got != "workflow" {
+		t.Fatalf("nil retry scope = %q", got)
+	}
+	if got := retryScope(&store.RetryState{}); got != "workflow" {
+		t.Fatalf("legacy retry scope = %q", got)
+	}
+}
+
+func TestProviderRetryExhaustionIgnoresAllowFailure(t *testing.T) {
+	dir := t.TempDir()
+	calls := 0
+	adapter := adapterFunc(func(_ context.Context, _ assistant.Request) (assistant.Result, error) {
+		calls++
+		return assistant.Result{ExitCode: 1, SessionID: "provider-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: time.Millisecond, Err: errors.New("unavailable")}
+	})
+	wf := &spec.Workflow{Name: "provider-exhausted", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m", AllowFailure: true, Attempts: spec.AttemptsSpec{Max: 1}}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected provider retry exhaustion to fail")
+	}
+	node := state.Nodes["work"]
+	if calls != 3 || state.Status != store.RunFailed || node.Status != store.NodeFailed || node.ErrorCode != string(execution.KindProviderUnavailable) || node.Attempts != 1 || node.ProviderAttempts != 3 {
+		t.Fatalf("provider exhaustion state = run=%s node=%+v calls=%d", state.Status, node, calls)
+	}
+}
+
+func TestProviderRetryLeavesParallelSiblingCompleted(t *testing.T) {
+	dir := t.TempDir()
+	var mu sync.Mutex
+	requests := map[string][]assistant.Request{}
+	adapter := adapterFunc(func(_ context.Context, req assistant.Request) (assistant.Result, error) {
+		mu.Lock()
+		requests[req.NodeID] = append(requests[req.NodeID], req)
+		count := len(requests[req.NodeID])
+		mu.Unlock()
+		if req.NodeID == "retry" && count == 1 {
+			return assistant.Result{ExitCode: 1, SessionID: "retry-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: time.Millisecond, Err: errors.New("unavailable")}
+		}
+		return assistant.Result{Output: req.NodeID, ExitCode: 0, SessionID: req.NodeID + "-session"}, nil
+	})
+	wf := &spec.Workflow{Name: "provider-parallel", Nodes: []spec.Node{{ID: "retry", Prompt: "retry", Provider: "demo", Model: "m"}, {ID: "sibling", Prompt: "sibling", Provider: "demo", Model: "m"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Nodes["sibling"].Status != store.NodeCompleted || state.Nodes["retry"].Status != store.NodeCompleted || state.Nodes["retry"].ProviderAttempts != 2 {
+		t.Fatalf("parallel provider state = retry=%+v sibling=%+v", state.Nodes["retry"], state.Nodes["sibling"])
+	}
+	mu.Lock()
+	retryRequests := append([]assistant.Request(nil), requests["retry"]...)
+	mu.Unlock()
+	if len(retryRequests) != 2 || retryRequests[1].SessionMode != "resume" || retryRequests[1].SessionID != "retry-session" {
+		t.Fatalf("retry requests = %+v", retryRequests)
+	}
+}
+
+func TestProviderRetryCancellationWinsDuringBackoff(t *testing.T) {
+	dir := t.TempDir()
+	started := make(chan struct{}, 1)
+	calls := 0
+	adapter := adapterFunc(func(_ context.Context, _ assistant.Request) (assistant.Result, error) {
+		calls++
+		started <- struct{}{}
+		return assistant.Result{ExitCode: 1, SessionID: "provider-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: time.Second, Err: errors.New("unavailable")}
+	})
+	wf := &spec.Workflow{Name: "provider-cancel", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	result := make(chan error, 1)
+	go func() {
+		_, err := r.StartWithOptions(context.Background(), "", StartOptions{RunID: "provider-cancel"})
+		result <- err
+	}()
+	<-started
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		state, err := r.store.Load("provider-cancel")
+		if err == nil && state.Nodes["work"].Retry != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := r.store.(store.FS).RequestCancel("provider-cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation result = %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("provider retry called adapter %d times after cancellation", calls)
+	}
 }
 
 func TestApprovalResume(t *testing.T) {

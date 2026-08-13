@@ -82,10 +82,39 @@ func TestRunStateSchemaContainsExecutionIdentity(t *testing.T) {
 	}
 	defs := schema["$defs"].(map[string]any)
 	node := defs["nodeState"].(map[string]any)["properties"].(map[string]any)
-	for _, field := range []string{"assistant", "assistant_version", "requested_model", "resolved_model", "executions", "path", "diagnostic", "retry", "sandbox"} {
+	for _, field := range []string{"assistant", "assistant_version", "requested_model", "resolved_model", "executions", "path", "diagnostic", "retry", "sandbox", "provider_attempts"} {
 		if _, ok := node[field]; !ok {
 			t.Fatalf("run-state schema misses %s", field)
 		}
+	}
+	retry := defs["retryState"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"scope", "provider_attempt"} {
+		if _, ok := retry[field]; !ok {
+			t.Fatalf("run-state retry schema misses %s", field)
+		}
+	}
+	execution := defs["executionState"].(map[string]any)["properties"].(map[string]any)
+	if _, ok := execution["provider_attempt"]; !ok {
+		t.Fatal("run-state execution schema misses provider_attempt")
+	}
+}
+
+func TestProviderRetryStateRoundTrip(t *testing.T) {
+	want := NodeState{
+		ProviderAttempts: 2,
+		Retry:            &RetryState{Scope: "provider", ProviderAttempt: 2, NextAttempt: 1, NotBefore: time.Now().UTC(), Delay: "2s"},
+		Executions:       []ExecutionState{{Attempt: 1, ProviderAttempt: 2, Status: NodeErrored}},
+	}
+	encoded, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got NodeState
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ProviderAttempts != 2 || got.Retry == nil || got.Retry.Scope != "provider" || got.Retry.ProviderAttempt != 2 || len(got.Executions) != 1 || got.Executions[0].ProviderAttempt != 2 {
+		t.Fatalf("provider retry state round-trip = %+v", got)
 	}
 }
 

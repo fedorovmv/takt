@@ -16,7 +16,10 @@ type parallelNodeResult struct {
 	err    error
 }
 
-func parallelEligible(node spec.Node) bool {
+func parallelEligible(node spec.Node, state *store.NodeState) bool {
+	if state != nil && (retryScope(state.Retry) == "provider" || state.ProviderAttempts > 0) {
+		return false
+	}
 	if node.Executor == "external" {
 		return false
 	}
@@ -91,6 +94,18 @@ func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nod
 		applyExecResult(ns, item.result)
 		mergeRunArtifacts(state, item.result.Artifacts)
 		accumulateUsage(ns, item.result.Usage)
+		if isProviderRetry(item.err) && item.result.ProviderAttempt > 0 {
+			if item.result.ProviderAttempt < providerRetryMax {
+				if err := r.scheduleProviderRetry(state, node.ID, item.result, item.err); err != nil {
+					return err
+				}
+				continue
+			}
+			ns.Retry = nil
+			if err := r.commit(state, "provider.retry.exhausted", node.ID, map[string]any{"provider_attempt": item.result.ProviderAttempt, "parallel": true}); err != nil {
+				return err
+			}
+		}
 		if item.err != nil && node.AllowFailure && execution.IsExit(item.err) {
 			item.err = nil
 			if err := r.commit(state, "node.failure_allowed", node.ID, map[string]any{"exit_code": item.result.ExitCode}); err != nil {

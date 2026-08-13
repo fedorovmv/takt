@@ -97,7 +97,12 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 		sessionMode = "fresh"
 	}
 	sessionID := nodeState.SessionID
-	if nodeState.Attempts > 1 {
+	if retryScope(nodeState.Retry) == "provider" {
+		if sessionID == "" {
+			return resolvedAssistantNode{}, &execution.Error{Kind: execution.KindProtocol, Op: "resolve provider retry session", Err: fmt.Errorf("provider retry has no session id")}
+		}
+		sessionMode = "resume"
+	} else if nodeState.Attempts > 1 {
 		// Retry policy owns continuity within an iteration. A retry with a
 		// retained session resumes it; a retry whose session was cleared starts
 		// fresh instead of falling back to context: shared.
