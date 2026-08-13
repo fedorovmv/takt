@@ -896,9 +896,10 @@ Each repeat persists `cases/<case>/repeat-<NNN>/run.json`,
 `report.json` remains the canonical `takt-evaluation/v1alpha1` output. Validator
 stdout alone is decoded as `takt-validation/v1alpha1`; agent text is not proof.
 Gate failure returns non-zero only after report persistence.
-`--trace` writes elapsed suite stages and durable Run/node events to stderr while
-stdout remains the final JSON result. While a node has no new durable event, a
-periodic `node.running` line reports its current persisted status.
+`--trace` writes elapsed suite stages, durable root Run/node events and terminal
+child Run/node statuses to stderr while stdout remains the final JSON result.
+While a root node has no new durable event, a periodic `node.running` line
+reports its current persisted status.
 
 `takt eval flow init <workflow-selector> --output <directory>` creates only a
 suite skeleton and one example case. It never creates a validator or executable

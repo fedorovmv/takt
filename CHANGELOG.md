@@ -5,7 +5,8 @@
 - Pi RPC больше не сохраняет кумулятивные `message_update`, transient tool
   updates и fire-and-forget extension UI в durable stdout; одиночная oversized
   запись всё ещё fail-closed. `takt eval flow --trace` показывает suite stages,
-  durable Run/node events и текущий running node в stderr без загрязнения JSON.
+  durable root events, terminal child statuses и текущий running node в stderr
+  без загрязнения JSON.
 
 - Исправлены контракты production-flow evaluation: fingerprint повторов больше не
   зависит от абсолютного пути remote, `require_push` проверяет текущую ветку,

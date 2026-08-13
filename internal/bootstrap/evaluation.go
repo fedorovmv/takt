@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"takt/internal/application"
@@ -85,7 +86,7 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 		state, err := poll()
 		if err != nil {
 			if ctx.Err() != nil {
-				return e.cancelFlowCase(ctx, app, runID)
+				return e.cancelFlowCase(ctx, app, runID, trace)
 			}
 			return evaluation.FlowCaseRunResult{}, err
 		}
@@ -93,7 +94,7 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 			events, err := app.Core.RunService.Events(ctx, runID, revision, 200, 0)
 			if err != nil {
 				if ctx.Err() != nil {
-					return e.cancelFlowCase(ctx, app, runID)
+					return e.cancelFlowCase(ctx, app, runID, trace)
 				}
 				return evaluation.FlowCaseRunResult{}, err
 			}
@@ -109,10 +110,10 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 		switch state.Status {
 		case store.RunWaiting:
 			if ctx.Err() != nil {
-				return e.cancelFlowCase(ctx, app, runID)
+				return e.cancelFlowCase(ctx, app, runID, trace)
 			}
 			if answer == "" {
-				return e.flowSnapshot(app, runID, state, nil)
+				return e.flowSnapshot(app, runID, state, nil, trace)
 			}
 			if state.Waiting == nil {
 				return evaluation.FlowCaseRunResult{}, fmt.Errorf("waiting run %s has no waiting state", runID)
@@ -124,16 +125,16 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 			}
 			if _, err := app.Core.RunService.Answer(ctx, runID, state.Waiting.NodeID, answer); err != nil {
 				if ctx.Err() != nil {
-					return e.cancelFlowCase(ctx, app, runID)
+					return e.cancelFlowCase(ctx, app, runID, trace)
 				}
 				return evaluation.FlowCaseRunResult{}, err
 			}
 		case store.RunCompleted, store.RunFailed, store.RunCancelled, store.RunAbandoned, store.RunPausing, store.RunPaused:
-			return e.flowSnapshot(app, runID, state, nil)
+			return e.flowSnapshot(app, runID, state, nil, trace)
 		}
 		select {
 		case <-ctx.Done():
-			return e.cancelFlowCase(ctx, app, runID)
+			return e.cancelFlowCase(ctx, app, runID, trace)
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
@@ -171,22 +172,48 @@ func traceEvaluation(trace func(string), format string, args ...any) {
 	}
 }
 
-func (e evaluationEngine) cancelFlowCase(ctx context.Context, app *App, runID string) (evaluation.FlowCaseRunResult, error) {
+func traceFlowChildSnapshot(trace func(string), states []*store.RunState) {
+	if trace == nil || len(states) < 2 {
+		return
+	}
+	children := append([]*store.RunState(nil), states[1:]...)
+	sort.Slice(children, func(i, j int) bool { return children[i].ID < children[j].ID })
+	for _, state := range children {
+		if state == nil {
+			continue
+		}
+		traceEvaluation(trace, "child_run.%s run=%s parent=%s code=%s", state.Status, state.ID, state.ParentRunID, state.ErrorCode)
+		ids := make([]string, 0, len(state.Nodes))
+		for id := range state.Nodes {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			node := state.Nodes[id]
+			if node == nil || node.Status == store.NodeCompleted || node.Status == store.NodePending || node.Status == store.NodeSkipped {
+				continue
+			}
+			traceEvaluation(trace, "child_node.%s run=%s node=%s code=%s", node.Status, state.ID, id, node.ErrorCode)
+		}
+	}
+}
+
+func (e evaluationEngine) cancelFlowCase(ctx context.Context, app *App, runID string, trace func(string)) (evaluation.FlowCaseRunResult, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if state, err := app.Core.RunService.GetRun(runID); err == nil && (terminalFlowRun(state.Status) || state.Status == store.RunPausing || state.Status == store.RunPaused) {
-		return e.flowSnapshot(app, runID, state, ctx.Err())
+		return e.flowSnapshot(app, runID, state, ctx.Err(), trace)
 	}
 	if _, err := app.Core.RunService.Cancel(cleanupCtx, runID, "flow evaluation context cancelled"); err != nil {
 		if state, loadErr := app.Core.RunService.GetRun(runID); loadErr == nil && (terminalFlowRun(state.Status) || state.Status == store.RunPausing || state.Status == store.RunPaused) {
-			return e.flowSnapshot(app, runID, state, ctx.Err())
+			return e.flowSnapshot(app, runID, state, ctx.Err(), trace)
 		}
 		return evaluation.FlowCaseRunResult{}, err
 	}
 	for cleanupCtx.Err() == nil {
 		state, err := app.Core.RunService.GetRun(runID)
 		if err == nil && (terminalFlowRun(state.Status) || state.Status == store.RunPausing || state.Status == store.RunPaused) {
-			return e.flowSnapshot(app, runID, state, ctx.Err())
+			return e.flowSnapshot(app, runID, state, ctx.Err(), trace)
 		}
 		select {
 		case <-cleanupCtx.Done():
@@ -200,11 +227,12 @@ func terminalFlowRun(status string) bool {
 	return status == store.RunCompleted || status == store.RunFailed || status == store.RunCancelled || status == store.RunAbandoned
 }
 
-func (e evaluationEngine) flowSnapshot(app *App, runID string, observed *store.RunState, callbackErr error) (evaluation.FlowCaseRunResult, error) {
+func (e evaluationEngine) flowSnapshot(app *App, runID string, observed *store.RunState, callbackErr error, trace func(string)) (evaluation.FlowCaseRunResult, error) {
 	snapshot, err := app.Core.RunService.EvaluationSnapshot(runID)
 	if err != nil {
 		return evaluation.FlowCaseRunResult{}, err
 	}
+	traceFlowChildSnapshot(trace, snapshot.States)
 	result := evaluation.FlowCaseRunResult{States: snapshot.States, Events: snapshot.Events, Artifacts: snapshot.Artifacts, ArtifactDirs: snapshot.ArtifactDirs, ContextCancelled: callbackErr != nil}
 	result.Cleanup = func(ctx context.Context) (*store.RunState, error) {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)

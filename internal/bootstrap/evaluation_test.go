@@ -53,6 +53,26 @@ func TestTraceFlowRunningNodesReportsCurrentDurableStatus(t *testing.T) {
 	}
 }
 
+func TestTraceFlowChildFailuresFromSnapshot(t *testing.T) {
+	states := []*store.RunState{
+		{ID: "root", Status: store.RunFailed},
+		{ID: "child-b", ParentRunID: "root", Status: store.RunCancelled, ErrorCode: "cancelled", Nodes: map[string]*store.NodeState{"review": {Status: store.NodeCancelled, ErrorCode: "cancelled"}}},
+		{ID: "child-a", ParentRunID: "root", Status: store.RunFailed, ErrorCode: "protocol", Nodes: map[string]*store.NodeState{"review": {Status: store.NodeErrored, ErrorCode: "protocol"}}},
+	}
+	var trace []string
+	traceFlowChildSnapshot(func(line string) { trace = append(trace, line) }, states)
+	joined := strings.Join(trace, "\n")
+	for _, want := range []string{
+		"child_run.failed run=child-a parent=root code=protocol",
+		"child_node.errored run=child-a node=review code=protocol",
+		"child_run.cancelled run=child-b parent=root code=cancelled",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("trace missing %q:\n%s", want, joined)
+		}
+	}
+}
+
 func TestFlowEvaluationCaseReturnsDetachedSnapshotAndDefersCleanup(t *testing.T) {
 	workspace := t.TempDir()
 	config := filepath.Join(workspace, "config.yaml")
