@@ -208,6 +208,60 @@ func TestProviderUnavailableFlowRecordIsExcludedFromQualityRates(t *testing.T) {
 	}
 }
 
+func TestRecoveredProviderRetryUsesTerminalExecutionForClassification(t *testing.T) {
+	record := RunRecord{
+		Mode: "flow", Status: store.RunCompleted,
+		Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: true}},
+		Nodes: map[string]NodeRecord{
+			"work": {
+				Status: string(store.NodeCompleted),
+				Executions: []ExecutionRecord{
+					{Status: string(store.NodeFailed), ErrorCode: "provider_unavailable"},
+					{Status: string(store.NodeCompleted)},
+				},
+			},
+		},
+	}
+	ClassifyFlowRecord(&record)
+	if record.Outcome != "true_accept" || record.RunPassed == nil || !*record.RunPassed {
+		t.Fatalf("recovered record classified as %+v", record)
+	}
+	staleRoot := record
+	staleRoot.ErrorCode = "provider_unavailable"
+	ClassifyFlowRecord(&staleRoot)
+	if staleRoot.Outcome != "true_accept" {
+		t.Fatalf("stale root evidence changed completed outcome: %+v", staleRoot)
+	}
+	completedExecution := RunRecord{Status: store.RunCompleted, Nodes: map[string]NodeRecord{
+		"work": {Status: string(store.NodeCompleted), Executions: []ExecutionRecord{{Status: string(store.NodeCompleted), ErrorCode: "provider_unavailable", Diagnostic: &store.DiagnosticState{Kind: "provider_unavailable"}}}},
+	}}
+	ClassifyFlowRecord(&completedExecution)
+	if completedExecution.Outcome != "" {
+		t.Fatalf("completed execution evidence was treated as outage: %+v", completedExecution)
+	}
+}
+
+func TestExhaustedProviderRetryUsesTerminalStructuredEvidence(t *testing.T) {
+	for _, record := range []RunRecord{
+		{Status: store.RunFailed, Nodes: map[string]NodeRecord{
+			"work": {Status: string(store.NodeFailed), Executions: []ExecutionRecord{{Status: string(store.NodeFailed), ErrorCode: "provider_unavailable"}, {Status: string(store.NodeFailed), Diagnostic: &store.DiagnosticState{Kind: "provider_unavailable"}}}},
+		}},
+		{Status: store.RunFailed, Nodes: map[string]NodeRecord{
+			"work": {Status: string(store.NodeFailed), Diagnostic: &store.DiagnosticState{Code: "provider_unavailable"}},
+		}},
+	} {
+		ClassifyFlowRecord(&record)
+		if record.Outcome != "infrastructure_error" || record.RunPassed != nil {
+			t.Fatalf("exhausted record classified as %+v", record)
+		}
+	}
+	messageOnly := RunRecord{Status: store.RunFailed, Error: "provider_unavailable"}
+	ClassifyFlowRecord(&messageOnly)
+	if messageOnly.Outcome != "" {
+		t.Fatalf("human-readable message was treated as evidence: %+v", messageOnly)
+	}
+}
+
 func TestFinishFlowReportExcludesProviderUnavailableFromQualityAggregates(t *testing.T) {
 	score := 80.0
 	timeToValid := int64(10)

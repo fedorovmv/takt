@@ -66,20 +66,36 @@ func ClassifyFlowRecord(record *RunRecord) {
 }
 
 func isProviderUnavailableRecord(record RunRecord) bool {
-	if providerUnavailable(record.ErrorCode, nil) {
+	if record.Status == store.RunFailed && providerUnavailable(record.ErrorCode, nil) {
 		return true
 	}
 	for _, node := range record.Nodes {
+		// Node-level fields describe the terminal node outcome. Historical
+		// execution records are evidence, but an earlier provider outage must
+		// not relabel a node that later completed successfully.
+		if !nodeProviderFailureStatus(node.Status) {
+			continue
+		}
 		if providerUnavailable(node.ErrorCode, node.Diagnostic) {
 			return true
 		}
-		for _, execution := range node.Executions {
-			if providerUnavailable(execution.ErrorCode, execution.Diagnostic) {
+		if len(node.Executions) > 0 {
+			execution := node.Executions[len(node.Executions)-1]
+			if nodeProviderFailureStatus(execution.Status) && providerUnavailable(execution.ErrorCode, execution.Diagnostic) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func nodeProviderFailureStatus(status string) bool {
+	switch status {
+	case string(store.NodeFailed), string(store.NodeErrored), string(store.NodeBlocked):
+		return true
+	default:
+		return false
+	}
 }
 
 func providerUnavailable(errorCode string, diagnostic *store.DiagnosticState) bool {
