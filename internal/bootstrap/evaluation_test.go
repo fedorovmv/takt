@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +17,120 @@ import (
 	"takt/internal/store"
 	"takt/internal/tooling/evaluation"
 )
+
+func TestFlowProviderUnavailableRecoversWithSamePiSession(t *testing.T) {
+	root, suitePath := writeProviderUnavailableFlowSuite(t, map[string]string{"case": "ordinary input"})
+	prefix := filepath.Join(t.TempDir(), "provider")
+	writeProviderUnavailableFlowConfig(t, root, "provider-sequence", "--fake-state-prefix", prefix, "--fake-failures", "2")
+
+	report, err := evaluation.RunFlow(context.Background(), evaluation.FlowRunOptions{
+		SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root, HostPATH: os.Getenv("PATH"),
+		CaseRunner: (evaluationEngine{}).runFlowCase,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Runs) != 1 || report.Runs[0].Validation == nil || report.Runs[0].Validation.Result == nil || !report.Runs[0].Validation.Result.Valid {
+		t.Fatalf("report=%+v", report)
+	}
+	for _, node := range report.Runs[0].Nodes {
+		if len(node.Executions) != 3 {
+			continue
+		}
+		for _, execution := range node.Executions {
+			if execution.SessionID != "fake-pi-session-1" {
+				t.Fatalf("session was not preserved: %+v", node.Executions)
+			}
+		}
+		return
+	}
+	t.Fatalf("executions=%+v", report.Runs[0].Nodes)
+}
+
+func TestFlowProviderUnavailableSuiteContinuesToFollowingCase(t *testing.T) {
+	root, suitePath := writeProviderUnavailableFlowSuite(t, map[string]string{
+		"a-outage": "TAKT_FAKE_PROVIDER_EXHAUSTED",
+		"b-normal": "ordinary input",
+	})
+	writeProviderUnavailableFlowConfig(t, root, "provider-by-prompt")
+
+	report, err := evaluation.RunFlow(context.Background(), evaluation.FlowRunOptions{
+		SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root, HostPATH: os.Getenv("PATH"),
+		CaseRunner: (evaluationEngine{}).runFlowCase,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Runs) != 2 || report.Runs[0].Outcome != "infrastructure_error" || report.Runs[1].Outcome != "true_accept" {
+		t.Fatalf("runs=%+v", report.Runs)
+	}
+	flow := report.Summary.Flow
+	if flow == nil || flow.InfrastructureErrors != 1 || flow.EvaluatedRuns != 1 || report.Summary.QualityRuns != 1 || flow.ValidRate == nil || *flow.ValidRate != 1 || flow.FalseAcceptRate == nil || *flow.FalseAcceptRate != 0 || flow.FalseRejectRate == nil || *flow.FalseRejectRate != 0 {
+		t.Fatalf("summary=%+v", report.Summary)
+	}
+}
+
+func writeProviderUnavailableFlowSuite(t *testing.T, inputs map[string]string) (string, string) {
+	t.Helper()
+	root := t.TempDir()
+	for id, input := range inputs {
+		caseRoot := filepath.Join(root, "cases", id)
+		if err := os.MkdirAll(filepath.Join(caseRoot, "workspace"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(caseRoot, "workspace", "main.txt"), []byte(id), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(caseRoot, "input.md"), []byte(input), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(caseRoot, "expected.yaml"), []byte("oracle: {expected: true}\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "flow.yaml"), []byte("name: provider-unavailable\nprovider: pi\nmodel: fake\nnodes:\n  - id: implement\n    prompt: $ARGUMENTS\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "validator"), []byte("#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"protocol_version\":\"takt-validation/v1alpha1\",\"type\":\"validation_result\",\"valid\":true}'\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	suitePath := filepath.Join(root, "suite.yaml")
+	flowCompletion := "1"
+	if len(inputs) > 1 {
+		flowCompletion = "0.5"
+	}
+	suite := "version: takt-flow-evaluation/v1alpha1\nworkflow: flow.yaml\nconfig: config.yaml\ncases: {directory: cases}\nvalidator:\n  id: provider-test\n  version: '1'\n  command: [./validator]\n  path: validator\n  timeout: 10s\n  max_output_bytes: 4096\ngates:\n  flow_completion_rate: {min: " + flowCompletion + "}\n"
+	if err := os.WriteFile(suitePath, []byte(suite), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return root, suitePath
+}
+
+func writeProviderUnavailableFlowConfig(t *testing.T, root, fakeCase string, args ...string) {
+	t.Helper()
+	binary := filepath.Join(t.TempDir(), "takt-fake-pi")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	projectRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := exec.Command("go", "build", "-o", binary, "./internal/testsupport/cmd/takt-fake-pi")
+	build.Dir = projectRoot
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build fake Pi: %v: %s", err, output)
+	}
+	values := append([]string{"--fake-case", fakeCase}, args...)
+	quoted := make([]string, len(values))
+	for i, value := range values {
+		quoted[i] = `"` + strings.ReplaceAll(value, `"`, `\\"`) + `"`
+	}
+	config := "apiVersion: takt/v1alpha1\nkind: Config\ndefault_assistant: pi\nmodels:\n  fake: {provider: openai, id: fake-model}\nassistants:\n  pi:\n    type: pi\n    binary: " + strconv.Quote(binary) + "\n    args: [" + strings.Join(quoted, ", ") + "]\n    project_trust: approve\n"
+	if err := os.WriteFile(filepath.Join(root, "config.yaml"), []byte(config), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestFlowEvaluationTraceReportsDurableEvents(t *testing.T) {
 	workspace := t.TempDir()

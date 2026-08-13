@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,8 @@ type options struct {
 	session      string
 	sessionDir   string
 	projectTrust string
+	statePrefix  string
+	failures     int
 }
 
 type fakeState struct {
@@ -146,6 +149,12 @@ func main() {
 
 func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 	caseName := opts.caseName
+	if caseName == "provider-sequence" && !providerSequenceFailure(opts) {
+		caseName = "success"
+	}
+	if caseName == "provider-by-prompt" && !strings.Contains(state.promptValue(), "TAKT_FAKE_PROVIDER_EXHAUSTED") {
+		caseName = "success"
+	}
 	switch caseName {
 	case "timeout", "cancel":
 		for {
@@ -218,11 +227,14 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 		writeJSON(writer, map[string]any{"type": "message_end", "message": message})
 		writeJSON(writer, map[string]any{"type": "agent_end", "messages": []any{message}, "willRetry": false})
 		writeJSON(writer, map[string]any{"type": "agent_settled"})
-	case "provider-503", "provider-429", "provider-connection-reset":
+	case "provider-503", "provider-429", "provider-connection-reset", "provider-sequence", "provider-by-prompt", "provider-exhausted":
 		failure := map[string]string{
 			"provider-503":              "provider returned HTTP 503 service unavailable",
 			"provider-429":              "provider returned HTTP 429 too many requests",
 			"provider-connection-reset": "provider connection reset",
+			"provider-sequence":         "provider returned HTTP 503 service unavailable",
+			"provider-by-prompt":        "provider returned HTTP 503 service unavailable",
+			"provider-exhausted":        "provider returned HTTP 503 service unavailable",
 		}[caseName]
 		message := assistantMessage(opts, "", "error", failure)
 		state.finish("", []any{message})
@@ -262,6 +274,17 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 	default:
 		emitSuccess(writer, state, opts)
 	}
+}
+
+func providerSequenceFailure(opts options) bool {
+	for i := 1; i <= opts.failures; i++ {
+		file, err := os.OpenFile(opts.statePrefix+"."+strconv.Itoa(i), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err == nil {
+			_ = file.Close()
+			return true
+		}
+	}
+	return false
 }
 
 func assistantMessage(opts options, text, stopReason, errorMessage string) map[string]any {
@@ -399,6 +422,14 @@ func parseArgs(args []string) (options, error) {
 		case "--fake-case":
 			value, err = next()
 			opts.caseName = value
+		case "--fake-state-prefix":
+			value, err = next()
+			opts.statePrefix = value
+		case "--fake-failures":
+			value, err = next()
+			if err == nil {
+				opts.failures, err = strconv.Atoi(value)
+			}
 		case "--fake-delay":
 			value, err = next()
 			if err == nil {

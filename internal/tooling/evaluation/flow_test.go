@@ -69,6 +69,41 @@ func TestRunFlowTracesCaseStages(t *testing.T) {
 	}
 }
 
+func TestRunFlowProviderUnavailableSuiteContinuesAndUsesQualityDenominator(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "a-outage", "b-normal")
+	suite, err := os.ReadFile(suitePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(suitePath, append(suite, []byte("gates:\n  valid_rate: {min: 1}\n  flow_completion_rate: {min: 0.5}\n")...), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	var calls []string
+	report, err := RunFlow(context.Background(), FlowRunOptions{
+		SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root,
+		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			caseID := filepath.Base(filepath.Dir(filepath.Dir(request.Workspace)))
+			calls = append(calls, caseID)
+			state := &store.RunState{ID: caseID, Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}
+			if caseID == "a-outage" {
+				state.Status, state.ErrorCode = store.RunFailed, "provider_unavailable"
+			}
+			return FlowCaseRunResult{States: []*store.RunState{state}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(calls, []string{"a-outage", "b-normal"}) || len(report.Runs) != 2 || report.Runs[0].Outcome != "infrastructure_error" || report.Runs[1].Outcome != "true_accept" {
+		t.Fatalf("calls=%v runs=%+v", calls, report.Runs)
+	}
+	flow := report.Summary.Flow
+	if flow == nil || flow.InfrastructureErrors != 1 || flow.EvaluatedRuns != 1 || report.Summary.QualityRuns != 1 || flow.ValidRate == nil || *flow.ValidRate != 1 {
+		t.Fatalf("summary=%+v", report.Summary)
+	}
+}
+
 func TestRunFlowDefaultsAssistantIdleTimeout(t *testing.T) {
 	root, suitePath := writeFlowRunSuite(t, "case")
 	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
