@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -237,6 +238,49 @@ func TestProviderRetryExhaustionIgnoresAllowFailure(t *testing.T) {
 	node := state.Nodes["work"]
 	if calls != 3 || state.Status != store.RunFailed || node.Status != store.NodeFailed || node.ErrorCode != string(execution.KindProviderUnavailable) || node.Attempts != 1 || node.ProviderAttempts != 3 {
 		t.Fatalf("provider exhaustion state = run=%s node=%+v calls=%d", state.Status, node, calls)
+	}
+}
+
+func TestProviderRetryEmitsDurableLifecycleEvents(t *testing.T) {
+	dir := t.TempDir()
+	adapter := adapterFunc(func(_ context.Context, _ assistant.Request) (assistant.Result, error) {
+		return assistant.Result{ExitCode: 1, SessionID: "provider-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: time.Millisecond, Err: errors.New("unavailable")}
+	})
+	wf := &spec.Workflow{Name: "provider-events", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected provider exhaustion")
+	}
+	events, readErr := r.store.(store.FS).ReadEvents(state.ID, 0, 100)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	var lifecycle []store.Event
+	for _, event := range events {
+		if strings.HasPrefix(event.Type, "provider.retry.") {
+			lifecycle = append(lifecycle, event)
+		}
+	}
+	if got, want := []string{lifecycle[0].Type, lifecycle[1].Type, lifecycle[2].Type, lifecycle[3].Type, lifecycle[4].Type}, []string{"provider.retry.scheduled", "provider.retry.ready", "provider.retry.scheduled", "provider.retry.ready", "provider.retry.exhausted"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("lifecycle types=%v want=%v", got, want)
+	}
+	for index, wantAttempt := range []int{1, 2} {
+		event := lifecycle[index*2]
+		if event.Data["scope"] != "provider" || event.Data["provider_attempt"] != float64(wantAttempt) || event.Data["max_provider_attempts"] != float64(3) || event.Data["kind"] != string(execution.KindProviderUnavailable) || event.Data["delay"] == "" || event.Data["not_before"] == nil || event.Data["fingerprint"] == "" {
+			t.Fatalf("scheduled event %d=%+v", index, event.Data)
+		}
+	}
+	for index, wantAttempt := range []int{2, 3} {
+		event := lifecycle[index*2+1]
+		if event.Data["scope"] != "provider" || event.Data["provider_attempt"] != float64(wantAttempt) || event.Data["max_provider_attempts"] != float64(3) {
+			t.Fatalf("ready event %d=%+v", index, event.Data)
+		}
+	}
+	exhausted := lifecycle[len(lifecycle)-1]
+	if exhausted.Data["scope"] != "provider" || exhausted.Data["provider_attempts"] != float64(3) || exhausted.Data["max_provider_attempts"] != float64(3) || exhausted.Data["kind"] != string(execution.KindProviderUnavailable) || exhausted.Data["fingerprint"] == "" {
+		t.Fatalf("exhausted event=%+v", exhausted.Data)
 	}
 }
 

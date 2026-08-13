@@ -263,7 +263,7 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 				return evaluation.FlowCaseRunResult{}, err
 			}
 			for _, event := range events.Events {
-				traceEvaluationEvent(trace, event)
+				traceEvaluationEvent(trace, runID, event)
 			}
 			revision = events.NextRevision
 			if lastRunningTrace.IsZero() || time.Since(lastRunningTrace) >= 30*time.Second {
@@ -346,13 +346,31 @@ func traceFlowActivity(trace func(string), record flowActivityRecord, now time.T
 	traceEvaluation(trace, "node.active run=%s node=%s attempt=%d idle=%s idle_limit=%s last_activity=%s awaiting=%s", record.RunID, record.NodeID, record.Attempt, idle, record.IdleTimeout, record.LastActivity, awaiting)
 }
 
-func traceEvaluationEvent(trace func(string), event store.Event) {
+func traceEvaluationEvent(trace func(string), runID string, event store.Event) {
 	if trace == nil {
 		return
 	}
-	line := event.Type
+	line := event.Type + " run=" + runID
 	if event.NodeID != "" {
 		line += " node=" + event.NodeID
+	}
+	if providerAttempt, ok := event.Data["provider_attempt"]; ok {
+		if maxAttempts, exists := event.Data["max_provider_attempts"]; exists {
+			line += fmt.Sprintf(" provider_attempt=%v/%v", providerAttempt, maxAttempts)
+		} else {
+			line += fmt.Sprintf(" provider_attempt=%v", providerAttempt)
+		}
+	}
+	if providerAttempts, ok := event.Data["provider_attempts"]; ok {
+		line += fmt.Sprintf(" provider_attempts=%v", providerAttempts)
+	}
+	if maxAttempts, ok := event.Data["max_provider_attempts"]; ok && event.Data["provider_attempt"] == nil {
+		line += fmt.Sprintf(" max_provider_attempts=%v", maxAttempts)
+	}
+	for _, field := range []string{"delay", "not_before", "kind", "fingerprint"} {
+		if value, ok := event.Data[field]; ok {
+			line += fmt.Sprintf(" %s=%v", field, value)
+		}
 	}
 	if attempt, ok := event.Data["attempt"]; ok {
 		line += fmt.Sprintf(" attempt=%v", attempt)

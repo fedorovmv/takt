@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1084,6 +1085,18 @@ func TestApplyRuntimeMetricsUsesDurableEventTimesAndImmediateRetryFingerprint(t 
 	}
 	if record.RetryScheduled != 1 || len(record.RetryFingerprints) != 1 || record.RetryFingerprints[0] != strings.Repeat("a", 64) {
 		t.Fatalf("retry metrics = %+v", record)
+	}
+}
+
+func TestProviderRetryMetricsRetainDiagnosticsWithoutWorkflowAttemptInflation(t *testing.T) {
+	state := &store.RunState{ID: "provider-metrics", Nodes: map[string]*store.NodeState{"implement": {Attempts: 1, ProviderAttempts: 3}}}
+	record := RunRecord{Attempts: 1}
+	applyRuntimeMetricsFromEvents(&record, state, []store.Event{{Type: "provider.retry.scheduled", NodeID: "implement", Data: map[string]any{"fingerprint": "provider-fingerprint"}}}, "")
+	if record.RetryScheduled != 1 || !reflect.DeepEqual(record.RetryFingerprints, []string{"provider-fingerprint"}) {
+		t.Fatalf("provider retry diagnostics=%+v", record)
+	}
+	if record.Attempts != 1 || record.AttemptsToValid != nil {
+		t.Fatalf("provider retries inflated workflow metrics=%+v", record)
 	}
 }
 

@@ -1325,6 +1325,7 @@ func (r *Runner) commit(state *store.RunState, eventType, nodeID string, data ma
 			data["node_path"] = path
 		}
 	}
+	providerRetryEventData(state, eventType, nodeID, data)
 	if r.redactor == nil {
 		return fmt.Errorf("runtime redactor dependency is required")
 	}
@@ -1340,6 +1341,42 @@ func (r *Runner) commit(state *store.RunState, eventType, nodeID string, data ma
 	state.Revision = persisted.Revision
 	state.UpdatedAt = persisted.UpdatedAt
 	return nil
+}
+
+func providerRetryEventData(state *store.RunState, eventType, nodeID string, data map[string]any) {
+	if state == nil || data == nil || nodeID == "" {
+		return
+	}
+	node := state.Nodes[nodeID]
+	if node == nil {
+		return
+	}
+	fingerprint := ""
+	if node.Diagnostic != nil {
+		fingerprint = node.Diagnostic.Fingerprint
+	}
+	switch eventType {
+	case "provider.retry.scheduled":
+		if node.Retry != nil && node.Retry.ProviderAttempt > 0 {
+			data["provider_attempt"] = node.Retry.ProviderAttempt - 1
+		}
+		data["scope"] = "provider"
+		data["max_provider_attempts"] = providerRetryMax
+		data["kind"] = string(execution.KindProviderUnavailable)
+		data["fingerprint"] = fingerprint
+	case "provider.retry.ready":
+		data["scope"] = "provider"
+		data["max_provider_attempts"] = providerRetryMax
+	case "provider.retry.exhausted":
+		if attempt, ok := data["provider_attempt"]; ok {
+			data["provider_attempts"] = attempt
+			delete(data, "provider_attempt")
+		}
+		data["scope"] = "provider"
+		data["max_provider_attempts"] = providerRetryMax
+		data["kind"] = string(execution.KindProviderUnavailable)
+		data["fingerprint"] = fingerprint
+	}
 }
 
 func mergeHooks(global, local spec.HookSet) spec.HookSet {
@@ -1569,7 +1606,7 @@ func (r *Runner) awaitRetry(ctx context.Context, state *store.RunState, nodeID s
 		ns.Status = store.NodeRunning
 		state.CurrentNode = nodeID
 		state.CurrentNodes = nil
-		return r.commit(state, "provider.retry.ready", nodeID, map[string]any{"provider_attempt": completed.ProviderAttempt, "delay": completed.Delay, "fingerprint": completed.Fingerprint})
+		return r.commit(state, "provider.retry.ready", nodeID, map[string]any{"provider_attempt": completed.ProviderAttempt})
 	}
 	ns.Retry = nil
 	return r.commit(state, "node.retry.ready", nodeID, map[string]any{"next_attempt": completed.NextAttempt, "delay": completed.Delay, "fingerprint": completed.Fingerprint})

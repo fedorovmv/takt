@@ -29,7 +29,7 @@ func applyRuntimeMetricsFromEvents(record *RunRecord, state *store.RunState, eve
 	var qualityCompletedAt time.Time
 	for _, event := range events {
 		switch event.Type {
-		case "node.retry.scheduled", "node.retry":
+		case "node.retry.scheduled", "node.retry", "provider.retry.scheduled":
 			record.RetryScheduled++
 			if fingerprint, ok := event.Data["fingerprint"].(string); ok && fingerprint != "" {
 				record.RetryFingerprints = append(record.RetryFingerprints, fingerprint)
