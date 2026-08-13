@@ -3,25 +3,28 @@ package execution
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 type Kind string
 
 const (
-	KindExit            Kind = "exit"
-	KindStart           Kind = "start"
-	KindCancelled       Kind = "cancelled"
-	KindTimedOut        Kind = "timed_out"
-	KindProtocol        Kind = "protocol"
-	KindInternal        Kind = "internal"
-	KindExternalUnknown Kind = "external_state_unknown"
+	KindExit                Kind = "exit"
+	KindStart               Kind = "start"
+	KindCancelled           Kind = "cancelled"
+	KindTimedOut            Kind = "timed_out"
+	KindProtocol            Kind = "protocol"
+	KindProviderUnavailable Kind = "provider_unavailable"
+	KindInternal            Kind = "internal"
+	KindExternalUnknown     Kind = "external_state_unknown"
 )
 
 type Error struct {
-	Kind     Kind
-	ExitCode int
-	Op       string
-	Err      error
+	Kind       Kind
+	ExitCode   int
+	Op         string
+	Err        error
+	RetryAfter time.Duration
 }
 
 func (e *Error) Error() string {
