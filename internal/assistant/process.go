@@ -403,8 +403,14 @@ func finishV1Alpha2(ctx context.Context, protocolRequest ProtocolRequest, state 
 			kind = execution.KindTimedOut
 		case "cancelled":
 			kind = execution.KindCancelled
+		case "provider_unavailable":
+			kind = execution.KindProviderUnavailable
 		}
-		return result, &execution.Error{Kind: kind, ExitCode: result.ExitCode, Op: "assistant process v1alpha2", Err: waitErr}
+		executionErr := &execution.Error{Kind: kind, ExitCode: result.ExitCode, Op: "assistant process v1alpha2", Err: waitErr}
+		if state.final.RetryAfterMS != nil {
+			executionErr.RetryAfter = time.Duration(*state.final.RetryAfterMS) * time.Millisecond
+		}
+		return result, executionErr
 	}
 	return result, nil
 }

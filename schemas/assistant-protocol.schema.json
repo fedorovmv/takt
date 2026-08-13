@@ -199,8 +199,13 @@
           "enum": [
             "exit",
             "timed_out",
-            "cancelled"
+            "cancelled",
+            "provider_unavailable"
           ]
+        },
+        "retry_after_ms": {
+          "type": "integer",
+          "minimum": 0
         }
       },
       "allOf": [
@@ -250,6 +255,58 @@
                 "const": "failed"
               }
             }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "failure_kind": {
+                "const": "provider_unavailable"
+              }
+            },
+            "required": [
+              "failure_kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "session"
+            ],
+            "properties": {
+              "protocol_version": {
+                "const": "takt-assistant/v1alpha2"
+              },
+              "session": {
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "retry_after_ms"
+            ]
+          },
+          "then": {
+            "properties": {
+              "protocol_version": {
+                "const": "takt-assistant/v1alpha2"
+              },
+              "failure_kind": {
+                "const": "provider_unavailable"
+              }
+            },
+            "required": [
+              "failure_kind"
+            ]
           }
         }
       ]

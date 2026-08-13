@@ -99,6 +99,52 @@ func TestFakeAssistantV1Alpha2UsesPublicConformanceKit(t *testing.T) {
 	}
 }
 
+func TestProcessV1Alpha2MapsProviderUnavailableFixture(t *testing.T) {
+	fixturePath := filepath.Join(moduleRootMust(t), "internal", "assistant", "testdata", "v1alpha2", "provider-unavailable.json")
+	fixture, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	script := filepath.Join(dir, "worker.py")
+	code := `import sys
+sys.stdin.readline()
+sys.stdout.buffer.write(open(sys.argv[1], "rb").read())
+sys.stderr.write("provider diagnostic\\n")
+sys.exit(1)
+`
+	if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: []string{"python3", script, fixturePath}}}
+	result, err := p.Run(context.Background(), Request{Workspace: dir})
+	if execution.KindOf(err) != execution.KindProviderUnavailable {
+		t.Fatalf("kind=%s err=%v", execution.KindOf(err), err)
+	}
+	var classified *execution.Error
+	if !errors.As(err, &classified) || classified.RetryAfter != 2500*time.Millisecond {
+		t.Fatalf("retry delay not preserved: %v", err)
+	}
+	if result.SessionID != "session-provider-1" || result.Resumed {
+		t.Fatalf("session = %#v", result)
+	}
+	if result.Stdout != string(fixture) || result.Stderr != "provider diagnostic\\n" {
+		t.Fatalf("raw output = stdout %q stderr %q", result.Stdout, result.Stderr)
+	}
+	if result.Usage == nil || result.Usage.InputTokens != 100 || result.Usage.OutputTokens != 25 {
+		t.Fatalf("usage = %#v", result.Usage)
+	}
+}
+
+func moduleRootMust(t *testing.T) string {
+	t.Helper()
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
 func TestFakeAssistantContract(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		p := protocolProcess("success")

@@ -1,0 +1,2 @@
+{"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","capabilities":[],"event_types":[]}}
+{"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha2","type":"result","status":"failed","output":"provider temporarily unavailable","session":{"id":"session-provider-1","resumed":false},"exit_code":1,"usage":{"input_tokens":100,"output_tokens":25},"failure_kind":"provider_unavailable","retry_after_ms":2500}}

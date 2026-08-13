@@ -252,6 +252,57 @@ sys.exit(55)
 	}
 }
 
+func TestProcessFailureKindValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		protocol string
+		result   string
+	}{
+		{name: "unknown failure kind", protocol: ProtocolV1Alpha2, result: `{"status":"failed","failure_kind":"other","exit_code":1}`},
+		{name: "negative retry delay", protocol: ProtocolV1Alpha2, result: `{"status":"failed","failure_kind":"provider_unavailable","retry_after_ms":-1,"exit_code":1,"session":{"id":"session-1"}}`},
+		{name: "retry delay on exit", protocol: ProtocolV1Alpha2, result: `{"status":"failed","failure_kind":"exit","retry_after_ms":1,"exit_code":1}`},
+		{name: "provider unavailable missing session", protocol: ProtocolV1Alpha2, result: `{"status":"failed","failure_kind":"provider_unavailable","exit_code":1}`},
+		{name: "v1alpha1 provider failure", protocol: ProtocolV1Alpha1, result: `{"status":"failed","failure_kind":"provider_unavailable","exit_code":1,"session":{"id":"session-1"}}`},
+		{name: "v1alpha1 retry delay", protocol: ProtocolV1Alpha1, result: `{"status":"failed","failure_kind":"exit","retry_after_ms":1,"exit_code":1}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			script := filepath.Join(dir, "worker.py")
+			if tc.protocol == ProtocolV1Alpha2 {
+				result := `{"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha2","type":"result",` + tc.result[1:]
+				code := `import json, sys
+json.loads(sys.stdin.readline())
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","capabilities":[],"event_types":[]}}), flush=True)
+print(sys.argv[1], flush=True)
+sys.exit(1)
+`
+				if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: tc.protocol, Argv: []string{"python3", script, result}}}
+				_, err := p.Run(context.Background(), Request{Workspace: dir})
+				if execution.KindOf(err) != execution.KindProtocol {
+					t.Fatalf("kind=%s err=%v", execution.KindOf(err), err)
+				}
+				return
+			}
+			result := `{"protocol_version":"takt-assistant/v1alpha1","type":"result",` + tc.result[1:]
+			code := `import sys
+print(sys.argv[1])
+sys.exit(1)
+`
+			if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: tc.protocol, Argv: []string{"python3", script, result}}}
+			_, err := p.Run(context.Background(), Request{Workspace: dir})
+			if execution.KindOf(err) != execution.KindProtocol {
+				t.Fatalf("kind=%s err=%v", execution.KindOf(err), err)
+			}
+		})
+	}
+}
+
 func TestProcessV1Alpha2EmptyEventTypesIsDenyAll(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "worker.py")

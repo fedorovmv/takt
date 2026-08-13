@@ -89,6 +89,7 @@ type ProtocolResult struct {
 	Session         *ProtocolSessionResult `json:"session,omitempty"`
 	ExitCode        *int                   `json:"exit_code"`
 	FailureKind     string                 `json:"failure_kind,omitempty"`
+	RetryAfterMS    *int64                 `json:"retry_after_ms,omitempty"`
 	ResolvedModel   *ProtocolModel         `json:"resolved_model,omitempty"`
 	Usage           *ProtocolUsage         `json:"usage,omitempty"`
 }
@@ -194,8 +195,26 @@ func validateProtocolResult(result ProtocolResult, requestedSession ProtocolSess
 		}
 		switch result.FailureKind {
 		case "exit", "timed_out", "cancelled":
+		case "provider_unavailable":
+			if expectedVersion != ProtocolV1Alpha2 {
+				return fmt.Errorf("assistant result failure_kind %q requires protocol_version %q", result.FailureKind, ProtocolV1Alpha2)
+			}
+			if result.Session == nil || result.Session.ID == "" {
+				return fmt.Errorf("provider_unavailable assistant result requires a non-empty session.id")
+			}
 		default:
 			return fmt.Errorf("assistant result has unsupported failure_kind %q", result.FailureKind)
+		}
+	}
+	if result.RetryAfterMS != nil {
+		if expectedVersion != ProtocolV1Alpha2 {
+			return fmt.Errorf("assistant result retry_after_ms requires protocol_version %q", ProtocolV1Alpha2)
+		}
+		if result.FailureKind != "provider_unavailable" {
+			return fmt.Errorf("assistant result retry_after_ms requires failure_kind %q", "provider_unavailable")
+		}
+		if *result.RetryAfterMS < 0 {
+			return fmt.Errorf("assistant result retry_after_ms cannot be negative")
 		}
 	}
 	if result.Usage != nil {
