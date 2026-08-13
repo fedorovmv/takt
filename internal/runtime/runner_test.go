@@ -321,6 +321,37 @@ func TestProviderRetryLeavesParallelSiblingCompleted(t *testing.T) {
 	}
 }
 
+func TestProviderRetryParallelExhaustionEmitsDiagnosticFingerprint(t *testing.T) {
+	dir := t.TempDir()
+	adapter := adapterFunc(func(_ context.Context, _ assistant.Request) (assistant.Result, error) {
+		return assistant.Result{ExitCode: 1, SessionID: "provider-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", Err: errors.New("unavailable")}
+	})
+	wf := &spec.Workflow{Name: "provider-parallel-exhaustion", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	capture := &providerRetryCaptureStore{Repository: store.FS{Workspace: dir}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: capture, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	state := &store.RunState{ID: "provider-parallel-exhaustion", Status: store.RunRunning, Nodes: map[string]*store.NodeState{"work": {Status: store.NodePending, Attempts: 1, Retry: &store.RetryState{Scope: "provider", ProviderAttempt: 3, NextAttempt: 1}, SessionID: "provider-session", Resumed: true}}, Approvals: map[string]string{}}
+	if err := r.store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.runParallelWave(context.Background(), state, wf.Nodes, nil); err != nil {
+		t.Fatal(err)
+	}
+	var exhausted store.Event
+	for _, event := range capture.events {
+		if event.Type == "provider.retry.exhausted" {
+			exhausted = event
+			break
+		}
+	}
+	if exhausted.Type == "" {
+		t.Fatal("provider.retry.exhausted was not emitted")
+	}
+	if exhausted.Data["scope"] != "provider" || exhausted.Data["provider_attempts"] != 3 || exhausted.Data["max_provider_attempts"] != 3 || exhausted.Data["kind"] != string(execution.KindProviderUnavailable) || exhausted.Data["fingerprint"] == "" {
+		t.Fatalf("exhausted event=%+v", exhausted.Data)
+	}
+}
+
 func TestProviderRetryCancellationWinsDuringBackoff(t *testing.T) {
 	dir := t.TempDir()
 	started := make(chan struct{}, 1)

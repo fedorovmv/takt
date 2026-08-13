@@ -102,6 +102,11 @@ func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nod
 				continue
 			}
 			ns.Retry = nil
+			diagnostic := r.diagnosticFor(string(execution.KindProviderUnavailable), item.err, false)
+			ns.Diagnostic = &diagnostic
+			if len(ns.Executions) > 0 {
+				ns.Executions[len(ns.Executions)-1].Diagnostic = cloneDiagnostic(&diagnostic)
+			}
 			if err := r.commit(state, "provider.retry.exhausted", node.ID, map[string]any{"provider_attempt": item.result.ProviderAttempt, "parallel": true}); err != nil {
 				return err
 			}
