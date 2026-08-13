@@ -1100,6 +1100,17 @@ func TestProviderRetryMetricsRetainDiagnosticsWithoutWorkflowAttemptInflation(t 
 	}
 }
 
+func TestRecordFromStateAttributesProviderAttemptsSeparately(t *testing.T) {
+	state := &store.RunState{Nodes: map[string]*store.NodeState{
+		"implement": {Attempts: 1, ProviderAttempts: 2, Executions: []store.ExecutionState{{Attempt: 1, ProviderAttempt: 1}, {Attempt: 1, ProviderAttempt: 2}}},
+	}}
+	record := recordFromState("case", 1, "/workspace", state)
+	node := record.Nodes["implement"]
+	if record.Attempts != 1 || record.ProviderAttempts != 2 || node.Attempts != 1 || node.ProviderAttempts != 2 || node.Executions[1].Attempt != 1 || node.Executions[1].ProviderAttempt != 2 {
+		t.Fatalf("provider attempt attribution = %+v", record)
+	}
+}
+
 func TestEvaluateGateReturnsFailureWithoutLosingReportSemantics(t *testing.T) {
 	min := 0.9
 	gate := MatrixGate{Strategy: "candidate", FinalSuccessRateMin: &min}

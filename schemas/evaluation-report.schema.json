@@ -257,6 +257,10 @@
           "type": "integer",
           "minimum": 0
         },
+        "provider_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
         "assistant": {
           "type": "string"
         },
@@ -365,6 +369,10 @@
           "type": "integer",
           "minimum": 0
         },
+        "provider_attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
         "attempts_to_valid": {
           "type": ["integer", "null"],
           "minimum": 0
@@ -455,7 +463,7 @@
           "$ref": "#/$defs/flowValidation"
         },
         "outcome": {
-          "enum": ["true_accept", "false_accept", "true_reject", "false_reject"]
+          "enum": ["true_accept", "false_accept", "true_reject", "false_reject", "infrastructure_error"]
         },
         "run_passed": {
           "type": ["boolean", "null"]
@@ -486,6 +494,7 @@
         "duration_ms",
         "final_success_rate",
         "input_tokens",
+        "infrastructure_errors",
         "invalid",
         "mixed_execution_identity_nodes",
         "output_tokens",
@@ -524,6 +533,10 @@
           "minimum": 0
         },
         "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "infrastructure_errors": {
           "type": "integer",
           "minimum": 0
         },
@@ -736,7 +749,7 @@
     "flowSummary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["evaluated_runs", "flow_completed", "true_accept", "false_accept", "true_reject", "false_reject", "validation_errors", "valid_rate", "false_accept_rate", "false_reject_rate", "flow_completion_rate", "validation_error_rate"],
+      "required": ["evaluated_runs", "flow_completed", "true_accept", "false_accept", "true_reject", "false_reject", "validation_errors", "infrastructure_errors", "valid_rate", "false_accept_rate", "false_reject_rate", "flow_completion_rate", "validation_error_rate"],
       "properties": {
         "evaluated_runs": {"type": "integer", "minimum": 0},
         "flow_completed": {"type": "integer", "minimum": 0},
@@ -745,6 +758,7 @@
         "true_reject": {"type": "integer", "minimum": 0},
         "false_reject": {"type": "integer", "minimum": 0},
         "validation_errors": {"type": "integer", "minimum": 0},
+        "infrastructure_errors": {"type": "integer", "minimum": 0},
         "valid_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
         "false_accept_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
         "false_reject_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},

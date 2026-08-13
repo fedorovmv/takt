@@ -169,6 +169,23 @@ func TestFlowSummaryDenominatorsAndStability(t *testing.T) {
 	}
 }
 
+func TestProviderUnavailableFlowRecordIsExcludedFromQualityRates(t *testing.T) {
+	record := RunRecord{
+		CaseID: "provider-unavailable", Mode: "flow", Status: store.RunFailed, ErrorCode: "provider_unavailable",
+		InputTokens: 12, OutputTokens: 7,
+		Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: false}},
+	}
+	ClassifyFlowRecord(&record)
+	if record.Outcome != "infrastructure_error" || record.RunPassed != nil || record.QualityExpected || record.Quality != nil {
+		t.Fatalf("provider-unavailable classification = %+v", record)
+	}
+	summary := newSummary()
+	addSummary(&summary, record)
+	if summary.Flow.EvaluatedRuns != 0 || summary.Flow.InfrastructureErrors != 1 || summary.QualityRuns != 0 || summary.Invalid != 0 || summary.InputTokens != 12 || summary.OutputTokens != 7 {
+		t.Fatalf("provider-unavailable summary = %+v", summary)
+	}
+}
+
 func TestFlowSummaryNullAndMeasuredZeroRates(t *testing.T) {
 	report := &SuiteReport{Mode: "flow", Summary: newSummary(), Runs: []RunRecord{{Mode: "flow", Status: store.RunFailed, Validation: &FlowValidationRecord{Status: "error"}}}}
 	addSummary(&report.Summary, report.Runs[0])

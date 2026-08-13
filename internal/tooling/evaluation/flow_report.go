@@ -23,22 +23,31 @@ type FlowCleanupRecord struct {
 }
 
 type FlowSummary struct {
-	EvaluatedRuns       int      `json:"evaluated_runs"`
-	FlowCompleted       int      `json:"flow_completed"`
-	TrueAccept          int      `json:"true_accept"`
-	FalseAccept         int      `json:"false_accept"`
-	TrueReject          int      `json:"true_reject"`
-	FalseReject         int      `json:"false_reject"`
-	ValidationErrors    int      `json:"validation_errors"`
-	ValidRate           *float64 `json:"valid_rate"`
-	FalseAcceptRate     *float64 `json:"false_accept_rate"`
-	FalseRejectRate     *float64 `json:"false_reject_rate"`
-	FlowCompletionRate  *float64 `json:"flow_completion_rate"`
-	ValidationErrorRate *float64 `json:"validation_error_rate"`
+	EvaluatedRuns        int      `json:"evaluated_runs"`
+	FlowCompleted        int      `json:"flow_completed"`
+	TrueAccept           int      `json:"true_accept"`
+	FalseAccept          int      `json:"false_accept"`
+	TrueReject           int      `json:"true_reject"`
+	FalseReject          int      `json:"false_reject"`
+	ValidationErrors     int      `json:"validation_errors"`
+	InfrastructureErrors int      `json:"infrastructure_errors"`
+	ValidRate            *float64 `json:"valid_rate"`
+	FalseAcceptRate      *float64 `json:"false_accept_rate"`
+	FalseRejectRate      *float64 `json:"false_reject_rate"`
+	FlowCompletionRate   *float64 `json:"flow_completion_rate"`
+	ValidationErrorRate  *float64 `json:"validation_error_rate"`
 }
 
 func ClassifyFlowRecord(record *RunRecord) {
-	if record == nil || record.Validation == nil || record.Validation.Status != "completed" || record.Validation.Result == nil {
+	if record == nil {
+		return
+	}
+	if isProviderUnavailableRecord(*record) {
+		record.Outcome, record.RunPassed = "infrastructure_error", nil
+		record.QualityExpected, record.Quality = false, nil
+		return
+	}
+	if record.Validation == nil || record.Validation.Status != "completed" || record.Validation.Result == nil {
 		return
 	}
 	record.QualityExpected = true
@@ -54,6 +63,30 @@ func ClassifyFlowRecord(record *RunRecord) {
 	default:
 		record.Outcome, record.RunPassed = "false_reject", boolPointer(false)
 	}
+}
+
+func isProviderUnavailableRecord(record RunRecord) bool {
+	if providerUnavailable(record.ErrorCode, nil) {
+		return true
+	}
+	for _, node := range record.Nodes {
+		if providerUnavailable(node.ErrorCode, node.Diagnostic) {
+			return true
+		}
+		for _, execution := range node.Executions {
+			if providerUnavailable(execution.ErrorCode, execution.Diagnostic) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func providerUnavailable(errorCode string, diagnostic *store.DiagnosticState) bool {
+	if errorCode == "provider_unavailable" {
+		return true
+	}
+	return diagnostic != nil && (diagnostic.Code == "provider_unavailable" || diagnostic.Kind == "provider_unavailable")
 }
 
 func ApplyFlowGates(gates FlowGates, summary Summary) []GateResult {
@@ -201,6 +234,7 @@ func addFlowNode(record *RunRecord, id string, node store.NodeState) {
 	}
 	mixed := len(identities) > 1
 	record.Attempts += node.Attempts
+	record.ProviderAttempts += node.ProviderAttempts
 	if node.OutputTruncated {
 		record.Truncated++
 	}
@@ -210,5 +244,5 @@ func addFlowNode(record *RunRecord, id string, node store.NodeState) {
 	if mixed {
 		record.MixedIdentityNodes++
 	}
-	record.Nodes[id] = NodeRecord{Status: node.Status, Attempts: node.Attempts, Assistant: node.Assistant, AssistantVersion: node.AssistantVersion, RequestedModel: node.RequestedModel, ResolvedModel: node.ResolvedModel, SessionID: node.SessionID, Resumed: node.Resumed, ExitCode: node.ExitCode, ErrorCode: node.ErrorCode, Error: node.Error, Feedback: node.Feedback, DiagnosticOutput: node.Output, Stdout: node.Stdout, Stderr: node.Stderr, OutputTruncated: node.OutputTruncated, Usage: node.Usage, Diagnostic: node.Diagnostic, MixedIdentity: mixed, Executions: executions}
+	record.Nodes[id] = NodeRecord{Status: node.Status, Attempts: node.Attempts, ProviderAttempts: node.ProviderAttempts, Assistant: node.Assistant, AssistantVersion: node.AssistantVersion, RequestedModel: node.RequestedModel, ResolvedModel: node.ResolvedModel, SessionID: node.SessionID, Resumed: node.Resumed, ExitCode: node.ExitCode, ErrorCode: node.ErrorCode, Error: node.Error, Feedback: node.Feedback, DiagnosticOutput: node.Output, Stdout: node.Stdout, Stderr: node.Stderr, OutputTruncated: node.OutputTruncated, Usage: node.Usage, Diagnostic: node.Diagnostic, MixedIdentity: mixed, Executions: executions}
 }

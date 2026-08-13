@@ -120,6 +120,7 @@ type Summary struct {
 	Total                       int                       `json:"total"`
 	ByStatus                    map[string]int            `json:"by_status"`
 	Attempts                    int                       `json:"attempts"`
+	InfrastructureErrors        int                       `json:"infrastructure_errors"`
 	InputTokens                 int                       `json:"input_tokens"`
 	OutputTokens                int                       `json:"output_tokens"`
 	Cost                        float64                   `json:"cost"`
@@ -173,6 +174,7 @@ type RunRecord struct {
 	Workspace           string                `json:"workspace"`
 	DurationMS          int64                 `json:"duration_ms"`
 	Attempts            int                   `json:"attempts"`
+	ProviderAttempts    int                   `json:"provider_attempts"`
 	AttemptsToValid     *int                  `json:"attempts_to_valid"`
 	ValidAtFirstAttempt bool                  `json:"valid_at_first_attempt"`
 	InputTokens         int                   `json:"input_tokens"`
@@ -202,6 +204,7 @@ type RunRecord struct {
 type NodeRecord struct {
 	Status           string                 `json:"status"`
 	Attempts         int                    `json:"attempts"`
+	ProviderAttempts int                    `json:"provider_attempts"`
 	Assistant        string                 `json:"assistant,omitempty"`
 	AssistantVersion string                 `json:"assistant_version,omitempty"`
 	RequestedModel   *store.ModelRef        `json:"requested_model,omitempty"`
@@ -224,6 +227,7 @@ type NodeRecord struct {
 
 type ExecutionRecord struct {
 	Attempt          int                    `json:"attempt"`
+	ProviderAttempt  int                    `json:"provider_attempt"`
 	Status           string                 `json:"status"`
 	Assistant        string                 `json:"assistant,omitempty"`
 	AssistantVersion string                 `json:"assistant_version,omitempty"`
@@ -687,6 +691,7 @@ func recordFromState(caseID string, repeat int, workspacePath string, state *sto
 			continue
 		}
 		record.Attempts += node.Attempts
+		record.ProviderAttempts += node.ProviderAttempts
 		if node.OutputTruncated {
 			record.Truncated++
 		}
@@ -712,7 +717,7 @@ func recordFromState(caseID string, repeat int, workspacePath string, state *sto
 			record.MixedIdentityNodes++
 		}
 		record.Nodes[id] = NodeRecord{
-			Status: node.Status, Attempts: node.Attempts, Assistant: node.Assistant, AssistantVersion: node.AssistantVersion,
+			Status: node.Status, Attempts: node.Attempts, ProviderAttempts: node.ProviderAttempts, Assistant: node.Assistant, AssistantVersion: node.AssistantVersion,
 			RequestedModel: node.RequestedModel, ResolvedModel: node.ResolvedModel,
 			SessionID: node.SessionID, Resumed: node.Resumed,
 			ExitCode: node.ExitCode, ErrorCode: node.ErrorCode, Error: node.Error, Feedback: node.Feedback,
@@ -726,7 +731,7 @@ func recordFromState(caseID string, repeat int, workspacePath string, state *sto
 
 func executionRecordFromState(state store.ExecutionState) ExecutionRecord {
 	return ExecutionRecord{
-		Attempt: state.Attempt, Status: state.Status,
+		Attempt: state.Attempt, ProviderAttempt: state.ProviderAttempt, Status: state.Status,
 		Assistant: state.Assistant, AssistantVersion: state.AssistantVersion,
 		RequestedModel: state.RequestedModel, ResolvedModel: state.ResolvedModel,
 		SessionID: state.SessionID, Resumed: state.Resumed,
@@ -788,6 +793,13 @@ func addSummary(summary *Summary, record RunRecord) {
 	}
 	if record.Mode == "flow" {
 		addFlowSummary(summary, record)
+	}
+	if isProviderUnavailableRecord(record) {
+		summary.InfrastructureErrors++
+		addValidationDiagnostics(summary, record)
+		return
+	}
+	if record.Mode == "flow" {
 		if record.Validation == nil || record.Validation.Status != "completed" || record.Validation.Result == nil {
 			return
 		}
@@ -806,11 +818,20 @@ func addSummary(summary *Summary, record RunRecord) {
 	} else {
 		summary.Invalid++
 	}
-	if record.Quality != nil {
-		for _, diagnostic := range record.Quality.Diagnostics {
-			summary.DiagnosticsBySeverity[diagnostic.Severity]++
-			summary.DiagnosticsByCode[diagnostic.Code]++
-		}
+	addValidationDiagnostics(summary, record)
+}
+
+func addValidationDiagnostics(summary *Summary, record RunRecord) {
+	result := record.Quality
+	if result == nil && record.Validation != nil {
+		result = record.Validation.Result
+	}
+	if result == nil {
+		return
+	}
+	for _, diagnostic := range result.Diagnostics {
+		summary.DiagnosticsBySeverity[diagnostic.Severity]++
+		summary.DiagnosticsByCode[diagnostic.Code]++
 	}
 }
 
@@ -836,6 +857,9 @@ func finishReport(report *SuiteReport) {
 	var attemptsToValid, scored int
 	var scoreTotal float64
 	for _, record := range report.Runs {
+		if isProviderUnavailableRecord(record) {
+			continue
+		}
 		if record.Quality == nil {
 			continue
 		}
@@ -862,6 +886,9 @@ func finishReport(report *SuiteReport) {
 	var timeTotal int64
 	caseOutcomes := map[string]map[bool]bool{}
 	for _, record := range report.Runs {
+		if isProviderUnavailableRecord(record) {
+			continue
+		}
 		if qualitySucceeded(record) && record.TimeToValidMS != nil {
 			timeCount++
 			timeTotal += *record.TimeToValidMS
@@ -897,6 +924,10 @@ func addFlowSummary(summary *Summary, record RunRecord) {
 	flow := summary.Flow
 	if record.Status == store.RunCompleted {
 		flow.FlowCompleted++
+	}
+	if isProviderUnavailableRecord(record) {
+		flow.InfrastructureErrors++
+		return
 	}
 	if record.Validation == nil || record.Validation.Status != "completed" || record.Validation.Result == nil {
 		flow.ValidationErrors++
@@ -937,6 +968,9 @@ func finishFlowReport(report *SuiteReport) {
 	var scored int
 	var scoreTotal float64
 	for _, record := range report.Runs {
+		if isProviderUnavailableRecord(record) {
+			continue
+		}
 		if record.Quality != nil && record.Quality.Score != nil {
 			scored++
 			scoreTotal += *record.Quality.Score
