@@ -152,7 +152,7 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 		if evidence, ok := transientOpenCodeError(parsed.Errors); ok {
 			return result, &execution.Error{Kind: execution.KindProviderUnavailable, ExitCode: result.ExitCode, Op: "opencode agent", Err: errors.New(message), RetryAfter: evidence.RetryAfter}
 		}
-		if runErr != nil && execution.IsTransientProviderFailure(0, rawStderr) {
+		if execution.IsTransientProviderFailure(0, rawStderr) {
 			return result, &execution.Error{Kind: execution.KindProviderUnavailable, ExitCode: result.ExitCode, Op: "opencode agent", Err: errors.New(message)}
 		}
 		return result, &execution.Error{Kind: execution.KindExit, ExitCode: result.ExitCode, Op: "opencode agent", Err: errors.New(message)}
@@ -530,6 +530,7 @@ type decodedOpenCode struct {
 
 type openCodeErrorEvidence struct {
 	Message    string
+	Messages   []string
 	Status     int
 	RetryAfter time.Duration
 }
@@ -710,8 +711,10 @@ func decodeOpenCodeError(raw json.RawMessage) openCodeErrorEvidence {
 	}
 	for _, message := range []string{object.Data.Message, object.Message, object.Name} {
 		if message = strings.TrimSpace(message); message != "" {
+			evidence.Messages = append(evidence.Messages, message)
+		}
+		if evidence.Message == "opencode session error" && message != "" {
 			evidence.Message = message
-			break
 		}
 	}
 	evidence.Status = openCodeJSONInt(object.Data.StatusCode)
@@ -755,6 +758,11 @@ func transientOpenCodeError(errors []openCodeErrorEvidence) (openCodeErrorEviden
 	for _, evidence := range errors {
 		if execution.IsTransientProviderFailure(evidence.Status, evidence.Message) {
 			return evidence, true
+		}
+		for _, message := range evidence.Messages {
+			if execution.IsTransientProviderFailure(0, message) {
+				return evidence, true
+			}
 		}
 	}
 	return openCodeErrorEvidence{}, false

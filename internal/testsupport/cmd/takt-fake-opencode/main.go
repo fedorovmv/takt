@@ -78,6 +78,13 @@ func main() {
 	case "error-zero-exit":
 		emit(session, "error", map[string]any{"error": map[string]any{"name": "APIError", "data": map[string]any{"message": "provider failed"}}})
 		return
+	case "error-zero-exit-stderr-transient":
+		fmt.Fprintln(os.Stderr, "provider connection reset")
+		emit(session, "error", map[string]any{"error": map[string]any{"name": "APIError", "data": map[string]any{"message": "request failed"}}})
+		return
+	case "error-name-transient":
+		emit(session, "error", map[string]any{"error": map[string]any{"name": "APIConnectionError: connection reset", "data": map[string]any{"message": "request failed"}}})
+		return
 	case "provider-503", "provider-429", "provider-connection-reset", "provider-401":
 		errorData := map[string]any{"message": "provider failed"}
 		switch opts.caseName {

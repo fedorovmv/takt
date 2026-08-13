@@ -113,6 +113,17 @@ func TestOpenCodeProviderFailures(t *testing.T) {
 	}
 }
 
+func TestOpenCodeProviderFailureFromTrustedSupplementaryEvidence(t *testing.T) {
+	for _, caseName := range []string{"error-zero-exit-stderr-transient", "error-name-transient"} {
+		t.Run(caseName, func(t *testing.T) {
+			_, err := fakeOpenCode(caseName).Run(context.Background(), fakeOpenCodeRequest(t.TempDir()))
+			if execution.KindOf(err) != execution.KindProviderUnavailable {
+				t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+			}
+		})
+	}
+}
+
 func TestDecodeOpenCodeErrorReadsTopLevelNumericEvidence(t *testing.T) {
 	evidence := decodeOpenCodeError(json.RawMessage(`{"message":"overloaded","statusCode":503,"retryAfterMs":75}`))
 	if evidence.Message != "overloaded" || evidence.Status != 503 || evidence.RetryAfter != 75*time.Millisecond {
