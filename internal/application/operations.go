@@ -894,6 +894,12 @@ func (s *RunService) recoverRunState(st RunStore, state *store.RunState) error {
 		if node == nil || node.Status != store.NodeRunning {
 			continue
 		}
+		if node.Retry != nil && node.Retry.Scope == "provider" {
+			node.Status = store.NodePending
+			node.ErrorCode = ""
+			node.Error = ""
+			continue
+		}
 		node.Executions = append(node.Executions, store.ExecutionState{Attempt: node.Attempts, Status: store.NodeErrored, ErrorCode: "worker_lost", Error: "executor process ended before node completion"})
 		if node.Attempts > 0 {
 			node.Attempts--

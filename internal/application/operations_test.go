@@ -220,6 +220,98 @@ nodes:
 	}
 }
 
+func TestProviderRetryRecoveryWaitsThenResumesSameSession(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+models:
+  demo:
+    provider: test
+    id: demo
+assistants:
+  worker:
+    type: mock
+`)
+	writeControlFile(t, workflowPath, `name: provider-retry-recover
+provider: worker
+model: demo
+nodes:
+  - id: implement
+    prompt: continue
+`)
+	now := time.Now().UTC()
+	notBefore := now.Add(150 * time.Millisecond)
+	state := &store.RunState{WorkflowContract: store.CurrentWorkflowContract, ID: "run-provider-retry-backoff", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"implement": {Status: store.NodePending, Attempts: 1, ProviderAttempts: 1, SessionID: "provider-session", Retry: &store.RetryState{Scope: "provider", ProviderAttempt: 2, NextAttempt: 1, NotBefore: notBefore, Delay: "150ms"}}}, Approvals: map[string]string{}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now}
+	st := store.FS{Workspace: workspace}
+	if err := st.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startedAt := time.Now()
+	result, err := service.RunService.RecoverInterruptedRunsForeground(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Recovered) != 1 || result.Recovered[0] != state.ID {
+		t.Fatalf("recovery = %#v", result)
+	}
+	if elapsed := time.Since(startedAt); elapsed < 100*time.Millisecond {
+		t.Fatalf("provider retry resumed before durable deadline: %s", elapsed)
+	}
+	completed, err := service.RunService.GetRun(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := completed.Nodes["implement"]
+	if completed.Status != store.RunCompleted || node.Attempts != 1 || node.ProviderAttempts != 2 || node.SessionID != "provider-session" {
+		t.Fatalf("provider retry recovery state = %#v", node)
+	}
+}
+
+func TestProviderRetryRecoveryNormalizesInterruptedRetryCall(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, workflowPath, "name: provider-retry-recover\nnodes:\n  - id: implement\n    bash: true\n")
+	now := time.Now().UTC()
+	notBefore := now.Add(time.Minute)
+	state := &store.RunState{WorkflowContract: store.CurrentWorkflowContract, ID: "run-provider-retry-inflight", Status: store.RunRunning, WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{"implement": {Status: store.NodeRunning, Attempts: 1, ProviderAttempts: 1, SessionID: "provider-session", Retry: &store.RetryState{Scope: "provider", ProviderAttempt: 2, NextAttempt: 1, NotBefore: notBefore, Delay: "1m"}}}, Approvals: map[string]string{}, CurrentNode: "implement", CurrentNodes: []string{"implement"}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now}
+	st := store.FS{Workspace: workspace}
+	if err := st.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.RunService.RecoverInterruptedRuns(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Recovered) != 1 || result.Recovered[0] != state.ID {
+		t.Fatalf("recovery = %#v", result)
+	}
+	recovered, err := st.Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := recovered.Nodes["implement"]
+	if node.Status != store.NodePending || node.Attempts != 1 || node.ProviderAttempts != 1 || node.SessionID != "provider-session" || node.Retry == nil || node.Retry.Scope != "provider" || node.Retry.ProviderAttempt != 2 || !node.Retry.NotBefore.Equal(notBefore) {
+		t.Fatalf("interrupted provider retry state = %#v", node)
+	}
+	for _, executionState := range node.Executions {
+		if executionState.ErrorCode == "worker_lost" {
+			t.Fatalf("provider retry recorded worker loss: %#v", node.Executions)
+		}
+	}
+}
+
 func waitRunStatus(t *testing.T, service *Services, runID, status string, timeout time.Duration) *store.RunState {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
