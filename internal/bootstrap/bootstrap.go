@@ -44,10 +44,10 @@ type App struct {
 }
 
 func New(workspace, configPath string) (*App, error) {
-	return newApp(workspace, configPath, nil, 0)
+	return newApp(workspace, configPath, nil, nil, 0)
 }
 
-func newApp(workspace, configPath string, assistantEvents func(string, string, assistant.Event), assistantIdleTimeout time.Duration) (*App, error) {
+func newApp(workspace, configPath string, assistantEvents func(string, string, assistant.Event), assistantActivity func(string, string, string), assistantIdleTimeout time.Duration) (*App, error) {
 	absWorkspace, err := filepath.Abs(workspace)
 	if err != nil {
 		return nil, err
@@ -88,6 +88,7 @@ func newApp(workspace, configPath string, assistantEvents func(string, string, a
 			Adapters:             domainadapter.Factory{Config: def.Config},
 			Redactor:             redact.NewFromConfig(def.Config),
 			AssistantEvents:      assistantEvents,
+			AssistantActivity:    assistantActivity,
 			AssistantIdleTimeout: assistantIdleTimeout,
 		}
 		if options.Commands != nil {

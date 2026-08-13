@@ -1062,7 +1062,7 @@ func TestPiOverflowContextStateIntegration(t *testing.T) {
 	}
 }
 
-func TestPiToolThenProviderStallUsesAssistantIdleTimeout(t *testing.T) {
+func TestPiActivityControlsAssistantIdleTimeout(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)
@@ -1076,28 +1076,48 @@ func TestPiToolThenProviderStallUsesAssistantIdleTimeout(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build fake Pi: %v: %s", err, output)
 	}
-	dir := t.TempDir()
-	wf := &spec.Workflow{Name: "pi-stall", Provider: "pi", Model: "m", Nodes: []spec.Node{{ID: "agent", Prompt: "run"}}}
-	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "openai", ID: "fake-model"}}}
-	adapter := assistantpi.NewPi(spec.AssistantSpec{Type: "pi", Binary: binary, Args: []string{"--fake-case", "tool-then-hang"}, ProjectTrust: "approve", MaxOutputBytes: 64 * 1024})
-	var observed []string
-	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: filepath.Join(dir, "workflow.yaml"), ConfigPath: filepath.Join(dir, "config.yaml"), ControlWorkspace: dir}, Dependencies{
-		Store: store.FS{Workspace: dir}, Redactor: redact.NewFromConfig(cfg), AssistantIdleTimeout: 500 * time.Millisecond,
-		Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }),
-		AssistantEvents: func(_, _ string, event assistant.Event) {
-			observed = append(observed, event.Type+":"+event.Tool+":"+event.Message)
-		},
-	})
-	state, runErr := r.Start(context.Background(), "")
-	if runErr == nil || state.Nodes["agent"].Status != store.NodeTimedOut || state.Nodes["agent"].ErrorCode != string(execution.KindTimedOut) {
-		t.Fatalf("state=%#v err=%v", state, runErr)
+	run := func(t *testing.T, caseName string, idle time.Duration) (*store.RunState, error, []string) {
+		t.Helper()
+		dir := t.TempDir()
+		wf := &spec.Workflow{Name: "pi-activity", Provider: "pi", Model: "m", Nodes: []spec.Node{{ID: "agent", Prompt: "run"}}}
+		cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "openai", ID: "fake-model"}}}
+		adapter := assistantpi.NewPi(spec.AssistantSpec{Type: "pi", Binary: binary, Args: []string{"--fake-case", caseName}, ProjectTrust: "approve", MaxOutputBytes: 64 * 1024})
+		var activity []string
+		r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: filepath.Join(dir, "workflow.yaml"), ConfigPath: filepath.Join(dir, "config.yaml"), ControlWorkspace: dir}, Dependencies{
+			Store: store.FS{Workspace: dir}, Redactor: redact.NewFromConfig(cfg), AssistantIdleTimeout: idle,
+			Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }),
+			AssistantEvents: func(_, _ string, event assistant.Event) {
+				activity = append(activity, event.Type+":"+event.Tool+":"+event.Message)
+			},
+			AssistantActivity: func(_, _, kind string) { activity = append(activity, "activity:"+kind) },
+		})
+		state, runErr := r.Start(context.Background(), "")
+		return state, runErr, activity
 	}
-	joined := strings.Join(observed, "\n")
-	for _, want := range []string{"tool.started:bash:", "tool.completed:bash:", "failed::assistant idle timeout"} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("observer missing %q:\n%s", want, joined)
+	t.Run("streaming progress resets timeout without durable partial events", func(t *testing.T) {
+		state, runErr, activity := run(t, "streaming-progress", time.Second)
+		if runErr != nil || state.Nodes["agent"].Status != store.NodeCompleted {
+			t.Fatalf("state=%#v err=%v activity=%v", state, runErr, activity)
 		}
-	}
+		if got := strings.Join(activity, "\n"); !strings.Contains(got, "activity:provider.streaming") {
+			t.Fatalf("streaming activity missing:\n%s", got)
+		}
+		if strings.Contains(state.Nodes["agent"].Stdout, "message_update") {
+			t.Fatalf("transient streaming update became durable stdout: %q", state.Nodes["agent"].Stdout)
+		}
+	})
+	t.Run("completed tool followed by provider stall times out", func(t *testing.T) {
+		state, runErr, observed := run(t, "tool-then-hang", 500*time.Millisecond)
+		if runErr == nil || state.Nodes["agent"].Status != store.NodeTimedOut || state.Nodes["agent"].ErrorCode != string(execution.KindTimedOut) {
+			t.Fatalf("state=%#v err=%v", state, runErr)
+		}
+		joined := strings.Join(observed, "\n")
+		for _, want := range []string{"tool.started:bash:", "tool.completed:bash:", "failed::assistant idle timeout"} {
+			if !strings.Contains(joined, want) {
+				t.Fatalf("observer missing %q:\n%s", want, joined)
+			}
+		}
+	})
 }
 
 func TestPiAssistantResumesSessionAcrossRetry(t *testing.T) {

@@ -900,7 +900,10 @@ Gate failure returns non-zero only after report persistence.
 child Run/node statuses to stderr while stdout remains the final JSON result.
 Bundled Pi tool start/completion and bounded assistant message previews are
 reported live without persisting transient RPC partials. After 30 seconds with
-no root durable transition, `node.active` reports the current persisted status.
+no durable transition, `node.active` reports `run`, `node`, `attempt`, elapsed
+`idle`, effective `idle_limit`, `last_activity` and what the adapter is awaiting.
+Pi `message_update` and `tool_execution_update` reset inactivity without being
+printed per token or persisted as durable assistant events.
 `--assistant-idle-timeout` defaults to `5m` and supplies an eval-only fallback
 for assistant nodes that omit `idle_timeout`; explicit node values win. Valid
 assistant tool/message events reset the timer, and expiry is persisted as

@@ -654,6 +654,16 @@ func (c *piRPCClient) next(ctx context.Context, match func(piRPCRecord) bool) (p
 					return piRPCRecord{}, protocolPiError("extension UI", fmt.Errorf("interactive Pi extension request %q is unsupported", ui.Method))
 				}
 			}
+			switch record.Type {
+			case "message_update":
+				if c.request.Activity != nil {
+					c.request.Activity("provider.streaming")
+				}
+			case "tool_execution_update":
+				if c.request.Activity != nil {
+					c.request.Activity("tool.running")
+				}
+			}
 			if event, ok := piProgressEvent(record); ok {
 				event.SessionID = c.request.SessionID
 				event.Provider = c.request.Model.Provider

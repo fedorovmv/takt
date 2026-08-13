@@ -23,6 +23,8 @@ For the bundled mini-du live corpus, use `make eval-smoke`, `make eval-feature`,
 The live flow targets fail after five minutes without assistant progress. Set
 `EVAL_IDLE_TIMEOUT=10m` before `make` only when the provider legitimately needs
 a longer silent interval; tool and assistant message events reset the timer.
+Pi streaming activity also resets it without printing every partial token;
+`node.active` shows the current idle duration, limit, last activity and wait.
 
 Inspect `report.json` and `cases/<id>/repeat-001/` evidence before changing a
 workflow or validator. Do not treat fake SCM fixtures as a remote provider or

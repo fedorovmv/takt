@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"takt/internal/application"
@@ -62,8 +63,12 @@ func (evaluationEngine) FlowInit(_ context.Context, workflowSelector, output str
 }
 
 func (e evaluationEngine) runFlowCase(ctx context.Context, req evaluation.FlowCaseRunRequest) (evaluation.FlowCaseRunResult, error) {
+	activity := newFlowActivityTracker()
 	app, err := newApp(req.Workspace, req.ConfigPath, func(runID, nodeID string, event assistant.Event) {
 		traceEvaluationAssistantEvent(req.Trace, runID, nodeID, event)
+		activity.recordEvent(runID, nodeID, event, req.AssistantIdleTimeout)
+	}, func(runID, nodeID, kind string) {
+		activity.record(flowActivityRecord{RunID: runID, NodeID: nodeID, LastActivity: kind, LastActivityAt: time.Now(), Active: true})
 	}, req.AssistantIdleTimeout)
 	if err != nil {
 		return evaluation.FlowCaseRunResult{}, err
@@ -79,7 +84,107 @@ func (e evaluationEngine) runFlowCase(ctx context.Context, req evaluation.FlowCa
 		return evaluation.FlowCaseRunResult{}, fmt.Errorf("flow evaluation start returned no run ID")
 	}
 	traceEvaluation(req.Trace, "run.accepted run=%s", started.RunID)
-	return e.pollFlowCase(ctx, app, started.RunID, req.ApprovalAnswer, req.Trace)
+	return e.pollFlowCase(ctx, app, started.RunID, req.ApprovalAnswer, req.Trace, activity)
+}
+
+type flowActivityRecord struct {
+	RunID, NodeID, LastActivity string
+	Attempt                     int
+	LastActivityAt              time.Time
+	IdleTimeout                 time.Duration
+	Active                      bool
+}
+
+type flowActivityTracker struct {
+	mu      sync.RWMutex
+	records map[string]flowActivityRecord
+}
+
+func newFlowActivityTracker() *flowActivityTracker {
+	return &flowActivityTracker{records: map[string]flowActivityRecord{}}
+}
+
+func (t *flowActivityTracker) record(record flowActivityRecord) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	previous := t.records[record.RunID+"\x00"+record.NodeID]
+	if record.Attempt == 0 {
+		record.Attempt = previous.Attempt
+	}
+	if record.IdleTimeout == 0 {
+		record.IdleTimeout = previous.IdleTimeout
+	}
+	t.records[record.RunID+"\x00"+record.NodeID] = record
+	t.mu.Unlock()
+}
+
+func (t *flowActivityTracker) recordEvent(runID, nodeID string, event assistant.Event, fallback time.Duration) {
+	var idle time.Duration
+	if value, ok := event.Data["idle_timeout"].(string); ok && value != "" {
+		if parsed, err := time.ParseDuration(value); err == nil {
+			idle = parsed
+		}
+	}
+	if idle == 0 && (event.Type == assistant.EventSessionStarted || event.Type == assistant.EventSessionResumed) {
+		idle = fallback
+	}
+	at := event.Time
+	if at.IsZero() {
+		at = time.Now()
+	}
+	active := event.Type != assistant.EventCompleted && event.Type != assistant.EventFailed
+	t.record(flowActivityRecord{RunID: runID, NodeID: nodeID, Attempt: traceAttempt(event.Data["attempt"]), LastActivity: traceActivityName(event), LastActivityAt: at, IdleTimeout: idle, Active: active})
+}
+
+func (t *flowActivityTracker) get(runID, nodeID string) (flowActivityRecord, bool) {
+	if t == nil {
+		return flowActivityRecord{}, false
+	}
+	t.mu.RLock()
+	record, ok := t.records[runID+"\x00"+nodeID]
+	t.mu.RUnlock()
+	return record, ok
+}
+
+func (t *flowActivityTracker) active() []flowActivityRecord {
+	if t == nil {
+		return nil
+	}
+	t.mu.RLock()
+	var records []flowActivityRecord
+	for _, record := range t.records {
+		if record.Active {
+			records = append(records, record)
+		}
+	}
+	t.mu.RUnlock()
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].RunID != records[j].RunID {
+			return records[i].RunID < records[j].RunID
+		}
+		return records[i].NodeID < records[j].NodeID
+	})
+	return records
+}
+
+func traceAttempt(value any) int {
+	switch value := value.(type) {
+	case int:
+		return value
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
+}
+
+func traceActivityName(event assistant.Event) string {
+	if event.Type == assistant.EventToolStarted || event.Type == assistant.EventToolCompleted {
+		return event.Type + "(" + event.Tool + ")"
+	}
+	return event.Type
 }
 
 func traceEvaluationAssistantEvent(trace func(string), runID, nodeID string, event assistant.Event) {
@@ -137,7 +242,7 @@ func traceToolInput(raw json.RawMessage) string {
 	return ""
 }
 
-func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, answer string, trace func(string)) (evaluation.FlowCaseRunResult, error) {
+func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, answer string, trace func(string), activity *flowActivityTracker) (evaluation.FlowCaseRunResult, error) {
 	poll := func() (*store.RunState, error) { return app.Core.RunService.GetRun(runID) }
 	var revision uint64
 	lastRunningTrace := time.Time{}
@@ -162,7 +267,7 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 			}
 			revision = events.NextRevision
 			if lastRunningTrace.IsZero() || time.Since(lastRunningTrace) >= 30*time.Second {
-				traceFlowRunningNodes(trace, state)
+				traceFlowRunningNodes(trace, state, activity, time.Now())
 				lastRunningTrace = time.Now()
 			}
 		}
@@ -199,16 +304,46 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 	}
 }
 
-func traceFlowRunningNodes(trace func(string), state *store.RunState) {
+func traceFlowRunningNodes(trace func(string), state *store.RunState, activity *flowActivityTracker, now time.Time) {
 	if trace == nil || state == nil {
 		return
+	}
+	seen := map[string]bool{}
+	for _, record := range activity.active() {
+		traceFlowActivity(trace, record, now)
+		seen[record.RunID+"\x00"+record.NodeID] = true
 	}
 	for id, node := range state.Nodes {
 		if node == nil || node.Status != store.NodeRunning {
 			continue
 		}
-		traceEvaluation(trace, "node.active node=%s attempt=%d awaiting=assistant_progress_or_completion", id, node.Attempts)
+		if seen[state.ID+"\x00"+id] {
+			continue
+		}
+		record, ok := activity.get(state.ID, id)
+		if !ok {
+			traceEvaluation(trace, "node.active run=%s node=%s attempt=%d idle=unknown idle_limit=unknown last_activity=unknown awaiting=assistant_progress_or_completion", state.ID, id, node.Attempts)
+			continue
+		}
+		if !record.Active {
+			continue
+		}
+		traceFlowActivity(trace, record, now)
 	}
+}
+
+func traceFlowActivity(trace func(string), record flowActivityRecord, now time.Time) {
+	idle := now.Sub(record.LastActivityAt).Truncate(time.Second)
+	if idle < 0 {
+		idle = 0
+	}
+	awaiting := "assistant_progress_or_completion"
+	if strings.HasPrefix(record.LastActivity, "tool.completed") {
+		awaiting = "provider_response"
+	} else if record.LastActivity == "provider.streaming" {
+		awaiting = "provider_stream"
+	}
+	traceEvaluation(trace, "node.active run=%s node=%s attempt=%d idle=%s idle_limit=%s last_activity=%s awaiting=%s", record.RunID, record.NodeID, record.Attempt, idle, record.IdleTimeout, record.LastActivity, awaiting)
 }
 
 func traceEvaluationEvent(trace func(string), event store.Event) {

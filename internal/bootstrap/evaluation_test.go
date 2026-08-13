@@ -42,16 +42,29 @@ func TestFlowEvaluationTraceReportsDurableEvents(t *testing.T) {
 }
 
 func TestTraceFlowRunningNodesReportsCurrentDurableStatus(t *testing.T) {
-	state := &store.RunState{Nodes: map[string]*store.NodeState{
+	now := time.Date(2026, 8, 13, 12, 15, 6, 0, time.UTC)
+	state := &store.RunState{ID: "run-1", Nodes: map[string]*store.NodeState{
 		"pending": {Status: store.NodePending},
 		"active":  {Status: store.NodeRunning},
 	}}
+	activity := newFlowActivityTracker()
+	activity.record(flowActivityRecord{RunID: "run-1", NodeID: "active", Attempt: 1, LastActivity: "tool.completed(write)", LastActivityAt: now.Add(-2*time.Minute - 26*time.Second), IdleTimeout: 5 * time.Minute, Active: true})
+	activity.record(flowActivityRecord{RunID: "child-1", NodeID: "review", Attempt: 2, LastActivity: "provider.streaming", LastActivityAt: now.Add(-4 * time.Second), IdleTimeout: 5 * time.Minute, Active: true})
 	var trace []string
-	traceFlowRunningNodes(func(line string) { trace = append(trace, line) }, state)
-	state.Nodes["active"].Attempts = 2
-	traceFlowRunningNodes(func(line string) { trace = append(trace, line) }, state)
-	if got, want := strings.Join(trace, "\n"), "node.active node=active attempt=0 awaiting=assistant_progress_or_completion\nnode.active node=active attempt=2 awaiting=assistant_progress_or_completion"; got != want {
+	traceFlowRunningNodes(func(line string) { trace = append(trace, line) }, state, activity, now)
+	if got, want := strings.Join(trace, "\n"), "node.active run=child-1 node=review attempt=2 idle=4s idle_limit=5m0s last_activity=provider.streaming awaiting=provider_stream\nnode.active run=run-1 node=active attempt=1 idle=2m26s idle_limit=5m0s last_activity=tool.completed(write) awaiting=provider_response"; got != want {
 		t.Fatalf("trace=%q want=%q", got, want)
+	}
+	activity.recordEvent("child-1", "review", assistant.Event{Type: assistant.EventCompleted, Time: now}, 5*time.Minute)
+	trace = nil
+	traceFlowRunningNodes(func(line string) { trace = append(trace, line) }, state, activity, now)
+	if got := strings.Join(trace, "\n"); strings.Contains(got, "child-1") {
+		t.Fatalf("terminal child remained active: %q", got)
+	}
+	activity.record(flowActivityRecord{RunID: "run-1", NodeID: "active", LastActivity: "provider.streaming", LastActivityAt: now, Active: true})
+	activity.recordEvent("run-1", "active", assistant.Event{Type: assistant.EventToolStarted, Tool: "read", Time: now}, 10*time.Minute)
+	if record, _ := activity.get("run-1", "active"); record.IdleTimeout != 5*time.Minute || record.Attempt != 1 {
+		t.Fatalf("activity lost node-specific session metadata: %+v", record)
 	}
 }
 
@@ -173,7 +186,7 @@ func TestFlowEvaluationCancellationDuringAnswerReturnsSnapshot(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	result, err := (evaluationEngine{}).pollFlowCase(ctx, app, started.RunID, "yes", nil)
+	result, err := (evaluationEngine{}).pollFlowCase(ctx, app, started.RunID, "yes", nil, nil)
 	if err != context.Canceled || !result.ContextCancelled || len(result.States) == 0 || result.States[0].Status != store.RunCancelled {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}

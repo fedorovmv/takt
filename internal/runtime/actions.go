@@ -182,13 +182,19 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	}
 	collector.Emit(assistant.Event{Type: sessionEvent, Provider: resolved.Model.Provider, SessionID: resolved.SessionID, Data: map[string]any{
 		"assistant": resolved.AssistantName, "attempt": state.Nodes[node.ID].Attempts, "session_mode": resolved.SessionMode,
-		"model_name": resolved.ModelName, "model_id": resolved.Model.ID,
+		"model_name": resolved.ModelName, "model_id": resolved.Model.ID, "idle_timeout": idleTimeout,
 	}})
 	request := assistant.Request{
 		RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts,
 		Prompt: resolved.Prompt, Workspace: r.workspace, ModelName: resolved.ModelName, Model: resolved.Model,
 		SessionMode: resolved.SessionMode, SessionID: resolved.SessionID, NativeHooks: node.NativeHooks, Policy: resolved.Policy,
 		Emit: collector.Emit,
+		Activity: func(kind string) {
+			idle.Touch()
+			if r.assistantActivity != nil {
+				r.assistantActivity(state.ID, node.ID, kind)
+			}
+		},
 	}
 	if r.redactor == nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant secrets", Err: fmt.Errorf("redactor dependency is required")}

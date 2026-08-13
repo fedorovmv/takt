@@ -22,6 +22,7 @@ func (r *Runner) childRunner(workflowDef *spec.Workflow, workflowPath, controlWo
 		Commands: NewCommandResolver(workflowPath, controlWorkspace, controlWorkspace),
 		Store:    r.store, Assistants: r.assistants, Adapters: r.adapters, Redactor: r.redactor,
 		AssistantEvents:      r.assistantEvents,
+		AssistantActivity:    r.assistantActivity,
 		AssistantIdleTimeout: r.assistantIdleTimeout,
 	}
 	return NewWithDependencies(def, deps)

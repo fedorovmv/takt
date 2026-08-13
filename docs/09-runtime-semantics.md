@@ -430,7 +430,7 @@ adapters. Shell surface quote-ит подставленное значение �
 передаёт reserved env refs через environment и сохраняет native `$?`, `$1`,
 `$$`, `$((...))`, `$(...)`.
 
-`always_run` ждёт terminal-состояния всех зависимостей и затем становится runnable независимо от их успеха. Cleanup не меняет итог failed Run на completed. `idle_timeout` измеряет отсутствие нормализованной assistant activity, а не полное wall-clock время попытки; общий `timeout` остаётся верхней границей. Blocking tool approval не считается зависанием внешнего worker.
+`always_run` ждёт terminal-состояния всех зависимостей и затем становится runnable независимо от их успеха. Cleanup не меняет итог failed Run на completed. `idle_timeout` измеряет отсутствие нормализованной assistant activity, а не полное wall-clock время попытки; для Pi activity включает terminal tool/message events и transient `message_update`/`tool_execution_update`, которые не становятся durable events. Общий `timeout` остаётся верхней границей. Blocking tool approval не считается зависанием внешнего worker.
 
 ## Local daemon semantics
 

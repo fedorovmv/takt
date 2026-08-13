@@ -60,6 +60,7 @@ type Runner struct {
 	startOptions         StartOptions
 	inheritedPolicy      assistant.Policy
 	assistantEvents      func(string, string, assistant.Event)
+	assistantActivity    func(string, string, string)
 	assistantIdleTimeout time.Duration
 }
 
@@ -82,6 +83,7 @@ type Dependencies struct {
 	Adapters             domainadapter.Resolver
 	Redactor             *redact.Redactor
 	AssistantEvents      func(string, string, assistant.Event)
+	AssistantActivity    func(string, string, string)
 	AssistantIdleTimeout time.Duration
 }
 
@@ -104,6 +106,7 @@ func NewWithDependencies(def Definition, deps Dependencies) *Runner {
 		commands: deps.Commands, store: deps.Store, assistants: deps.Assistants, adapters: deps.Adapters,
 		redactor:             deps.Redactor,
 		assistantEvents:      deps.AssistantEvents,
+		assistantActivity:    deps.AssistantActivity,
 		assistantIdleTimeout: deps.AssistantIdleTimeout,
 	}
 }

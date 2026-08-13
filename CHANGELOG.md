@@ -11,6 +11,9 @@
   `node.active` lines. `eval flow` also supplies a configurable 5-minute idle
   fallback, so a provider that stops after a tool result fails as `timed_out`
   instead of keeping the evaluation alive indefinitely.
+- Pi streaming/tool updates now reset assistant inactivity without entering
+  durable output. Flow heartbeats show root/child Run ID, idle duration, limit,
+  last activity and whether Takt is waiting for provider streaming or response.
 
 - Pi RPC больше не сохраняет кумулятивные `message_update`, transient tool
   updates и fire-and-forget extension UI в durable stdout; одиночная oversized

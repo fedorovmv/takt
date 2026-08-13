@@ -205,6 +205,12 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 		for {
 			time.Sleep(time.Hour)
 		}
+	case "streaming-progress":
+		for range 8 {
+			writeJSON(writer, map[string]any{"type": "message_update", "message": map[string]any{"role": "assistant", "content": "working"}})
+			time.Sleep(400 * time.Millisecond)
+		}
+		emitSuccess(writer, state, opts)
 	case "agent-failure":
 		message := assistantMessage(opts, "", "error", "fake model failure")
 		state.finish("", []any{message})

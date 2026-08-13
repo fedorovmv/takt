@@ -169,7 +169,9 @@ persists repeat evidence and supports `eval flow init` for a validator-free
 skeleton. `--trace` streams elapsed suite stages, durable root progress and
 terminal child Run/node statuses plus live bounded Pi tool/message progress to
 stderr. Pi RPC excludes cumulative partial/UI noise from durable stdout while
-retaining strict per-record limits. Flow evaluation applies a configurable `5m`
+retaining strict per-record limits; transient streaming updates reset inactivity
+without becoming durable events. The 30-second heartbeat reports effective
+idle/limit/last activity for root and child assistants. Flow evaluation applies a configurable `5m`
 assistant idle fallback when a production node has no explicit `idle_timeout`;
 provider stalls therefore end durably as `timed_out`. Deterministic contracts cover report
 persistence and worktree ordering; live Pi evidence has confirmed fresh/exact
