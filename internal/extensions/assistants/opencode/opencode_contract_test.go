@@ -131,6 +131,13 @@ func TestDecodeOpenCodeErrorReadsTopLevelNumericEvidence(t *testing.T) {
 	}
 }
 
+func TestDecodeOpenCodeErrorFallsBackFromNegativeNestedRetryAfter(t *testing.T) {
+	evidence := decodeOpenCodeError(json.RawMessage(`{"data":{"retryAfterMs":-1},"retryAfterMs":75}`))
+	if evidence.RetryAfter != 75*time.Millisecond {
+		t.Fatalf("nested negative retry-after hid top-level value: %+v", evidence)
+	}
+}
+
 func TestOpenCodeAdapterContract(t *testing.T) {
 	t.Run("success and request mapping", func(t *testing.T) {
 		workspace := t.TempDir()

@@ -722,7 +722,7 @@ func decodeOpenCodeError(raw json.RawMessage) openCodeErrorEvidence {
 		evidence.Status = openCodeJSONInt(object.StatusCode)
 	}
 	retryAfterMS := openCodeJSONInt(object.Data.RetryAfterMS)
-	if len(object.Data.RetryAfterMS) == 0 {
+	if retryAfterMS < 0 || len(object.Data.RetryAfterMS) == 0 {
 		retryAfterMS = openCodeJSONInt(object.RetryAfterMS)
 	}
 	if retryAfterMS >= 0 {
