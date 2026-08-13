@@ -252,6 +252,26 @@ sys.exit(55)
 	}
 }
 
+func TestProcessV1Alpha2RejectsNestedV1Alpha1ProviderUnavailableResult(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "worker.py")
+	code := `import json, sys
+json.loads(sys.stdin.readline())
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","capabilities":[],"event_types":[]}}), flush=True)
+print(sys.argv[1], flush=True)
+sys.exit(1)
+`
+	if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := `{"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha1","type":"result","status":"failed","failure_kind":"provider_unavailable","session":{"id":"session-1"},"exit_code":1}}`
+	p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: []string{"python3", script, result}}}
+	_, err := p.Run(context.Background(), Request{Workspace: dir})
+	if execution.KindOf(err) != execution.KindProtocol {
+		t.Fatalf("kind=%s err=%v", execution.KindOf(err), err)
+	}
+}
+
 func TestProcessFailureKindValidation(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

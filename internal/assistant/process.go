@@ -381,7 +381,6 @@ func finishV1Alpha2(ctx context.Context, protocolRequest ProtocolRequest, state 
 	if state.final == nil {
 		return Result{}, protocolError("assistant process v1alpha2", fmt.Errorf("final result is missing"))
 	}
-	state.final.ProtocolVersion = ProtocolV1Alpha2
 	if err := validateProtocolResult(*state.final, protocolRequest.Session, ProtocolV1Alpha2); err != nil {
 		return Result{}, protocolError("assistant process v1alpha2 result", err)
 	}
