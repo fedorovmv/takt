@@ -235,6 +235,9 @@ func removeCurrentNode(nodes []string, nodeID string) []string {
 
 func (r *Runner) runProviderExecution(ctx context.Context, state *store.RunState, node spec.Node, hooks spec.HookSet, loopPrevious map[string]store.NodeState, max int) error {
 	ns := state.Nodes[node.ID]
+	if ns == nil || ns.Retry == nil || ns.Retry.ProviderAttempt < 2 || ns.Retry.ProviderAttempt > providerRetryMax {
+		return r.finishNodeError(state, node.ID, string(execution.KindProtocol), &execution.Error{Kind: execution.KindProtocol, Op: "provider retry", Err: fmt.Errorf("invalid provider retry ordinal")}, execResult{})
+	}
 	if err := r.awaitRetry(ctx, state, node.ID); err != nil {
 		return err
 	}

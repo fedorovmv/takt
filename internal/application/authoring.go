@@ -25,7 +25,7 @@ type AuthoringService struct {
 	runnerFactory RunnerFactory
 }
 
-func (s *AuthoringService) ValidateWorkflow(selector, configOverride string, warningsAsErrors bool) (*ValidationResult, error) {
+func (s *AuthoringService) ValidateWorkflow(selector, configOverride, modelPreset string, modelOverrides map[string]string, warningsAsErrors bool) (*ValidationResult, error) {
 	wfPath, cfgPath, _, err := resolveWorkflow(s.workspace, "", selector, configOverride)
 	if err != nil {
 		return nil, err
@@ -35,6 +35,10 @@ func (s *AuthoringService) ValidateWorkflow(selector, configOverride string, war
 		return nil, err
 	}
 	cfg, err := cfgpkg.Load(cfgPath)
+	if err != nil {
+		return nil, err
+	}
+	cfg, _, err = cfgpkg.MaterializeModels(cfg, cfgpkg.ModelSelection{Preset: modelPreset, Overrides: modelOverrides})
 	if err != nil {
 		return nil, err
 	}

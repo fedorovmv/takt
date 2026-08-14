@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"takt/internal/config"
+	"takt/internal/spec"
 	"takt/internal/store"
 	"takt/internal/validation"
 )
@@ -43,6 +45,43 @@ func TestRunFlowUsesLexicalCaseRepeatOrderAndPreflightsBeforeCallback(t *testing
 		if request.Selector != filepath.Join(root, "flow.yaml") || request.ConfigPath == "" || request.InputValue == "" || request.ApprovalAnswer != "approve" {
 			t.Fatalf("request=%+v", request)
 		}
+	}
+}
+
+func TestRunFlowReportsAndTracesEffectiveModelSelection(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	configPath := filepath.Join(root, "config.yaml")
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ModelPresets = map[string]spec.ModelPreset{"candidate": {"implementation": "preset/implementation", "review": "preset/review", "routing": "preset/routing"}}
+	cfg.ModelPreset = "candidate"
+	data, err := json.Marshal(cfg)
+	if err != nil || os.WriteFile(configPath, data, 0o644) != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	var trace []string
+	report, err := RunFlow(context.Background(), FlowRunOptions{
+		SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root, HostPATH: "host-path",
+		ModelPreset: "candidate", ModelOverrides: map[string]string{"review": "override/org/review"}, Trace: func(line string) { trace = append(trace, line) },
+		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			if request.ModelPreset != "candidate" || request.ModelOverrides["review"] != "override/org/review" {
+				t.Fatalf("model selection not forwarded: %+v", request)
+			}
+			return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, WorkflowPath: "flow", WorkflowFingerprint: strings.Repeat("a", 64), ConfigFingerprint: strings.Repeat("b", 64), CommandsFingerprint: strings.Repeat("c", 64), Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Strategy.ModelPreset != "candidate" || report.Strategy.Models["implementation"] != "preset/implementation" || report.Strategy.Models["review"] != "override/org/review" {
+		t.Fatalf("strategy model selection = %+v", report.Strategy)
+	}
+	joined := strings.Join(trace, "\n")
+	if !strings.Contains(joined, "model_preset=candidate") || !strings.Contains(joined, "review=override/org/review") {
+		t.Fatalf("trace misses model selection:\n%s", joined)
 	}
 }
 
@@ -430,7 +469,7 @@ func writeFlowRunSuite(t *testing.T, ids ...string) (string, string) {
 		mustWrite(t, filepath.Join(caseRoot, "input.md"), "input "+id, 0644)
 		mustWrite(t, filepath.Join(caseRoot, "expected.yaml"), "oracle: {expected: true}\n", 0644)
 	}
-	mustWrite(t, filepath.Join(root, "flow.yaml"), "name: test\nnodes:\n  - id: done\n    bash: true\n", 0644)
+	mustWrite(t, filepath.Join(root, "flow.yaml"), "name: test\nnodes:\n  - id: done\n    bash: 'true'\n", 0644)
 	mustWrite(t, filepath.Join(root, "config.yaml"), "apiVersion: takt/v1alpha1\nkind: Config\n", 0644)
 	mustWrite(t, filepath.Join(root, "validator"), "validator", 0755)
 	suitePath := filepath.Join(root, "suite.yaml")

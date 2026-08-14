@@ -165,7 +165,11 @@ func TestProviderRetryTraceShowsRunNodeAndAttempts(t *testing.T) {
 	traceEvaluationEvent(write, "run-1", store.Event{Type: "provider.retry.ready", NodeID: "implement", Data: map[string]any{"scope": "provider", "provider_attempt": 2, "max_provider_attempts": 3}})
 	traceEvaluationEvent(write, "run-1", store.Event{Type: "provider.retry.exhausted", NodeID: "implement", Data: map[string]any{"scope": "provider", "provider_attempts": 3, "max_provider_attempts": 3, "kind": "provider_unavailable", "fingerprint": "abc"}})
 	joined := strings.Join(trace, "\n")
-	for _, want := range []string{"provider.retry.scheduled run=run-1 node=implement provider_attempt=1/3 delay=2s not_before=2026-08-13T12:00:02Z kind=provider_unavailable fingerprint=abc", "provider.retry.ready run=run-1 node=implement provider_attempt=2/3", "provider.retry.exhausted run=run-1 node=implement provider_attempts=3 max_provider_attempts=3 kind=provider_unavailable fingerprint=abc"} {
+	for _, want := range []string{
+		"provider.retry.scheduled run=run-1 node=implement provider_attempt=1/3 delay=2s not_before=2026-08-13T12:00:02Z kind=provider_unavailable fingerprint=abc",
+		"provider.retry.ready run=run-1 node=implement provider_attempt=2/3",
+		"provider.retry.exhausted run=run-1 node=implement provider_attempts=3 max_provider_attempts=3 kind=provider_unavailable fingerprint=abc",
+	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("trace missing %q:\n%s", want, joined)
 		}

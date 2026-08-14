@@ -143,7 +143,7 @@ func (r *Runner) startOrResumeChild(ctx context.Context, state *store.RunState, 
 }
 
 func (r *Runner) childStartOptions(node spec.Node, childRunID, parentRunID string) (StartOptions, error) {
-	options := StartOptions{RunID: childRunID, ParentRunID: parentRunID, ParentNodeID: node.ID}
+	options := StartOptions{RunID: childRunID, ParentRunID: parentRunID, ParentNodeID: node.ID, ModelPreset: r.startOptions.ModelPreset, ModelOverrides: cloneStringMap(r.startOptions.ModelOverrides)}
 	childPolicy := r.inheritedPolicy
 	if node.WorkflowRun.Policy != nil {
 		resolved, err := resolvePolicyFields(*node.WorkflowRun.Policy, r.workflowPath)

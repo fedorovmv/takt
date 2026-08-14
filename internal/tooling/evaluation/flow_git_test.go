@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"takt/internal/config"
 )
 
 func TestPrepareFlowRepeatCommitsProfileBeforeBaseline(t *testing.T) {
@@ -110,7 +112,7 @@ func TestPrepareFlowRepeatDoesNotInitializeExternalProfile(t *testing.T) {
 func TestPrepareFlowRepeatKeepsWorkflowPathExternalToProfiles(t *testing.T) {
 	suite, item := prepareFlowFixture(t, "ignored", flowConfig(), "# task\n")
 	workflow := filepath.Join(suite.SuiteDir, "workflow.yaml")
-	if err := os.WriteFile(workflow, []byte("name: local\nnodes: []\n"), 0644); err != nil {
+	if err := os.WriteFile(workflow, []byte("name: local\nnodes:\n  - id: done\n    bash: 'true'\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	suite.Workflow, suite.ResolvedWorkflow = "workflow.yaml", workflow
@@ -165,6 +167,38 @@ func TestPrepareFlowRepeatModelSlots(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPrepareFlowRepeatValidatesEffectivePresetAndOverrides(t *testing.T) {
+	configText := `apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: fake
+assistants:
+  fake: {type: mock}
+model_preset: candidate
+model_presets:
+  candidate:
+    implementation: preset/implementation
+    review: preset/review
+    routing: preset/routing
+`
+	suite, item := prepareFlowFixture(t, "code:architect", configText, `{"repository":"acme/repo","pull_request":1,"fixes_permitted":false,"validation_commands":["go test ./..."]}`)
+	prepared, err := PrepareFlowRepeat(context.Background(), suite, item, 1, t.TempDir(), "/host/bin", config.ModelSelection{
+		Preset: "candidate", Overrides: map[string]string{"review": "override/org/review"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(prepared.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Models) != 0 || cfg.ModelPresets["candidate"]["review"] != "preset/review" {
+		t.Fatalf("prepared source config was materialized: %+v", cfg)
+	}
+	if _, err := PrepareFlowRepeat(context.Background(), suite, item, 2, t.TempDir(), "/host/bin", config.ModelSelection{Preset: "missing"}); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("unknown preset error = %v", err)
 	}
 }
 

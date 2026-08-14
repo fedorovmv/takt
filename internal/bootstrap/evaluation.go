@@ -32,7 +32,7 @@ func (e evaluationEngine) Run(ctx context.Context, req tooling.EvaluationRunRequ
 		OutputDir: req.OutputDir, Repeat: req.Repeat, ApprovalAnswer: req.ApprovalAnswer, Replace: req.Replace,
 		StrategyID: req.StrategyID, BenchmarkID: req.BenchmarkID, QualityNode: req.QualityNode,
 		GenerationNode: req.GenerationNode, ValidatorID: req.ValidatorID, ValidatorVersion: req.ValidatorVersion,
-		ValidatorPath: req.ValidatorPath,
+		ValidatorPath: req.ValidatorPath, ModelPreset: req.ModelPreset, ModelOverrides: req.ModelOverrides,
 	})
 }
 
@@ -47,7 +47,7 @@ func (e evaluationEngine) Flow(ctx context.Context, req tooling.FlowEvaluationRe
 	}
 	return evaluation.RunFlow(ctx, evaluation.FlowRunOptions{
 		SuitePath: req.SuitePath, CaseID: req.CaseID, OutputDir: req.OutputDir, InvocationWorkspace: req.InvocationWorkspace,
-		Repeat: req.Repeat, KeepWorkspaces: req.KeepWorkspaces, Now: time.Now, HostPATH: hostPATH, CaseRunner: e.runFlowCase, Trace: req.Trace, AssistantIdleTimeout: req.AssistantIdleTimeout,
+		Repeat: req.Repeat, KeepWorkspaces: req.KeepWorkspaces, ModelPreset: req.ModelPreset, ModelOverrides: req.ModelOverrides, Now: time.Now, HostPATH: hostPATH, CaseRunner: e.runFlowCase, Trace: req.Trace, AssistantIdleTimeout: req.AssistantIdleTimeout,
 	})
 }
 
@@ -74,7 +74,7 @@ func (e evaluationEngine) runFlowCase(ctx context.Context, req evaluation.FlowCa
 		return evaluation.FlowCaseRunResult{}, err
 	}
 	started, err := app.Core.RunService.Start(ctx, application.StartRequest{
-		Selector: req.Selector, Input: req.InputValue, ConfigPath: req.ConfigPath,
+		Selector: req.Selector, Input: req.InputValue, ConfigPath: req.ConfigPath, ModelPreset: req.ModelPreset, ModelOverrides: req.ModelOverrides,
 		Detached: true, KeepWorktree: true,
 	})
 	if err != nil {

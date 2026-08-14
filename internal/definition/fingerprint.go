@@ -25,7 +25,7 @@ func Compute(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath strin
 	if err != nil {
 		return Fingerprints{}, fmt.Errorf("fingerprint workflow: %w", err)
 	}
-	configBytes, err := bytesOrJSON(configPath, cfg)
+	configBytes, err := configDefinitionBytes(configPath, cfg)
 	if err != nil {
 		return Fingerprints{}, fmt.Errorf("fingerprint config: %w", err)
 	}
@@ -51,6 +51,13 @@ func Compute(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath strin
 		Config:   sum(configBytes),
 		Commands: hex.EncodeToString(h.Sum(nil)),
 	}, nil
+}
+
+func configDefinitionBytes(path string, cfg *spec.Config) ([]byte, error) {
+	if cfg != nil && cfg.ModelsMaterialized {
+		return json.Marshal(cfg)
+	}
+	return bytesOrJSON(path, cfg)
 }
 
 // ContentClosureFingerprint returns one fingerprint for the executable content

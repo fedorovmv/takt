@@ -155,6 +155,88 @@ func TestStartReadsRelativeInputWhoseNameIsValidJSON(t *testing.T) {
 	}
 }
 
+func TestSelectedModelPresetSurvivesApprovalResume(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	mustWriteControlTest(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+model_preset: chosen
+model_presets:
+  chosen:
+    implementation: selected/org/model
+    review: selected/review
+    routing: selected/router
+  unselected:
+    implementation: ignored/one
+    review: ignored/two
+    routing: ignored/three
+assistants:
+  worker: {type: mock}
+`)
+	mustWriteControlTest(t, workflowPath, `name: preset-resume
+provider: worker
+model: implementation
+nodes:
+  - id: approve
+    approval: {message: continue}
+  - id: implement
+    depends_on: [approve]
+    prompt: implement
+`)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ModelPreset: "chosen", ModelOverrides: map[string]string{"implementation": "override/org/model"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.State.RunOptions.ModelPreset != "chosen" {
+		t.Fatalf("durable model preset = %q", started.State.RunOptions.ModelPreset)
+	}
+	if got := started.State.RunOptions.ModelOverrides["implementation"]; got != "override/org/model" {
+		t.Fatalf("durable model override = %q", got)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(strings.Replace(string(data), "ignored/one", "ignored/changed", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	final, err := service.RunService.Answer(context.Background(), started.RunID, "approve", "approve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := final.Nodes["implement"].RequestedModel
+	if model == nil || model.Provider != "override" || model.ID != "org/model" {
+		t.Fatalf("resumed requested model = %+v", model)
+	}
+}
+
+func TestUnknownModelPresetFailsBeforeRunCreation(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	mustWriteControlTest(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	mustWriteControlTest(t, workflowPath, "name: invalid-preset\nnodes:\n  - id: done\n    bash: 'true'\n")
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ModelPreset: "missing"}); err == nil {
+		t.Fatal("expected unknown model preset to fail")
+	}
+	entries, err := os.ReadDir(filepath.Join(workspace, ".takt", "runs"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("run was created: %v", entries)
+	}
+}
+
 func TestCommitRedactedUsesRunSpecificConfig(t *testing.T) {
 	workspace := t.TempDir()
 	defaultConfig := filepath.Join(workspace, "default.yaml")

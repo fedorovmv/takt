@@ -118,6 +118,8 @@ type StartOptions struct {
 	WorktreeBase       string
 	KeepWorktree       bool
 	AllowDirty         bool
+	ModelPreset        string
+	ModelOverrides     map[string]string
 	InheritedPolicy    *assistant.Policy
 }
 
@@ -299,15 +301,17 @@ func runOptionsState(options StartOptions) store.RunOptionsState {
 	}
 	return store.RunOptionsState{
 		WorktreeMode: mode, WorktreeBase: options.WorktreeBase,
-		KeepWorktree: options.KeepWorktree, AllowDirty: options.AllowDirty,
+		KeepWorktree: options.KeepWorktree, AllowDirty: options.AllowDirty, ModelPreset: options.ModelPreset, ModelOverrides: cloneStringMap(options.ModelOverrides),
 	}
 }
 
 func StartOptionsFromState(state *store.RunState) StartOptions {
 	options := StartOptions{
-		WorktreeBase: state.RunOptions.WorktreeBase,
-		KeepWorktree: state.RunOptions.KeepWorktree,
-		AllowDirty:   state.RunOptions.AllowDirty,
+		WorktreeBase:   state.RunOptions.WorktreeBase,
+		KeepWorktree:   state.RunOptions.KeepWorktree,
+		AllowDirty:     state.RunOptions.AllowDirty,
+		ModelPreset:    state.RunOptions.ModelPreset,
+		ModelOverrides: cloneStringMap(state.RunOptions.ModelOverrides),
 	}
 	if state.InheritedPolicy != nil {
 		policy := policyFromState(state.InheritedPolicy)
@@ -322,6 +326,17 @@ func StartOptionsFromState(state *store.RunState) StartOptions {
 		options.Worktree = &value
 	}
 	return options
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	copy := make(map[string]string, len(values))
+	for key, value := range values {
+		copy[key] = value
+	}
+	return copy
 }
 
 func (r *Runner) prepareDynamicWorktree(ctx context.Context, state *store.RunState, internal *spec.InternalNodeSpec) error {

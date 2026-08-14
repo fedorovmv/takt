@@ -25,6 +25,21 @@ assistants:
 
 `default_assistant` разрешает логическое имя `coding-agent` в профилях. `models` содержит aliases, на которые ссылаются workflow и Markdown-команды. `provider` и `id` должны поддерживаться выбранным assistant.
 
+Для повторяемого выбора provider/model можно объявить общий preset:
+
+```yaml
+model_preset: qwen36
+model_presets:
+  qwen36:
+    implementation: aihub/Qwen/Qwen3.6-27B
+    review: aihub/Qwen/Qwen3.6-27B
+    routing: aihub/Qwen/Qwen3.6-27B
+```
+
+Preset содержит произвольные aliases и атомарные значения `provider/model-id`.
+`models` и `model_presets` нельзя смешивать. `takt run ... --model-preset NAME`
+и eval используют один resolver; без CLI выбора применяется `model_preset`.
+
 ## Несколько моделей
 
 ```yaml

@@ -66,12 +66,12 @@ apiVersion: takt/v1alpha1
 kind: Config
 default_assistant: pi
 
-models:
-  large:
-    provider: internal-qwen
-    id: Qwen3.6-27B
-    params:
-      reasoning_effort: high
+model_preset: qwen36
+model_presets:
+  qwen36:
+    implementation: aihub/Qwen/Qwen3.6-27B
+    review: aihub/Qwen/Qwen3.6-27B
+    routing: aihub/Qwen/Qwen3.6-27B
 
 assistants:
   pi:
@@ -340,6 +340,19 @@ Root Workflow принимает `name`, `description`, `labels`, `provider`, `m
 `timeout` использует формат Go duration: `500ms`, `30s`, `5m`, `1h` и ограничивает всю попытку узла. `idle_timeout` поддерживается AI-узлами и сбрасывается нормализованными событиями активности; для claimed внешнего узла его обслуживает daemon. `always_run: true` запускает cleanup-узел после terminal-состояния всех зависимостей независимо от их результата, но не скрывает failure основного графа.
 
 `attempts.retry_on` задаёт execution kinds, для которых разрешён автоматический повтор (`exit|start|protocol|internal|timed_out`). Cancellation и неизвестный внешний side effect не являются обычным retry. `attempts.backoff` требует `attempts.max >= 2`: `initial` и `max` — положительные Go duration, `multiplier` по умолчанию 2 и не меньше 1, `jitter` выбирает задержку в диапазоне 50–100% от расчётной. Runtime сохраняет выбранный `not_before` в `NodeState.retry`, поэтому restart/resume не пересчитывает уже принятое ожидание.
+
+Классы execution error также включают внутренний adapter kind `provider_unavailable`; он не является значением `attempts.retry_on` и обрабатывается отдельным provider retry scope ниже.
+
+`provider_unavailable` — внутренний failure kind assistant adapter, а не новое
+YAML-поле и не значение `attempts.retry_on`. Takt сам делает ровно до трёх
+вызовов `SessionAdapter.Run` для одной workflow-попытки (первый вызов и два
+resume); внутренние automatic retries Pi/OpenCode в этот лимит не входят.
+Повтор использует тот же Session ID, delays `2s`, затем `4s`, либо прямой
+`Retry-After`, ограниченный `60s`. Provider-попытки сохраняются отдельно от
+`attempts.max`; после исчерпания Run завершается с `provider_unavailable`, и
+`allow_failure` его не принимает. Этот retry относится только к assistant
+model invocation: domain adapter side effect, включая `side_effect: reconcile`,
+его не использует.
 
 Каждая неуспешная execution получает machine-readable `diagnostic` с `code`, `kind`, `op`, исходным `message`, стабильным `fingerprint` и `retryable`. Fingerprint нормализует workspace path и volatile numbers и сохраняется отдельно для каждой `ExecutionState`; LLM similarity в этом контракте не используется.
 
@@ -867,25 +880,34 @@ config: ../../config.yaml
 
 ```text
 takt validate <workflow> --config <config> --workspace <dir>
-takt run <workflow> --config <config> --workspace <dir> --input <file-or-text>
+takt run <workflow> --config <config> --workspace <dir> --input <file-or-text> [--model-preset <name>]
 takt answer <run-id> <node-id> --workspace <dir> --value <text>
 takt resume <run-id> --workspace <dir>
 takt status <run-id> --workspace <dir>
 takt children <run-id> --workspace <dir>
 takt cancel <run-id> --workspace <dir> [--reason <text>]
-takt command run <name> --config <config> --workspace <dir> --input <text>
+takt command run <name> --config <config> --workspace <dir> --input <text> [--model-preset <name>]
 takt workflow list <profile> --workspace <dir>
 takt workflow describe <profile[:workflow]> --workspace <dir>
 takt worktree list --workspace <dir>
 takt worktree remove <run-id> --workspace <dir> [--force]
 takt worktree prune --workspace <dir>
-takt eval run <workflow> --config <config> --cases <dir> --workspace-template <dir> --output <dir> [--strategy-id <id>] [--benchmark-id <id>] [--quality-node <id>] [--generation-node <id>] [--validator-path <path>]
+takt eval run <workflow> --config <config> --cases <dir> --workspace-template <dir> --output <dir> [--model-preset <name>] [--strategy-id <id>] [--benchmark-id <id>] [--quality-node <id>] [--generation-node <id>] [--validator-path <path>]
 takt eval report <evaluation-output-dir>
 takt eval benchmark <matrix.yaml> [--output <dir>] [--repeat N] [--replace]
 takt eval compare <baseline-output-dir> <candidate-output-dir>
 ```
 
 ### Production flow evaluation
+
+`model_presets` is a shared Config feature, not an evaluation-only format. Each
+preset is a non-empty map of arbitrary aliases to atomic `provider/model-id`
+values, split at the first `/`. `model_preset` selects the preset for that
+Config; CLI `--model-preset` temporarily overrides it. `models` and
+`model_presets` are mutually exclusive. Missing workflow aliases and malformed
+references fail before Run creation. Only effective models enter the Config
+fingerprint; editing an unselected preset does not change it. Repeated
+`--model alias=provider/model` overrides are accepted for any alias.
 
 `takt eval flow <suite.yaml> [--case ID] [--repeat N] [--output DIR]
 [--assistant-idle-timeout DURATION] [--keep-workspaces] [--trace] [--json]` runs sequential isolated production-shaped cases.

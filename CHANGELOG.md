@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Added durable `provider_unavailable` recovery: up to three same-session Takt
+  adapter calls per workflow attempt (`2s`/`4s`, capped `Retry-After`), separate
+  provider/workflow attempt evidence and retry lifecycle events. Flow reports
+  retain outage diagnostics/usage as `infrastructure_error` outside quality
+  denominators; domain side effects are excluded.
+
+- Added shared Config `model_preset`/`model_presets` with arbitrary aliases,
+  durable selection for run/command/eval, effective-model fingerprints, and
+  generic `MODEL_<ALIAS>` overrides for comparisons without editing workflows.
+
 - Added `make eval-smoke`, `eval-feature`, `eval-review`, and `eval-architect`
   as short entrypoints for the bundled live Pi evaluation corpus.
 

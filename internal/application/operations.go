@@ -760,7 +760,7 @@ func (s *RunService) ForkRun(ctx context.Context, request RunForkRequest) (*Star
 	if state.RunOptions.WorktreeMode != "auto" {
 		worktreePtr = &worktree
 	}
-	started, err := s.Start(ctx, StartRequest{Selector: state.WorkflowPath, ConfigPath: state.ConfigPath, Input: input, Detached: request.Detached, Worktree: worktreePtr, WorktreeBase: state.RunOptions.WorktreeBase, KeepWorktree: state.RunOptions.KeepWorktree, AllowDirty: state.RunOptions.AllowDirty})
+	started, err := s.Start(ctx, StartRequest{Selector: state.WorkflowPath, ConfigPath: state.ConfigPath, ModelPreset: state.RunOptions.ModelPreset, ModelOverrides: state.RunOptions.ModelOverrides, Input: input, Detached: request.Detached, Worktree: worktreePtr, WorktreeBase: state.RunOptions.WorktreeBase, KeepWorktree: state.RunOptions.KeepWorktree, AllowDirty: state.RunOptions.AllowDirty})
 	if err != nil {
 		return nil, err
 	}

@@ -1,9 +1,15 @@
 apiVersion: takt/v1alpha1
 kind: Config
-models:
-  implementation: {provider: replace, id: replace-with-model}
-  review: {provider: replace, id: replace-with-model}
-  routing: {provider: replace, id: replace-with-model}
+model_preset: qwen36
+model_presets:
+  qwen36:
+    implementation: replace/Qwen/Qwen3.6-27B
+    review: replace/Qwen/Qwen3.6-27B
+    routing: replace/Qwen/Qwen3.6-27B
+  mixed:
+    implementation: replace/Qwen/Qwen3-Coder-Next
+    review: anthropic/claude-sonnet-4
+    routing: openai/gpt-5-mini
 assistants:
   opencode:
     type: opencode

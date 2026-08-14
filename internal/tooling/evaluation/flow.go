@@ -23,6 +23,8 @@ import (
 
 type FlowCaseRunRequest struct {
 	Workspace, Selector, ConfigPath, InputValue, ApprovalAnswer string
+	ModelPreset                                                 string
+	ModelOverrides                                              map[string]string
 	Trace                                                       func(string)
 	AssistantIdleTimeout                                        time.Duration
 }
@@ -47,6 +49,8 @@ type FlowRunOptions struct {
 	CaseRunner                                        FlowCaseRunner
 	Trace                                             func(string)
 	AssistantIdleTimeout                              time.Duration
+	ModelPreset                                       string
+	ModelOverrides                                    map[string]string
 }
 
 type FlowGateFailureError struct{ Report *SuiteReport }
@@ -100,7 +104,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	if err := os.MkdirAll(output, 0755); err != nil {
 		return nil, err
 	}
-	traceFlow(opts.Trace, "evaluation.start suite=%s workflow=%s case=%s repeat=%d assistant_idle_timeout=%s output=%s", suite.SuitePath, suite.Workflow, opts.CaseID, opts.Repeat, opts.AssistantIdleTimeout, output)
+	traceFlow(opts.Trace, "evaluation.start suite=%s workflow=%s case=%s repeat=%d model_preset=%s model_overrides=%s assistant_idle_timeout=%s output=%s", suite.SuitePath, suite.Workflow, opts.CaseID, opts.Repeat, opts.ModelPreset, flowModelReferenceSummary(opts.ModelOverrides), opts.AssistantIdleTimeout, output)
 	traceFlow(opts.Trace, "evaluation.plan phases=prepare->validator_preflight->workflow->validator->evidence->report")
 	pathHash := sha256.Sum256([]byte(opts.HostPATH))
 	validatorFingerprint, err := hashPath(suite.Validator.ResolvedPath)
@@ -120,7 +124,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 	for _, item := range cases {
 		for repeat := 1; repeat <= opts.Repeat; repeat++ {
 			traceFlow(opts.Trace, "case.prepare case=%s repeat=%d", item.ID, repeat)
-			prepared, prepErr := PrepareFlowRepeat(ctx, suite, item, repeat, output, opts.HostPATH)
+			prepared, prepErr := PrepareFlowRepeat(ctx, suite, item, repeat, output, opts.HostPATH, config.ModelSelection{Preset: opts.ModelPreset, Overrides: opts.ModelOverrides})
 			if prepErr != nil {
 				return finishFlowPartial(report, output, opts.Now, nil, prepErr)
 			}
@@ -131,7 +135,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 				return finishFlowPartial(report, output, opts.Now, nil, cfgErr)
 			}
 			redactor.Merge(redact.NewFromConfig(cfg))
-			traceFlow(opts.Trace, "config.loaded assistant=%s models=%s", cfg.DefaultAssistant, flowModelSummary(cfg))
+			traceFlow(opts.Trace, "config.loaded assistant=%s model_preset=%s models=%s", cfg.DefaultAssistant, prepared.ModelPreset, flowModelReferenceSummary(prepared.EffectiveModels))
 			traceFlow(opts.Trace, "validator.preflight case=%s repeat=%d", item.ID, repeat)
 			preflight, metadata, preflightErr := PreflightFlowValidator(ctx, suite.Validator, item.ID, prepared.BaselineWorkspace, item.ExpectedPath, suite.SuiteDir)
 			if preflightErr != nil {
@@ -153,7 +157,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 			if item.Expectation != nil && item.Expectation.Takt.ApprovalAnswer != "" {
 				approval = item.Expectation.Takt.ApprovalAnswer
 			}
-			result, callbackErr := opts.CaseRunner(ctx, FlowCaseRunRequest{Workspace: prepared.ControlWorkspace, Selector: selector, ConfigPath: prepared.ConfigPath, InputValue: prepared.InputValue, ApprovalAnswer: approval, Trace: opts.Trace, AssistantIdleTimeout: opts.AssistantIdleTimeout})
+			result, callbackErr := opts.CaseRunner(ctx, FlowCaseRunRequest{Workspace: prepared.ControlWorkspace, Selector: selector, ConfigPath: prepared.ConfigPath, InputValue: prepared.InputValue, ApprovalAnswer: approval, ModelPreset: prepared.ModelPreset, ModelOverrides: opts.ModelOverrides, Trace: opts.Trace, AssistantIdleTimeout: opts.AssistantIdleTimeout})
 			if len(result.States) == 0 || result.States[0] == nil {
 				if callbackErr == nil {
 					callbackErr = errors.New("flow case runner returned no root snapshot")
@@ -208,7 +212,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (*SuiteReport, error) {
 				return report, err
 			}
 			traceFlow(opts.Trace, "report.written path=%s", filepath.Join(output, "report.json"))
-			candidateStrategy, strategyErr := flowStrategy(root, prepared.ProfileFingerprint)
+			candidateStrategy, strategyErr := flowStrategy(root, prepared.ProfileFingerprint, prepared.ModelPreset, prepared.EffectiveModels)
 			if strategyErr != nil {
 				return finishFlowPartial(report, output, opts.Now, redactor, strategyErr)
 			}
@@ -288,6 +292,22 @@ func flowModelSummary(cfg *spec.Config) string {
 	for _, name := range names {
 		model := cfg.Models[name]
 		values = append(values, fmt.Sprintf("%s=%s/%s", name, model.Provider, model.ID))
+	}
+	return strings.Join(values, ",")
+}
+
+func flowModelReferenceSummary(models map[string]string) string {
+	if len(models) == 0 {
+		return "none"
+	}
+	names := make([]string, 0, len(models))
+	for name := range models {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	values := make([]string, 0, len(names))
+	for _, name := range names {
+		values = append(values, name+"="+models[name])
 	}
 	return strings.Join(values, ",")
 }
@@ -385,9 +405,9 @@ func flowCleanupPaths(prepared *PreparedFlowRepeat) []string {
 	return paths
 }
 
-func flowStrategy(state *store.RunState, profileFingerprint string) (StrategyIdentity, error) {
+func flowStrategy(state *store.RunState, profileFingerprint, modelPreset string, models map[string]string) (StrategyIdentity, error) {
 	fingerprint, err := hashJSON(struct{ Workflow, Config, Commands, Profile string }{state.WorkflowFingerprint, state.ConfigFingerprint, state.CommandsFingerprint, profileFingerprint})
-	return StrategyIdentity{ID: state.WorkflowPath, Fingerprint: fingerprint, WorkflowFingerprint: state.WorkflowFingerprint, ConfigFingerprint: state.ConfigFingerprint, CommandsFingerprint: state.CommandsFingerprint}, err
+	return StrategyIdentity{ID: state.WorkflowPath, Fingerprint: fingerprint, WorkflowFingerprint: state.WorkflowFingerprint, ConfigFingerprint: state.ConfigFingerprint, CommandsFingerprint: state.CommandsFingerprint, ModelPreset: modelPreset, Models: models}, err
 }
 
 func flowDatasetFingerprint(suite *FlowSuite, cases []FlowCase) string {

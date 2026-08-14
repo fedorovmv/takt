@@ -86,6 +86,7 @@
 - `make eval-smoke|eval-feature|eval-review|eval-architect` запускает готовые live Pi-проверки без ручного набора аргументов; progress и путь `report.json` видны в trace, требуется локальный `examples/flow-evaluation/mini-du/config.yaml`;
 - `eval-feature|eval-review|eval-architect` fail-closed после 5 минут без assistant progress; для калибровки используйте `EVAL_IDLE_TIMEOUT=10m make eval-feature`;
 - атрибуция tokens/cost по execution identity; смена assistant, его версии или resolved model между retry помечается как mixed;
+- общие `model_presets` Config для произвольных aliases в `takt run`, `takt command run` и eval; Make shortcuts принимают `EVAL_PRESET` и generic `MODEL_<ALIAS>` overrides;
 - измеренные нулевые показатели сохраняются как `0`, а недоступные средние значения — как `null`;
 - validation envelope сохраняется при любом terminal status quality-node; успех требует `completed && valid=true`;
 - строгий контракт результата валидатора `takt-validation/v1alpha1`;

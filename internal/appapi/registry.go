@@ -310,20 +310,22 @@ func (r *Registry) registerPlanOperations() {
 
 func (r *Registry) registerRunOperations() {
 	registerOperation(r, "run.start", func(ctx context.Context, params struct {
-		Selector     string `json:"selector"`
-		Input        string `json:"input,omitempty"`
-		ConfigPath   string `json:"config_path,omitempty"`
-		Worktree     *bool  `json:"worktree,omitempty"`
-		WorktreeBase string `json:"worktree_base,omitempty"`
-		KeepWorktree bool   `json:"keep_worktree,omitempty"`
-		AllowDirty   bool   `json:"allow_dirty_worktree,omitempty"`
-		Detached     *bool  `json:"detached,omitempty"`
+		Selector       string            `json:"selector"`
+		Input          string            `json:"input,omitempty"`
+		ConfigPath     string            `json:"config_path,omitempty"`
+		ModelPreset    string            `json:"model_preset,omitempty"`
+		ModelOverrides map[string]string `json:"model_overrides,omitempty"`
+		Worktree       *bool             `json:"worktree,omitempty"`
+		WorktreeBase   string            `json:"worktree_base,omitempty"`
+		KeepWorktree   bool              `json:"keep_worktree,omitempty"`
+		AllowDirty     bool              `json:"allow_dirty_worktree,omitempty"`
+		Detached       *bool             `json:"detached,omitempty"`
 	}) (any, error) {
 		detached := true
 		if params.Detached != nil {
 			detached = *params.Detached
 		}
-		return r.runs.Start(ctx, application.StartRequest{Selector: params.Selector, Input: params.Input, ConfigPath: params.ConfigPath, Worktree: params.Worktree, WorktreeBase: params.WorktreeBase, KeepWorktree: params.KeepWorktree, AllowDirty: params.AllowDirty, Detached: detached})
+		return r.runs.Start(ctx, application.StartRequest{Selector: params.Selector, Input: params.Input, ConfigPath: params.ConfigPath, ModelPreset: params.ModelPreset, ModelOverrides: params.ModelOverrides, Worktree: params.Worktree, WorktreeBase: params.WorktreeBase, KeepWorktree: params.KeepWorktree, AllowDirty: params.AllowDirty, Detached: detached})
 	})
 	registerOperation(r, "run.get", func(ctx context.Context, params struct {
 		RunID string `json:"run_id"`

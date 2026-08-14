@@ -49,10 +49,13 @@ func evalCmd(ctx context.Context, args []string) error {
 		repeat := fs.Int("repeat", 1, "number of repetitions per case")
 		outputDir := fs.String("output", "", "evaluation output directory")
 		keepWorkspaces := fs.Bool("keep-workspaces", false, "retain case workspaces")
+		modelPreset := fs.String("model-preset", "", "model preset from suite config")
+		var modelOverrides modelOverrideFlag
+		fs.Var(&modelOverrides, "model", "override model alias=provider/model; repeatable")
 		assistantIdleTimeout := fs.Duration("assistant-idle-timeout", 5*time.Minute, "fail an assistant node after this long without progress")
 		trace := fs.Bool("trace", false, "write live durable progress to stderr")
 		jsonOut := fs.Bool("json", true, "JSON output")
-		values := map[string]bool{"--case": true, "--repeat": true, "--output": true, "--assistant-idle-timeout": true, "--keep-workspaces": false, "--trace": false, "--json": false}
+		values := map[string]bool{"--case": true, "--repeat": true, "--output": true, "--model-preset": true, "--model": true, "--assistant-idle-timeout": true, "--keep-workspaces": false, "--trace": false, "--json": false}
 		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
 			return err
 		}
@@ -73,7 +76,12 @@ func evalCmd(ctx context.Context, args []string) error {
 		if *trace {
 			traceFn = newEvalTrace(os.Stderr, time.Now)
 		}
-		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces, Trace: traceFn, AssistantIdleTimeout: *assistantIdleTimeout})
+		environmentOverrides, err := currentEnvironmentModelOverrides()
+		if err != nil {
+			return err
+		}
+		overrides := mergeModelOverrides(environmentOverrides, modelOverrides)
+		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces, ModelPreset: *modelPreset, ModelOverrides: overrides, Trace: traceFn, AssistantIdleTimeout: *assistantIdleTimeout})
 		if err != nil {
 			if report != nil {
 				if printErr := printResult(*jsonOut, report); printErr != nil {
@@ -86,6 +94,9 @@ func evalCmd(ctx context.Context, args []string) error {
 	case "run":
 		fs := newFlagSet("eval run")
 		configPath := fs.String("config", ".takt/config.yaml", "config path")
+		modelPreset := fs.String("model-preset", "", "model preset")
+		var modelOverrides modelOverrideFlag
+		fs.Var(&modelOverrides, "model", "override model alias=provider/model; repeatable")
 		casesDir := fs.String("cases", "", "directory containing Markdown cases")
 		caseManifest := fs.String("case-manifest", "", "optional YAML metadata for benchmark cases")
 		templateDir := fs.String("workspace-template", "", "workspace template directory")
@@ -102,7 +113,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		validatorPath := fs.String("validator-path", "", "validator file or directory to fingerprint")
 		jsonOut := fs.Bool("json", true, "JSON output")
 		values := map[string]bool{
-			"--config": true, "--cases": true, "--case-manifest": true, "--workspace-template": true, "--output": true,
+			"--config": true, "--model-preset": true, "--model": true, "--cases": true, "--case-manifest": true, "--workspace-template": true, "--output": true,
 			"--repeat": true, "--answer": true, "--replace": false, "--json": false,
 			"--strategy-id": true, "--benchmark-id": true, "--quality-node": true,
 			"--generation-node": true, "--validator-id": true, "--validator-version": true,
@@ -114,6 +125,11 @@ func evalCmd(ctx context.Context, args []string) error {
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval run <workflow> --config path --cases dir --workspace-template dir [flags]")
 		}
+		environmentOverrides, err := currentEnvironmentModelOverrides()
+		if err != nil {
+			return err
+		}
+		overrides := mergeModelOverrides(environmentOverrides, modelOverrides)
 		report, err := service.Run(ctx, tooling.EvaluationRunRequest{
 			WorkflowPath: fs.Arg(0), ConfigPath: *configPath, CasesDir: *casesDir,
 			WorkspaceTemplate: *templateDir, OutputDir: *outputDir, Repeat: *repeat,
@@ -121,7 +137,7 @@ func evalCmd(ctx context.Context, args []string) error {
 			StrategyID: *strategyID, BenchmarkID: *benchmarkID,
 			QualityNode: *qualityNode, GenerationNode: *generationNode,
 			ValidatorID: *validatorID, ValidatorVersion: *validatorVersion, ValidatorPath: *validatorPath,
-			CaseManifestPath: *caseManifest,
+			CaseManifestPath: *caseManifest, ModelPreset: *modelPreset, ModelOverrides: overrides,
 		})
 		if err != nil {
 			return err

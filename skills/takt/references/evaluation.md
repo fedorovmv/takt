@@ -26,6 +26,15 @@ a longer silent interval; tool and assistant message events reset the timer.
 Pi streaming activity also resets it without printing every partial token;
 `node.active` shows the current idle duration, limit, last activity and wait.
 
+Compare model combinations without editing the suite:
+
+```bash
+EVAL_PRESET=mixed make eval-feature
+# or: takt eval flow suite.yaml --model-preset mixed --model review=anthropic/claude-sonnet-4
+```
+
+Presets live in the normal project Config and are also available to `takt run`.
+
 Inspect `report.json` and `cases/<id>/repeat-001/` evidence before changing a
 workflow or validator. Do not treat fake SCM fixtures as a remote provider or
 security boundary. Trace progress is printed to stderr; stdout stays valid JSON.

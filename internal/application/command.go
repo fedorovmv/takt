@@ -15,11 +15,12 @@ import (
 )
 
 type CommandRunRequest struct {
-	Name       string
-	Input      string
-	Assistant  string
-	Model      string
-	ConfigPath string
+	Name        string
+	Input       string
+	Assistant   string
+	Model       string
+	ModelPreset string
+	ConfigPath  string
 }
 
 // CommandService runs a named Takt command through the same durable runtime as
@@ -44,6 +45,10 @@ func (s *CommandService) Run(ctx context.Context, request CommandRunRequest) (*s
 		}
 	}
 	cfg, err := cfgpkg.Load(cfgPath)
+	if err != nil {
+		return nil, err
+	}
+	cfg, selectedPreset, err := cfgpkg.MaterializeModels(cfg, cfgpkg.ModelSelection{Preset: request.ModelPreset})
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +88,7 @@ func (s *CommandService) Run(ctx context.Context, request CommandRunRequest) (*s
 		Nodes: []spec.Node{{ID: "command", Command: request.Name}},
 	}
 	runner := s.runnerFactory(runtime.Definition{Workflow: wf, Config: cfg, WorkflowPath: "<command>", ConfigPath: cfgPath, ControlWorkspace: s.workspace}, RunnerOptions{Commands: &resolver})
-	state, runErr := runner.Start(ctx, input)
+	state, runErr := runner.StartWithOptions(ctx, input, runtime.StartOptions{ModelPreset: selectedPreset})
 	if runErr != nil {
 		return nil, runErr
 	}

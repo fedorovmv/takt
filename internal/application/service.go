@@ -38,15 +38,17 @@ type WorkflowDescription struct {
 }
 
 type StartRequest struct {
-	Selector           string `json:"selector"`
-	Input              string `json:"input,omitempty"`
-	ConfigPath         string `json:"config_path,omitempty"`
-	ExecutionWorkspace string `json:"-"`
-	Worktree           *bool  `json:"worktree,omitempty"`
-	WorktreeBase       string `json:"worktree_base,omitempty"`
-	KeepWorktree       bool   `json:"keep_worktree,omitempty"`
-	AllowDirty         bool   `json:"allow_dirty_worktree,omitempty"`
-	Detached           bool   `json:"detached,omitempty"`
+	Selector           string            `json:"selector"`
+	Input              string            `json:"input,omitempty"`
+	ConfigPath         string            `json:"config_path,omitempty"`
+	ModelPreset        string            `json:"model_preset,omitempty"`
+	ModelOverrides     map[string]string `json:"model_overrides,omitempty"`
+	ExecutionWorkspace string            `json:"-"`
+	Worktree           *bool             `json:"worktree,omitempty"`
+	WorktreeBase       string            `json:"worktree_base,omitempty"`
+	KeepWorktree       bool              `json:"keep_worktree,omitempty"`
+	AllowDirty         bool              `json:"allow_dirty_worktree,omitempty"`
+	Detached           bool              `json:"detached,omitempty"`
 }
 
 type StartResult struct {
@@ -254,6 +256,10 @@ func (s *RunService) prepareStart(ctx context.Context, request StartRequest) (*p
 	if err != nil {
 		return nil, err
 	}
+	cfg, selectedPreset, err := cfgpkg.MaterializeModels(cfg, cfgpkg.ModelSelection{Preset: request.ModelPreset, Overrides: request.ModelOverrides})
+	if err != nil {
+		return nil, err
+	}
 	if resolved != nil && s.profilePreflight != nil {
 		if err := s.profilePreflight(ctx, resolved, cfg); err != nil {
 			return nil, err
@@ -293,7 +299,7 @@ func (s *RunService) prepareStart(ctx context.Context, request StartRequest) (*p
 	}
 	return &preparedStart{runner: runner, input: input, options: runtime.StartOptions{
 		RunID: runID, ExecutionWorkspace: request.ExecutionWorkspace, Worktree: request.Worktree, WorktreeBase: request.WorktreeBase,
-		KeepWorktree: request.KeepWorktree, AllowDirty: request.AllowDirty,
+		KeepWorktree: request.KeepWorktree, AllowDirty: request.AllowDirty, ModelPreset: selectedPreset, ModelOverrides: request.ModelOverrides,
 	}}, nil
 }
 
@@ -650,6 +656,10 @@ func (s *RunService) runnerForState(state *store.RunState) (*runtime.Runner, err
 		return nil, err
 	}
 	cfg, err := cfgpkg.Load(state.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	cfg, _, err = cfgpkg.MaterializeModels(cfg, cfgpkg.ModelSelection{Preset: state.RunOptions.ModelPreset, Overrides: state.RunOptions.ModelOverrides})
 	if err != nil {
 		return nil, err
 	}

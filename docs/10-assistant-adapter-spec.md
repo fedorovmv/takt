@@ -340,6 +340,23 @@ Prompt передаётся через stdin. Stdout трактуется как
 
 Если parent context завершился, adapter сохраняет raw stdout/stderr и извлекает краткие сообщения из stderr и доступных `error` events. Итоговый execution kind остаётся `timed_out` или `cancelled`, а provider-диагностика добавляется к ошибке и logical output. Scheduler обязан сохранять такую специализированную context-ошибку, а не заменять её общим сообщением `node attempt`.
 
+### 10.1. Provider availability result
+
+`takt-assistant/v1alpha2` может вернуть failed result с
+`failure_kind: provider_unavailable`, non-empty `session.id` и optional
+non-negative `retry_after_ms`. Adapter выдаёт этот kind только по явному
+transient evidence: HTTP `429`, `502`, `503` или `504`; explicitly
+rate-limited/overloaded/temporarily-unavailable provider error; connection
+reset/refused, temporary DNS или equivalent transport error без наблюдаемого
+request-side effect. Unknown errors, other `4xx`, protocol/tool failures and
+assistant decisions are not this kind. Parent timeout/cancellation wins.
+
+Это terminal adapter result после собственных retries provider: Pi/OpenCode
+internal retries не являются Takt `SessionAdapter.Run` calls. Scheduler может
+вызвать adapter ровно три раза на workflow attempt, всегда с тем же Session ID;
+`retry_after_ms` задаёт прямой delay, capped at `60s`. Adapter не выполняет
+этот retry loop и не может silently resume as fresh.
+
 Поддержано:
 
 - выбор model alias на уровне workflow, команды или узла;

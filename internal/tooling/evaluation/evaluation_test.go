@@ -88,6 +88,39 @@ assistants:
 	}
 }
 
+func TestRunSelectsModelPreset(t *testing.T) {
+	root := t.TempDir()
+	workflowPath := filepath.Join(root, "workflow.yaml")
+	configPath := filepath.Join(root, "config.yaml")
+	casesDir := filepath.Join(root, "cases")
+	templateDir := filepath.Join(root, "template")
+	for _, dir := range []string{casesDir, templateDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, workflowPath, "name: preset-eval\nprovider: fake\nmodel: implementation\nnodes:\n  - id: implement\n    prompt: work\n", 0o644)
+	mustWrite(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+model_preset: candidate
+model_presets:
+  candidate:
+    implementation: vendor/org/model
+    review: vendor/review
+    routing: vendor/router
+assistants:
+  fake: {type: mock}
+`, 0o644)
+	mustWrite(t, filepath.Join(casesDir, "case.md"), "work", 0o644)
+	report, err := Run(context.Background(), RunOptions{ExecutionFactory: testExecutionFactory, WorkflowPath: workflowPath, ConfigPath: configPath, CasesDir: casesDir, WorkspaceTemplate: templateDir, OutputDir: filepath.Join(root, "out"), ModelPreset: "candidate"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Strategy.ModelPreset != "candidate" || report.Strategy.Models["implementation"] != "vendor/org/model" || report.Runs[0].Nodes["implement"].RequestedModel.Provider != "vendor" {
+		t.Fatalf("report=%+v run=%+v", report.Strategy, report.Runs[0])
+	}
+}
+
 func TestRunRejectsExistingWorkspaceWithoutReplace(t *testing.T) {
 	root := t.TempDir()
 	workflowPath := filepath.Join(root, "workflow.yaml")

@@ -113,6 +113,13 @@ Takt должен позволять сравнивать стратегии в�
 
 Стоимость и амортизированная end-to-end длительность включают неуспешные запуски. `time_to_valid_ms` измеряет момент durable завершения корректного quality-node внутри конкретного Run и является отдельной метрикой.
 
+Run с durable `error_code`/diagnostic kind `provider_unavailable` является
+`outcome: infrastructure_error`: usage, duration, provider attempts и
+diagnostics остаются в отчёте, но он не входит в `evaluated_runs`, quality
+denominators (`quality_runs`, valid/invalid, scores, stability, time-to-valid)
+и не получает true/false accept/reject. Suite продолжает следующий case;
+`flow_completion_rate` по-прежнему использует все scheduled cases.
+
 Измеренный ноль сериализуется как `0`; недоступный показатель — как `null`.
 
 ## 7. Правила сравнения
@@ -167,6 +174,12 @@ heartbeats identify the active root/child Run, idle time, limit, last normalized
 or streaming activity and awaited boundary. Eval-only
 assistant inactivity defaults to `5m`; override it with
 `--assistant-idle-timeout` without changing the production workflow.
+
+Model comparisons use shared Config presets: `takt eval flow <suite.yaml>
+--model-preset <name>` or `EVAL_PRESET=mixed make eval-feature`. One-off alias
+overrides use repeated `--model alias=provider/model`; Make passes generic
+`MODEL_<ALIAS>` environment variables. Reports record the selected preset and effective model
+references in `strategy`; the benchmark fingerprint remains model-independent.
 
 ## 9. Критерий полезности Takt
 

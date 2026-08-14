@@ -241,6 +241,31 @@ func TestProviderRetryExhaustionIgnoresAllowFailure(t *testing.T) {
 	}
 }
 
+func TestProviderRetryOutOfBudgetFailsClosedWithoutAdapterCall(t *testing.T) {
+	dir := t.TempDir()
+	calls := 0
+	adapter := adapterFunc(func(context.Context, assistant.Request) (assistant.Result, error) {
+		calls++
+		return assistant.Result{SessionID: "unexpected"}, nil
+	})
+	wf := &spec.Workflow{Name: "provider-invalid-marker", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	state := &store.RunState{ID: "provider-invalid-marker", Status: store.RunRunning, Nodes: map[string]*store.NodeState{"work": {Status: store.NodePending, Attempts: 1, Retry: &store.RetryState{Scope: "provider", ProviderAttempt: providerRetryMax + 1, NextAttempt: 1}, SessionID: "provider-session"}}, Approvals: map[string]string{}}
+	if err := r.store.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.runNode(context.Background(), state, wf.Nodes[0], nil); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("invalid provider marker invoked adapter %d times", calls)
+	}
+	if state.Nodes["work"].ErrorCode != string(execution.KindProtocol) || state.Nodes["work"].Status != store.NodeErrored {
+		t.Fatalf("invalid provider marker state = %+v", state.Nodes["work"])
+	}
+}
+
 func TestProviderRetryEmitsDurableLifecycleEvents(t *testing.T) {
 	dir := t.TempDir()
 	adapter := adapterFunc(func(_ context.Context, _ assistant.Request) (assistant.Result, error) {

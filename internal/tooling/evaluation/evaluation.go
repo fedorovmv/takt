@@ -59,6 +59,8 @@ type RunOptions struct {
 	ValidatorVersion  string
 	ValidatorPath     string
 	CaseManifestPath  string
+	ModelPreset       string
+	ModelOverrides    map[string]string
 }
 
 type SuiteReport struct {
@@ -80,11 +82,13 @@ type SuiteReport struct {
 }
 
 type StrategyIdentity struct {
-	ID                  string `json:"id"`
-	Fingerprint         string `json:"fingerprint"`
-	WorkflowFingerprint string `json:"workflow_fingerprint"`
-	ConfigFingerprint   string `json:"config_fingerprint"`
-	CommandsFingerprint string `json:"commands_fingerprint"`
+	ID                  string            `json:"id"`
+	Fingerprint         string            `json:"fingerprint"`
+	WorkflowFingerprint string            `json:"workflow_fingerprint"`
+	ConfigFingerprint   string            `json:"config_fingerprint"`
+	CommandsFingerprint string            `json:"commands_fingerprint"`
+	ModelPreset         string            `json:"model_preset,omitempty"`
+	Models              map[string]string `json:"models,omitempty"`
 }
 
 type BenchmarkIdentity struct {
@@ -276,6 +280,11 @@ func Run(ctx context.Context, opts RunOptions) (*SuiteReport, error) {
 	if err != nil {
 		return nil, err
 	}
+	cfg, selectedPreset, err := cfgpkg.MaterializeModels(cfg, cfgpkg.ModelSelection{Preset: opts.ModelPreset, Overrides: opts.ModelOverrides})
+	if err != nil {
+		return nil, err
+	}
+	opts.ModelPreset = selectedPreset
 	if opts.StrategyID == "" {
 		opts.StrategyID = wf.Name
 	}
@@ -391,6 +400,7 @@ func buildIdentities(paths resolvedOptions, opts RunOptions, wf *spec.Workflow, 
 			WorkflowFingerprint: fingerprints.Workflow,
 			ConfigFingerprint:   fingerprints.Config,
 			CommandsFingerprint: fingerprints.Commands,
+			ModelPreset:         opts.ModelPreset, Models: modelReferences(cfg.Models),
 		},
 		Benchmark: BenchmarkIdentity{
 			ID: opts.BenchmarkID, Fingerprint: benchmarkFingerprint,
@@ -562,6 +572,11 @@ func runOne(ctx context.Context, paths resolvedOptions, opts RunOptions, casePat
 		return record, err
 	}
 	cfg, err := cfgpkg.Load(paths.ConfigPath)
+	if err != nil {
+		record.Status, record.Error = "infrastructure_error", err.Error()
+		return record, err
+	}
+	cfg, _, err = cfgpkg.MaterializeModels(cfg, cfgpkg.ModelSelection{Preset: opts.ModelPreset, Overrides: opts.ModelOverrides})
 	if err != nil {
 		record.Status, record.Error = "infrastructure_error", err.Error()
 		return record, err

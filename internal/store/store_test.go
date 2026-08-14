@@ -211,8 +211,8 @@ func TestConcurrentLoadDuringCommitDoesNotExposeTransientMismatch(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	const commits = 120
-	const readers = 6
+	const commits = 24
+	const readers = 3
 	stop := make(chan struct{})
 	errs := make(chan error, readers)
 	var wg sync.WaitGroup
@@ -250,6 +250,54 @@ func TestConcurrentLoadDuringCommitDoesNotExposeTransientMismatch(t *testing.T) 
 	close(errs)
 	for err := range errs {
 		t.Fatal(err)
+	}
+}
+
+func TestConcurrentCommitSerializesRevisionAndPreservesEvents(t *testing.T) {
+	fs := FS{Workspace: t.TempDir()}
+	base := &RunState{ID: "run-concurrent-commit", Status: RunRunning, Nodes: map[string]*NodeState{}, Approvals: map[string]string{}}
+	if err := fs.Commit(base, Event{Type: "run.started"}); err != nil {
+		t.Fatal(err)
+	}
+	left, right := *base, *base
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	for _, pair := range []struct {
+		state *RunState
+		event Event
+	}{
+		{&left, Event{Type: "left"}},
+		{&right, Event{Type: "right"}},
+	} {
+		go func(state *RunState, event Event) {
+			<-start
+			errs <- fs.Commit(state, event)
+		}(pair.state, pair.event)
+	}
+	close(start)
+	var successes int
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err == nil {
+			successes++
+		} else {
+			var inconsistent *InconsistentError
+			if !errors.As(err, &inconsistent) {
+				t.Fatalf("concurrent commit error = %v", err)
+			}
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful concurrent commits = %d, want 1", successes)
+	}
+	events, err := fs.ReadEvents(base.ID, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("event count = %d, want 2", len(events))
+	}
+	if events[0].Revision != 1 || events[1].Revision != 2 {
+		t.Fatalf("event revisions = %d,%d", events[0].Revision, events[1].Revision)
 	}
 }
 

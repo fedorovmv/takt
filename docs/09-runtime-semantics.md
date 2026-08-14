@@ -163,6 +163,34 @@ node.started
 
 При исчерпании `attempts.max` узел становится `failed` с кодом `attempts_exhausted`. Агрегированные output, Session ID и `resumed` остаются результатом последней фактической попытки и не обнуляются синтетическим terminal transition.
 
+### Provider availability retry
+
+Только assistant result с kind `provider_unavailable` получает отдельный
+durable retry scope. Это строго доказанная transient provider evidence: HTTP
+`429|502|503|504`; явно rate-limited, overloaded или temporarily unavailable
+provider error; либо connection reset/refused, temporary DNS или эквивалентный
+transport failure, когда request-side effect не наблюдаем. Другие `4xx`,
+malformed protocol, tool failure, context overflow, agent decision и unknown
+external side effect не классифицируются так; cancellation и timeout parent
+context сохраняют приоритет.
+
+Одна workflow-попытка делает ровно три Takt `SessionAdapter.Run` calls максимум:
+initial и до двух provider resume. Pi/OpenCode internal retries не считаются.
+`ProviderAttempt` (1..3) и `ProviderAttempts` сохраняются отдельно от workflow
+`Attempt`/`attempts.max`; session ID остаётся тем же. Default backoff — `2s`,
+`4s`; adapter `Retry-After` заменяет delay, но Takt ограничивает его `60s`.
+Перед ожиданием scheduler durable commits `Retry{scope: provider, not_before,
+delay, provider_attempt}` и `provider.retry.scheduled`; перед повторным вызовом
+— `provider.retry.ready`; третья provider failure — `provider.retry.exhausted`
+и terminal `provider_unavailable`. `allow_failure` и workflow `retry_on` не
+превращают это в product success.
+
+Recovery сохраняет marker, deadline, provider ordinal и session. После restart
+ожидающий узел не вызывается до persisted `not_before`; crash в in-flight
+provider resume нормализуется обратно в pending с тем же marker/session, без
+`worker_lost` и без decrement workflow attempt. Provider retry не применяется
+к domain adapter actions или другим external side effects.
+
 ## 7. Ошибки и `allow_failure`
 
 Классы execution error:

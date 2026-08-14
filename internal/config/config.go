@@ -60,6 +60,113 @@ func validateModels(cfg *spec.Config) error {
 			return fmt.Errorf("model %q requires provider and id", name)
 		}
 	}
+	if len(cfg.Models) > 0 && (cfg.ModelPreset != "" || len(cfg.ModelPresets) > 0) {
+		return fmt.Errorf("models and model preset mode are mutually exclusive")
+	}
+	if len(cfg.ModelPresets) > 0 && cfg.ModelPreset == "" {
+		return fmt.Errorf("model_preset is required with model_presets")
+	}
+	if cfg.ModelPreset != "" {
+		if _, ok := cfg.ModelPresets[cfg.ModelPreset]; !ok {
+			return fmt.Errorf("model_preset %q is not defined in model_presets", cfg.ModelPreset)
+		}
+	}
+	for name, preset := range cfg.ModelPresets {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("model preset name cannot be empty")
+		}
+		if len(preset) == 0 {
+			return fmt.Errorf("model preset %q cannot be empty", name)
+		}
+		for role, value := range preset {
+			if err := validateModelAlias(role); err != nil {
+				return fmt.Errorf("model preset %q: %w", name, err)
+			}
+			if _, err := parseModelReference(value); err != nil {
+				return fmt.Errorf("model preset %q role %q: %w", name, role, err)
+			}
+		}
+	}
+	return nil
+}
+
+type ModelSelection struct {
+	Preset    string
+	Overrides map[string]string
+}
+
+func MaterializeModels(cfg *spec.Config, selection ModelSelection) (*spec.Config, string, error) {
+	if cfg == nil {
+		return nil, "", fmt.Errorf("config is required")
+	}
+	selected := selection.Preset
+	if selected == "" {
+		selected = cfg.ModelPreset
+	}
+	models := make(map[string]spec.ModelSpec, len(cfg.Models)+3)
+	if selected == "" {
+		for role, model := range cfg.Models {
+			models[role] = model
+		}
+	}
+	if selected != "" {
+		preset, ok := cfg.ModelPresets[selected]
+		if !ok {
+			return nil, "", fmt.Errorf("model preset %q is not defined", selected)
+		}
+		for role, value := range preset {
+			model, err := parseModelReference(value)
+			if err != nil {
+				return nil, "", fmt.Errorf("model preset %q role %q: %w", selected, role, err)
+			}
+			models[role] = model
+		}
+	}
+	for role, value := range selection.Overrides {
+		if err := validateModelAlias(role); err != nil {
+			return nil, "", err
+		}
+		if selected != "" {
+			if _, ok := cfg.ModelPresets[selected][role]; !ok {
+				return nil, "", fmt.Errorf("model alias %q is not defined in preset %q", role, selected)
+			}
+		} else if _, ok := cfg.Models[role]; !ok {
+			return nil, "", fmt.Errorf("model alias %q is not defined in models", role)
+		}
+		model, err := parseModelReference(value)
+		if err != nil {
+			return nil, "", fmt.Errorf("model role override %q: %w", role, err)
+		}
+		models[role] = model
+	}
+	materialized := *cfg
+	materialized.Models = models
+	materialized.ModelPreset = ""
+	materialized.ModelPresets = nil
+	materialized.ModelsMaterialized = selected != "" || len(selection.Overrides) > 0
+	return &materialized, selected, nil
+}
+
+func parseModelReference(value string) (spec.ModelSpec, error) {
+	if value == "" || strings.TrimSpace(value) != value || strings.IndexFunc(value, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' }) >= 0 {
+		return spec.ModelSpec{}, fmt.Errorf("model reference must be provider/model-id without surrounding whitespace")
+	}
+	provider, id, ok := strings.Cut(value, "/")
+	if !ok || provider == "" || id == "" {
+		return spec.ModelSpec{}, fmt.Errorf("model reference %q must be provider/model-id", value)
+	}
+	return spec.ModelSpec{Provider: provider, ID: id}, nil
+}
+
+func validateModelAlias(value string) error {
+	if value == "" || value[0] < 'a' || value[0] > 'z' {
+		return fmt.Errorf("model alias %q must match [a-z][a-z0-9_]*", value)
+	}
+	for _, char := range value[1:] {
+		if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '_' {
+			return fmt.Errorf("model alias %q must match [a-z][a-z0-9_]*", value)
+		}
+	}
 	return nil
 }
 

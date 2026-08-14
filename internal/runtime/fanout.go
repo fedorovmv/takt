@@ -326,7 +326,7 @@ func (r *Runner) runFanOutChild(ctx context.Context, parent *store.RunState, nod
 	if renderErr != nil {
 		return nil, &execution.Error{Kind: execution.KindProtocol, Op: "validate fan-out child workflow input", Err: renderErr}
 	}
-	options := StartOptions{RunID: record.RunID, ParentRunID: parent.ID, ParentNodeID: fmt.Sprintf("%s[%d]", node.ID, record.Index)}
+	options := StartOptions{RunID: record.RunID, ParentRunID: parent.ID, ParentNodeID: fmt.Sprintf("%s[%d]", node.ID, record.Index), ModelPreset: r.startOptions.ModelPreset, ModelOverrides: cloneStringMap(r.startOptions.ModelOverrides)}
 	childPolicy := r.inheritedPolicy
 	if definition.Policy != nil {
 		resolvedPolicy, policyErr := resolvePolicyFields(*definition.Policy, r.workflowPath)

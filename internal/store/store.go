@@ -335,10 +335,12 @@ type WorktreeState struct {
 }
 
 type RunOptionsState struct {
-	WorktreeMode string `json:"worktree_mode,omitempty"`
-	WorktreeBase string `json:"worktree_base,omitempty"`
-	KeepWorktree bool   `json:"keep_worktree,omitempty"`
-	AllowDirty   bool   `json:"allow_dirty_worktree,omitempty"`
+	WorktreeMode   string            `json:"worktree_mode,omitempty"`
+	WorktreeBase   string            `json:"worktree_base,omitempty"`
+	KeepWorktree   bool              `json:"keep_worktree,omitempty"`
+	AllowDirty     bool              `json:"allow_dirty_worktree,omitempty"`
+	ModelPreset    string            `json:"model_preset,omitempty"`
+	ModelOverrides map[string]string `json:"model_overrides,omitempty"`
 }
 
 type RunState struct {
@@ -549,6 +551,18 @@ func (f FS) Commit(state *RunState, event Event) error {
 	if err := os.MkdirAll(filepath.Join(dir, "artifacts"), 0o755); err != nil {
 		return err
 	}
+	release, err := acquireCommitLock(dir)
+	if err != nil {
+		return err
+	}
+	defer release()
+	lastRevision, err := f.lastEventRevision(state.ID)
+	if err != nil {
+		return err
+	}
+	if state.Revision != lastRevision {
+		return &InconsistentError{RunID: state.ID, Err: fmt.Errorf("stale commit revision %d differs from event revision %d", state.Revision, lastRevision)}
+	}
 	oldRevision, oldUpdated := state.Revision, state.UpdatedAt
 	state.Revision++
 	state.UpdatedAt = time.Now().UTC()
@@ -640,6 +654,13 @@ func (f FS) Load(id string) (*RunState, error) {
 	if err := ValidateRunID(id); err != nil {
 		return nil, err
 	}
+	release, err := acquireReadCommitLock(f.RunDir(id))
+	if err != nil {
+		return nil, err
+	}
+	if release != nil {
+		defer release()
+	}
 	const attempts = 8
 	var mismatch error
 	for attempt := 0; attempt < attempts; attempt++ {
@@ -670,6 +691,15 @@ func (f FS) Load(id string) (*RunState, error) {
 		}
 	}
 	return nil, &InconsistentError{RunID: id, Err: mismatch}
+}
+
+func acquireReadCommitLock(dir string) (func(), error) {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	return acquireCommitReadLock(dir)
 }
 
 func (f FS) readState(id string) (*RunState, error) {

@@ -477,6 +477,17 @@ Input schema:
       "description": "Keep a successful worktree",
       "type": "boolean"
     },
+    "model_overrides": {
+      "additionalProperties": {
+        "description": "provider/model override by workflow alias",
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "model_preset": {
+      "description": "Named model preset from the selected Config",
+      "type": "string"
+    },
     "selector": {
       "description": "Profile selector or workflow file path",
       "type": "string"

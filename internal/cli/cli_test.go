@@ -480,6 +480,108 @@ assistants:
 	}
 }
 
+func TestCommandCmdSelectsModelPreset(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	commandDir := filepath.Join(dir, ".takt", "commands")
+	if err := os.MkdirAll(commandDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(commandDir, "work.md"), []byte("---\nprovider: fixture\nmodel: implementation\n---\nwork\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`apiVersion: takt/v1alpha1
+kind: Config
+model_preset: candidate
+model_presets:
+  candidate:
+    implementation: vendor/org/model
+    review: vendor/review
+    routing: vendor/router
+assistants:
+  fixture: {type: mock}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := commandCmd(context.Background(), []string{"run", "work", "--workspace", dir, "--config", configPath, "--model-preset", "candidate", "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := (store.FS{Workspace: dir}).ListRunIDs()
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("run ids=%v err=%v", ids, err)
+	}
+	state, err := (store.FS{Workspace: dir}).Load(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := state.Nodes["command"].RequestedModel
+	if state.RunOptions.ModelPreset != "candidate" || model == nil || model.Provider != "vendor" || model.ID != "org/model" {
+		t.Fatalf("options=%+v model=%+v", state.RunOptions, model)
+	}
+}
+
+func TestRunCmdSelectsModelPreset(t *testing.T) {
+	dir := t.TempDir()
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(workflowPath, []byte("name: preset\nprovider: fixture\nmodel: implementation\nnodes:\n  - id: work\n    prompt: work\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`apiVersion: takt/v1alpha1
+kind: Config
+model_preset: candidate
+model_presets:
+  candidate:
+    implementation: vendor/org/model
+    review: vendor/review
+    routing: vendor/router
+assistants:
+  fixture: {type: mock}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runCmd(context.Background(), []string{workflowPath, "--config", configPath, "--workspace", dir, "--model-preset", "candidate", "--model", "implementation=override/org/model", "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := (store.FS{Workspace: dir}).ListRunIDs()
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("run ids=%v err=%v", ids, err)
+	}
+	state, err := (store.FS{Workspace: dir}).Load(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := state.Nodes["work"].RequestedModel
+	if state.RunOptions.ModelPreset != "candidate" || model == nil || model.Provider != "override" || model.ID != "org/model" {
+		t.Fatalf("state=%+v model=%+v", state.RunOptions, model)
+	}
+}
+
+func TestValidateCmdSelectsModelPreset(t *testing.T) {
+	dir := t.TempDir()
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(workflowPath, []byte("name: preset\nprovider: fixture\nmodel: implementation\nnodes:\n  - id: work\n    prompt: work\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`apiVersion: takt/v1alpha1
+kind: Config
+model_preset: candidate
+model_presets:
+  candidate:
+    implementation: vendor/model
+    review: vendor/review
+    routing: vendor/router
+assistants:
+  fixture: {type: mock}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateCmd(context.Background(), []string{workflowPath, "--config", configPath, "--workspace", dir, "--model-preset", "candidate", "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTaskGoalReadsFilesOnlyWithExplicitFileFlag(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "goal.txt")
 	if err := os.WriteFile(path, []byte("file contents"), 0o644); err != nil {

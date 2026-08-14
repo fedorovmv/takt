@@ -2,6 +2,28 @@
 
 Статус после `v0.1.57-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
+## Provider availability recovery — реализовано
+
+- adapters классифицируют доказанные transient provider outages как
+  `provider_unavailable`; runtime сохраняет отдельные provider attempts,
+  session-preserving retries (`2s`/`4s`, `Retry-After <= 60s`) и lifecycle
+  events `provider.retry.scheduled|ready|exhausted`;
+- предел — три Takt adapter calls на workflow attempt, без учёта Pi/OpenCode
+  internal retries и без расхода workflow retry budget; recovery сохраняет
+  backoff/session и не превращает in-flight retry в `worker_lost`;
+- flow evaluation сохраняет diagnostics/usage, но классифицирует exhaustion как
+  infrastructure error и исключает его из quality denominators. Domain side
+  effects не используют provider retry.
+
+## Shared model presets — реализовано
+
+- Config принимает строгие `model_preset` и `model_presets` с произвольными
+  aliases и атомарными `provider/model-id`; `models` и preset mode взаимоисключающие.
+- `takt run`, `takt validate`, `takt command run`, daemon/MCP `run.start` и eval
+  используют один materializer; выбор сохраняется в durable Run options.
+- Flow reports содержат выбранный preset и effective model references; только
+  materialized Config входит в strategy fingerprint.
+
 ## Archon A1 review remediation — реализовано
 
 - durable redaction покрывает `cancel_reason` и `loop_iterations[].until_bash`;

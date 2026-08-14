@@ -80,7 +80,7 @@ var canonicalOperationDescriptors = []OperationDescriptor{
 	{ID: "plan.promote", MCPTool: "takt.plan.promote", Title: "Promote successful dynamic plan", Description: "Compile the latest successful plan revision into a validated project workflow under .takt/workflows/generated.", InputSchema: object(map[string]any{"plan_id": stringProp("Completed plan ID"), "name": stringProp("Project workflow name"), "force": boolProp("Replace an existing generated workflow")}, "plan_id", "name"), Annotations: mutating, Stage: StageExperimental},
 	{ID: "run.start", MCPTool: "takt.run.start", Title: "Start a Takt Run", Description: "Validate definitions and start a local Takt Run. Detached mode is the default and returns a durable run_id for polling.", InputSchema: object(map[string]any{
 		"selector": stringProp("Profile selector or workflow file path"), "input": stringProp("Input text or a readable input file path"),
-		"config_path": stringProp("Optional config override"), "worktree": boolProp("Force or disable managed Git worktree isolation"),
+		"config_path": stringProp("Optional config override"), "model_preset": stringProp("Named model preset from the selected Config"), "model_overrides": map[string]any{"type": "object", "additionalProperties": stringProp("provider/model override by workflow alias")}, "worktree": boolProp("Force or disable managed Git worktree isolation"),
 		"worktree_base": stringProp("Optional Git base revision"), "keep_worktree": boolProp("Keep a successful worktree"),
 		"allow_dirty_worktree": boolProp("Allow a dirty control checkout and start from committed state"), "detached": boolProp("Return after the Run is durably started; defaults to true"),
 	}, "selector"), Annotations: mutating, Stage: StageStable},

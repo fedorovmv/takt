@@ -104,6 +104,17 @@
         },
         "commands_fingerprint": {
           "$ref": "#/$defs/fingerprint"
+        },
+        "model_preset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "models": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[^/\\s]+/\\S+$"
+          }
         }
       }
     },
@@ -783,7 +794,8 @@
         },
         "provider_attempt": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 3
         },
         "status": {
           "type": "string"

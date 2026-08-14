@@ -16,23 +16,21 @@ import (
 
 	"takt/internal/config"
 	"takt/internal/profile"
+	"takt/internal/runtime"
 	"takt/internal/spec"
+	"takt/internal/workflow"
 )
-
-var productionFlowModelSlots = map[string][]string{
-	"code:feature-development":     {"implementation", "review"},
-	"code:comprehensive-pr-review": {"review"},
-	"code:architect":               {"implementation", "review", "routing"},
-}
 
 type PreparedFlowRepeat struct {
 	CaseID, ControlWorkspace, BaselineWorkspace, ConfigPath, InputValue string
+	ModelPreset                                                         string
+	EffectiveModels                                                     map[string]string
 	ProfileFingerprint, HostPATHHash                                    string
 	BaseCommit, HeadCommit, BareRemote                                  string
 	Repeat                                                              int
 }
 
-func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, repeat int, evidenceRoot, hostPath string) (*PreparedFlowRepeat, error) {
+func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, repeat int, evidenceRoot, hostPath string, selections ...config.ModelSelection) (*PreparedFlowRepeat, error) {
 	if suite == nil {
 		return nil, fmt.Errorf("nil suite")
 	}
@@ -63,10 +61,20 @@ func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, rep
 	if err != nil {
 		return nil, err
 	}
-	if err := requireFlowModelSlots(selector, cfg.Models); err != nil {
+	selection := config.ModelSelection{}
+	if len(selections) > 0 {
+		selection = selections[0]
+	}
+	effective, selectedPreset, err := config.MaterializeModels(cfg, selection)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateFlowReferences(suite, selector, control, effective); err != nil {
 		return nil, err
 	}
 	if suite.External.GitHub != nil {
+		// Keep the source preset metadata in the copied config. Start rematerializes
+		// the selected preset and must not receive an already-materialized config.
 		if err := overlayFlowAssistantEnvironment(cfg, hostPath); err != nil {
 			return nil, err
 		}
@@ -102,6 +110,8 @@ func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, rep
 		BaselineWorkspace:  baseline,
 		ConfigPath:         configPath,
 		InputValue:         inputValue,
+		ModelPreset:        selectedPreset,
+		EffectiveModels:    modelReferences(effective.Models),
 		ProfileFingerprint: profileFingerprint,
 		HostPATHHash:       hex.EncodeToString(pathHash[:]),
 		BaseCommit:         base,
@@ -109,6 +119,17 @@ func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, rep
 		BareRemote:         bareRemote,
 		Repeat:             repeat,
 	}, nil
+}
+
+func modelReferences(models map[string]spec.ModelSpec) map[string]string {
+	if len(models) == 0 {
+		return nil
+	}
+	values := make(map[string]string, len(models))
+	for name, model := range models {
+		values[name] = model.Provider + "/" + model.ID
+	}
+	return values
 }
 
 func prepareFlowControl(suite *FlowSuite, item FlowCase, control string) error {
@@ -132,13 +153,25 @@ func ensureFlowProfile(name, control string) error {
 	return err
 }
 
-func requireFlowModelSlots(selector string, models map[string]spec.ModelSpec) error {
-	for _, slot := range productionFlowModelSlots[selector] {
-		if _, ok := models[slot]; !ok {
-			return fmt.Errorf("workflow %q requires model slot %q", selector, slot)
+func validateFlowReferences(suite *FlowSuite, selector, control string, cfg *spec.Config) error {
+	path := suite.ResolvedWorkflow
+	if path == "" {
+		resolved, err := profile.Resolve(selector, control)
+		if err != nil {
+			return err
+		}
+		path = resolved.WorkflowPath
+	}
+	wf, err := workflow.Load(path)
+	if err != nil {
+		return err
+	}
+	if wf.Model != "" {
+		if _, ok := cfg.Models[wf.Model]; !ok {
+			return fmt.Errorf("workflow %q requires model alias %q", selector, wf.Model)
 		}
 	}
-	return nil
+	return workflow.ValidateReferences(wf, cfg, runtime.NewCommandResolver(path, control, control))
 }
 
 func flowInputValue(selector, source, copied string) (string, error) {

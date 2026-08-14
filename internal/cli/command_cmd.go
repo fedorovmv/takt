@@ -19,8 +19,9 @@ func commandCmd(ctx context.Context, args []string) error {
 	input := fs.String("input", "", "input text or file")
 	assistantName := fs.String("assistant", "", "override assistant")
 	modelName := fs.String("model", "", "override model")
+	modelPreset := fs.String("model-preset", "", "model preset")
 	jsonOut := fs.Bool("json", true, "JSON output")
-	if err := fs.Parse(interspersed(args[1:], map[string]bool{"--config": true, "--workspace": true, "--input": true, "--assistant": true, "--model": true, "--json": false})); err != nil {
+	if err := fs.Parse(interspersed(args[1:], map[string]bool{"--config": true, "--workspace": true, "--input": true, "--assistant": true, "--model": true, "--model-preset": true, "--json": false})); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -35,7 +36,7 @@ func commandCmd(ctx context.Context, args []string) error {
 		return err
 	}
 	state, err := app.Core.CommandService.Run(ctx, application.CommandRunRequest{
-		Name: fs.Arg(0), Input: *input, Assistant: *assistantName, Model: *modelName, ConfigPath: *configPath,
+		Name: fs.Arg(0), Input: *input, Assistant: *assistantName, Model: *modelName, ModelPreset: *modelPreset, ConfigPath: *configPath,
 	})
 	if err != nil {
 		return err

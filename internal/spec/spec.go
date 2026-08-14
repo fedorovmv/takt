@@ -306,14 +306,19 @@ type HookDecision struct {
 }
 
 type Config struct {
-	APIVersion       string                       `json:"apiVersion"`
-	Kind             string                       `json:"kind"`
-	DefaultAssistant string                       `json:"default_assistant,omitempty"`
-	Models           map[string]ModelSpec         `json:"models,omitempty"`
-	Assistants       map[string]AssistantSpec     `json:"assistants,omitempty"`
-	Adapters         map[string]DomainAdapterSpec `json:"adapters,omitempty"`
-	TaskSources      map[string]TaskSourceSpec    `json:"task_sources,omitempty"`
+	APIVersion         string                       `json:"apiVersion"`
+	Kind               string                       `json:"kind"`
+	DefaultAssistant   string                       `json:"default_assistant,omitempty"`
+	ModelPreset        string                       `json:"model_preset,omitempty"`
+	Models             map[string]ModelSpec         `json:"models,omitempty"`
+	ModelPresets       map[string]ModelPreset       `json:"model_presets,omitempty"`
+	Assistants         map[string]AssistantSpec     `json:"assistants,omitempty"`
+	Adapters           map[string]DomainAdapterSpec `json:"adapters,omitempty"`
+	TaskSources        map[string]TaskSourceSpec    `json:"task_sources,omitempty"`
+	ModelsMaterialized bool                         `json:"-"`
 }
+
+type ModelPreset map[string]string
 
 type ModelSpec struct {
 	Provider string         `json:"provider"`

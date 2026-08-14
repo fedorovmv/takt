@@ -19,6 +19,8 @@ type EvaluationRunRequest struct {
 	StrategyID, BenchmarkID                              string
 	QualityNode, GenerationNode                          string
 	ValidatorID, ValidatorVersion, ValidatorPath         string
+	ModelPreset                                          string
+	ModelOverrides                                       map[string]string
 }
 
 type EvaluationBenchmarkRequest struct {
@@ -30,6 +32,8 @@ type EvaluationBenchmarkRequest struct {
 
 type FlowEvaluationRequest struct {
 	SuitePath, CaseID, OutputDir, InvocationWorkspace string
+	ModelPreset                                       string
+	ModelOverrides                                    map[string]string
 	Repeat                                            int
 	KeepWorkspaces                                    bool
 	Trace                                             func(string)

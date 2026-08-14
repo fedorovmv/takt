@@ -445,7 +445,8 @@
         },
         "provider_attempt": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 3
         },
         "status": {
           "enum": [
@@ -577,6 +578,18 @@
         },
         "allow_dirty_worktree": {
           "type": "boolean"
+        },
+        "model_preset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_overrides": {
+          "type": "object",
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_]*$"},
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[^/\\s]+/.+$"
+          }
         }
       }
     },
@@ -1019,7 +1032,7 @@
         },
         "delay": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^(?:0|(?:[0-9]+(?:ns|us|µs|ms|s|m|h))+)$"
         },
         "scope": {
           "enum": [
@@ -1029,7 +1042,8 @@
         },
         "provider_attempt": {
           "type": "integer",
-          "minimum": 2
+          "minimum": 2,
+          "maximum": 3
         },
         "kind": {
           "type": "string"
@@ -1053,7 +1067,8 @@
           "then": {
             "properties": {
               "provider_attempt": {
-                "minimum": 2
+                "minimum": 2,
+                "maximum": 3
               }
             },
             "required": ["provider_attempt"]

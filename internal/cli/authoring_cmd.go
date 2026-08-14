@@ -40,8 +40,11 @@ func validateCmd(ctx context.Context, args []string) error {
 	configPath := fs.String("config", ".takt/config.yaml", "config path")
 	workspace := fs.String("workspace", ".", "workspace")
 	jsonOut := fs.Bool("json", false, "JSON output")
+	modelPreset := fs.String("model-preset", "", "model preset")
+	var modelOverrides modelOverrideFlag
+	fs.Var(&modelOverrides, "model", "override model alias=provider/model; repeatable")
 	warningsAsErrors := fs.Bool("warnings-as-errors", false, "treat authoring warnings as validation errors")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--config": true, "--workspace": true, "--json": false, "--warnings-as-errors": false})); err != nil {
+	if err := fs.Parse(interspersed(args, map[string]bool{"--config": true, "--workspace": true, "--model-preset": true, "--model": true, "--json": false, "--warnings-as-errors": false})); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -66,7 +69,7 @@ func validateCmd(ctx context.Context, args []string) error {
 			return err
 		}
 	}
-	result, err := app.Core.AuthoringService.ValidateWorkflow(selector, configOverride, *warningsAsErrors)
+	result, err := app.Core.AuthoringService.ValidateWorkflow(selector, configOverride, *modelPreset, map[string]string(modelOverrides), *warningsAsErrors)
 	if err != nil {
 		return err
 	}
@@ -78,6 +81,9 @@ func runCmd(ctx context.Context, args []string) error {
 	configPath := fs.String("config", ".takt/config.yaml", "config path")
 	workspace := fs.String("workspace", ".", "workspace")
 	input := fs.String("input", "", "input text or file")
+	modelPreset := fs.String("model-preset", "", "model preset")
+	var modelOverrides modelOverrideFlag
+	fs.Var(&modelOverrides, "model", "override model alias=provider/model; repeatable")
 	worktreeFlag := fs.Bool("worktree", false, "force Git worktree isolation")
 	noWorktreeFlag := fs.Bool("no-worktree", false, "disable workflow Git worktree isolation")
 	keepWorktree := fs.Bool("keep-worktree", false, "keep the worktree after a successful clean run")
@@ -86,7 +92,7 @@ func runCmd(ctx context.Context, args []string) error {
 	jsonOut := fs.Bool("json", true, "JSON output")
 	useDaemon := fs.Bool("daemon", false, "run in the local daemon")
 	socket := fs.String("socket", "", "daemon Unix socket path")
-	if err := fs.Parse(interspersed(args, map[string]bool{"--config": true, "--workspace": true, "--input": true, "--worktree": false, "--no-worktree": false, "--keep-worktree": false, "--allow-dirty-worktree": false, "--worktree-base": true, "--json": false, "--daemon": false, "--socket": true})); err != nil {
+	if err := fs.Parse(interspersed(args, map[string]bool{"--config": true, "--workspace": true, "--input": true, "--model-preset": true, "--model": true, "--worktree": false, "--no-worktree": false, "--keep-worktree": false, "--allow-dirty-worktree": false, "--worktree-base": true, "--json": false, "--daemon": false, "--socket": true})); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -117,7 +123,7 @@ func runCmd(ctx context.Context, args []string) error {
 		worktreeOverride = &value
 	}
 	request := application.StartRequest{
-		Selector: selector, Input: inputValue, Worktree: worktreeOverride,
+		Selector: selector, Input: inputValue, ModelPreset: *modelPreset, ModelOverrides: map[string]string(modelOverrides), Worktree: worktreeOverride,
 		WorktreeBase: *worktreeBase, KeepWorktree: *keepWorktree,
 		AllowDirty: *allowDirtyWorktree, Detached: *useDaemon,
 	}
