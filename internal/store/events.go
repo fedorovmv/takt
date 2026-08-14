@@ -63,6 +63,13 @@ func (f FS) ReadEvents(id string, afterRevision uint64, limit int) ([]Event, err
 	if err := ValidateRunID(id); err != nil {
 		return nil, err
 	}
+	release, err := acquireReadCommitLock(f.RunDir(id))
+	if err != nil {
+		return nil, err
+	}
+	if release != nil {
+		defer release()
+	}
 	file, err := os.Open(filepath.Join(f.RunDir(id), "events.jsonl"))
 	if errors.Is(err, os.ErrNotExist) {
 		return []Event{}, nil

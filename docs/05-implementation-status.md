@@ -10,7 +10,8 @@
   events `provider.retry.scheduled|ready|exhausted`;
 - предел — три Takt adapter calls на workflow attempt, без учёта Pi/OpenCode
   internal retries и без расхода workflow retry budget; recovery сохраняет
-  backoff/session и не превращает in-flight retry в `worker_lost`;
+  backoff/session/исходный node deadline и не превращает in-flight retry в
+  `worker_lost`; provider backoff и resume входят в один `node.timeout`;
 - flow evaluation сохраняет diagnostics/usage, но классифицирует exhaustion как
   infrastructure error и исключает его из quality denominators. Domain side
   effects не используют provider retry.

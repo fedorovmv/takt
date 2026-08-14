@@ -1,6 +1,9 @@
 package execution
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 var transientProviderPhrases = []string{
 	"rate limit", "rate_limit", "too many requests", "overloaded",
@@ -26,4 +29,14 @@ func IsTransientProviderFailure(status int, message string) bool {
 		}
 	}
 	return false
+}
+
+func ProviderRetryAfterMilliseconds(milliseconds int64) time.Duration {
+	if milliseconds <= 0 {
+		return 0
+	}
+	if milliseconds >= int64(time.Minute/time.Millisecond) {
+		return time.Minute
+	}
+	return time.Duration(milliseconds) * time.Millisecond
 }

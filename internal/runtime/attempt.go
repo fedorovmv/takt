@@ -115,16 +115,7 @@ func (r *Runner) executeAttempt(ctx context.Context, state *store.RunState, node
 		execErr = &execution.Error{Kind: execution.KindProtocol, ExitCode: result.ExitCode, Op: "predicate output", Err: fmt.Errorf("node %q output was truncated before predicate evaluation", node.ID)}
 	}
 	retryable := execErr != nil && shouldRetryAttempt(node.Attempts, execution.KindOf(execErr), ns.Attempts, max)
-	recordExecution(ns, result, execErr)
-	if execErr != nil {
-		d := r.diagnosticFor(string(execution.KindOf(execErr)), execErr, retryable)
-		ns.Diagnostic = &d
-		if len(ns.Executions) > 0 {
-			ns.Executions[len(ns.Executions)-1].Diagnostic = cloneDiagnostic(&d)
-		}
-	} else {
-		ns.Diagnostic = nil
-	}
+	r.recordExecutionWithDiagnostic(ns, result, execErr, retryable)
 	applyExecResult(ns, result)
 	mergeRunArtifacts(state, result.Artifacts)
 	accumulateUsage(ns, result.Usage)
@@ -142,7 +133,7 @@ func (r *Runner) handleFailedAttempt(ctx context.Context, state *store.RunState,
 	kind := execution.KindOf(execErr)
 	if isProviderRetry(execErr) && result.ProviderAttempt > 0 {
 		if result.ProviderAttempt < providerRetryMax {
-			return attemptDone, r.scheduleProviderRetry(state, node.ID, result, execErr)
+			return attemptDone, r.scheduleProviderRetry(ctx, state, node.ID, result, execErr)
 		}
 		if err := r.commit(state, "provider.retry.exhausted", node.ID, map[string]any{"provider_attempt": result.ProviderAttempt}); err != nil {
 			return attemptDone, err
@@ -194,11 +185,11 @@ func providerRetryAfter(err error) time.Duration {
 	return 0
 }
 
-func (r *Runner) scheduleProviderRetry(state *store.RunState, nodeID string, result execResult, err error) error {
-	return r.scheduleProviderRetryWithOwnership(state, nodeID, result, err, false)
+func (r *Runner) scheduleProviderRetry(ctx context.Context, state *store.RunState, nodeID string, result execResult, err error) error {
+	return r.scheduleProviderRetryWithOwnership(ctx, state, nodeID, result, err, false)
 }
 
-func (r *Runner) scheduleProviderRetryWithOwnership(state *store.RunState, nodeID string, result execResult, err error, retainParallelOwnership bool) error {
+func (r *Runner) scheduleProviderRetryWithOwnership(ctx context.Context, state *store.RunState, nodeID string, result execResult, err error, retainParallelOwnership bool) error {
 	ns := state.Nodes[nodeID]
 	if result.SessionID == "" {
 		return r.finishNodeExecutionError(state, nodeID, execution.KindProtocol, &execution.Error{Kind: execution.KindProtocol, Op: "provider retry", Err: fmt.Errorf("provider-unavailable result omitted session id")}, result)
@@ -213,7 +204,7 @@ func (r *Runner) scheduleProviderRetryWithOwnership(state *store.RunState, nodeI
 	}
 	ns.Status = store.NodePending
 	ns.Error, ns.ErrorCode = "", ""
-	ns.Retry = &store.RetryState{Scope: "provider", ProviderAttempt: next, NextAttempt: ns.Attempts, NotBefore: notBefore, Delay: delay.String(), Kind: string(execution.KindProviderUnavailable), Fingerprint: diagnostic.Fingerprint}
+	ns.Retry = &store.RetryState{Scope: "provider", ProviderAttempt: next, NextAttempt: ns.Attempts, NotBefore: notBefore, Delay: delay.String(), AttemptDeadline: contextDeadline(ctx), Kind: string(execution.KindProviderUnavailable), Fingerprint: diagnostic.Fingerprint}
 	state.CurrentNode = ""
 	if retainParallelOwnership {
 		state.CurrentNodes = removeCurrentNode(state.CurrentNodes, nodeID)
@@ -238,15 +229,19 @@ func (r *Runner) runProviderExecution(ctx context.Context, state *store.RunState
 	if ns == nil || ns.Retry == nil || ns.Retry.ProviderAttempt < 2 || ns.Retry.ProviderAttempt > providerRetryMax {
 		return r.finishNodeError(state, node.ID, string(execution.KindProtocol), &execution.Error{Kind: execution.KindProtocol, Op: "provider retry", Err: fmt.Errorf("invalid provider retry ordinal")}, execResult{})
 	}
-	if err := r.awaitRetry(ctx, state, node.ID); err != nil {
-		return err
-	}
-	attemptCtx, cancel, err := nodeContext(ctx, node.Timeout)
+	attemptCtx, cancel, err := providerRetryContext(ctx, node.Timeout, ns.Retry)
 	if err != nil {
 		return r.finishNodeError(state, node.ID, "invalid_timeout", err, execResult{})
 	}
 	attemptCtx, cancelWatch := r.watchCancellation(attemptCtx, state.ID)
 	defer func() { cancelWatch(); cancel() }()
+	if err := r.awaitRetry(attemptCtx, state, node.ID); err != nil {
+		if contextErr := attemptContextError(attemptCtx, "provider retry"); contextErr != nil {
+			ns.Retry = nil
+			return r.finishNodeExecutionErrorPreservingResult(state, node.ID, execution.KindOf(contextErr), contextErr)
+		}
+		return err
+	}
 	result, execErr := r.execute(attemptCtx, state, node, loopPrevious)
 	if errors.Is(execErr, ErrWaiting) {
 		return ErrWaiting
@@ -263,12 +258,16 @@ func (r *Runner) runProviderExecution(ctx context.Context, state *store.RunState
 			execErr = contextErr
 		}
 	}
-	recordExecution(ns, result, execErr)
+	retryable := isProviderRetry(execErr) && result.ProviderAttempt < providerRetryMax
+	if execErr != nil && !isProviderRetry(execErr) {
+		retryable = shouldRetryAttempt(node.Attempts, execution.KindOf(execErr), ns.Attempts, max)
+	}
+	r.recordExecutionWithDiagnostic(ns, result, execErr, retryable)
 	applyExecResult(ns, result)
 	mergeRunArtifacts(state, result.Artifacts)
 	accumulateUsage(ns, result.Usage)
 	if isProviderRetry(execErr) && result.ProviderAttempt < providerRetryMax {
-		return r.scheduleProviderRetry(state, node.ID, result, execErr)
+		return r.scheduleProviderRetry(attemptCtx, state, node.ID, result, execErr)
 	}
 	if isProviderRetry(execErr) {
 		ns.Retry = nil
@@ -279,11 +278,27 @@ func (r *Runner) runProviderExecution(ctx context.Context, state *store.RunState
 	}
 	if execErr != nil {
 		ns.Retry = nil
-		return r.handleProviderFailure(ctx, state, node, hooks.OnFailure, loopPrevious, result, execErr, max)
+		return r.handleProviderFailure(attemptCtx, state, node, hooks.OnFailure, loopPrevious, result, execErr, max)
 	}
 	ns.Retry = nil
 	_, err = r.finishSuccessfulAttempt(attemptCtx, state, node, hooks, loopPrevious, result)
 	return err
+}
+
+func contextDeadline(ctx context.Context) *time.Time {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return nil
+	}
+	return &deadline
+}
+
+func providerRetryContext(parent context.Context, timeout string, retry *store.RetryState) (context.Context, context.CancelFunc, error) {
+	if retry != nil && retry.AttemptDeadline != nil && !retry.AttemptDeadline.IsZero() {
+		ctx, cancel := context.WithDeadline(parent, *retry.AttemptDeadline)
+		return ctx, cancel, nil
+	}
+	return nodeContext(parent, timeout)
 }
 
 func (r *Runner) handleProviderFailure(ctx context.Context, state *store.RunState, node spec.Node, hooks []spec.HookSpec, loopPrevious map[string]store.NodeState, result execResult, execErr error, max int) error {

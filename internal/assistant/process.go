@@ -407,7 +407,7 @@ func finishV1Alpha2(ctx context.Context, protocolRequest ProtocolRequest, state 
 		}
 		executionErr := &execution.Error{Kind: kind, ExitCode: result.ExitCode, Op: "assistant process v1alpha2", Err: waitErr}
 		if state.final.RetryAfterMS != nil {
-			executionErr.RetryAfter = time.Duration(*state.final.RetryAfterMS) * time.Millisecond
+			executionErr.RetryAfter = execution.ProviderRetryAfterMilliseconds(*state.final.RetryAfterMS)
 		}
 		return result, executionErr
 	}

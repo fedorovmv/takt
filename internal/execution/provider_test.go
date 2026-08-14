@@ -1,6 +1,9 @@
 package execution
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestTransientProviderFailureStatuses(t *testing.T) {
 	for _, status := range []int{429, 502, 503, 504} {
@@ -37,6 +40,22 @@ func TestTransientProviderFailureNegativeCases(t *testing.T) {
 	for _, message := range []string{"context length", "tool failed", "arbitrary assistant prose"} {
 		if IsTransientProviderFailure(0, message) {
 			t.Errorf("message %q was incorrectly classified as transient", message)
+		}
+	}
+}
+
+func TestProviderRetryAfterMillisecondsCapsBeforeDurationConversion(t *testing.T) {
+	for _, test := range []struct {
+		milliseconds int64
+		want         time.Duration
+	}{
+		{0, 0},
+		{2500, 2500 * time.Millisecond},
+		{60_001, time.Minute},
+		{1<<63 - 1, time.Minute},
+	} {
+		if got := ProviderRetryAfterMilliseconds(test.milliseconds); got != test.want {
+			t.Fatalf("ProviderRetryAfterMilliseconds(%d) = %s, want %s", test.milliseconds, got, test.want)
 		}
 	}
 }

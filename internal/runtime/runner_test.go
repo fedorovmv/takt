@@ -212,6 +212,118 @@ func TestProviderRetryDelay(t *testing.T) {
 	}
 }
 
+func TestProviderRetryKeepsOriginalNodeDeadline(t *testing.T) {
+	dir := t.TempDir()
+	var deadlines []time.Time
+	adapter := adapterFunc(func(ctx context.Context, _ assistant.Request) (assistant.Result, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("provider execution has no node deadline")
+		}
+		deadlines = append(deadlines, deadline)
+		if len(deadlines) == 1 {
+			return assistant.Result{ExitCode: 1, SessionID: "provider-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: time.Millisecond, Err: errors.New("unavailable")}
+		}
+		return assistant.Result{Output: "ok", SessionID: "provider-session", Resumed: true}, nil
+	})
+	wf := &spec.Workflow{Name: "provider-deadline", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m", Timeout: "1s"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	if _, err := r.Start(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(deadlines) != 2 || !deadlines[0].Equal(deadlines[1]) {
+		t.Fatalf("provider deadlines = %v", deadlines)
+	}
+}
+
+func TestProviderRetryBackoffConsumesNodeTimeout(t *testing.T) {
+	dir := t.TempDir()
+	calls := 0
+	adapter := adapterFunc(func(_ context.Context, _ assistant.Request) (assistant.Result, error) {
+		calls++
+		if calls == 1 {
+			return assistant.Result{ExitCode: 1, SessionID: "provider-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: 700 * time.Millisecond, Err: errors.New("unavailable")}
+		}
+		return assistant.Result{Output: "late", SessionID: "provider-session", Resumed: true}, nil
+	})
+	wf := &spec.Workflow{Name: "provider-timeout", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m", Timeout: "300ms"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected node timeout during provider backoff")
+	}
+	if calls != 1 || state.Nodes["work"].ErrorCode != string(execution.KindTimedOut) {
+		t.Fatalf("calls=%d node=%+v err=%v", calls, state.Nodes["work"], err)
+	}
+}
+
+func TestProviderRetryTerminalExecutionKeepsDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	messages := []string{"apple outage", "banana outage", "carrot outage"}
+	calls := 0
+	adapter := adapterFunc(func(_ context.Context, _ assistant.Request) (assistant.Result, error) {
+		message := messages[calls]
+		calls++
+		return assistant.Result{ExitCode: 1, SessionID: "provider-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: time.Millisecond, Err: errors.New(message)}
+	})
+	wf := &spec.Workflow{Name: "provider-terminal-diagnostic", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected provider exhaustion")
+	}
+	node := state.Nodes["work"]
+	if len(node.Executions) != 3 || node.Executions[2].Diagnostic == nil || !strings.Contains(node.Executions[2].Diagnostic.Message, "carrot outage") || node.Executions[2].Diagnostic.Retryable {
+		t.Fatalf("terminal provider execution = %+v", node.Executions)
+	}
+	events, readErr := r.store.(store.FS).ReadEvents(state.ID, 0, 100)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	for _, event := range events {
+		if event.Type == "provider.retry.exhausted" && event.Data["fingerprint"] != node.Executions[2].Diagnostic.Fingerprint {
+			t.Fatalf("exhausted fingerprint=%v terminal=%s", event.Data["fingerprint"], node.Executions[2].Diagnostic.Fingerprint)
+		}
+	}
+}
+
+func TestProviderRetryFailureHookUsesOriginalNodeDeadline(t *testing.T) {
+	dir := t.TempDir()
+	calls := 0
+	adapter := adapterFunc(func(_ context.Context, _ assistant.Request) (assistant.Result, error) {
+		calls++
+		if calls == 1 {
+			return assistant.Result{ExitCode: 1, SessionID: "provider-session"}, &execution.Error{Kind: execution.KindProviderUnavailable, Op: "provider", RetryAfter: time.Millisecond, Err: errors.New("unavailable")}
+		}
+		return assistant.Result{ExitCode: 7, SessionID: "provider-session", Resumed: true}, &execution.Error{Kind: execution.KindExit, ExitCode: 7, Op: "provider", Err: errors.New("ordinary failure")}
+	})
+	wf := &spec.Workflow{Name: "provider-hook-timeout", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m", Timeout: "300ms", Hooks: spec.HookSet{OnFailure: []spec.HookSpec{{ID: "slow", Bash: "sleep 1"}}}}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected node timeout in provider failure hook")
+	}
+	if state.Nodes["work"].ErrorCode != string(execution.KindTimedOut) {
+		t.Fatalf("node=%+v err=%v", state.Nodes["work"], err)
+	}
+}
+
+func TestExternalProviderFailureWithoutSessionIsProtocol(t *testing.T) {
+	dir := t.TempDir()
+	wf := &spec.Workflow{Name: "external-provider-session", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m", Executor: "external"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := New(wf, cfg, "wf", "cfg", dir)
+	state := &store.RunState{ID: "external-provider-session", Nodes: map[string]*store.NodeState{"work": {Status: store.NodeRunning, Attempts: 1, External: &store.ExternalExecutionState{Status: "failed", Attempt: 1, Result: &store.ExternalResultState{ErrorCode: string(execution.KindProviderUnavailable), Error: "unavailable"}}}}, Approvals: map[string]string{}}
+	_, err := r.executeAssistantAction(context.Background(), state, wf.Nodes[0], r.actionContext(state, wf.Nodes[0], nil))
+	if execution.KindOf(err) != execution.KindProtocol {
+		t.Fatalf("kind=%s err=%v", execution.KindOf(err), err)
+	}
+}
+
 func TestRetryScopeDefaultsOldStateToWorkflow(t *testing.T) {
 	if got := retryScope(nil); got != "workflow" {
 		t.Fatalf("nil retry scope = %q", got)

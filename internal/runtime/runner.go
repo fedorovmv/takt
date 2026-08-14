@@ -1257,6 +1257,19 @@ func recordExecution(node *store.NodeState, result execResult, err error) {
 	}
 }
 
+func (r *Runner) recordExecutionWithDiagnostic(node *store.NodeState, result execResult, err error, retryable bool) {
+	recordExecution(node, result, err)
+	if err == nil {
+		node.Diagnostic = nil
+		return
+	}
+	diagnostic := r.diagnosticFor(string(execution.KindOf(err)), err, retryable)
+	node.Diagnostic = &diagnostic
+	if len(node.Executions) > 0 {
+		node.Executions[len(node.Executions)-1].Diagnostic = cloneDiagnostic(&diagnostic)
+	}
+}
+
 func cloneModelRef(model *store.ModelRef) *store.ModelRef {
 	if model == nil {
 		return nil
@@ -1267,6 +1280,14 @@ func cloneModelRef(model *store.ModelRef) *store.ModelRef {
 }
 
 func (r *Runner) finishNodeExecutionError(state *store.RunState, nodeID string, kind execution.Kind, err error, result execResult) error {
+	return r.finishNodeExecutionErrorState(state, nodeID, kind, err, &result)
+}
+
+func (r *Runner) finishNodeExecutionErrorPreservingResult(state *store.RunState, nodeID string, kind execution.Kind, err error) error {
+	return r.finishNodeExecutionErrorState(state, nodeID, kind, err, nil)
+}
+
+func (r *Runner) finishNodeExecutionErrorState(state *store.RunState, nodeID string, kind execution.Kind, err error, result *execResult) error {
 	status := store.NodeErrored
 	switch kind {
 	case execution.KindExit:
@@ -1284,8 +1305,10 @@ func (r *Runner) finishNodeExecutionError(state *store.RunState, nodeID string, 
 	ns.Error = err.Error()
 	diagnostic := r.diagnosticFor(ns.ErrorCode, err, false)
 	ns.Diagnostic = &diagnostic
-	applyExecResult(ns, result)
-	mergeRunArtifacts(state, result.Artifacts)
+	if result != nil {
+		applyExecResult(ns, *result)
+		mergeRunArtifacts(state, result.Artifacts)
+	}
 
 	state.CurrentNode = ""
 	state.CurrentNodes = nil

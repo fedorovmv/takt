@@ -78,13 +78,14 @@ type DiagnosticState struct {
 }
 
 type RetryState struct {
-	NextAttempt     int       `json:"next_attempt"`
-	NotBefore       time.Time `json:"not_before"`
-	Delay           string    `json:"delay"`
-	Scope           string    `json:"scope,omitempty"`
-	ProviderAttempt int       `json:"provider_attempt,omitempty"`
-	Kind            string    `json:"kind,omitempty"`
-	Fingerprint     string    `json:"fingerprint,omitempty"`
+	NextAttempt     int        `json:"next_attempt"`
+	NotBefore       time.Time  `json:"not_before"`
+	Delay           string     `json:"delay"`
+	Scope           string     `json:"scope,omitempty"`
+	ProviderAttempt int        `json:"provider_attempt,omitempty"`
+	AttemptDeadline *time.Time `json:"attempt_deadline,omitempty"`
+	Kind            string     `json:"kind,omitempty"`
+	Fingerprint     string     `json:"fingerprint,omitempty"`
 }
 
 type SandboxState struct {
@@ -534,6 +535,22 @@ func (f FS) ArtifactsDir(id string) string { return filepath.Join(f.RunDir(id), 
 func (f FS) Save(state *RunState) error {
 	if err := ValidateRunID(state.ID); err != nil {
 		return err
+	}
+	dir := f.RunDir(state.ID)
+	if err := os.MkdirAll(filepath.Join(dir, "artifacts"), 0o755); err != nil {
+		return err
+	}
+	release, err := acquireCommitLock(dir)
+	if err != nil {
+		return err
+	}
+	defer release()
+	lastRevision, err := f.lastEventRevision(state.ID)
+	if err != nil {
+		return err
+	}
+	if state.Revision != lastRevision {
+		return &InconsistentError{RunID: state.ID, Err: fmt.Errorf("stale save revision %d differs from event revision %d", state.Revision, lastRevision)}
 	}
 	state.UpdatedAt = time.Now().UTC()
 	return f.writeStateAtomic(state)

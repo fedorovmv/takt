@@ -88,7 +88,7 @@ func TestRunStateSchemaContainsExecutionIdentity(t *testing.T) {
 		}
 	}
 	retry := defs["retryState"].(map[string]any)["properties"].(map[string]any)
-	for _, field := range []string{"scope", "provider_attempt"} {
+	for _, field := range []string{"scope", "provider_attempt", "attempt_deadline"} {
 		if _, ok := retry[field]; !ok {
 			t.Fatalf("run-state retry schema misses %s", field)
 		}
@@ -100,9 +100,10 @@ func TestRunStateSchemaContainsExecutionIdentity(t *testing.T) {
 }
 
 func TestProviderRetryStateRoundTrip(t *testing.T) {
+	deadline := time.Now().UTC().Add(time.Minute)
 	want := NodeState{
 		ProviderAttempts: 2,
-		Retry:            &RetryState{Scope: "provider", ProviderAttempt: 2, NextAttempt: 1, NotBefore: time.Now().UTC(), Delay: "2s"},
+		Retry:            &RetryState{Scope: "provider", ProviderAttempt: 2, NextAttempt: 1, NotBefore: time.Now().UTC(), Delay: "2s", AttemptDeadline: &deadline},
 		Executions:       []ExecutionState{{Attempt: 1, ProviderAttempt: 2, Status: NodeErrored}},
 	}
 	encoded, err := json.Marshal(want)
@@ -113,7 +114,7 @@ func TestProviderRetryStateRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(encoded, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.ProviderAttempts != 2 || got.Retry == nil || got.Retry.Scope != "provider" || got.Retry.ProviderAttempt != 2 || len(got.Executions) != 1 || got.Executions[0].ProviderAttempt != 2 {
+	if got.ProviderAttempts != 2 || got.Retry == nil || got.Retry.Scope != "provider" || got.Retry.ProviderAttempt != 2 || got.Retry.AttemptDeadline == nil || !got.Retry.AttemptDeadline.Equal(deadline) || len(got.Executions) != 1 || got.Executions[0].ProviderAttempt != 2 {
 		t.Fatalf("provider retry state round-trip = %+v", got)
 	}
 }
@@ -298,6 +299,80 @@ func TestConcurrentCommitSerializesRevisionAndPreservesEvents(t *testing.T) {
 	}
 	if events[0].Revision != 1 || events[1].Revision != 2 {
 		t.Fatalf("event revisions = %d,%d", events[0].Revision, events[1].Revision)
+	}
+}
+
+func TestSaveRejectsStateOlderThanEventJournal(t *testing.T) {
+	fs := FS{Workspace: t.TempDir()}
+	state := &RunState{ID: "run-stale-save", Status: RunRunning, Nodes: map[string]*NodeState{}, Approvals: map[string]string{}}
+	if err := fs.Commit(state, Event{Type: "run.started"}); err != nil {
+		t.Fatal(err)
+	}
+	stale := *state
+	if err := fs.Commit(state, Event{Type: "node.started"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.Save(&stale); err == nil {
+		t.Fatal("stale Save overwrote a newer committed revision")
+	} else {
+		var inconsistent *InconsistentError
+		if !errors.As(err, &inconsistent) {
+			t.Fatalf("stale Save error = %v", err)
+		}
+	}
+}
+
+func TestReadEventsWaitsForCommitLock(t *testing.T) {
+	fs := FS{Workspace: t.TempDir()}
+	state := &RunState{ID: "run-events-lock", Status: RunRunning, Nodes: map[string]*NodeState{}, Approvals: map[string]string{}}
+	if err := fs.Commit(state, Event{Type: "run.started"}); err != nil {
+		t.Fatal(err)
+	}
+	release, err := acquireCommitLock(fs.RunDir(state.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, readErr := fs.ReadEvents(state.ID, 0, 0)
+		done <- readErr
+	}()
+	select {
+	case err := <-done:
+		release()
+		t.Fatalf("ReadEvents bypassed commit lock: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ReadEvents remained blocked after commit lock release")
+	}
+}
+
+func TestLocalCommitLockSerializesGoroutines(t *testing.T) {
+	release := acquireLocalCommitLock("same-run")
+	done := make(chan struct{})
+	go func() {
+		secondRelease := acquireLocalCommitLock("same-run")
+		secondRelease()
+		close(done)
+	}()
+	select {
+	case <-done:
+		release()
+		t.Fatal("local commit lock admitted a concurrent owner")
+	case <-time.After(20 * time.Millisecond):
+	}
+	release()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("local commit lock remained blocked after release")
 	}
 }
 

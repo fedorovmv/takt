@@ -6,7 +6,12 @@
   adapter calls per workflow attempt (`2s`/`4s`, capped `Retry-After`), separate
   provider/workflow attempt evidence and retry lifecycle events. Flow reports
   retain outage diagnostics/usage as `infrastructure_error` outside quality
-  denominators; domain side effects are excluded.
+  denominators; domain side effects are excluded. Provider backoff/resume retain
+  one absolute node deadline and terminal execution diagnostics.
+
+- Serialized Run Store state/event/index reads and writes with portable native
+  file locks on Unix, AIX/Solaris and Windows; stale `Save` snapshots now fail
+  closed instead of overwriting a newer event revision.
 
 - Added shared Config `model_preset`/`model_presets` with arbitrary aliases,
   durable selection for run/command/eval, effective-model fingerprints, and

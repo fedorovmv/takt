@@ -2,12 +2,9 @@
 
 package store
 
-import (
-	"path/filepath"
-	"sync"
-)
-
-var commitLocks sync.Map
+// Filesystems without a native advisory-lock API supported by the Go stdlib
+// are serialized within one process. JS/WASI cannot host competing Takt
+// processes; additional multiprocess platforms need a native backend.
 
 func acquireCommitLock(dir string) (func(), error) {
 	return acquireOtherCommitLock(dir), nil
@@ -18,8 +15,5 @@ func acquireCommitReadLock(dir string) (func(), error) {
 }
 
 func acquireOtherCommitLock(dir string) func() {
-	value, _ := commitLocks.LoadOrStore(filepath.Clean(dir), &sync.Mutex{})
-	lock := value.(*sync.Mutex)
-	lock.Lock()
-	return lock.Unlock
+	return acquireLocalCommitLock(dir)
 }

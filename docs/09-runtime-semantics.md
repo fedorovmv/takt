@@ -180,10 +180,15 @@ initial и до двух provider resume. Pi/OpenCode internal retries не сч
 `Attempt`/`attempts.max`; session ID остаётся тем же. Default backoff — `2s`,
 `4s`; adapter `Retry-After` заменяет delay, но Takt ограничивает его `60s`.
 Перед ожиданием scheduler durable commits `Retry{scope: provider, not_before,
-delay, provider_attempt}` и `provider.retry.scheduled`; перед повторным вызовом
+delay, provider_attempt, attempt_deadline}` и `provider.retry.scheduled`; перед повторным вызовом
 — `provider.retry.ready`; третья provider failure — `provider.retry.exhausted`
 и terminal `provider_unavailable`. `allow_failure` и workflow `retry_on` не
 превращают это в product success.
+
+`attempt_deadline` является исходным абсолютным deadline workflow-попытки.
+Provider backoff и resume используют его без пересчёта, поэтому `node.timeout`
+ограничивает суммарное время initial call, ожиданий, resume и hooks. Истечение
+deadline во время backoff завершает узел как `timed_out` без нового adapter call.
 
 Recovery сохраняет marker, deadline, provider ordinal и session. После restart
 ожидающий узел не вызывается до persisted `not_before`; crash в in-flight

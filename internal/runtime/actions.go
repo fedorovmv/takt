@@ -158,6 +158,7 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 		result.ProviderAttempt = providerAttempt
 		if !errors.Is(err, ErrWaiting) {
 			err = validateAssistantSession(ctx, resolved, result.SessionID, err)
+			err = validateProviderRetrySession(result.SessionID, err)
 		}
 		return normalizeStructuredResult(result, err, node.OutputFormat, "validate structured output")
 	}
@@ -214,9 +215,7 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	}
 	result, err := adapter.Run(ctx, request)
 	err = validateAssistantSession(ctx, resolved, result.SessionID, err)
-	if execution.KindOf(err) == execution.KindProviderUnavailable && result.SessionID == "" {
-		err = &execution.Error{Kind: execution.KindProtocol, Op: "assistant provider retry", Err: fmt.Errorf("provider-unavailable result omitted session id")}
-	}
+	err = validateProviderRetrySession(result.SessionID, err)
 	if errors.Is(context.Cause(ctx), ErrIdleTimeout) {
 		err = &execution.Error{Kind: execution.KindTimedOut, ExitCode: -1, Op: "assistant idle timeout", Err: ErrIdleTimeout}
 	}
@@ -237,6 +236,13 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 		executed.ResolvedModel = &store.ModelRef{Name: result.ResolvedModel.Name, Provider: result.ResolvedModel.Provider, ID: result.ResolvedModel.ID, Params: cloneParams(result.ResolvedModel.Params)}
 	}
 	return normalizeStructuredResult(executed, err, node.OutputFormat, "validate structured output")
+}
+
+func validateProviderRetrySession(sessionID string, err error) error {
+	if execution.KindOf(err) != execution.KindProviderUnavailable || sessionID != "" {
+		return err
+	}
+	return &execution.Error{Kind: execution.KindProtocol, Op: "assistant provider retry", Err: fmt.Errorf("provider-unavailable result omitted session id")}
 }
 
 func validateAssistantSession(ctx context.Context, resolved resolvedAssistantNode, sessionID string, err error) error {

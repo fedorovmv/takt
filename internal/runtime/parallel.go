@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"takt/internal/execution"
 	"takt/internal/spec"
@@ -11,9 +12,10 @@ import (
 )
 
 type parallelNodeResult struct {
-	node   spec.Node
-	result execResult
-	err    error
+	node     spec.Node
+	result   execResult
+	err      error
+	deadline *time.Time
 }
 
 func parallelEligible(node spec.Node, state *store.NodeState) bool {
@@ -73,7 +75,7 @@ func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nod
 					execErr = contextErr
 				}
 			}
-			results <- parallelNodeResult{node: node, result: result, err: execErr}
+			results <- parallelNodeResult{node: node, result: result, err: execErr, deadline: contextDeadline(attemptCtx)}
 		}()
 	}
 	wg.Wait()
@@ -96,7 +98,13 @@ func (r *Runner) runParallelWave(ctx context.Context, state *store.RunState, nod
 		accumulateUsage(ns, item.result.Usage)
 		if isProviderRetry(item.err) && item.result.ProviderAttempt > 0 {
 			if item.result.ProviderAttempt < providerRetryMax {
-				if err := r.scheduleProviderRetryWithOwnership(state, node.ID, item.result, item.err, true); err != nil {
+				deadlineCtx := ctx
+				if item.deadline != nil {
+					var cancel context.CancelFunc
+					deadlineCtx, cancel = context.WithDeadline(ctx, *item.deadline)
+					defer cancel()
+				}
+				if err := r.scheduleProviderRetryWithOwnership(deadlineCtx, state, node.ID, item.result, item.err, true); err != nil {
 					return err
 				}
 				continue

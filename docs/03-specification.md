@@ -352,7 +352,9 @@ resume); внутренние automatic retries Pi/OpenCode в этот лими
 `attempts.max`; после исчерпания Run завершается с `provider_unavailable`, и
 `allow_failure` его не принимает. Этот retry относится только к assistant
 model invocation: domain adapter side effect, включая `side_effect: reconcile`,
-его не использует.
+его не использует. Исходный абсолютный deadline `timeout` сохраняется в durable
+provider marker: backoff и все resume входят в ту же workflow-попытку и не
+получают новый полный timeout после restart/resume.
 
 Каждая неуспешная execution получает machine-readable `diagnostic` с `code`, `kind`, `op`, исходным `message`, стабильным `fingerprint` и `retryable`. Fingerprint нормализует workspace path и volatile numbers и сохраняется отдельно для каждой `ExecutionState`; LLM similarity в этом контракте не используется.
 

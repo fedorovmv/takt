@@ -1045,6 +1045,10 @@
           "minimum": 2,
           "maximum": 3
         },
+        "attempt_deadline": {
+          "type": "string",
+          "format": "date-time"
+        },
         "kind": {
           "type": "string"
         },
