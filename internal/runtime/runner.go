@@ -764,25 +764,27 @@ func attemptContextError(ctx context.Context, op string) error {
 }
 
 type execResult struct {
-	Output           string
-	Stdout           string
-	Stderr           string
-	ExitCode         int
-	SessionID        string
-	SessionPath      string
-	Resumed          bool
-	Truncated        bool
-	Usage            *assistant.ProtocolUsage
-	Assistant        string
-	Adapter          string
-	AssistantVersion string
-	RequestedModel   *store.ModelRef
-	ResolvedModel    *store.ModelRef
-	Artifacts        []store.ArtifactRef
-	AssistantEvents  []assistant.Event
-	DomainOperation  *store.DomainOperationState
-	Sandbox          *store.SandboxState
-	ProviderAttempt  int
+	Output            string
+	Stdout            string
+	Stderr            string
+	ExitCode          int
+	SessionID         string
+	SessionPath       string
+	Prompt            string
+	PromptFingerprint string
+	Resumed           bool
+	Truncated         bool
+	Usage             *assistant.ProtocolUsage
+	Assistant         string
+	Adapter           string
+	AssistantVersion  string
+	RequestedModel    *store.ModelRef
+	ResolvedModel     *store.ModelRef
+	Artifacts         []store.ArtifactRef
+	AssistantEvents   []assistant.Event
+	DomainOperation   *store.DomainOperationState
+	Sandbox           *store.SandboxState
+	ProviderAttempt   int
 }
 
 func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.Node, loopPrevious map[string]store.NodeState) (execResult, error) {
@@ -1147,6 +1149,8 @@ func applyExecResult(node *store.NodeState, result execResult) {
 	node.ExitCode = result.ExitCode
 	node.SessionID = result.SessionID
 	node.SessionPath = result.SessionPath
+	node.Prompt = result.Prompt
+	node.PromptFingerprint = result.PromptFingerprint
 	node.Resumed = result.Resumed
 	node.OutputTruncated = result.Truncated
 	if result.Adapter != "" {
@@ -1236,21 +1240,23 @@ func recordExecution(node *store.NodeState, result execResult, err error) {
 		}
 	}
 	record := store.ExecutionState{
-		Attempt:          node.Attempts,
-		ProviderAttempt:  result.ProviderAttempt,
-		Status:           status,
-		Assistant:        result.Assistant,
-		Adapter:          result.Adapter,
-		AssistantVersion: result.AssistantVersion,
-		RequestedModel:   cloneModelRef(result.RequestedModel),
-		ResolvedModel:    cloneModelRef(result.ResolvedModel),
-		SessionID:        result.SessionID,
-		SessionPath:      result.SessionPath,
-		Resumed:          result.Resumed,
-		ExitCode:         result.ExitCode,
-		ErrorCode:        errorCode,
-		Error:            errorText,
-		OutputTruncated:  result.Truncated,
+		Attempt:           node.Attempts,
+		ProviderAttempt:   result.ProviderAttempt,
+		Status:            status,
+		Assistant:         result.Assistant,
+		Adapter:           result.Adapter,
+		AssistantVersion:  result.AssistantVersion,
+		RequestedModel:    cloneModelRef(result.RequestedModel),
+		ResolvedModel:     cloneModelRef(result.ResolvedModel),
+		SessionID:         result.SessionID,
+		SessionPath:       result.SessionPath,
+		Prompt:            result.Prompt,
+		PromptFingerprint: result.PromptFingerprint,
+		Resumed:           result.Resumed,
+		ExitCode:          result.ExitCode,
+		ErrorCode:         errorCode,
+		Error:             errorText,
+		OutputTruncated:   result.Truncated,
 	}
 	if result.Usage != nil {
 		record.Usage = &store.Usage{

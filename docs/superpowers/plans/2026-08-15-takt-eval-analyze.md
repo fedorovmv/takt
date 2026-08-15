@@ -574,7 +574,7 @@ git commit -m "feat: prepare and persist evaluation analysis reports"
 Add a fake `EvaluationEngine` method assertion for `Analyze`, and CLI parsing tests for:
 
 ```text
-takt eval analyze run --case c --repeat 2 --config analyzer.yaml --model-preset gemini --trace --json
+takt eval analyze evaluation-output-dir --case c --repeat 2 --config analyzer.yaml --model-preset gemini --trace --json
 ```
 
 Expected request: `OutputDir=run`, `CaseID=c`, `Repeat=2`, `ConfigPath=analyzer.yaml`, `ModelPreset=gemini`, `Trace != nil`. Assert `--repeat 2` without `--case` returns `repeat requires --case`, negative repeat returns `repeat cannot be negative`, and missing positional directory returns the exact usage string.

@@ -8,10 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"takt/internal/config"
+	"takt/internal/execution"
 	"takt/internal/profile"
 	"takt/internal/redact"
 	"takt/internal/store"
@@ -34,6 +38,41 @@ type AnalysisCaseInput struct {
 	ManifestPath string `json:"manifest_path"`
 	EvidenceRoot string `json:"evidence_root"`
 }
+
+func traceAnalysis(trace func(string), format string, args ...any) {
+	if trace != nil {
+		trace(fmt.Sprintf(format, args...))
+	}
+}
+
+func uniqueAnalysisStrings(values []string) []string {
+	if len(values) < 2 {
+		return values
+	}
+	out := values[:0]
+	for _, value := range values {
+		if len(out) == 0 || out[len(out)-1] != value {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func persistAnalysisTrace(caseOutputDir string, lines []string, redactor *redact.Redactor) error {
+	data := []byte(strings.Join(lines, "\n"))
+	if redactor != nil {
+		data = []byte(redactor.String(string(data)))
+	}
+	if len(data) > maxAnalysisTraceBytes {
+		data = data[:maxAnalysisTraceBytes]
+	}
+	if len(data) > 0 && len(data) < maxAnalysisTraceBytes {
+		data = append(data, '\n')
+	}
+	return analysisAtomicBytes(filepath.Join(caseOutputDir, "trace.log"), data)
+}
+
+const maxAnalysisTraceBytes = 1 << 20
 
 func SelectAnalysisCases(report *SuiteReport, caseID string, repeat int) ([]AnalysisCase, error) {
 	if report == nil {
@@ -134,17 +173,31 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 	modelInfo := AnalysisModel{Preset: modelPreset, Alias: "takt_analyze", Provider: model.Provider, ID: model.ID}
 	redactor := redact.NewFromEnvironment()
 	redactor.Merge(redact.NewFromConfig(cfg))
+	analysisTraceLines := []string{}
+	var analysisTraceMu sync.Mutex
+	analysisTrace := func(line string) {
+		line = redactor.String(line)
+		analysisTraceMu.Lock()
+		analysisTraceLines = append(analysisTraceLines, line)
+		analysisTraceMu.Unlock()
+		if opts.Trace != nil {
+			opts.Trace(line)
+		}
+	}
 	for {
 		if _, statErr := os.Stat(analysisDir); os.IsNotExist(statErr) {
 			break
 		}
 		analysisDir += "-001"
 	}
-	runReport := &AnalysisRunReport{ReportVersion: AnalysisReportVersion, OutputDir: analysisDir, SourceEvaluationDir: output, Status: "running", StartedAt: started, Model: modelInfo, SelectedCases: make([]AnalysisCaseRef, len(cases)), Analyses: []AnalysisCaseReport{}}
+	// Keep every incremental report schema-valid. A run is pessimistically
+	// failed until finalization proves that all selected cases completed.
+	runReport := &AnalysisRunReport{ReportVersion: AnalysisReportVersion, OutputDir: analysisDir, SourceEvaluationDir: output, Status: "failed", StartedAt: started, Model: modelInfo, TracePath: "trace.log", SelectedCases: make([]AnalysisCaseRef, len(cases)), Analyses: []AnalysisCaseReport{}}
 	for i, c := range cases {
 		runReport.SelectedCases[i] = AnalysisCaseRef{CaseID: c.CaseID, Repeat: c.Repeat}
 	}
-	manifest := AnalysisManifest{Version: analysisManifestVersion, SourceEvaluationDir: output, SelectedCases: runReport.SelectedCases, ConfigFingerprint: configFingerprint, Model: modelInfo, Workspaces: []AnalysisWorkspaceRef{}}
+	manifest := AnalysisManifest{Version: analysisManifestVersion, SourceEvaluationDir: output, SelectedCases: runReport.SelectedCases, ConfigFingerprint: configFingerprint, Model: modelInfo, Trace: "trace.log", Workspaces: []AnalysisWorkspaceRef{}}
+	traceAnalysis(analysisTrace, "analysis.selected cases=%d source=%s", len(cases), output)
 	if err := analysisAtomicJSONRedacted(filepath.Join(analysisDir, "manifest.json"), manifest, redactor); err != nil {
 		return nil, err
 	}
@@ -152,6 +205,9 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 		runReport.Status = "no_cases"
 		runReport.FinishedAt = opts.Now().UTC()
 		runReport.DurationMS = runReport.FinishedAt.Sub(started).Milliseconds()
+		if err := persistAnalysisTrace(analysisDir, analysisTraceLines, redactor); err != nil {
+			return nil, err
+		}
 		if err := analysisAtomicJSONRedacted(filepath.Join(analysisDir, "report.json"), runReport, redactor); err != nil {
 			return nil, err
 		}
@@ -170,7 +226,23 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 	}
 	for _, c := range cases {
 		caseOutputDir := filepath.Join(analysisDir, "cases", sanitizeCaseID(c.CaseID), fmt.Sprintf("repeat-%03d", c.Repeat))
+		traceLines := []string{}
+		var caseTraceMu sync.Mutex
+		caseTrace := func(line string) {
+			line = redactor.String(line)
+			caseTraceMu.Lock()
+			traceLines = append(traceLines, line)
+			caseTraceMu.Unlock()
+			analysisTrace(line)
+		}
+		caseTrace(fmt.Sprintf("analysis.case.selected case=%s repeat=%d", c.CaseID, c.Repeat))
 		persistCase := func(caseReport AnalysisCaseReport) {
+			caseTrace(fmt.Sprintf("analysis.report.write case=%s repeat=%d", c.CaseID, c.Repeat))
+			if err := persistAnalysisTrace(caseOutputDir, traceLines, redactor); err != nil {
+				rememberErr(fmt.Errorf("persist analysis trace %s#%d: %w", c.CaseID, c.Repeat, err))
+			} else {
+				caseReport.TracePath = "trace.log"
+			}
 			runReport.Analyses = append(runReport.Analyses, caseReport)
 			if err := analysisAtomicJSONRedacted(filepath.Join(caseOutputDir, "analysis.json"), caseReport, redactor); err != nil {
 				rememberErr(fmt.Errorf("persist analysis case %s#%d: %w", c.CaseID, c.Repeat, err))
@@ -226,6 +298,7 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 		}
 		repeatRoot := filepath.Join(output, "cases", c.CaseID, fmt.Sprintf("repeat-%03d", c.Repeat))
 		workspace := filepath.Join(caseOutputDir, "workspace")
+		caseTrace(fmt.Sprintf("analysis.preparation workspace=%s", workspace))
 		if _, err := profile.Init("evaluation", workspace, false); err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -242,7 +315,8 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 			persistCase(failedAnalysisCase(c, originalRun, modelInfo, "not_run", err))
 			continue
 		}
-		em, err := buildAnalysisEvidenceManifest(evidenceRoot, evidenceRoot, nil, originalRun)
+		caseTrace(fmt.Sprintf("analysis.evidence.copied root=%s missing=%d", evidenceRoot, len(missingEvidence)))
+		em, err := buildAnalysisEvidenceManifest(evidenceRoot, evidenceRoot, inspectCase, originalRun, report)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -252,6 +326,8 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 		}
 		em.EvidenceRoot = "evidence"
 		em.MissingEvidence = append(em.MissingEvidence, missingEvidence...)
+		sort.Strings(em.MissingEvidence)
+		em.MissingEvidence = uniqueAnalysisStrings(em.MissingEvidence)
 		if err := analysisAtomicJSONRedacted(filepath.Join(workspace, "evidence-manifest.json"), em, redactor); err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -259,6 +335,7 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 			persistCase(failedAnalysisCase(c, originalRun, modelInfo, "persistence_error", err))
 			continue
 		}
+		caseTrace(fmt.Sprintf("analysis.evidence.manifest path=%s", filepath.Join(workspace, "evidence-manifest.json")))
 		input := AnalysisCaseInput{CaseID: c.CaseID, Repeat: c.Repeat, ManifestPath: "evidence-manifest.json", EvidenceRoot: em.EvidenceRoot}
 		inputJSON, _ := json.Marshal(input)
 		inputJSON, _ = redactor.Bytes(inputJSON)
@@ -269,7 +346,7 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 			persistCase(failedAnalysisCase(c, originalRun, modelInfo, "persistence_error", err))
 			continue
 		}
-		manifest.Workspaces = append(manifest.Workspaces, AnalysisWorkspaceRef{CaseID: c.CaseID, Repeat: c.Repeat, Workspace: filepath.ToSlash(filepath.Join("cases", sanitizeCaseID(c.CaseID), fmt.Sprintf("repeat-%03d", c.Repeat), "workspace")), EvidenceManifest: filepath.ToSlash(filepath.Join("cases", sanitizeCaseID(c.CaseID), fmt.Sprintf("repeat-%03d", c.Repeat), "workspace", "evidence-manifest.json"))})
+		manifest.Workspaces = append(manifest.Workspaces, AnalysisWorkspaceRef{CaseID: c.CaseID, Repeat: c.Repeat, Workspace: filepath.ToSlash(filepath.Join("cases", sanitizeCaseID(c.CaseID), fmt.Sprintf("repeat-%03d", c.Repeat), "workspace")), EvidenceManifest: filepath.ToSlash(filepath.Join("cases", sanitizeCaseID(c.CaseID), fmt.Sprintf("repeat-%03d", c.Repeat), "workspace", "evidence-manifest.json")), Trace: filepath.ToSlash(filepath.Join("cases", sanitizeCaseID(c.CaseID), fmt.Sprintf("repeat-%03d", c.Repeat), "trace.log"))})
 		if err := analysisAtomicJSONRedacted(filepath.Join(analysisDir, "manifest.json"), manifest, redactor); err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -277,10 +354,31 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 			persistCase(failedAnalysisCase(c, originalRun, modelInfo, "persistence_error", err))
 			continue
 		}
-		result, callbackErr := opts.CaseRunner(ctx, FlowCaseRunRequest{Workspace: workspace, Selector: "evaluation:analyze", ConfigPath: configPath, InputValue: string(inputJSON), ModelPreset: opts.ModelPreset, Trace: opts.Trace})
-		caseReport := analysisCaseReportFromRun(c, originalRun, modelInfo, result, callbackErr)
+		caseTrace(fmt.Sprintf("analysis.callback.start case=%s repeat=%d", c.CaseID, c.Repeat))
+		result, callbackErr := opts.CaseRunner(ctx, FlowCaseRunRequest{Workspace: workspace, Selector: "evaluation:analyze", ConfigPath: configPath, InputValue: string(inputJSON), ModelPreset: opts.ModelPreset, Trace: caseTrace})
+		caseTrace(fmt.Sprintf("analysis.callback.finish case=%s repeat=%d callback_error=%t", c.CaseID, c.Repeat, callbackErr != nil))
+		caseReport := analysisCaseReportFromRunEvidence(c, originalRun, modelInfo, result, callbackErr, &em, evidenceRoot)
 		if fp, ferr := hashJSON(em); ferr == nil {
 			caseReport.EvidenceFingerprint = fp
+		}
+		if len(result.States) > 0 && result.States[0] != nil {
+			if node := result.States[0].Nodes["analyze"]; node != nil {
+				if err := captureAnalysisSessionEvidence(caseOutputDir, &caseReport.Session, redactor); err != nil {
+					caseReport.AnalysisStatus, caseReport.ErrorCode, caseReport.Error, caseReport.Analysis = "persistence_error", "persistence_error", err.Error(), nil
+				}
+				caseTrace(fmt.Sprintf("analysis.session adapter=%s session=%s evidence=%s path=%s", caseReport.Session.Adapter, caseReport.Session.SessionID, caseReport.Session.SessionEvidence, caseReport.Session.SessionEvidencePath))
+			}
+		}
+		caseTrace("analysis.trace.persist before_cleanup")
+		if err := persistAnalysisTrace(caseOutputDir, traceLines, redactor); err != nil {
+			rememberErr(fmt.Errorf("persist analysis trace %s#%d before cleanup: %w", c.CaseID, c.Repeat, err))
+		}
+		if result.Cleanup != nil {
+			caseTrace("analysis.cleanup.start")
+			if _, cleanupErr := result.Cleanup(context.WithoutCancel(ctx)); cleanupErr != nil {
+				caseReport.AnalysisStatus, caseReport.ErrorCode, caseReport.Error, caseReport.Analysis = "persistence_error", "persistence_error", cleanupErr.Error(), nil
+			}
+			caseTrace("analysis.cleanup.finish")
 		}
 		if caseReport.AnalysisStatus != "completed" && firstErr == nil {
 			firstErr = fmt.Errorf("analysis %s: %s", caseReport.ErrorCode, valueOrDash(caseReport.Error))
@@ -299,6 +397,10 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 	if err := analysisAtomicJSONRedacted(filepath.Join(analysisDir, "manifest.json"), manifest, redactor); err != nil {
 		runReport.Status = "failed"
 		rememberErr(fmt.Errorf("persist analysis manifest: %w", err))
+	}
+	if err := persistAnalysisTrace(analysisDir, analysisTraceLines, redactor); err != nil {
+		runReport.Status = "failed"
+		rememberErr(fmt.Errorf("persist analysis trace: %w", err))
 	}
 	if err := analysisAtomicJSONRedacted(filepath.Join(analysisDir, "report.json"), runReport, redactor); err != nil {
 		runReport.Status = "failed"
@@ -321,9 +423,13 @@ func findRun(report *SuiteReport, c AnalysisCase) (RunRecord, bool) {
 }
 
 func analysisCaseReportFromRun(c AnalysisCase, deterministic RunRecord, model AnalysisModel, result FlowCaseRunResult, callbackErr error) AnalysisCaseReport {
+	return analysisCaseReportFromRunEvidence(c, deterministic, model, result, callbackErr, nil, "")
+}
+
+func analysisCaseReportFromRunEvidence(c AnalysisCase, deterministic RunRecord, model AnalysisModel, result FlowCaseRunResult, callbackErr error, manifest *AnalysisEvidenceManifest, evidenceRoot string) AnalysisCaseReport {
 	causeSource, cause := primaryRunCause(deterministic)
 	r := AnalysisCaseReport{CaseID: c.CaseID, Repeat: c.Repeat, Deterministic: AnalysisDeterministic{Status: deterministic.Status, Outcome: deterministic.Outcome, CauseSource: causeSource, Cause: cause}, Model: model, AnalysisStatus: "not_run", Session: AnalysisSession{Adapter: "unavailable", SessionEvidence: "unavailable"}}
-	if len(result.States) == 0 {
+	if len(result.States) == 0 || result.States[0] == nil {
 		r.ErrorCode = classifyAnalysisError(nil, callbackErr)
 		r.AnalysisStatus = r.ErrorCode
 		if callbackErr != nil {
@@ -338,10 +444,13 @@ func analysisCaseReportFromRun(c AnalysisCase, deterministic RunRecord, model An
 		r.Session.SessionID = node.SessionID
 		r.Session.SessionPath = node.SessionPath
 		r.Session.Adapter = node.Adapter
+		r.Prompt = node.Prompt
+		r.PromptFingerprint = node.PromptFingerprint
 	}
 	node, ok := root.Nodes["analyze"]
 	if !ok || node == nil {
 		r.ErrorCode = "not_run"
+		r.AnalysisStatus = "not_run"
 		r.Error = "analyze node not found"
 		return r
 	}
@@ -373,6 +482,9 @@ func analysisCaseReportFromRun(c AnalysisCase, deterministic RunRecord, model An
 		if r.Error == "" && callbackErr != nil {
 			r.Error = callbackErr.Error()
 		}
+		if r.Error == "" {
+			r.Error = fmt.Sprintf("analyze node terminated with status %s", node.Status)
+		}
 		r.AnalysisStatus = normalizeAnalysisStatus(r.ErrorCode)
 		r.ErrorCode = r.AnalysisStatus
 		return r
@@ -389,6 +501,14 @@ func analysisCaseReportFromRun(c AnalysisCase, deterministic RunRecord, model An
 		r.ErrorCode = "protocol"
 		r.Error = err.Error()
 		return r
+	}
+	if manifest != nil {
+		if err := validateAdvisoryAnalysisEvidence(analysis, *manifest, evidenceRoot); err != nil {
+			r.AnalysisStatus = "protocol"
+			r.ErrorCode = "protocol"
+			r.Error = err.Error()
+			return r
+		}
 	}
 	r.Analysis = &analysis
 	r.AnalysisStatus = "completed"
@@ -425,6 +545,151 @@ func validateAdvisoryAnalysis(value AdvisoryAnalysis) error {
 	return nil
 }
 
+func validateAdvisoryAnalysisEvidence(value AdvisoryAnalysis, manifest AnalysisEvidenceManifest, evidenceRoot string) error {
+	files := make(map[string]AnalysisEvidenceFile, len(manifest.Files))
+	for _, file := range manifest.Files {
+		files[file.Path] = file
+	}
+	for i, evidence := range value.Evidence {
+		if err := validateEvidenceCitation(evidence.Path, evidence.Pointer, files, evidenceRoot); err != nil {
+			return fmt.Errorf("analysis evidence[%d] citation: %w", i, err)
+		}
+	}
+	for i, link := range value.CausalChain {
+		for j, citation := range link.Evidence {
+			path, pointer, ok := strings.Cut(citation, "#")
+			if !ok || path == "" || pointer == "" {
+				return fmt.Errorf("analysis causal_chain[%d].evidence[%d] citation %q is invalid", i, j, citation)
+			}
+			if err := validateEvidenceCitation(path, pointer, files, evidenceRoot); err != nil {
+				return fmt.Errorf("analysis causal_chain[%d].evidence[%d] citation: %w", i, j, err)
+			}
+		}
+	}
+	return nil
+}
+
+func validateEvidenceCitation(rawPath, pointer string, files map[string]AnalysisEvidenceFile, evidenceRoot string) error {
+	if strings.TrimSpace(rawPath) == "" || strings.ContainsRune(rawPath, '\x00') || strings.Contains(rawPath, "\\") || filepath.IsAbs(rawPath) {
+		return fmt.Errorf("path %q is not relative", rawPath)
+	}
+	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(rawPath)))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return fmt.Errorf("path %q escapes evidence root", rawPath)
+	}
+	file, ok := files[clean]
+	if !ok {
+		return fmt.Errorf("path %q is not in evidence manifest", rawPath)
+	}
+	root, err := filepath.Abs(evidenceRoot)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(root, filepath.FromSlash(clean))
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("path %q escapes evidence root", rawPath)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("path %q is unavailable: %w", rawPath, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return fmt.Errorf("path %q is not a regular file", rawPath)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if (file.Size > 0 || file.SHA256 != "") && (file.Size != int64(len(data)) || (file.SHA256 != "" && !strings.EqualFold(file.SHA256, sha256Bytes(data)))) {
+		return fmt.Errorf("path %q does not match evidence manifest", rawPath)
+	}
+	if start, end, ok := parseLineCitation(pointer); ok {
+		if !isTextEvidence(data) {
+			return fmt.Errorf("line citation requires a text file")
+		}
+		lineCount := len(strings.Split(string(data), "\n"))
+		if start < 1 || end < start || end > lineCount {
+			return fmt.Errorf("line citation %q is outside file", pointer)
+		}
+		return nil
+	}
+	if !strings.HasPrefix(pointer, "/") {
+		return fmt.Errorf("JSON pointer %q is invalid", pointer)
+	}
+	if !isTextEvidence(data) || !json.Valid(data) {
+		return fmt.Errorf("JSON pointer requires a JSON text file")
+	}
+	var document any
+	if err := json.Unmarshal(data, &document); err != nil {
+		return fmt.Errorf("decode JSON evidence: %w", err)
+	}
+	if _, err := resolveJSONPointer(document, pointer); err != nil {
+		return err
+	}
+	return nil
+}
+
+func isTextEvidence(data []byte) bool {
+	return utf8.Valid(data) && !strings.ContainsRune(string(data), 0)
+}
+
+func parseLineCitation(pointer string) (int, int, bool) {
+	value := strings.TrimSpace(pointer)
+	if strings.HasPrefix(value, "line:") {
+		value = strings.TrimPrefix(value, "line:")
+	} else if strings.HasPrefix(value, "L") {
+		value = strings.TrimPrefix(value, "L")
+		value = strings.ReplaceAll(value, "-L", "-")
+	}
+	if value == "" || strings.Contains(value, "/") {
+		return 0, 0, false
+	}
+	parts := strings.Split(value, "-")
+	if len(parts) > 2 {
+		return 0, 0, false
+	}
+	start, err := strconv.Atoi(parts[0])
+	if err != nil || start < 1 {
+		return 0, 0, false
+	}
+	end := start
+	if len(parts) == 2 {
+		end, err = strconv.Atoi(parts[1])
+		if err != nil {
+			return 0, 0, false
+		}
+	}
+	return start, end, true
+}
+
+func resolveJSONPointer(document any, pointer string) (any, error) {
+	current := document
+	for _, token := range strings.Split(strings.TrimPrefix(pointer, "/"), "/") {
+		token = strings.ReplaceAll(strings.ReplaceAll(token, "~1", "/"), "~0", "~")
+		switch value := current.(type) {
+		case map[string]any:
+			next, ok := value[token]
+			if !ok {
+				return nil, fmt.Errorf("JSON pointer %q does not resolve", pointer)
+			}
+			current = next
+		case []any:
+			if token == "" || (len(token) > 1 && token[0] == '0') {
+				return nil, fmt.Errorf("JSON pointer %q has invalid array index", pointer)
+			}
+			index, err := strconv.Atoi(token)
+			if err != nil || index < 0 || index >= len(value) {
+				return nil, fmt.Errorf("JSON pointer %q does not resolve", pointer)
+			}
+			current = value[index]
+		default:
+			return nil, fmt.Errorf("JSON pointer %q does not resolve", pointer)
+		}
+	}
+	return current, nil
+}
+
 func failedAnalysisCase(c AnalysisCase, deterministic RunRecord, model AnalysisModel, status string, err error) AnalysisCaseReport {
 	causeSource, cause := primaryRunCause(deterministic)
 	r := AnalysisCaseReport{CaseID: c.CaseID, Repeat: c.Repeat, Deterministic: AnalysisDeterministic{Status: deterministic.Status, Outcome: deterministic.Outcome, CauseSource: causeSource, Cause: cause}, AnalysisStatus: status, ErrorCode: status, Model: model, Session: AnalysisSession{Adapter: "unavailable", SessionEvidence: "unavailable"}}
@@ -445,6 +710,44 @@ func failedAnalysisCase(c AnalysisCase, deterministic RunRecord, model AnalysisM
 	}
 	return r
 }
+
+func captureAnalysisSessionEvidence(caseOutputDir string, session *AnalysisSession, redactor *redact.Redactor) error {
+	if session == nil || session.SessionPath == "" {
+		return nil
+	}
+	if !filepath.IsAbs(session.SessionPath) {
+		return nil
+	}
+	info, err := os.Lstat(session.SessionPath)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > maxSessionEvidenceBytes {
+		return nil
+	}
+	data, err := os.ReadFile(session.SessionPath)
+	if err != nil {
+		return nil
+	}
+	if len(data) > maxSessionEvidenceBytes {
+		return nil
+	}
+	if redactor != nil {
+		redacted, matched := redactor.Bytes(data)
+		if matched && !isTextEvidence(data) {
+			return fmt.Errorf("analysis session contains known secret in non-UTF-8 data: %s", session.SessionPath)
+		}
+		data = redacted
+	}
+	if len(data) > maxSessionEvidenceBytes {
+		return nil
+	}
+	const relativePath = "sessions/analyze.jsonl"
+	if err := analysisAtomicBytes(filepath.Join(caseOutputDir, filepath.FromSlash(relativePath)), data); err != nil {
+		return err
+	}
+	session.SessionEvidence = "recorded"
+	session.SessionEvidencePath = relativePath
+	return nil
+}
+
 func normalizeAnalysisStatus(s string) string {
 	switch s {
 	case "provider_unavailable", "timed_out", "protocol", "protocol_error":
@@ -454,6 +757,8 @@ func normalizeAnalysisStatus(s string) string {
 		return s
 	case "persistence_error", "not_run":
 		return s
+	case "cancelled", "blocked", "skipped":
+		return "not_run"
 	default:
 		return "persistence_error"
 	}
@@ -483,6 +788,14 @@ func classifyAnalysisError(node *store.NodeState, err error) string {
 		}
 	}
 	if err != nil {
+		switch execution.KindOf(err) {
+		case execution.KindProviderUnavailable:
+			return "provider_unavailable"
+		case execution.KindTimedOut:
+			return "timed_out"
+		case execution.KindProtocol:
+			return "protocol"
+		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			return "timed_out"
 		}

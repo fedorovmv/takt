@@ -13,7 +13,9 @@ OpenCode reports an unavailable path rather than inferring one from logs. Flow
 evaluation copies exposed session files before cleanup with bounded size,
 symlink/non-regular checks and shared redaction. `takt eval analyze` invokes a
 dedicated read-only workflow and treats its JSON diagnosis as advisory evidence,
-never as a replacement for deterministic validation.
+never as a replacement for deterministic validation. The rendered analyzer
+prompt is retained only after shared redaction with a fingerprint; copied
+analyzer sessions and trace are captured before the ordinary flow cleanup.
 
 ## 1. Назначение
 

@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -13,14 +15,16 @@ import (
 )
 
 type resolvedAssistantNode struct {
-	Prompt        string
-	AssistantName string
-	ModelName     string
-	Model         spec.ModelSpec
-	Policy        assistant.Policy
-	Capabilities  []string
-	SessionMode   string
-	SessionID     string
+	Prompt            string
+	PersistedPrompt   string
+	PromptFingerprint string
+	AssistantName     string
+	ModelName         string
+	Model             spec.ModelSpec
+	Policy            assistant.Policy
+	Capabilities      []string
+	SessionMode       string
+	SessionID         string
 }
 
 func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, local map[string]store.NodeState, feedback, artifacts string) (resolvedAssistantNode, error) {
@@ -140,8 +144,13 @@ func (r *Runner) resolveAssistantNode(state *store.RunState, node spec.Node, loc
 		}
 		renderedPrompt += "\n\nRequired JSON output contract (return exactly one JSON value without Markdown fences or commentary):\n" + string(outputFormat)
 	}
+	persistedPrompt := renderedPrompt
+	if r.redactor != nil {
+		persistedPrompt = r.redactor.String(persistedPrompt)
+	}
+	promptHash := sha256.Sum256([]byte(persistedPrompt))
 	return resolvedAssistantNode{
-		Prompt: renderedPrompt, AssistantName: assistantName,
+		Prompt: renderedPrompt, PersistedPrompt: persistedPrompt, PromptFingerprint: hex.EncodeToString(promptHash[:]), AssistantName: assistantName,
 		ModelName: modelName, Model: model, Policy: policy, Capabilities: capabilities,
 		SessionMode: sessionMode, SessionID: sessionID,
 	}, nil
@@ -329,6 +338,8 @@ func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, reso
 			SessionMode:    resolved.SessionMode, SessionID: resolved.SessionID,
 			Policy: policyState(resolved.Policy, resolved.Capabilities), OutputFormat: outputFormat,
 		}
+		ns.Prompt = resolved.PersistedPrompt
+		ns.PromptFingerprint = resolved.PromptFingerprint
 		if node.SideEffect != nil {
 			ns.External.SideEffectMode = node.SideEffect.Mode
 			ns.External.IdempotencyKey = strings.TrimSpace(node.SideEffect.IdempotencyKey)

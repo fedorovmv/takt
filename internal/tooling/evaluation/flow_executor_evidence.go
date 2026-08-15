@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"takt/internal/redact"
 	"takt/internal/store"
@@ -118,8 +117,13 @@ func writeFlowExecutorManifest(repeatRoot string, item FlowEvidence, redactor *r
 		if redactor != nil {
 			persisted, matched = redactor.Bytes(data)
 		}
-		if matched && !utf8.Valid(data) {
+		if matched && !isTextEvidence(data) {
 			return fmt.Errorf("session file contains known secret in non-UTF-8 data: %s", exec.SessionPath)
+		}
+		if len(persisted) > maxSessionEvidenceBytes {
+			entry.SessionEvidenceReason = "path_too_large"
+			manifest.Executions = append(manifest.Executions, entry)
+			continue
 		}
 		if total+int64(len(persisted)) > maxSessionEvidenceTotal {
 			aggregateExceeded = true

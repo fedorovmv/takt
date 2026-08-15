@@ -241,6 +241,27 @@ func TestWriteFlowEvidenceLatchesAggregateSessionLimit(t *testing.T) {
 	}
 }
 
+func TestWriteFlowEvidenceBoundsPostRedactionSessionExpansion(t *testing.T) {
+	root, dir := t.TempDir(), t.TempDir()
+	session := filepath.Join(dir, "expand.jsonl")
+	if err := os.WriteFile(session, []byte(strings.Repeat("s", maxSessionEvidenceBytes)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state := &store.RunState{ID: "run", Nodes: map[string]*store.NodeState{
+		"analyze": {Executions: []store.ExecutionState{{Attempt: 1, ProviderAttempt: 1, SessionPath: session}}},
+	}}
+	redactor := &redact.Redactor{}
+	redactor.AddSecret("s")
+	if err := WriteFlowEvidence(root, FlowEvidence{CaseID: "case", Repeat: 1, States: []*store.RunState{state}}, redactor); err != nil {
+		t.Fatal(err)
+	}
+	entries := readFlowTestJSON(t, filepath.Join(root, "cases", "case", "repeat-001", "executor-manifest.json"))["executions"].([]any)
+	entry := entries[0].(map[string]any)
+	if entry["session_evidence"] != "unavailable" || entry["session_evidence_reason"] != "path_too_large" {
+		t.Fatalf("expanded session was recorded: %#v", entry)
+	}
+}
+
 func readFlowTestJSON(t *testing.T, path string) map[string]any {
 	t.Helper()
 	data, err := os.ReadFile(path)

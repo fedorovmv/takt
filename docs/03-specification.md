@@ -971,6 +971,18 @@ assistant tool/message events reset the timer, and expiry is persisted as
 suite skeleton and one example case. It never creates a validator or executable
 setup: add `config.yaml`, implement `./validator`, and replace the example case.
 
+`takt eval analyze` is a read-only advisory pass over a saved flow evaluation.
+The selected analyzer Config must materialize the dedicated `takt_analyze` model
+alias; no other alias is used as a fallback. Without `--case`, every saved run
+whose outcome is not `true_accept` is selected. `--repeat` requires `--case`.
+The command creates a UTC timestamped `analyses/<timestamp>/` directory with a
+redacted manifest, per-case evidence manifest and `analysis.json`, and leaves the
+source `report.json` byte-for-byte unchanged. An empty selection succeeds with
+`status=no_cases`; provider, protocol and persistence failures are retained in a
+saved `status=failed` report and never change the deterministic verdict. The
+case report stores the redacted rendered analyzer prompt and its SHA-256
+fingerprint; citations are resolved against the bounded evidence manifest.
+
 Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status`, `children`, `artifacts`, `cancel`, `command run` и `eval` используют JSON по умолчанию.
 
 `eval run` выполняет preflight до создания output: нормализованные `case_id` должны быть уникальны, а `workspace-template` и `output` не могут совпадать или быть вложены друг в друга, включая пути через символические ссылки. До запуска вычисляются fingerprints workflow, config, Markdown-команд, упорядоченного набора заданий, копируемого workspace template и указанного валидатора.

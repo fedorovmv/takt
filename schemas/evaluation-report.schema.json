@@ -297,6 +297,13 @@
         "session_path": {
           "type": "string"
         },
+        "prompt": {
+          "type": "string"
+        },
+        "prompt_fingerprint": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
         "resumed": {
           "type": "boolean"
         },
@@ -830,6 +837,13 @@
         },
         "session_path": {
           "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "prompt_fingerprint": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
         },
         "resumed": {
           "type": "boolean"

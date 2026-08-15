@@ -79,9 +79,12 @@ type AnalysisCaseReport struct {
 	AnalysisStatus      string                `json:"analysis_status"`
 	Analysis            *AdvisoryAnalysis     `json:"analysis,omitempty"`
 	EvidenceFingerprint string                `json:"evidence_fingerprint"`
+	Prompt              string                `json:"prompt,omitempty"`
+	PromptFingerprint   string                `json:"prompt_fingerprint,omitempty"`
 	Model               AnalysisModel         `json:"model"`
 	Session             AnalysisSession       `json:"session"`
 	Usage               AnalysisUsage         `json:"usage"`
+	TracePath           string                `json:"trace_path,omitempty"`
 	ErrorCode           string                `json:"error_code,omitempty"`
 	Error               string                `json:"error,omitempty"`
 }
@@ -95,6 +98,7 @@ type AnalysisRunReport struct {
 	StartedAt           time.Time            `json:"started_at"`
 	FinishedAt          time.Time            `json:"finished_at"`
 	DurationMS          int64                `json:"duration_ms"`
+	TracePath           string               `json:"trace_path,omitempty"`
 	Model               AnalysisModel        `json:"model"`
 	SelectedCases       []AnalysisCaseRef    `json:"selected_cases"`
 	Analyses            []AnalysisCaseReport `json:"analyses"`

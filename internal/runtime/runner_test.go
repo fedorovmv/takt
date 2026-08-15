@@ -2603,3 +2603,42 @@ func TestAssistantAdapterSessionMetadataPersistsInExecutionAndNode(t *testing.T)
 		t.Fatalf("execution metadata = %+v", node.Executions)
 	}
 }
+
+func TestAssistantPromptMetadataPersistsRedactedPromptAndFingerprint(t *testing.T) {
+	dir := t.TempDir()
+	redactor := redact.NewFromConfig(&spec.Config{})
+	redactor.AddSecret("known-secret")
+	var received string
+	adapter := adapterFunc(func(context.Context, assistant.Request) (assistant.Result, error) {
+		received = "prompt received"
+		return assistant.Result{Output: `{"ok":"yes"}`, ExitCode: 0, Adapter: "fake"}, nil
+	})
+	format := &spec.OutputFormat{Type: "object", Properties: map[string]spec.OutputFormat{"ok": {Type: "string"}}, Required: []string{"ok"}}
+	wf := &spec.Workflow{Name: "prompt-metadata", Nodes: []spec.Node{{ID: "agent", Prompt: "inspect known-secret $ARGUMENTS", Provider: "demo", Model: "m", OutputFormat: format}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{
+		Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir},
+		Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redactor,
+	})
+	state, err := r.Start(context.Background(), "input-value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if received == "" {
+		t.Fatal("adapter was not called")
+	}
+	node := state.Nodes["agent"]
+	if node.Prompt == "" || strings.Contains(node.Prompt, "known-secret") || node.PromptFingerprint == "" {
+		t.Fatalf("prompt metadata = prompt %q fingerprint %q", node.Prompt, node.PromptFingerprint)
+	}
+	if len(node.Executions) != 1 || node.Executions[0].Prompt != node.Prompt || node.Executions[0].PromptFingerprint != node.PromptFingerprint {
+		t.Fatalf("execution prompt metadata = %+v", node.Executions)
+	}
+	persisted, err := (store.FS{Workspace: dir}).Load(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(persisted.Nodes["agent"].Prompt, "known-secret") {
+		t.Fatalf("persisted prompt contains secret: %q", persisted.Nodes["agent"].Prompt)
+	}
+}

@@ -206,30 +206,32 @@ type RunRecord struct {
 }
 
 type NodeRecord struct {
-	Status           string                 `json:"status"`
-	Attempts         int                    `json:"attempts"`
-	ProviderAttempts int                    `json:"provider_attempts"`
-	DurationMS       *int64                 `json:"duration_ms,omitempty"`
-	Assistant        string                 `json:"assistant,omitempty"`
-	Adapter          string                 `json:"adapter,omitempty"`
-	AssistantVersion string                 `json:"assistant_version,omitempty"`
-	RequestedModel   *store.ModelRef        `json:"requested_model,omitempty"`
-	ResolvedModel    *store.ModelRef        `json:"resolved_model,omitempty"`
-	SessionID        string                 `json:"session_id,omitempty"`
-	SessionPath      string                 `json:"session_path,omitempty"`
-	Resumed          bool                   `json:"resumed"`
-	ExitCode         int                    `json:"exit_code"`
-	ErrorCode        string                 `json:"error_code,omitempty"`
-	Error            string                 `json:"error,omitempty"`
-	Feedback         string                 `json:"feedback,omitempty"`
-	DiagnosticOutput string                 `json:"diagnostic_output,omitempty"`
-	Stdout           string                 `json:"stdout,omitempty"`
-	Stderr           string                 `json:"stderr,omitempty"`
-	OutputTruncated  bool                   `json:"output_truncated"`
-	Usage            *store.Usage           `json:"usage,omitempty"`
-	Diagnostic       *store.DiagnosticState `json:"diagnostic,omitempty"`
-	MixedIdentity    bool                   `json:"mixed_execution_identity"`
-	Executions       []ExecutionRecord      `json:"executions"`
+	Status            string                 `json:"status"`
+	Attempts          int                    `json:"attempts"`
+	ProviderAttempts  int                    `json:"provider_attempts"`
+	DurationMS        *int64                 `json:"duration_ms,omitempty"`
+	Assistant         string                 `json:"assistant,omitempty"`
+	Adapter           string                 `json:"adapter,omitempty"`
+	AssistantVersion  string                 `json:"assistant_version,omitempty"`
+	RequestedModel    *store.ModelRef        `json:"requested_model,omitempty"`
+	ResolvedModel     *store.ModelRef        `json:"resolved_model,omitempty"`
+	SessionID         string                 `json:"session_id,omitempty"`
+	SessionPath       string                 `json:"session_path,omitempty"`
+	Prompt            string                 `json:"prompt,omitempty"`
+	PromptFingerprint string                 `json:"prompt_fingerprint,omitempty"`
+	Resumed           bool                   `json:"resumed"`
+	ExitCode          int                    `json:"exit_code"`
+	ErrorCode         string                 `json:"error_code,omitempty"`
+	Error             string                 `json:"error,omitempty"`
+	Feedback          string                 `json:"feedback,omitempty"`
+	DiagnosticOutput  string                 `json:"diagnostic_output,omitempty"`
+	Stdout            string                 `json:"stdout,omitempty"`
+	Stderr            string                 `json:"stderr,omitempty"`
+	OutputTruncated   bool                   `json:"output_truncated"`
+	Usage             *store.Usage           `json:"usage,omitempty"`
+	Diagnostic        *store.DiagnosticState `json:"diagnostic,omitempty"`
+	MixedIdentity     bool                   `json:"mixed_execution_identity"`
+	Executions        []ExecutionRecord      `json:"executions"`
 }
 
 type ExecutionRecord struct {

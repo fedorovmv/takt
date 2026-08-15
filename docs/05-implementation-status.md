@@ -244,7 +244,9 @@ the smoke target runs one case and the full feature target runs all three.
 `eval analyze` executes the fixed read-only `evaluation:analyze` workflow through
 the same application/runFlowCase boundary. It selects non-`true_accept` cases by
 default, requires `takt_analyze`, persists redacted timestamped manifests and
-structured advisory reports, and leaves the source evaluation report unchanged.
+structured advisory reports, including redacted prompt fingerprints, deterministic
+inspection context, citation-checked evidence, analyzer session evidence and
+trace, and leaves the source evaluation report unchanged.
 
 ## Предметные поставки
 

@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strings"
 	"takt/internal/redact"
-	"unicode/utf8"
 )
 
 type AnalysisEvidenceFile struct {
@@ -20,18 +19,38 @@ type AnalysisEvidenceFile struct {
 	SHA256 string `json:"sha256"`
 }
 type AnalysisEvidenceManifest struct {
-	Version         string                 `json:"version"`
-	CaseID          string                 `json:"case_id"`
-	Repeat          int                    `json:"repeat"`
-	EvidenceRoot    string                 `json:"evidence_root"`
-	Files           []AnalysisEvidenceFile `json:"files"`
-	MissingEvidence []string               `json:"missing_evidence,omitempty"`
+	Version              string                       `json:"version"`
+	CaseID               string                       `json:"case_id"`
+	Repeat               int                          `json:"repeat"`
+	EvidenceRoot         string                       `json:"evidence_root"`
+	Outcome              string                       `json:"outcome,omitempty"`
+	StrategyFingerprint  string                       `json:"strategy_fingerprint,omitempty"`
+	BenchmarkFingerprint string                       `json:"benchmark_fingerprint,omitempty"`
+	ReportedCause        InspectionCause              `json:"reported_cause"`
+	CausalChain          []InspectionObservation      `json:"causal_chain"`
+	Observations         []InspectionObservation      `json:"observations"`
+	NonCompletedNodes    []InspectionNode             `json:"non_completed_nodes"`
+	DeterministicVerdict AnalysisDeterministicVerdict `json:"deterministic_verdict"`
+	Deterministic        AnalysisDeterministicVerdict `json:"deterministic"`
+	ValidatorStderrPath  string                       `json:"validator_stderr_path,omitempty"`
+	ValidatorStderr      string                       `json:"validator_stderr,omitempty"`
+	Files                []AnalysisEvidenceFile       `json:"files"`
+	MissingEvidence      []string                     `json:"missing_evidence,omitempty"`
+}
+
+type AnalysisDeterministicVerdict struct {
+	Status            string `json:"status,omitempty"`
+	Outcome           string `json:"outcome,omitempty"`
+	QualityNodeStatus string `json:"quality_node_status,omitempty"`
+	Valid             *bool  `json:"valid,omitempty"`
+	RunPassed         *bool  `json:"run_passed,omitempty"`
 }
 type AnalysisWorkspaceRef struct {
 	CaseID           string `json:"case_id"`
 	Repeat           int    `json:"repeat"`
 	Workspace        string `json:"workspace"`
 	EvidenceManifest string `json:"evidence_manifest"`
+	Trace            string `json:"trace,omitempty"`
 }
 type AnalysisManifest struct {
 	Version             string                 `json:"version"`
@@ -39,6 +58,7 @@ type AnalysisManifest struct {
 	SelectedCases       []AnalysisCaseRef      `json:"selected_cases"`
 	ConfigFingerprint   string                 `json:"config_fingerprint"`
 	Model               AnalysisModel          `json:"model"`
+	Trace               string                 `json:"trace,omitempty"`
 	Workspaces          []AnalysisWorkspaceRef `json:"workspaces"`
 }
 
@@ -81,7 +101,7 @@ func copyAnalysisEvidenceRoot(source, destination string, redactor *redact.Redac
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("evidence path is not a regular file: %s", rel)
 		}
-		if info.Size() > maxAnalysisEvidenceFileBytes || total+info.Size() > maxAnalysisEvidenceBytes || count >= maxAnalysisEvidenceFiles {
+		if info.Size() > maxAnalysisEvidenceFileBytes || count >= maxAnalysisEvidenceFiles {
 			missing = append(missing, filepath.ToSlash(rel))
 			return nil
 		}
@@ -91,10 +111,14 @@ func copyAnalysisEvidenceRoot(source, destination string, redactor *redact.Redac
 		}
 		if redactor != nil {
 			redacted, matched := redactor.Bytes(data)
-			if matched && !utf8.Valid(data) {
+			if matched && !isTextEvidence(data) {
 				return fmt.Errorf("binary evidence contains known secret: %s", rel)
 			}
 			data = redacted
+		}
+		if len(data) > maxAnalysisEvidenceFileBytes || total+int64(len(data)) > maxAnalysisEvidenceBytes {
+			missing = append(missing, filepath.ToSlash(rel))
+			return nil
 		}
 		if err := writeFlowRaw(filepath.Join(destination, rel), data, info.Mode()); err != nil {
 			return err
@@ -107,8 +131,25 @@ func copyAnalysisEvidenceRoot(source, destination string, redactor *redact.Redac
 	return missing, err
 }
 
-func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *InspectionCase, run RunRecord) (AnalysisEvidenceManifest, error) {
-	m := AnalysisEvidenceManifest{Version: analysisManifestVersion, CaseID: run.CaseID, Repeat: run.Repeat, EvidenceRoot: ""}
+func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *InspectionCase, run RunRecord, reports ...*SuiteReport) (AnalysisEvidenceManifest, error) {
+	m := AnalysisEvidenceManifest{
+		Version: analysisManifestVersion, CaseID: run.CaseID, Repeat: run.Repeat, EvidenceRoot: "",
+		CausalChain: []InspectionObservation{}, Observations: []InspectionObservation{}, NonCompletedNodes: []InspectionNode{},
+	}
+	m.Outcome = run.Outcome
+	verdict := AnalysisDeterministicVerdict{Status: run.Status, Outcome: run.Outcome, QualityNodeStatus: run.QualityNodeStatus, Valid: validationValid(run.Validation), RunPassed: run.RunPassed}
+	m.DeterministicVerdict = verdict
+	m.Deterministic = verdict
+	if len(reports) > 0 && reports[0] != nil {
+		m.StrategyFingerprint = reports[0].Strategy.Fingerprint
+		m.BenchmarkFingerprint = reports[0].Benchmark.Fingerprint
+	}
+	if inspection != nil {
+		m.ReportedCause = inspection.Cause
+		m.CausalChain = append(m.CausalChain, inspection.CausalChain...)
+		m.Observations = append(m.Observations, inspection.Observations...)
+		m.NonCompletedNodes = append(m.NonCompletedNodes, inspection.Nodes...)
+	}
 	if rel, err := filepath.Rel(output, repeatRoot); err == nil {
 		m.EvidenceRoot = filepath.ToSlash(rel)
 	}
@@ -119,25 +160,17 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 		}
 	}
 	if inspection != nil {
-		for _, p := range []string{inspection.Evidence.Validation, inspection.Evidence.Diff, inspection.Evidence.Source, inspection.Evidence.Activity, inspection.Evidence.ExecutorManifest, inspection.Evidence.SCMCallsPath} {
-			if p != "" {
-				if rr, e := filepath.Rel(repeatRoot, filepath.Join(output, filepath.FromSlash(p))); e == nil {
-					paths = append(paths, filepath.ToSlash(rr))
-				}
-			}
-		}
-		for _, p := range inspection.Evidence.Artifacts {
-			if p != "" {
-				if rr, e := filepath.Rel(repeatRoot, filepath.Join(output, filepath.FromSlash(p))); e == nil {
-					paths = append(paths, filepath.ToSlash(rr))
-				}
-			}
-		}
 		m.MissingEvidence = append(m.MissingEvidence, inspection.MissingEvidence...)
-		for _, p := range []string{"validation-request.json", "validation-result.json", "diff.patch", "activity.json", "executor-manifest.json", "repository.bundle"} {
+		for _, p := range []string{"validation-request.json", "validation-result.json", "validator.stderr", "diff.patch", "activity.json", "executor-manifest.json", "repository.bundle"} {
 			if _, err := os.Stat(filepath.Join(repeatRoot, p)); os.IsNotExist(err) {
 				m.MissingEvidence = append(m.MissingEvidence, p)
 			}
+		}
+	}
+	if info, err := os.Stat(filepath.Join(repeatRoot, "validator.stderr")); err == nil && info.Mode().IsRegular() {
+		m.ValidatorStderrPath = "validator.stderr"
+		if data, readErr := os.ReadFile(filepath.Join(repeatRoot, "validator.stderr")); readErr == nil {
+			m.ValidatorStderr = string(data)
 		}
 	}
 	sort.Strings(paths)
@@ -218,6 +251,14 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 	sort.Strings(m.MissingEvidence)
 	sort.Slice(m.Files, func(i, j int) bool { return m.Files[i].Path < m.Files[j].Path })
 	return m, nil
+}
+
+func validationValid(record *FlowValidationRecord) *bool {
+	if record == nil || record.Result == nil {
+		return nil
+	}
+	value := record.Result.Valid
+	return &value
 }
 
 func analysisAtomicJSON(path string, value any) error {

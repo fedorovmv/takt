@@ -333,6 +333,13 @@ gates: {valid_rate: {min: 0}}
 	if len(analyses) != 1 || analyses[0].(map[string]any)["analysis_status"] != "completed" {
 		t.Fatalf("analyses=%#v", analyses)
 	}
+	caseAnalysis := analyses[0].(map[string]any)
+	if caseAnalysis["prompt"] == "" || caseAnalysis["prompt_fingerprint"] == "" || caseAnalysis["trace_path"] == "" {
+		t.Fatalf("analysis prompt/session trace metadata missing: %#v", caseAnalysis)
+	}
+	if session, ok := caseAnalysis["session"].(map[string]any); !ok || session["session_evidence"] != "recorded" || session["session_evidence_path"] == "" {
+		t.Fatalf("analysis session evidence metadata missing: %#v", caseAnalysis["session"])
+	}
 	if after, err := os.ReadFile(filepath.Join(output, "report.json")); err != nil || string(after) != string(original) {
 		t.Fatalf("source report changed: err=%v", err)
 	}
@@ -341,6 +348,15 @@ gates: {valid_rate: {min: 0}}
 		t.Fatalf("analysis report files=%v err=%v", entries, err)
 	}
 	analysisRoot := filepath.Dir(entries[0])
+	if _, err := os.Stat(filepath.Join(analysisRoot, "trace.log")); err != nil {
+		t.Fatalf("analysis trace missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(analysisRoot, "cases", "problem", "repeat-001", "trace.log")); err != nil {
+		t.Fatalf("case analysis trace missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(analysisRoot, "cases", "problem", "repeat-001", "sessions", "analyze.jsonl")); err != nil {
+		t.Fatalf("analysis session evidence missing: %v", err)
+	}
 	sessionMatches, _ := filepath.Glob(filepath.Join(output, "cases", "problem", "repeat-001", "sessions", "**", "*.jsonl"))
 	_ = sessionMatches
 	if _, err := os.Stat(filepath.Join(analysisRoot, "cases", "problem", "repeat-001", "analysis.json")); err != nil {

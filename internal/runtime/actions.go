@@ -155,6 +155,8 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	}
 	if node.Executor == "external" {
 		result, err := r.executeExternalNode(state, node, resolved)
+		result.Prompt = resolved.PersistedPrompt
+		result.PromptFingerprint = resolved.PromptFingerprint
 		result.ProviderAttempt = providerAttempt
 		if !errors.Is(err, ErrWaiting) {
 			err = validateAssistantSession(ctx, resolved, result.SessionID, err)
@@ -226,7 +228,8 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	executed := execResult{
 		Output: result.Output, Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, SessionID: result.SessionID,
 		SessionPath: result.SessionPath,
-		Resumed:     result.Resumed, Truncated: result.Truncated, Usage: result.Usage,
+		Prompt:      resolved.PersistedPrompt, PromptFingerprint: resolved.PromptFingerprint,
+		Resumed: result.Resumed, Truncated: result.Truncated, Usage: result.Usage,
 		Assistant:        resolved.AssistantName,
 		Adapter:          result.Adapter,
 		AssistantVersion: result.AssistantVersion,

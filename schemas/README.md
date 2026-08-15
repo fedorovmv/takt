@@ -49,7 +49,9 @@ does not generate a validator or any executable code.
 
 `evaluation-analysis.schema.json` is advisory only: its deterministic fields are
 copied from the saved evaluation, while model diagnosis and citations never
-replace validation or benchmark quality metrics.
+replace validation or benchmark quality metrics. Reports retain the redacted
+rendered prompt/fingerprint and trace/session evidence metadata; citations are
+accepted only when they resolve inside the bounded evidence manifest.
 
 Go-loader и authoring preflight остаются главным валидатором: кроме структуры они проверяют DAG, ссылки на модели/исполнителей, capabilities, duration, template/output/artifact references и ограничения `loop_group`. JSON Schema предназначены для редакторов, внешних инструментов и подготовки стабильной схемы.
 

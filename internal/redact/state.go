@@ -50,12 +50,14 @@ func RedactNodeState(r *Redactor, node *store.NodeState) {
 	node.Output = r.String(node.Output)
 	node.Stdout = r.String(node.Stdout)
 	node.Stderr = r.String(node.Stderr)
+	node.Prompt = r.String(node.Prompt)
 	node.Feedback = r.String(node.Feedback)
 	node.Error = r.String(node.Error)
 	if node.Diagnostic != nil {
 		node.Diagnostic.Message = r.String(node.Diagnostic.Message)
 	}
 	for i := range node.Executions {
+		node.Executions[i].Prompt = r.String(node.Executions[i].Prompt)
 		node.Executions[i].Error = r.String(node.Executions[i].Error)
 		if node.Executions[i].Diagnostic != nil {
 			node.Executions[i].Diagnostic.Message = r.String(node.Executions[i].Diagnostic.Message)

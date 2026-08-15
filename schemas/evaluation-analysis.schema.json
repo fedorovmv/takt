@@ -24,6 +24,7 @@
     "started_at": { "type": "string", "format": "date-time" },
     "finished_at": { "type": "string", "format": "date-time" },
     "duration_ms": { "type": "integer", "minimum": 0 },
+    "trace_path": { "type": "string", "minLength": 1 },
     "model": { "$ref": "#/$defs/model" },
     "selected_cases": {
       "type": "array",
@@ -173,9 +174,12 @@
         },
         "analysis": { "$ref": "#/$defs/analysis" },
         "evidence_fingerprint": { "type": "string", "minLength": 1 },
+        "prompt": { "type": "string" },
+        "prompt_fingerprint": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
         "model": { "$ref": "#/$defs/model" },
         "session": { "$ref": "#/$defs/session" },
         "usage": { "$ref": "#/$defs/usage" },
+        "trace_path": { "type": "string", "minLength": 1 },
         "error_code": { "type": "string", "minLength": 1 },
         "error": { "type": "string", "minLength": 1 }
       },

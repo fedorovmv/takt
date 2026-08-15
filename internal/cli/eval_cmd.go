@@ -23,6 +23,41 @@ func evalCmd(ctx context.Context, args []string) error {
 	}
 	service := app.Tooling.Evaluation
 	switch args[0] {
+	case "analyze":
+		fs := newFlagSet("eval analyze")
+		configPath := fs.String("config", ".takt/config.yaml", "analyzer config path")
+		modelPreset := fs.String("model-preset", "", "analyzer model preset")
+		caseID := fs.String("case", "", "analyze one case")
+		repeat := fs.Int("repeat", 0, "analyze one repeat of the selected case")
+		trace := fs.Bool("trace", false, "write analysis progress to stderr")
+		jsonOut := fs.Bool("json", false, "JSON output")
+		values := map[string]bool{"--config": true, "--model-preset": true, "--case": true, "--repeat": true, "--trace": false, "--json": false}
+		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
+			return err
+		}
+		if *repeat < 0 {
+			return fmt.Errorf("repeat cannot be negative")
+		}
+		if *repeat > 0 && strings.TrimSpace(*caseID) == "" {
+			return fmt.Errorf("repeat requires --case")
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt eval analyze <evaluation-output-dir> [flags]")
+		}
+		var traceFn func(string)
+		if *trace {
+			traceFn = newEvalTrace(os.Stderr, time.Now)
+		}
+		result, err := service.Analyze(ctx, tooling.EvaluationAnalyzeRequest{OutputDir: fs.Arg(0), ConfigPath: *configPath, CaseID: *caseID, Repeat: *repeat, ModelPreset: *modelPreset, Trace: traceFn})
+		if err != nil {
+			if result != nil {
+				if printErr := printResult(*jsonOut, result); printErr != nil {
+					return printErr
+				}
+			}
+			return err
+		}
+		return printResult(*jsonOut, result)
 	case "flow":
 		if len(args) > 1 && args[1] == "init" {
 			fs := newFlagSet("eval flow init")

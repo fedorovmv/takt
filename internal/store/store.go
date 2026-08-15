@@ -96,23 +96,25 @@ type SandboxState struct {
 }
 
 type ExecutionState struct {
-	Attempt          int              `json:"attempt"`
-	ProviderAttempt  int              `json:"provider_attempt,omitempty"`
-	Status           string           `json:"status"`
-	Assistant        string           `json:"assistant,omitempty"`
-	Adapter          string           `json:"adapter,omitempty"`
-	AssistantVersion string           `json:"assistant_version,omitempty"`
-	RequestedModel   *ModelRef        `json:"requested_model,omitempty"`
-	ResolvedModel    *ModelRef        `json:"resolved_model,omitempty"`
-	SessionID        string           `json:"session_id,omitempty"`
-	SessionPath      string           `json:"session_path,omitempty"`
-	Resumed          bool             `json:"resumed,omitempty"`
-	ExitCode         int              `json:"exit_code,omitempty"`
-	ErrorCode        string           `json:"error_code,omitempty"`
-	Error            string           `json:"error,omitempty"`
-	Diagnostic       *DiagnosticState `json:"diagnostic,omitempty"`
-	OutputTruncated  bool             `json:"output_truncated,omitempty"`
-	Usage            *Usage           `json:"usage,omitempty"`
+	Attempt           int              `json:"attempt"`
+	ProviderAttempt   int              `json:"provider_attempt,omitempty"`
+	Status            string           `json:"status"`
+	Assistant         string           `json:"assistant,omitempty"`
+	Adapter           string           `json:"adapter,omitempty"`
+	AssistantVersion  string           `json:"assistant_version,omitempty"`
+	RequestedModel    *ModelRef        `json:"requested_model,omitempty"`
+	ResolvedModel     *ModelRef        `json:"resolved_model,omitempty"`
+	SessionID         string           `json:"session_id,omitempty"`
+	SessionPath       string           `json:"session_path,omitempty"`
+	Prompt            string           `json:"prompt,omitempty"`
+	PromptFingerprint string           `json:"prompt_fingerprint,omitempty"`
+	Resumed           bool             `json:"resumed,omitempty"`
+	ExitCode          int              `json:"exit_code,omitempty"`
+	ErrorCode         string           `json:"error_code,omitempty"`
+	Error             string           `json:"error,omitempty"`
+	Diagnostic        *DiagnosticState `json:"diagnostic,omitempty"`
+	OutputTruncated   bool             `json:"output_truncated,omitempty"`
+	Usage             *Usage           `json:"usage,omitempty"`
 }
 
 type ToolApprovalState struct {
@@ -247,6 +249,8 @@ type NodeState struct {
 	Feedback                string                  `json:"feedback,omitempty"`
 	SessionID               string                  `json:"session_id,omitempty"`
 	SessionPath             string                  `json:"session_path,omitempty"`
+	Prompt                  string                  `json:"prompt,omitempty"`
+	PromptFingerprint       string                  `json:"prompt_fingerprint,omitempty"`
 	Resumed                 bool                    `json:"resumed,omitempty"`
 	ErrorCode               string                  `json:"error_code,omitempty"`
 	Error                   string                  `json:"error,omitempty"`

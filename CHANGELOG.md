@@ -8,6 +8,12 @@
   `report.json` byte-for-byte. Adding the alias intentionally changes future
   Config fingerprints; existing reports remain valid.
 
+- Hardened evaluation analysis evidence: rendered prompts and fingerprints are
+  persisted after redaction, source evidence is copied into bounded analysis
+  workspaces, deterministic inspection context and validator diagnostics are
+  included, citations are resolved against the manifest, and analyzer session
+  evidence/trace are retained before cleanup.
+
 - Исправлена классификация Pi `Connection error`: provider outage теперь
   попадает в `provider_unavailable` и отдельный provider retry scope, не
   загрязняя workflow retry budget и quality denominators.
