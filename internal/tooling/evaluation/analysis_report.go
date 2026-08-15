@@ -1,6 +1,10 @@
 package evaluation
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 type AnalysisCase struct {
 	CaseID string `json:"case_id"`
@@ -101,3 +105,50 @@ type RunReport = AnalysisRunReport
 type CausalLink = AdvisoryCausalLink
 type Evidence = AdvisoryEvidence
 type Disagreement = AdvisoryDisagreement
+
+func (r AnalysisRunReport) String() string {
+	var out strings.Builder
+	fmt.Fprintln(&out, "ANALYSIS")
+	fmt.Fprintf(&out, "  Status        %s\n", valueOrDash(r.Status))
+	model := r.Model.Provider + "/" + r.Model.ID
+	if r.Model.Provider == "" && r.Model.ID == "" {
+		model = "UNAVAILABLE"
+	}
+	fmt.Fprintf(&out, "  Model         %s\n", model)
+	for _, item := range r.Analyses {
+		fmt.Fprintf(&out, "\nCASE %s#%d\n", item.CaseID, item.Repeat)
+		session := item.Session.Adapter + "/" + item.Session.SessionID
+		if item.Session.Adapter == "" {
+			session = "UNAVAILABLE"
+		}
+		fmt.Fprintf(&out, "  Session       %s (%s)\n", session, valueOrDash(item.Session.SessionEvidence))
+		deterministic := strings.TrimSpace(strings.Join([]string{item.Deterministic.Outcome, item.Deterministic.CauseSource, item.Deterministic.Cause}, " "))
+		fmt.Fprintf(&out, "  Deterministic %s\n", valueOrDash(deterministic))
+		if item.Analysis != nil {
+			fmt.Fprintf(&out, "  Advisory     %s / %s %s\n", valueOrDash(item.Analysis.PrimaryClass), valueOrDash(item.Analysis.FailureMode), valueOrDash(item.Analysis.Confidence))
+			fmt.Fprintf(&out, "  Root cause   %s\n", valueOrDash(item.Analysis.RootCause))
+			if len(item.Analysis.Evidence) == 0 {
+				fmt.Fprintln(&out, "  Evidence     UNAVAILABLE")
+			} else {
+				for _, evidence := range item.Analysis.Evidence {
+					citation := evidence.Path
+					if evidence.Pointer != "" {
+						citation += "#" + evidence.Pointer
+					}
+					fmt.Fprintf(&out, "  Evidence     %s\n", valueOrDash(citation))
+				}
+			}
+			if item.Analysis.Disagreement.WithDeterministicCause {
+				fmt.Fprintf(&out, "  Disagreement %s\n", valueOrDash(item.Analysis.Disagreement.Explanation))
+			}
+		} else {
+			fmt.Fprintf(&out, "  Advisory     UNAVAILABLE (%s)\n", valueOrDash(item.AnalysisStatus))
+			fmt.Fprintln(&out, "  Root cause   UNAVAILABLE")
+			fmt.Fprintln(&out, "  Evidence     UNAVAILABLE")
+		}
+		if item.Error != "" {
+			fmt.Fprintf(&out, "  Error        %s\n", item.Error)
+		}
+	}
+	return strings.TrimSpace(out.String())
+}

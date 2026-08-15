@@ -288,6 +288,13 @@ verdict. Neither command starts/resumes a flow or contacts a model; any future
 LLM-assisted analysis must be a separate explicit opt-in command with cited
 evidence and persisted model/session/usage.
 
+`takt eval analyze <saved-output-dir>` is an optional, read-only advisory
+investigation of saved problem cases. It requires the dedicated `takt_analyze`
+alias, stores redacted timestamped manifests and structured citations, and never
+changes deterministic outcomes, benchmark identity or quality denominators.
+Provider/protocol failures remain explicit analysis statuses; the original
+evaluation report remains immutable.
+
 ## 9. Критерий полезности Takt
 
 Takt подтверждает ценность, если новая стратегия добавляется изменением workflow/config/commands, общий benchmark запускается без изменения runtime, а отчёт позволяет доказательно связать результат с точной моделью, стратегией, набором заданий и валидатором.

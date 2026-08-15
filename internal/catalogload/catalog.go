@@ -29,7 +29,9 @@ func FromResolved(resolved *profile.Resolved, workspace string) (*blockcatalog.C
 		return nil, err
 	}
 	if len(paths) == 0 {
-		return nil, fmt.Errorf("profile %q does not declare trusted block packages", resolved.Name)
+		// Profiles that contain only ordinary workflows (for example the
+		// read-only evaluation analyzer) have no governed blocks to preload.
+		return &blockcatalog.Catalog{Blocks: map[string]blockcatalog.ResolvedBlock{}, Templates: map[string]string{}}, nil
 	}
 	return blockcatalog.Load(paths)
 }

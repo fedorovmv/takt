@@ -31,6 +31,13 @@ inspect` и mutating fan-out остаются отдельными deferred ср
 
 Сохраняемая запись одного фактического вызова действия. Она содержит номер попытки, assistant, его версию, requested/resolved model, Session ID, usage и результат выполнения. Агрегированные поля Node описывают итог узла, а execution records сохраняют различия между retry.
 
+Для локального evaluation evidence execution record также сохраняет typed
+`adapter` и опциональный `session_path`. Анализ evaluation запускается тем же
+обычным Flow scheduler через read-only workflow; модельный вывод является
+advisory и не участвует в deterministic outcome или benchmark metrics. Перед
+persistence JSON/text evidence redacts configured secrets, а известный секрет в
+binary evidence останавливает запись fail-closed.
+
 ### Control и execution workspace
 
 Control workspace хранит определения, state/events, locks и artifacts. При worktree policy execution workspace указывает на отдельный Git worktree, где выполняются node actions.

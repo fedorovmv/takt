@@ -5,7 +5,7 @@ EVAL_IDLE_TIMEOUT ?= 5m
 EVAL_PRESET ?=
 EVAL_MODEL_FLAGS ?=
 
-.PHONY: build test race vet fmt contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract architecture-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract host-integration-typescript simple-reliable-contract evidence-routing-contract e2e journeys smoke check demo eval-smoke eval-feature-smoke eval-feature eval-review eval-architect eval-stats eval-status eval-inspect eval-compare
+.PHONY: build test race vet fmt contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract architecture-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract host-integration-typescript simple-reliable-contract evidence-routing-contract e2e journeys smoke check demo eval-smoke eval-feature-smoke eval-feature eval-review eval-architect eval-stats eval-status eval-inspect eval-compare eval-analyze
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -70,6 +70,10 @@ eval-architect:
 	@test -f examples/flow-evaluation/mini-du/config.yaml || { echo 'missing examples/flow-evaluation/mini-du/config.yaml'; exit 1; }
 	@echo 'Starting live architect evaluation: workflow=code:architect case=collapse-redundant-layers preset=$(EVAL_PRESET) model_flags=$(EVAL_MODEL_FLAGS) assistant_idle_timeout=$(EVAL_IDLE_TIMEOUT)'
 	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/architect/suite.yaml --case collapse-redundant-layers $(if $(EVAL_PRESET),--model-preset $(EVAL_PRESET)) $(EVAL_MODEL_FLAGS) --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
+
+eval-analyze:
+	@test -n "$(RUN)" || { echo 'usage: make eval-analyze RUN=.takt/evals/... [CASE=case-id] [REPEAT=1] [EVAL_CONFIG=path] [EVAL_PRESET=name]'; exit 1; }
+	@go run ./cmd/takt eval analyze "$(RUN)" $(if $(CASE),--case "$(CASE)") $(if $(REPEAT),--repeat "$(REPEAT)") $(if $(EVAL_CONFIG),--config "$(EVAL_CONFIG)") $(if $(EVAL_PRESET),--model-preset "$(EVAL_PRESET)") --trace --json=false
 
 opencode-contracts:
 	go test ./internal/assistant -run 'OpenCode|VersionProbe' -count=1

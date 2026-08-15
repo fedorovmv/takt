@@ -136,6 +136,18 @@ func TestEvalFlowParsesOnlyItsContract(t *testing.T) {
 	}
 }
 
+func TestEvalAnalyzeValidatesArguments(t *testing.T) {
+	if err := evalCmd(context.Background(), []string{"analyze", "run", "--repeat", "2"}); err == nil || err.Error() != "repeat requires --case" {
+		t.Fatalf("repeat without case error=%v", err)
+	}
+	if err := evalCmd(context.Background(), []string{"analyze", "run", "--case", "c", "--repeat", "-1"}); err == nil || err.Error() != "repeat cannot be negative" {
+		t.Fatalf("negative repeat error=%v", err)
+	}
+	if err := evalCmd(context.Background(), []string{"analyze"}); err == nil || err.Error() != "usage: takt eval analyze run <evaluation-output-dir> [flags]" {
+		t.Fatalf("missing directory error=%v", err)
+	}
+}
+
 func TestEvalStatsRequiresOneOutputDirectory(t *testing.T) {
 	err := evalCmd(context.Background(), []string{"stats"})
 	if err == nil || !strings.Contains(err.Error(), "usage: takt eval stats") {

@@ -53,6 +53,19 @@ func (e evaluationEngine) Flow(ctx context.Context, req tooling.FlowEvaluationRe
 	})
 }
 
+func (e evaluationEngine) Analyze(ctx context.Context, req tooling.EvaluationAnalyzeRequest) (any, error) {
+	return evaluation.AnalyzeFlow(ctx, evaluation.AnalysisRunOptions{
+		OutputDir: req.OutputDir, ConfigPath: req.ConfigPath, CaseID: req.CaseID,
+		Repeat: req.Repeat, ModelPreset: req.ModelPreset, Trace: req.Trace,
+		Now: time.Now, CaseRunner: func(caseCtx context.Context, flowReq evaluation.FlowCaseRunRequest) (evaluation.FlowCaseRunResult, error) {
+			if flowReq.AssistantIdleTimeout <= 0 {
+				flowReq.AssistantIdleTimeout = 5 * time.Minute
+			}
+			return e.runFlowCase(caseCtx, flowReq)
+		},
+	})
+}
+
 func (evaluationEngine) FlowInit(_ context.Context, workflowSelector, output string) (any, error) {
 	absOutput, err := filepath.Abs(output)
 	if err != nil {

@@ -15,7 +15,7 @@ import (
 
 func evalCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: takt eval <flow|run|report|stats|status|inspect|benchmark|task-benchmark|compare> [flags]")
+		return fmt.Errorf("usage: takt eval <flow|run|analyze|report|stats|status|inspect|benchmark|task-benchmark|compare> [flags]")
 	}
 	app, err := bootstrap.New(".", ".takt/config.yaml")
 	if err != nil {
@@ -268,7 +268,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		}
 		return printResult(*jsonOut, report)
 	default:
-		return fmt.Errorf("usage: takt eval <flow|run|report|stats|status|inspect|benchmark|task-benchmark|compare> [flags]")
+		return fmt.Errorf("usage: takt eval <flow|run|analyze|report|stats|status|inspect|benchmark|task-benchmark|compare> [flags]")
 	}
 }
 

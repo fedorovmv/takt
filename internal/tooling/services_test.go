@@ -12,6 +12,7 @@ type flowEvaluationEngine struct {
 	statsPath        string
 	statusPath       string
 	inspectRequest   EvaluationInspectRequest
+	analyzeRequest   EvaluationAnalyzeRequest
 }
 
 func (e *flowEvaluationEngine) Run(context.Context, EvaluationRunRequest) (any, error) {
@@ -44,6 +45,10 @@ func (e *flowEvaluationEngine) Flow(_ context.Context, request FlowEvaluationReq
 func (e *flowEvaluationEngine) FlowInit(_ context.Context, selector, output string) (any, error) {
 	e.selector, e.output = selector, output
 	return "init", nil
+}
+func (e *flowEvaluationEngine) Analyze(_ context.Context, request EvaluationAnalyzeRequest) (any, error) {
+	e.analyzeRequest = request
+	return "analyze", nil
 }
 
 func TestFlowEvaluationServiceForwardsRequest(t *testing.T) {
@@ -85,6 +90,15 @@ func TestEvaluationInspectServiceForwardsFilters(t *testing.T) {
 	result, err := NewEvaluation(engine).Inspect(context.Background(), request)
 	if err != nil || result != "inspection" || !reflect.DeepEqual(engine.inspectRequest, request) {
 		t.Fatalf("result=%#v request=%#v err=%v", result, engine.inspectRequest, err)
+	}
+}
+
+func TestEvaluationAnalyzeServiceForwardsRequest(t *testing.T) {
+	engine := &flowEvaluationEngine{}
+	request := EvaluationAnalyzeRequest{OutputDir: "run", ConfigPath: "analyzer.yaml", CaseID: "c", Repeat: 2, ModelPreset: "gemini", Trace: func(string) {}}
+	result, err := NewEvaluation(engine).Analyze(context.Background(), request)
+	if err != nil || result != "analyze" || engine.analyzeRequest.OutputDir != request.OutputDir || engine.analyzeRequest.ConfigPath != request.ConfigPath || engine.analyzeRequest.CaseID != request.CaseID || engine.analyzeRequest.Repeat != request.Repeat || engine.analyzeRequest.ModelPreset != request.ModelPreset || engine.analyzeRequest.Trace == nil {
+		t.Fatalf("result=%#v request=%#v err=%v", result, engine.analyzeRequest, err)
 	}
 }
 

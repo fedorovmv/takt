@@ -46,12 +46,20 @@ type EvaluationInspectRequest struct {
 	Repeat    int
 }
 
+type EvaluationAnalyzeRequest struct {
+	OutputDir, ConfigPath, CaseID string
+	Repeat                        int
+	ModelPreset                   string
+	Trace                         func(string)
+}
+
 type EvaluationEngine interface {
 	Run(context.Context, EvaluationRunRequest) (any, error)
 	Benchmark(context.Context, EvaluationBenchmarkRequest) (any, error)
 	TaskBenchmark(context.Context, EvaluationBenchmarkRequest) (any, error)
 	Flow(context.Context, FlowEvaluationRequest) (any, error)
 	FlowInit(context.Context, string, string) (any, error)
+	Analyze(context.Context, EvaluationAnalyzeRequest) (any, error)
 	Compare(context.Context, string, string) (any, error)
 	Report(context.Context, string) (any, error)
 	Stats(context.Context, string) (any, error)
@@ -93,6 +101,12 @@ func (s *EvaluationService) FlowInit(ctx context.Context, workflowSelector, outp
 		return nil, fmt.Errorf("evaluation service is not configured")
 	}
 	return s.engine.FlowInit(ctx, workflowSelector, output)
+}
+func (s *EvaluationService) Analyze(ctx context.Context, req EvaluationAnalyzeRequest) (any, error) {
+	if s == nil || s.engine == nil {
+		return nil, fmt.Errorf("evaluation service is not configured")
+	}
+	return s.engine.Analyze(ctx, req)
 }
 func (s *EvaluationService) Compare(ctx context.Context, baseline, candidate string) (any, error) {
 	if s == nil || s.engine == nil {

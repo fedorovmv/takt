@@ -234,6 +234,20 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 		writeJSON(writer, map[string]any{"type": "message_end", "message": message})
 		writeJSON(writer, map[string]any{"type": "agent_end", "messages": []any{message}, "willRetry": false})
 		writeJSON(writer, map[string]any{"type": "agent_settled"})
+	case "analysis-success":
+		writeAnalysisSession(opts, state.promptValue())
+		text := `{"primary_class":"validator","failure_mode":"missing_artifact","confidence":"high","root_cause":"required evidence was absent","causal_chain":[{"fact":"validator reported a missing artifact","consequence":"the saved case was not valid","evidence":["validation-result.json#/result/diagnostics/0"]}],"evidence":[{"path":"validation-result.json","pointer":"/result/diagnostics/0","fact":"the validator reported the missing artifact"}],"contributing_factors":[],"recommended_actions":["restore the required artifact"],"missing_evidence":[],"disagreement":{"with_deterministic_cause":false,"explanation":"the advisory diagnosis agrees with the deterministic validator"}}`
+		state.finish(text, []any{assistantMessage(opts, text, "stop", "")})
+		writeJSON(writer, map[string]any{"type": "agent_start"})
+		writeJSON(writer, map[string]any{"type": "message_end", "message": assistantMessage(opts, text, "stop", "")})
+		writeJSON(writer, map[string]any{"type": "agent_end", "messages": []any{assistantMessage(opts, text, "stop", "")}, "willRetry": false})
+		writeJSON(writer, map[string]any{"type": "agent_settled"})
+	case "analysis-malformed":
+		state.finish("{not-json}", []any{assistantMessage(opts, "{not-json}", "stop", "")})
+		writeJSON(writer, map[string]any{"type": "agent_start"})
+		writeJSON(writer, map[string]any{"type": "message_end", "message": assistantMessage(opts, "{not-json}", "stop", "")})
+		writeJSON(writer, map[string]any{"type": "agent_end", "messages": []any{assistantMessage(opts, "{not-json}", "stop", "")}, "willRetry": false})
+		writeJSON(writer, map[string]any{"type": "agent_settled"})
 	case "provider-503", "provider-429", "provider-connection-reset", "provider-connection-error", "provider-sequence", "provider-by-prompt", "provider-exhausted":
 		failure := map[string]string{
 			"provider-503":              "provider returned HTTP 503 service unavailable",
@@ -282,6 +296,14 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 	default:
 		emitSuccess(writer, state, opts)
 	}
+}
+
+func writeAnalysisSession(opts options, prompt string) {
+	if opts.caseName != "analysis-success" {
+		return
+	}
+	path := "/tmp/fake-pi-session-1.jsonl"
+	_ = os.WriteFile(path, []byte(`{"prompt":`+strconv.Quote(prompt)+`,"secret":"known-secret"}`+"\n"), 0o600)
 }
 
 func providerSequenceFailure(opts options) bool {

@@ -7,6 +7,14 @@ Pi RPC и OpenCode CLI поставляются как bundled extension adapter
 A1 runtime требует exact Session ID при resume и не подменяет failed resume
 fresh-сессией.
 
+Bundled adapters may return typed local metadata (`adapter` and an optional
+`session_path`) alongside the normal Result. Pi exposes its stable session file;
+OpenCode reports an unavailable path rather than inferring one from logs. Flow
+evaluation copies exposed session files before cleanup with bounded size,
+symlink/non-regular checks and shared redaction. `takt eval analyze` invokes a
+dedicated read-only workflow and treats its JSON diagnosis as advisory evidence,
+never as a replacement for deterministic validation.
+
 ## 1. Назначение
 
 Session adapter связывает Takt с готовым кодинг-агентом или внешним CLI. Канонический контракт не зависит от Pi, OpenCode, Codex, Oh My Pi, Qwen CLI или другого продукта. Он не реализует агентный цикл, а нормализует запуск, модель, сессию, события и ошибки.

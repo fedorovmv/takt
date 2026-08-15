@@ -17,6 +17,7 @@ import (
 	"takt/internal/application"
 	"takt/internal/assistant"
 	"takt/internal/store"
+	"takt/internal/tooling"
 	"takt/internal/tooling/evaluation"
 )
 
@@ -47,6 +48,13 @@ func TestFlowProviderUnavailableRecoversWithSamePiSession(t *testing.T) {
 		return
 	}
 	t.Fatalf("executions=%+v", report.Runs[0].Nodes)
+}
+
+func TestEvaluationAnalyzeRequiresExistingConfigBeforeRun(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "evaluation")
+	if _, err := (evaluationEngine{}).Analyze(context.Background(), tooling.EvaluationAnalyzeRequest{OutputDir: output, ConfigPath: filepath.Join(output, "missing.yaml")}); err == nil || !strings.Contains(err.Error(), "analysis config") {
+		t.Fatalf("error=%v", err)
+	}
 }
 
 func TestFlowProviderUnavailableSuiteContinuesToFollowingCase(t *testing.T) {

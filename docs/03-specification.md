@@ -908,6 +908,7 @@ takt eval report <evaluation-output-dir>
 takt eval stats <evaluation-output-dir> [--json]
 takt eval status <evaluation-output-dir> [--json]
 takt eval inspect <evaluation-output-dir> [--case ID] [--repeat N] [--json]
+takt eval analyze <evaluation-output-dir> [--case <case-id>] [--repeat N] [--config <analyzer-config>] [--model-preset <name>] [--trace] [--json]
 takt eval benchmark <matrix.yaml> [--output <dir>] [--repeat N] [--replace]
 takt eval compare <baseline-output-dir> <candidate-output-dir>
 ```

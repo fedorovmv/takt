@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added read-only `takt eval analyze` over saved flow evaluations. The dedicated
+  `takt_analyze` alias produces timestamped redacted manifests and structured
+  advisory diagnoses while preserving deterministic outcomes and the original
+  `report.json` byte-for-byte. Adding the alias intentionally changes future
+  Config fingerprints; existing reports remain valid.
+
 - Исправлена классификация Pi `Connection error`: provider outage теперь
   попадает в `provider_unavailable` и отдельный provider retry scope, не
   загрязняя workflow retry budget и quality denominators.

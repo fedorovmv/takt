@@ -266,6 +266,98 @@ func TestFlowEvaluationContract(t *testing.T) {
 	}
 }
 
+func TestEvaluationAnalysisBoundary(t *testing.T) {
+	if os.Getenv("TAKT_ANALYSIS_VALIDATOR") == "1" {
+		fmt.Print(`{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":false,"diagnostics":[{"code":"missing_artifact","severity":"error","message":"implementation.md is absent"}]}`)
+		os.Exit(0)
+	}
+	root := t.TempDir()
+	caseRoot := filepath.Join(root, "cases", "problem")
+	if err := os.MkdirAll(filepath.Join(caseRoot, "workspace"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, caseRoot, "input.md", "find the missing artifact\n")
+	writeFile(t, caseRoot, "expected.yaml", "oracle: {expected: false}\n")
+	writeFile(t, filepath.Join(caseRoot, "workspace"), "main.txt", "base\n")
+	fakePi := binary(t, "takt-fake-pi")
+	config := writeFile(t, root, "config.yaml", fmt.Sprintf(`apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: pi
+models:
+  takt_analyze:
+    provider: fake
+    id: fake-model
+assistants:
+  pi:
+    type: pi
+    binary: %q
+    args: ["--fake-case", "analysis-success"]
+    project_trust: approve
+    max_output_bytes: 1048576
+`, fakePi))
+	workflow := writeFile(t, root, "flow.yaml", `name: analysis-flow
+provider: coding-agent
+model: takt_analyze
+nodes:
+  - id: implement
+    prompt: inspect the case
+`)
+	_ = workflow
+	suite := writeFile(t, root, "suite.yaml", fmt.Sprintf(`version: takt-flow-evaluation/v1alpha1
+workflow: flow.yaml
+config: config.yaml
+cases: {directory: cases}
+validator:
+  id: analysis-validator
+  version: "1"
+  command: [%q, %q, %q]
+  path: flow.yaml
+  timeout: 10s
+  max_output_bytes: 4096
+gates: {valid_rate: {min: 0}}
+`, os.Args[0], "-test.run=^TestEvaluationAnalysisBoundary$", "--"))
+	output := filepath.Join(t.TempDir(), "evaluation")
+	os.Setenv("TAKT_ANALYSIS_SECRET", "known-secret")
+	t.Cleanup(func() { _ = os.Unsetenv("TAKT_ANALYSIS_SECRET") })
+	takt(t, []string{"TAKT_ANALYSIS_VALIDATOR=1"}, "eval", "flow", suite, "--output", output, "--keep-workspaces", "--json").RequireSuccess(t)
+	original, err := os.ReadFile(filepath.Join(output, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	analysis := takt(t, nil, "eval", "analyze", output, "--config", config, "--case", "problem", "--trace", "--json").RequireSuccess(t)
+	report := resultObject(t, analysis.JSON(t))
+	if report["report_version"] != "takt-evaluation-analysis/v1alpha1" || report["status"] != "completed" {
+		t.Fatalf("analysis report=%#v", report)
+	}
+	analyses := report["analyses"].([]any)
+	if len(analyses) != 1 || analyses[0].(map[string]any)["analysis_status"] != "completed" {
+		t.Fatalf("analyses=%#v", analyses)
+	}
+	if after, err := os.ReadFile(filepath.Join(output, "report.json")); err != nil || string(after) != string(original) {
+		t.Fatalf("source report changed: err=%v", err)
+	}
+	entries, err := filepath.Glob(filepath.Join(output, "analyses", "*", "report.json"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("analysis report files=%v err=%v", entries, err)
+	}
+	analysisRoot := filepath.Dir(entries[0])
+	sessionMatches, _ := filepath.Glob(filepath.Join(output, "cases", "problem", "repeat-001", "sessions", "**", "*.jsonl"))
+	_ = sessionMatches
+	if _, err := os.Stat(filepath.Join(analysisRoot, "cases", "problem", "repeat-001", "analysis.json")); err != nil {
+		t.Fatal(err)
+	}
+	executorManifest := decodeJSONFile(t, filepath.Join(output, "cases", "problem", "repeat-001", "executor-manifest.json"))
+	executions := executorManifest["executions"].([]any)
+	if len(executions) != 1 || executions[0].(map[string]any)["session_evidence"] != "recorded" {
+		t.Fatalf("executor manifest=%#v", executorManifest)
+	}
+	sessionPath := filepath.Join(output, "cases", "problem", "repeat-001", "sessions", "implement", "attempt-001-provider-001.jsonl")
+	sessionBytes, err := os.ReadFile(sessionPath)
+	if err != nil || strings.Contains(string(sessionBytes), "known-secret") {
+		t.Fatalf("session evidence err=%v content=%q", err, sessionBytes)
+	}
+}
+
 func TestProductionFlowEvaluation(t *testing.T) {
 	if os.Getenv("TAKT_PRODUCTION_FLOW_VALIDATOR") == "1" {
 		var request struct {

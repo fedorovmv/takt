@@ -42,6 +42,11 @@ type AnalysisManifest struct {
 
 const analysisManifestVersion = "takt-evaluation-analysis-manifest/v1alpha1"
 
+const (
+	maxAnalysisEvidenceFiles = 8192
+	maxAnalysisEvidenceBytes = 128 << 20
+)
+
 func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *InspectionCase, run RunRecord) (AnalysisEvidenceManifest, error) {
 	m := AnalysisEvidenceManifest{Version: analysisManifestVersion, CaseID: run.CaseID, Repeat: run.Repeat, EvidenceRoot: ""}
 	if rel, err := filepath.Rel(output, repeatRoot); err == nil {
@@ -77,6 +82,7 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 	}
 	sort.Strings(paths)
 	seen := map[string]bool{}
+	var totalBytes int64
 	for _, rel := range paths {
 		rel = filepath.ToSlash(rel)
 		if seen[rel] {
@@ -87,13 +93,16 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 			return m, fmt.Errorf("evidence path must be relative: %s", rel)
 		}
 		path := filepath.Join(repeatRoot, filepath.FromSlash(rel))
-		info, err := os.Stat(path)
+		info, err := os.Lstat(path)
 		if err != nil {
 			if os.IsNotExist(err) {
 				m.MissingEvidence = append(m.MissingEvidence, rel)
 				continue
 			}
 			return m, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return m, fmt.Errorf("evidence path is a symlink: %s", rel)
 		}
 		if info.IsDir() {
 			err := filepath.Walk(path, func(child string, fi os.FileInfo, walkErr error) error {
@@ -102,6 +111,15 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 				}
 				if fi.IsDir() {
 					return nil
+				}
+				if fi.Mode()&os.ModeSymlink != 0 || !fi.Mode().IsRegular() {
+					return fmt.Errorf("evidence path is not a regular file: %s", child)
+				}
+				if len(m.Files) >= maxAnalysisEvidenceFiles {
+					return fmt.Errorf("analysis evidence file limit exceeded")
+				}
+				if totalBytes+fi.Size() > maxAnalysisEvidenceBytes {
+					return fmt.Errorf("analysis evidence byte limit exceeded")
 				}
 				r, e := filepath.Rel(repeatRoot, child)
 				if e != nil {
@@ -113,6 +131,7 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 				}
 				h := sha256Bytes(data)
 				m.Files = append(m.Files, AnalysisEvidenceFile{Path: filepath.ToSlash(r), Size: fi.Size(), SHA256: h})
+				totalBytes += fi.Size()
 				return nil
 			})
 			if err != nil {
@@ -123,11 +142,18 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 		if !info.Mode().IsRegular() {
 			return m, fmt.Errorf("evidence path is not a regular file: %s", rel)
 		}
-		h, err := hashPath(path)
+		if len(m.Files) >= maxAnalysisEvidenceFiles {
+			return m, fmt.Errorf("analysis evidence file limit exceeded")
+		}
+		if totalBytes+info.Size() > maxAnalysisEvidenceBytes {
+			return m, fmt.Errorf("analysis evidence byte limit exceeded")
+		}
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return m, err
 		}
-		m.Files = append(m.Files, AnalysisEvidenceFile{Path: rel, Size: info.Size(), SHA256: h})
+		m.Files = append(m.Files, AnalysisEvidenceFile{Path: rel, Size: info.Size(), SHA256: sha256Bytes(data)})
+		totalBytes += info.Size()
 	}
 	sort.Strings(m.MissingEvidence)
 	sort.Slice(m.Files, func(i, j int) bool { return m.Files[i].Path < m.Files[j].Path })

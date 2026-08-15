@@ -241,6 +241,11 @@ The mini-du validator v2 requires the explicit per-case CLI surface `-s`, `-k`,
 `-H`, `-h`/`--help`, `--`, `-sk`/`-ks`/`-sH`, and fail-closed unknown options;
 the smoke target runs one case and the full feature target runs all three.
 
+`eval analyze` executes the fixed read-only `evaluation:analyze` workflow through
+the same application/runFlowCase boundary. It selects non-`true_accept` cases by
+default, requires `takt_analyze`, persists redacted timestamped manifests and
+structured advisory reports, and leaves the source evaluation report unchanged.
+
 ## Предметные поставки
 
 - профиль `code` 0.17.0: 19 workflow, deterministic `plan-to-pr` acceptance и trusted block catalog;

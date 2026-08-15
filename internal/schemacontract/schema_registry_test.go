@@ -153,6 +153,20 @@ func TestEvaluationAnalysisSchemaValidatesStrictReport(t *testing.T) {
 			}
 		})
 	}
+	for _, status := range []string{"provider_unavailable", "timed_out", "protocol", "persistence_error", "not_run"} {
+		t.Run("terminal status "+status, func(t *testing.T) {
+			copy := cloneJSONMap(report)
+			copy["status"] = "failed"
+			caseReport := copy["analyses"].([]any)[0].(map[string]any)
+			caseReport["analysis_status"] = status
+			delete(caseReport, "analysis")
+			caseReport["error_code"] = status
+			caseReport["error"] = status + " error"
+			if err := schema.Validate(copy); err != nil {
+				t.Fatalf("status %s rejected: %v", status, err)
+			}
+		})
+	}
 }
 
 func cloneJSONMap(value map[string]any) map[string]any {
