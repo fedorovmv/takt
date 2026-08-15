@@ -5,11 +5,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"takt/internal/redact"
+	"unicode/utf8"
 )
 
 type AnalysisEvidenceFile struct {
@@ -43,9 +45,67 @@ type AnalysisManifest struct {
 const analysisManifestVersion = "takt-evaluation-analysis-manifest/v1alpha1"
 
 const (
-	maxAnalysisEvidenceFiles = 8192
-	maxAnalysisEvidenceBytes = 128 << 20
+	maxAnalysisEvidenceFiles     = 8192
+	maxAnalysisEvidenceBytes     = 128 << 20
+	maxAnalysisEvidenceFileBytes = 4 << 20
 )
+
+// copyAnalysisEvidenceRoot creates the model-visible evidence tree. Oversized
+// files are omitted and returned as missing evidence; secrets in binary data
+// fail closed rather than persisting an unsafe artifact.
+func copyAnalysisEvidenceRoot(source, destination string, redactor *redact.Redactor) ([]string, error) {
+	var missing []string
+	var total int64
+	count := 0
+	err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return os.MkdirAll(destination, 0755)
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("evidence path is a symlink: %s", rel)
+		}
+		if entry.IsDir() {
+			return os.MkdirAll(filepath.Join(destination, rel), 0755)
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("evidence path is not a regular file: %s", rel)
+		}
+		if info.Size() > maxAnalysisEvidenceFileBytes || total+info.Size() > maxAnalysisEvidenceBytes || count >= maxAnalysisEvidenceFiles {
+			missing = append(missing, filepath.ToSlash(rel))
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if redactor != nil {
+			redacted, matched := redactor.Bytes(data)
+			if matched && !utf8.Valid(data) {
+				return fmt.Errorf("binary evidence contains known secret: %s", rel)
+			}
+			data = redacted
+		}
+		if err := writeFlowRaw(filepath.Join(destination, rel), data, info.Mode()); err != nil {
+			return err
+		}
+		total += int64(len(data))
+		count++
+		return nil
+	})
+	sort.Strings(missing)
+	return missing, err
+}
 
 func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *InspectionCase, run RunRecord) (AnalysisEvidenceManifest, error) {
 	m := AnalysisEvidenceManifest{Version: analysisManifestVersion, CaseID: run.CaseID, Repeat: run.Repeat, EvidenceRoot: ""}
@@ -53,7 +113,7 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 		m.EvidenceRoot = filepath.ToSlash(rel)
 	}
 	paths := []string{"run.json"}
-	for _, p := range []string{"validation-request.json", "validation-result.json", "diff.patch", "activity.json", "executor-manifest.json", "repository.bundle"} {
+	for _, p := range []string{"validation-request.json", "validation-result.json", "validator.stderr", "diff.patch", "activity.json", "executor-manifest.json", "repository.bundle", "source", "sessions", "scm", "artifacts"} {
 		if _, err := os.Stat(filepath.Join(repeatRoot, p)); err == nil {
 			paths = append(paths, p)
 		}

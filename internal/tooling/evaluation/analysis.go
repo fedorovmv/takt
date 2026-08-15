@@ -233,7 +233,8 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 			persistCase(failedAnalysisCase(c, originalRun, modelInfo, "not_run", err))
 			continue
 		}
-		em, err := buildAnalysisEvidenceManifest(output, repeatRoot, inspectCase, originalRun)
+		evidenceRoot := filepath.Join(workspace, "evidence")
+		missingEvidence, err := copyAnalysisEvidenceRoot(repeatRoot, evidenceRoot, redactor)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -241,8 +242,16 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 			persistCase(failedAnalysisCase(c, originalRun, modelInfo, "not_run", err))
 			continue
 		}
-		em.EvidenceRoot, _ = filepath.Rel(workspace, repeatRoot)
-		em.EvidenceRoot = filepath.ToSlash(em.EvidenceRoot)
+		em, err := buildAnalysisEvidenceManifest(evidenceRoot, evidenceRoot, nil, originalRun)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			persistCase(failedAnalysisCase(c, originalRun, modelInfo, "not_run", err))
+			continue
+		}
+		em.EvidenceRoot = "evidence"
+		em.MissingEvidence = append(em.MissingEvidence, missingEvidence...)
 		if err := analysisAtomicJSONRedacted(filepath.Join(workspace, "evidence-manifest.json"), em, redactor); err != nil {
 			if firstErr == nil {
 				firstErr = err

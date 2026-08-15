@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"takt/internal/redact"
 )
 
 func TestBuildAnalysisEvidenceManifestUsesRepeatRelativePaths(t *testing.T) {
@@ -23,6 +25,35 @@ func TestBuildAnalysisEvidenceManifestUsesRepeatRelativePaths(t *testing.T) {
 	}
 	if len(m.Files) != 1 || m.Files[0].Path != "run.json" || m.Files[0].SHA256 == "" {
 		t.Fatalf("manifest=%+v", m)
+	}
+}
+
+func TestCopyAnalysisEvidenceRootRedactsAndBoundsFiles(t *testing.T) {
+	source, destination := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "validator.stderr"), []byte("known-secret"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "too-large.bin"), make([]byte, maxAnalysisEvidenceFileBytes+1), 0644); err != nil {
+		t.Fatal(err)
+	}
+	r := &redact.Redactor{}
+	r.AddSecret("known-secret")
+	missing, err := copyAnalysisEvidenceRoot(source, destination, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(destination, "validator.stderr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "known-secret") {
+		t.Fatal("secret leaked into analysis evidence")
+	}
+	if len(missing) != 1 || missing[0] != "too-large.bin" {
+		t.Fatalf("missing=%v", missing)
+	}
+	if _, err := os.Stat(filepath.Join(destination, "too-large.bin")); !os.IsNotExist(err) {
+		t.Fatal("oversized file copied")
 	}
 }
 
