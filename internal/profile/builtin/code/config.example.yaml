@@ -17,6 +17,11 @@ models:
     id: gpt-5
     params:
       variant: high
+  takt_analyze:
+    provider: openai
+    id: gpt-5
+    params:
+      variant: high
 assistants:
   opencode:
     type: opencode

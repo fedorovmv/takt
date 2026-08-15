@@ -6,10 +6,12 @@ model_presets:
     implementation: replace/Qwen/Qwen3.6-27B
     review: replace/Qwen/Qwen3.6-27B
     routing: replace/Qwen/Qwen3.6-27B
+    takt_analyze: replace/Qwen/Qwen3.6-27B
   mixed:
     implementation: replace/Qwen/Qwen3-Coder-Next
     review: anthropic/claude-sonnet-4
     routing: openai/gpt-5-mini
+    takt_analyze: replace/Qwen/Qwen3.6-27B
 assistants:
   pi:
     type: pi

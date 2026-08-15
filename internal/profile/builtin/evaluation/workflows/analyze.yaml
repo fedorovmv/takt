@@ -1,0 +1,112 @@
+name: evaluation-analyze
+provider: coding-agent
+model: takt_analyze
+nodes:
+- id: analyze
+  command: analyze
+  model: takt_analyze
+  allowed_tools:
+  - read
+  skills: []
+  output_format:
+    type: object
+    additionalProperties: false
+    required:
+    - primary_class
+    - failure_mode
+    - confidence
+    - root_cause
+    - causal_chain
+    - evidence
+    - contributing_factors
+    - recommended_actions
+    - missing_evidence
+    - disagreement
+    properties:
+      primary_class:
+        type: string
+        enum:
+        - infrastructure
+        - assistant
+        - workflow
+        - candidate
+        - validator
+        - task
+        - unknown
+      failure_mode:
+        type: string
+        minLength: 1
+      confidence:
+        type: string
+        enum:
+        - high
+        - medium
+        - low
+      root_cause:
+        type: string
+        minLength: 1
+      causal_chain:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - fact
+          - consequence
+          - evidence
+          properties:
+            fact:
+              type: string
+              minLength: 1
+            consequence:
+              type: string
+              minLength: 1
+            evidence:
+              type: array
+              minItems: 1
+              items:
+                type: string
+      evidence:
+        type: array
+        minItems: 1
+        items:
+          type: object
+          additionalProperties: false
+          required:
+          - path
+          - pointer
+          - fact
+          properties:
+            path:
+              type: string
+              minLength: 1
+            pointer:
+              type: string
+              minLength: 1
+            fact:
+              type: string
+              minLength: 1
+      contributing_factors:
+        type: array
+        items:
+          type: string
+      recommended_actions:
+        type: array
+        items:
+          type: string
+      missing_evidence:
+        type: array
+        items:
+          type: string
+      disagreement:
+        type: object
+        additionalProperties: false
+        required:
+        - with_deterministic_cause
+        - explanation
+        properties:
+          with_deterministic_cause:
+            type: boolean
+          explanation:
+            type: string
+description: Analyze persisted evaluation evidence without mutating the source run or workspace.

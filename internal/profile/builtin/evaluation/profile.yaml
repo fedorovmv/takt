@@ -1,0 +1,11 @@
+apiVersion: takt/v1alpha1
+kind: Profile
+metadata:
+  name: evaluation
+workflow: workflows/analyze.yaml
+workflows:
+  analyze: workflows/analyze.yaml
+config: ../../config.yaml
+input:
+  format: json
+  preserve_path: false

@@ -33,6 +33,33 @@ model_presets:
 	}
 }
 
+func TestBuiltInAnalysisModelAliasLoadsInBothConfigModes(t *testing.T) {
+	root := filepath.Join("..", "profile", "builtin")
+	for _, tc := range []struct {
+		name   string
+		path   string
+		preset string
+	}{
+		{name: "legacy", path: filepath.Join(root, "code", "config.example.yaml")},
+		{name: "preset", path: filepath.Join(root, "evaluation", "config.example.yaml"), preset: "default"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load(tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			materialized, _, err := MaterializeModels(cfg, ModelSelection{Preset: tc.preset})
+			if err != nil {
+				t.Fatal(err)
+			}
+			model, ok := materialized.Models["takt_analyze"]
+			if !ok || model.Provider == "" || model.ID == "" {
+				t.Fatalf("missing materialized takt_analyze alias: %+v", materialized.Models)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsInvalidModelPresets(t *testing.T) {
 	for _, tc := range []struct {
 		name, defaults, preset string

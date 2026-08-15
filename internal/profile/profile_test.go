@@ -122,3 +122,29 @@ func TestCodeProfileShipsNineteenRoutedWorkflows(t *testing.T) {
 		}
 	}
 }
+
+func TestEvaluationProfileInstallsReadOnlyAnalysisWorkflow(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init("evaluation", root, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{
+		".takt/profiles/evaluation/profile.yaml",
+		".takt/profiles/evaluation/workflows/analyze.yaml",
+		".takt/profiles/evaluation/commands/analyze.md",
+	} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Fatalf("missing installed evaluation asset %s: %v", rel, err)
+		}
+	}
+	resolved, err := Resolve("evaluation:analyze", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.WorkflowName != "analyze" || !strings.HasSuffix(filepath.ToSlash(resolved.WorkflowPath), "/workflows/analyze.yaml") {
+		t.Fatalf("unexpected analysis workflow: %+v", resolved)
+	}
+	if got := resolved.EffectiveInput(); got.Format != "json" || got.PreservePath {
+		t.Fatalf("unexpected analysis input: %+v", got)
+	}
+}

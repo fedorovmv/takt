@@ -100,6 +100,99 @@ func TestEvaluationSchemasValidateFlowFixtures(t *testing.T) {
 	}
 }
 
+func TestEvaluationAnalysisSchemaValidatesStrictReport(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "schemas", "evaluation-analysis.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	document, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compiler.AddResource("evaluation-analysis.schema.json", document); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := compiler.Compile("evaluation-analysis.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := map[string]any{
+		"report_version": "takt-evaluation-analysis/v1alpha1", "output_dir": "analyses/2026", "source_evaluation_dir": "evaluation", "status": "completed",
+		"started_at": "2026-01-01T00:00:00Z", "finished_at": "2026-01-01T00:00:01Z", "duration_ms": 1000,
+		"model":          map[string]any{"preset": "default", "alias": "takt_analyze", "provider": "example", "id": "analysis-model"},
+		"selected_cases": []any{map[string]any{"case_id": "case", "repeat": 1}},
+		"analyses": []any{map[string]any{
+			"case_id": "case", "repeat": 1,
+			"deterministic":   map[string]any{"status": "completed", "outcome": "false_reject", "cause_source": "validator", "cause": "invalid"},
+			"analysis_status": "completed",
+			"analysis": map[string]any{
+				"primary_class": "validator", "failure_mode": "bad assertion", "confidence": "high", "root_cause": "validator mismatch",
+				"causal_chain": []any{map[string]any{"fact": "validator rejected", "consequence": "run failed", "evidence": []any{"run.json#/status"}}},
+				"evidence":     []any{map[string]any{"path": "run.json", "pointer": "/status", "fact": "failed"}}, "contributing_factors": []any{}, "recommended_actions": []any{"fix validator"}, "missing_evidence": []any{},
+				"disagreement": map[string]any{"with_deterministic_cause": false, "explanation": "matches"},
+			},
+			"evidence_fingerprint": "abc", "model": map[string]any{"preset": "default", "alias": "takt_analyze", "provider": "example", "id": "analysis-model"},
+			"session": map[string]any{"adapter": "fake", "session_id": "session", "session_evidence": "unavailable"}, "usage": map[string]any{"input_tokens": 1, "output_tokens": 2, "cost": 0, "duration_ms": 3},
+		}},
+	}
+	if err := schema.Validate(report); err != nil {
+		t.Fatalf("valid report rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(map[string]any){
+		"extra top-level property": func(value map[string]any) { value["extra"] = true },
+		"unknown primary class": func(value map[string]any) {
+			value["analyses"].([]any)[0].(map[string]any)["analysis"].(map[string]any)["primary_class"] = "random"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			copy := cloneJSONMap(report)
+			mutate(copy)
+			if err := schema.Validate(copy); err == nil {
+				t.Fatal("expected strict schema rejection")
+			}
+		})
+	}
+}
+
+func cloneJSONMap(value map[string]any) map[string]any {
+	b, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	var clone map[string]any
+	if err := json.Unmarshal(b, &clone); err != nil {
+		panic(err)
+	}
+	return clone
+}
+
+func TestRunStateSchemaAcceptsAssistantSessionMetadata(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "schemas", "run-state.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	document, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compiler.AddResource("run-state.schema.json", document); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := compiler.Compile("run-state.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := map[string]any{
+		"id": "run", "status": "completed", "workflow_path": "workflow.yaml", "config_path": "config.yaml", "workspace": "workspace", "input": "", "approvals": map[string]any{}, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z", "revision": 1,
+		"nodes": map[string]any{"agent": map[string]any{"status": "completed", "adapter": "pi", "session_path": "/tmp/session.jsonl", "executions": []any{map[string]any{"attempt": 1, "status": "completed", "adapter": "pi", "session_path": "/tmp/session.jsonl"}}}},
+	}
+	if err := schema.Validate(fixture); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func walkRefs(t *testing.T, schemaName string, value any) {
 	t.Helper()
 	switch v := value.(type) {

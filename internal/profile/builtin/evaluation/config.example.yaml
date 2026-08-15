@@ -1,0 +1,12 @@
+apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: pi
+model_preset: default
+model_presets:
+  default:
+    takt_analyze: example/analysis-model
+assistants:
+  pi:
+    type: pi
+    binary: pi
+    project_trust: deny

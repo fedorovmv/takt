@@ -29,6 +29,7 @@
 - `assistant-protocol.schema.json` — реализованный JSON-протокол `takt-assistant/v1alpha1|v1alpha2` со строгими status/exit и неотрицательным usage;
 - `validation-result.schema.json` — предметно-независимый результат качества `takt-validation/v1alpha1` для benchmark и внешних валидаторов;
 - `evaluation-report.schema.json` — отчёт `takt-evaluation/v1alpha1` с идентичностью стратегии, benchmark, workspace, моделей, optional wall-clock duration flow-узлов и метриками качества.
+- `evaluation-analysis.schema.json` — advisory `takt-evaluation-analysis/v1alpha1` report with deterministic evidence, read-only model analysis, session metadata and structured diagnosis.
 - `evaluation-case-manifest.schema.json` — labels `category|difficulty|source` и другие стабильные метаданные cases;
 - `evaluation-matrix.schema.json` — сравнительная matrix стратегий, baseline, repeat и regression gates;
 - `evaluation-compare.schema.json` — попарное A/B сравнение по case ID + repeat с output directories, quality/resource metrics и transitions;
