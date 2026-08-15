@@ -8,6 +8,8 @@
 
 **Tech Stack:** Go, existing Takt runtime/application/tooling boundaries, Pi/OpenCode/process assistant adapters, JSON Schema draft 2020-12, Go contract tests and `tests/e2e`.
 
+**Implementation status:** Complete on `feature/takt-eval-analyze`; live-provider analysis remains intentionally unexecuted.
+
 ---
 
 ## File map and ownership
