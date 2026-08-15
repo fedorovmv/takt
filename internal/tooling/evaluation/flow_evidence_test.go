@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,6 +107,151 @@ func TestFlowEvidenceWritesRedactedAtomicRecordsAndArtifacts(t *testing.T) {
 	if !strings.Contains(string(manifest), hex.EncodeToString(persistedHash[:])) {
 		t.Fatalf("manifest missing persisted hash: %s", manifest)
 	}
+}
+
+func TestWriteFlowEvidenceCopiesRedactedPiSession(t *testing.T) {
+	root, sessionDir := t.TempDir(), t.TempDir()
+	session := filepath.Join(sessionDir, "session.jsonl")
+	if err := os.WriteFile(session, []byte(`{"event":"known-secret"}\n`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	r := &redact.Redactor{}
+	r.AddSecret("known-secret")
+	state := &store.RunState{ID: "run", Nodes: map[string]*store.NodeState{
+		"implement": {Executions: []store.ExecutionState{{Attempt: 1, ProviderAttempt: 1, Adapter: "pi", SessionPath: session}}},
+	}}
+	if err := WriteFlowEvidence(root, FlowEvidence{CaseID: "case", Repeat: 1, States: []*store.RunState{state}}, r); err != nil {
+		t.Fatal(err)
+	}
+	repeatRoot := filepath.Join(root, "cases", "case", "repeat-001")
+	manifest := readFlowTestJSON(t, filepath.Join(repeatRoot, "executor-manifest.json"))
+	executions := manifest["executions"].([]any)
+	got := executions[0].(map[string]any)
+	if got["adapter"] != "pi" || got["session_evidence"] != "recorded" || got["session_evidence_path"] != "sessions/implement/attempt-001-provider-001.jsonl" {
+		t.Fatalf("unexpected executor manifest entry: %#v", got)
+	}
+	data, err := os.ReadFile(filepath.Join(repeatRoot, "sessions", "implement", "attempt-001-provider-001.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "known-secret") {
+		t.Fatal("session evidence contains a redacted secret")
+	}
+}
+
+func TestWriteFlowEvidenceRecordsUnavailableExecutorSessions(t *testing.T) {
+	root, dir := t.TempDir(), t.TempDir()
+	missing := filepath.Join(dir, "missing.jsonl")
+	symlinkTarget := filepath.Join(dir, "target.jsonl")
+	if err := os.WriteFile(symlinkTarget, []byte("{}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(dir, "link.jsonl")
+	if err := os.Symlink(symlinkTarget, symlink); err != nil {
+		t.Skip(err)
+	}
+	large := filepath.Join(dir, "large.jsonl")
+	if err := os.WriteFile(large, make([]byte, maxSessionEvidenceBytes+1), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := &store.RunState{ID: "run", Nodes: map[string]*store.NodeState{
+		"a": {Executions: []store.ExecutionState{{Attempt: 1, SessionPath: missing}}},
+		"b": {Executions: []store.ExecutionState{{Attempt: 1, SessionPath: symlink}}},
+		"c": {Executions: []store.ExecutionState{{Attempt: 1, SessionPath: large}}},
+		"d": {Executions: []store.ExecutionState{{Attempt: 1}}},
+	}}
+	if err := WriteFlowEvidence(root, FlowEvidence{CaseID: "case", Repeat: 1, States: []*store.RunState{state}}, &redact.Redactor{}); err != nil {
+		t.Fatal(err)
+	}
+	entries := readFlowTestJSON(t, filepath.Join(root, "cases", "case", "repeat-001", "executor-manifest.json"))["executions"].([]any)
+	want := map[string]string{"a": "path_missing", "b": "path_symlink_forbidden", "c": "path_too_large", "d": "adapter_did_not_expose_path"}
+	for _, raw := range entries {
+		entry := raw.(map[string]any)
+		if got := entry["session_evidence_reason"]; got != want[entry["node_id"].(string)] {
+			t.Fatalf("entry=%#v", entry)
+		}
+		if entry["session_evidence"] != "unavailable" {
+			t.Fatalf("entry recorded unavailable path: %#v", entry)
+		}
+	}
+}
+
+func TestWriteFlowEvidenceSeparatesExecutorDestinationCollisions(t *testing.T) {
+	root, dir := t.TempDir(), t.TempDir()
+	first, second := filepath.Join(dir, "one.jsonl"), filepath.Join(dir, "two.jsonl")
+	if err := os.WriteFile(first, []byte("one\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(second, []byte("two\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	states := []*store.RunState{
+		{ID: "run-a", Nodes: map[string]*store.NodeState{"implement": {Executions: []store.ExecutionState{{Attempt: 1, ProviderAttempt: 1, SessionPath: first}}}}},
+		{ID: "run-b", Nodes: map[string]*store.NodeState{"implement": {Executions: []store.ExecutionState{{Attempt: 1, ProviderAttempt: 1, SessionPath: second}}}}},
+	}
+	if err := WriteFlowEvidence(root, FlowEvidence{CaseID: "case", Repeat: 1, States: states}, &redact.Redactor{}); err != nil {
+		t.Fatal(err)
+	}
+	entries := readFlowTestJSON(t, filepath.Join(root, "cases", "case", "repeat-001", "executor-manifest.json"))["executions"].([]any)
+	if len(entries) != 2 {
+		t.Fatalf("entries=%#v", entries)
+	}
+	paths := map[string]bool{}
+	for _, raw := range entries {
+		path := raw.(map[string]any)["session_evidence_path"].(string)
+		if paths[path] {
+			t.Fatalf("duplicate destination %q", path)
+		}
+		paths[path] = true
+		if _, err := os.Stat(filepath.Join(root, "cases", "case", "repeat-001", filepath.FromSlash(path))); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestWriteFlowEvidenceLatchesAggregateSessionLimit(t *testing.T) {
+	root, dir := t.TempDir(), t.TempDir()
+	paths := make([]string, 9)
+	for i, size := range []int{4 << 20, 4 << 20, 4 << 20, 4 << 20, 4 << 20, 4 << 20, 4 << 20, 4 << 20, 1 << 20} {
+		paths[i] = filepath.Join(dir, fmt.Sprintf("%d.jsonl", i))
+		if err := os.WriteFile(paths[i], make([]byte, size), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	node := func(path string) *store.NodeState {
+		return &store.NodeState{Executions: []store.ExecutionState{{Attempt: 1, ProviderAttempt: 1, SessionPath: path}}}
+	}
+	nodes := map[string]*store.NodeState{}
+	for i, path := range paths {
+		nodes[fmt.Sprintf("n%02d", i)] = node(path)
+	}
+	state := &store.RunState{ID: "run", Nodes: nodes}
+	if err := WriteFlowEvidence(root, FlowEvidence{CaseID: "case", Repeat: 1, States: []*store.RunState{state}}, &redact.Redactor{}); err != nil {
+		t.Fatal(err)
+	}
+	entries := readFlowTestJSON(t, filepath.Join(root, "cases", "case", "repeat-001", "executor-manifest.json"))["executions"].([]any)
+	for _, raw := range entries {
+		entry := raw.(map[string]any)
+		if entry["node_id"].(string) < "n08" && entry["session_evidence"] != "recorded" {
+			t.Fatalf("first entry=%#v", entry)
+		}
+		if entry["node_id"].(string) >= "n08" && entry["session_evidence_reason"] != "aggregate_limit" {
+			t.Fatalf("latched entry=%#v", entry)
+		}
+	}
+}
+
+func readFlowTestJSON(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(data, &value); err != nil {
+		t.Fatal(err)
+	}
+	return value
 }
 
 func TestFlowEvidenceRejectsBinarySecretBeforeCopy(t *testing.T) {

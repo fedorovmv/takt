@@ -24,16 +24,17 @@ type EvaluationInspection struct {
 }
 
 type InspectionCase struct {
-	CaseID       string                  `json:"case_id"`
-	Repeat       int                     `json:"repeat"`
-	RunID        string                  `json:"run_id,omitempty"`
-	Status       string                  `json:"status"`
-	Outcome      string                  `json:"outcome,omitempty"`
-	Cause        InspectionCause         `json:"reported_cause"`
-	Nodes        []InspectionNode        `json:"non_completed_nodes"`
-	Evidence     InspectionEvidence      `json:"evidence"`
-	CausalChain  []InspectionObservation `json:"causal_chain"`
-	Observations []InspectionObservation `json:"observations"`
+	CaseID          string                  `json:"case_id"`
+	Repeat          int                     `json:"repeat"`
+	RunID           string                  `json:"run_id,omitempty"`
+	Status          string                  `json:"status"`
+	Outcome         string                  `json:"outcome,omitempty"`
+	Cause           InspectionCause         `json:"reported_cause"`
+	Nodes           []InspectionNode        `json:"non_completed_nodes"`
+	Evidence        InspectionEvidence      `json:"evidence"`
+	CausalChain     []InspectionObservation `json:"causal_chain"`
+	Observations    []InspectionObservation `json:"observations"`
+	MissingEvidence []string                `json:"-"`
 }
 
 type InspectionCause struct {
@@ -63,6 +64,7 @@ type InspectionEvidence struct {
 	SCMCallsRecorded bool     `json:"scm_calls_recorded"`
 	SCMCalls         int      `json:"scm_calls"`
 	Artifacts        []string `json:"artifacts"`
+	ExecutorManifest string   `json:"executor_manifest,omitempty"`
 }
 
 type InspectionObservation struct {
@@ -113,6 +115,12 @@ func InspectFlowEvaluation(outputDir, caseID string, repeat int) (*EvaluationIns
 		}
 		inspection.Cases = append(inspection.Cases, item)
 	}
+	sort.SliceStable(inspection.Cases, func(i, j int) bool {
+		if inspection.Cases[i].CaseID != inspection.Cases[j].CaseID {
+			return inspection.Cases[i].CaseID < inspection.Cases[j].CaseID
+		}
+		return inspection.Cases[i].Repeat < inspection.Cases[j].Repeat
+	})
 	if len(inspection.Cases) == 0 {
 		return nil, fmt.Errorf("no evaluation cases match case=%q repeat=%d", caseID, repeat)
 	}
@@ -185,6 +193,26 @@ func inspectFlowCase(output string, run RunRecord) (InspectionCase, error) {
 	item.Evidence.Activity, err = existingEvidencePath(output, filepath.Join(repeatRoot, "activity.json"))
 	if err != nil {
 		return item, err
+	}
+	manifestEvidence, err := existingEvidencePath(output, filepath.Join(repeatRoot, "executor-manifest.json"))
+	if err != nil {
+		return item, err
+	}
+	if manifestEvidence == "" {
+		item.MissingEvidence = append(item.MissingEvidence, "executor-manifest.json")
+	} else {
+		item.Evidence.ExecutorManifest = manifestEvidence
+		data, readErr := os.ReadFile(filepath.Join(repeatRoot, "executor-manifest.json"))
+		if readErr != nil {
+			return item, readErr
+		}
+		var executor FlowExecutorManifest
+		if decodeErr := json.Unmarshal(data, &executor); decodeErr != nil {
+			return item, fmt.Errorf("decode executor manifest: %w", decodeErr)
+		}
+		if executor.ReportVersion != FlowExecutorManifestVersion {
+			return item, fmt.Errorf("unsupported executor manifest version %q", executor.ReportVersion)
+		}
 	}
 	callsPath := filepath.Join(repeatRoot, "scm", "calls.log")
 	if err := validateInspectionEvidencePath(output, callsPath); err != nil {
@@ -478,6 +506,11 @@ func (i EvaluationInspection) String() string {
 		fmt.Fprintf(table, "    Source\t%s\n", valueOrDash(item.Evidence.Source))
 		fmt.Fprintf(table, "    Git bundle\t%s\n", valueOrDash(item.Evidence.RepositoryBundle))
 		fmt.Fprintf(table, "    Activity\t%s\n", valueOrDash(item.Evidence.Activity))
+		manifest := item.Evidence.ExecutorManifest
+		if manifest == "" {
+			manifest = "UNAVAILABLE"
+		}
+		fmt.Fprintf(table, "    Executor manifest\t%s\n", manifest)
 		if item.Evidence.SCMCallsRecorded {
 			fmt.Fprintf(table, "    SCM calls\t%d (%s)\n", item.Evidence.SCMCalls, item.Evidence.SCMCallsPath)
 		} else {

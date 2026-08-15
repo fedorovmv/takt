@@ -33,11 +33,12 @@
 - `evaluation-matrix.schema.json` — сравнительная matrix стратегий, baseline, repeat и regression gates;
 - `evaluation-compare.schema.json` — попарное A/B сравнение по case ID + repeat с output directories, quality/resource metrics и transitions;
 - `evaluation-stats.schema.json` — компактная human/JSON статистика одного сохранённого suite run с node attempts, assistant executions, assistant-step timing и Session IDs;
-- `evaluation-inspection.schema.json` — детерминированное read-only расследование причин и сохранённых evidence одного flow evaluation;
+- `evaluation-inspection.schema.json` — детерминированное read-only расследование причин и сохранённых evidence одного flow evaluation, включая optional executor manifest;
 - `evaluation-matrix-report.schema.json` — итог `takt-evaluation-matrix/v1alpha1` со строго типизированными strategy summaries, usage breakdown, comparisons и gate results.
 - `flow-evaluation-suite.schema.json` — strict production flow evaluation suite.
 - `flow-evaluation-progress.schema.json` — атомарный внешний snapshot текущей фазы, Run/node progress и измеренных live-агрегатов production flow evaluation.
 - `evaluation-validator-request.schema.json` — validator invocation protocol.
+- `executor-manifest.json` — per-repeat `takt-evaluation-executor/v1alpha1` adapter/session evidence manifest с bounded redacted session copies.
 
 Flow suites are created with `takt eval flow init`; the scaffold intentionally
 does not generate a validator or any executable code.

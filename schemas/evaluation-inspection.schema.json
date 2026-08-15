@@ -68,7 +68,8 @@
         "scm_calls_path": {"type": "string"},
         "scm_calls_recorded": {"type": "boolean"},
         "scm_calls": {"type": "integer", "minimum": 0},
-        "artifacts": {"type": "array", "items": {"type": "string"}}
+        "artifacts": {"type": "array", "items": {"type": "string"}},
+        "executor_manifest": {"type": "string"}
       }
     },
     "observation": {

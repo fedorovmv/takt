@@ -93,6 +93,9 @@ func WriteFlowEvidence(root string, item FlowEvidence, redactor *redact.Redactor
 	if err := writeFlowJSON(filepath.Join(repeatRoot, "run.json"), flowRunEvidence{RootRunID: rootID, States: item.States}, redactor); err != nil {
 		return err
 	}
+	if err := writeFlowExecutorManifest(repeatRoot, item, redactor); err != nil {
+		return err
+	}
 	if err := writeFlowJSON(filepath.Join(repeatRoot, "activity.json"), flowActivityEvidence{Events: flowAssistantActivity(item.Events)}, redactor); err != nil {
 		return err
 	}

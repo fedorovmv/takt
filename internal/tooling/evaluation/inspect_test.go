@@ -106,6 +106,34 @@ func TestInspectFlowEvaluationFiltersCases(t *testing.T) {
 	}
 }
 
+func TestInspectFlowEvaluationReportsMissingExecutorManifest(t *testing.T) {
+	dir := t.TempDir()
+	report := &SuiteReport{ReportVersion: ReportVersion, Mode: "flow", OutputDir: dir, Runs: []RunRecord{{CaseID: "case", Repeat: 1, RunID: "run", Status: "failed"}}}
+	if err := writeReport(dir, report); err != nil {
+		t.Fatal(err)
+	}
+	repeatRoot := filepath.Join(dir, "cases", "case", "repeat-001")
+	if err := os.MkdirAll(repeatRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repeatRoot, "run.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inspection, err := InspectFlowEvaluation(dir, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inspection.Cases) != 1 || inspection.Cases[0].Evidence.ExecutorManifest != "" {
+		t.Fatalf("inspection=%+v", inspection)
+	}
+	for _, path := range inspection.Cases[0].MissingEvidence {
+		if path == "executor-manifest.json" {
+			return
+		}
+	}
+	t.Fatalf("missing evidence=%v", inspection.Cases[0].MissingEvidence)
+}
+
 func TestInspectFlowEvaluationRejectsEvidencePathEscapes(t *testing.T) {
 	t.Run("case id", func(t *testing.T) {
 		dir := t.TempDir()
