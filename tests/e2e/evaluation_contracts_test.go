@@ -358,6 +358,70 @@ gates: {valid_rate: {min: 0}}
 	}
 }
 
+func TestEvaluationAnalysisMalformedProviderOutputIsPersisted(t *testing.T) {
+	if os.Getenv("TAKT_ANALYSIS_VALIDATOR_MALFORMED") == "1" {
+		fmt.Print(`{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":false,"diagnostics":[{"code":"missing_artifact","severity":"error","message":"implementation.md is absent"}]}`)
+		os.Exit(0)
+	}
+	root := t.TempDir()
+	caseRoot := filepath.Join(root, "cases", "problem")
+	if err := os.MkdirAll(filepath.Join(caseRoot, "workspace"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, caseRoot, "input.md", "malformed analysis\n")
+	writeFile(t, caseRoot, "expected.yaml", "oracle: {expected: false}\n")
+	writeFile(t, filepath.Join(caseRoot, "workspace"), "main.txt", "base\n")
+	fakePi := binary(t, "takt-fake-pi")
+	config := writeFile(t, root, "config.yaml", fmt.Sprintf(`apiVersion: takt/v1alpha1
+kind: Config
+default_assistant: pi
+models:
+  takt_analyze: {provider: fake, id: fake-model}
+assistants:
+  pi:
+    type: pi
+    binary: %q
+    args: ["--fake-case", "analysis-malformed"]
+    project_trust: approve
+    max_output_bytes: 1048576
+`, fakePi))
+	writeFile(t, root, "flow.yaml", `name: analysis-malformed-flow
+provider: coding-agent
+model: takt_analyze
+nodes:
+  - id: implement
+    prompt: inspect the case
+`)
+	suite := writeFile(t, root, "suite.yaml", fmt.Sprintf(`version: takt-flow-evaluation/v1alpha1
+workflow: flow.yaml
+config: config.yaml
+cases: {directory: cases}
+validator:
+  id: analysis-validator
+  version: "1"
+  command: [%q, %q, %q]
+  path: flow.yaml
+  timeout: 10s
+  max_output_bytes: 4096
+gates: {valid_rate: {min: 0}}
+`, os.Args[0], "-test.run=^TestEvaluationAnalysisMalformedProviderOutputIsPersisted$", "--"))
+	output := filepath.Join(t.TempDir(), "evaluation")
+	takt(t, []string{"TAKT_ANALYSIS_VALIDATOR_MALFORMED=1"}, "eval", "flow", suite, "--output", output, "--keep-workspaces", "--json").RequireSuccess(t)
+	original, err := os.ReadFile(filepath.Join(output, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := takt(t, nil, "eval", "analyze", output, "--config", config, "--case", "problem", "--json").RequireFailure(t)
+	report := resultObject(t, result.JSON(t))
+	analyses := report["analyses"].([]any)
+	if len(analyses) != 1 || analyses[0].(map[string]any)["analysis_status"] != "protocol" {
+		t.Fatalf("analyses=%#v stderr=%s", analyses, result.Stderr)
+	}
+	if after, err := os.ReadFile(filepath.Join(output, "report.json")); err != nil || string(after) != string(original) {
+		t.Fatalf("source report changed: err=%v", err)
+	}
+}
+
 func TestProductionFlowEvaluation(t *testing.T) {
 	if os.Getenv("TAKT_PRODUCTION_FLOW_VALIDATOR") == "1" {
 		var request struct {
