@@ -1,4 +1,5 @@
 /bin/
+.worktrees/
 **/.takt/runs/
 examples/**/.takt/
 examples/**/route.yaml
