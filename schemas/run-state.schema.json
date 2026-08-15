@@ -272,6 +272,9 @@
         "session_id": {
           "type": "string"
         },
+        "session_path": {
+          "type": "string"
+        },
         "resumed": {
           "type": "boolean"
         },
@@ -294,6 +297,9 @@
           "$ref": "#/$defs/usage"
         },
         "assistant": {
+          "type": "string"
+        },
+        "adapter": {
           "type": "string"
         },
         "assistant_version": {
@@ -460,6 +466,9 @@
         "assistant": {
           "type": "string"
         },
+        "adapter": {
+          "type": "string"
+        },
         "assistant_version": {
           "type": "string"
         },
@@ -470,6 +479,9 @@
           "$ref": "#/$defs/modelRef"
         },
         "session_id": {
+          "type": "string"
+        },
+        "session_path": {
           "type": "string"
         },
         "resumed": {

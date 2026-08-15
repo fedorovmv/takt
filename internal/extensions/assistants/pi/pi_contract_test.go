@@ -282,6 +282,16 @@ func TestPiAdapterContract(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves session path when prompt fails after state-before", func(t *testing.T) {
+		result, err := fakePi("prompt-rejected").Run(context.Background(), fakePiRequest(t.TempDir()))
+		if execution.KindOf(err) != execution.KindExit {
+			t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+		}
+		if result.Adapter != "pi" || result.SessionPath == "" {
+			t.Fatalf("Pi failure metadata missing: adapter=%q session_path=%q", result.Adapter, result.SessionPath)
+		}
+	})
+
 	t.Run("fresh ignores stale session", func(t *testing.T) {
 		req := fakePiRequest(t.TempDir())
 		req.SessionMode = "fresh"

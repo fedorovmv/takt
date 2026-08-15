@@ -114,8 +114,12 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 	processWait := newPiProcessWait(cmd)
 
 	client := &piRPCClient{stdin: stdin, records: records, streamErr: streamErr, process: processWait, request: req}
+	var sessionPath string
 	finish := func(result Result, runErr error) (Result, error) {
 		result.Adapter = "pi"
+		if result.SessionPath == "" {
+			result.SessionPath = sessionPath
+		}
 		result.AssistantVersion = version
 		_ = stdin.Close()
 		waitErr := client.waitProcess(ctx)
@@ -152,6 +156,7 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		cancel()
 		return finish(Result{ExitCode: -1}, protocolPiError("decode initial state", err))
 	}
+	sessionPath = stateBefore.SessionFile
 	client.request.SessionID = stateBefore.SessionID
 	statsBeforeRaw, err := client.call(ctx, "stats-before", map[string]any{"type": "get_session_stats"})
 	if err != nil {
