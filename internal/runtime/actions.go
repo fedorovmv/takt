@@ -225,8 +225,10 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	}
 	executed := execResult{
 		Output: result.Output, Stdout: result.Stdout, Stderr: result.Stderr, ExitCode: result.ExitCode, SessionID: result.SessionID,
-		Resumed: result.Resumed, Truncated: result.Truncated, Usage: result.Usage,
+		SessionPath: result.SessionPath,
+		Resumed:     result.Resumed, Truncated: result.Truncated, Usage: result.Usage,
 		Assistant:        resolved.AssistantName,
+		Adapter:          result.Adapter,
 		AssistantVersion: result.AssistantVersion,
 		AssistantEvents:  events,
 		RequestedModel:   &store.ModelRef{Name: resolved.ModelName, Provider: resolved.Model.Provider, ID: resolved.Model.ID, Params: cloneParams(resolved.Model.Params)},

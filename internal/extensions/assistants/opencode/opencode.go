@@ -50,20 +50,20 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 		binary = "opencode"
 	}
 	if err := validateOpenCodeArgs(o.spec.Args); err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode adapter", Err: err}
+		return Result{Adapter: "opencode"}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode adapter", Err: err}
 	}
 
 	env, err := openCodeEnvironment(o.spec, req)
 	if err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode policy", Err: err}
+		return Result{Adapter: "opencode"}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode policy", Err: err}
 	}
 	prompt, err := openCodePrompt(req.Prompt, req.Policy)
 	if err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode skills", Err: err}
+		return Result{Adapter: "opencode"}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode skills", Err: err}
 	}
 	version, err := probeOpenCodeVersion(ctx, binary, req.Workspace, env)
 	if err != nil {
-		return Result{}, err
+		return Result{Adapter: "opencode"}, err
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -94,6 +94,7 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 	rawStdout, rawStderr := stdout.String(), stderr.String()
 	diagnostic := openCodeDiagnostics(rawStdout, rawStderr)
 	result := Result{
+		Adapter:          "opencode",
 		ExitCode:         0,
 		Stdout:           rawStdout,
 		Stderr:           rawStderr,

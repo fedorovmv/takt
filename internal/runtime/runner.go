@@ -769,10 +769,12 @@ type execResult struct {
 	Stderr           string
 	ExitCode         int
 	SessionID        string
+	SessionPath      string
 	Resumed          bool
 	Truncated        bool
 	Usage            *assistant.ProtocolUsage
 	Assistant        string
+	Adapter          string
 	AssistantVersion string
 	RequestedModel   *store.ModelRef
 	ResolvedModel    *store.ModelRef
@@ -1144,8 +1146,12 @@ func applyExecResult(node *store.NodeState, result execResult) {
 	node.Stderr = result.Stderr
 	node.ExitCode = result.ExitCode
 	node.SessionID = result.SessionID
+	node.SessionPath = result.SessionPath
 	node.Resumed = result.Resumed
 	node.OutputTruncated = result.Truncated
+	if result.Adapter != "" {
+		node.Adapter = result.Adapter
+	}
 	if result.Assistant != "" {
 		node.Assistant = result.Assistant
 	}
@@ -1234,10 +1240,12 @@ func recordExecution(node *store.NodeState, result execResult, err error) {
 		ProviderAttempt:  result.ProviderAttempt,
 		Status:           status,
 		Assistant:        result.Assistant,
+		Adapter:          result.Adapter,
 		AssistantVersion: result.AssistantVersion,
 		RequestedModel:   cloneModelRef(result.RequestedModel),
 		ResolvedModel:    cloneModelRef(result.ResolvedModel),
 		SessionID:        result.SessionID,
+		SessionPath:      result.SessionPath,
 		Resumed:          result.Resumed,
 		ExitCode:         result.ExitCode,
 		ErrorCode:        errorCode,

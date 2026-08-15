@@ -147,7 +147,7 @@ func TestPiProviderFailures(t *testing.T) {
 			if !errors.As(err, &executionErr) || executionErr.RetryAfter != 0 {
 				t.Fatalf("Pi internal retry delay leaked as RetryAfter: %+v", executionErr)
 			}
-			if result.SessionID == "" || result.Usage == nil || result.Usage.InputTokens != 111 || result.Usage.OutputTokens != 22 {
+			if result.Adapter != "pi" || result.SessionPath == "" || result.SessionID == "" || result.Usage == nil || result.Usage.InputTokens != 111 || result.Usage.OutputTokens != 22 {
 				t.Fatalf("failure lost result identity or usage: %+v", result)
 			}
 			var structured struct {
@@ -211,6 +211,9 @@ func TestPiAdapterContract(t *testing.T) {
 		}
 		if result.Output != "fake Pi completed" || result.ExitCode != 0 || result.SessionID != "fake-pi-session-1" || result.Resumed {
 			t.Fatalf("unexpected result: %+v", result)
+		}
+		if result.Adapter != "pi" || result.SessionPath == "" {
+			t.Fatalf("Pi metadata missing: adapter=%q session_path=%q", result.Adapter, result.SessionPath)
 		}
 		if result.ResolvedModel == nil || result.ResolvedModel.Provider != "openai" || result.ResolvedModel.ID != "gpt-test" {
 			t.Fatalf("resolved model missing: %+v", result.ResolvedModel)

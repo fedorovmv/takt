@@ -100,10 +100,12 @@ type ExecutionState struct {
 	ProviderAttempt  int              `json:"provider_attempt,omitempty"`
 	Status           string           `json:"status"`
 	Assistant        string           `json:"assistant,omitempty"`
+	Adapter          string           `json:"adapter,omitempty"`
 	AssistantVersion string           `json:"assistant_version,omitempty"`
 	RequestedModel   *ModelRef        `json:"requested_model,omitempty"`
 	ResolvedModel    *ModelRef        `json:"resolved_model,omitempty"`
 	SessionID        string           `json:"session_id,omitempty"`
+	SessionPath      string           `json:"session_path,omitempty"`
 	Resumed          bool             `json:"resumed,omitempty"`
 	ExitCode         int              `json:"exit_code,omitempty"`
 	ErrorCode        string           `json:"error_code,omitempty"`
@@ -235,6 +237,7 @@ type NodeState struct {
 	OutputTruncated         bool                    `json:"output_truncated,omitempty"`
 	Usage                   *Usage                  `json:"usage,omitempty"`
 	Assistant               string                  `json:"assistant,omitempty"`
+	Adapter                 string                  `json:"adapter,omitempty"`
 	AssistantVersion        string                  `json:"assistant_version,omitempty"`
 	RequestedModel          *ModelRef               `json:"requested_model,omitempty"`
 	ResolvedModel           *ModelRef               `json:"resolved_model,omitempty"`
@@ -243,6 +246,7 @@ type NodeState struct {
 	ProviderAttempts        int                     `json:"provider_attempts,omitempty"`
 	Feedback                string                  `json:"feedback,omitempty"`
 	SessionID               string                  `json:"session_id,omitempty"`
+	SessionPath             string                  `json:"session_path,omitempty"`
 	Resumed                 bool                    `json:"resumed,omitempty"`
 	ErrorCode               string                  `json:"error_code,omitempty"`
 	Error                   string                  `json:"error,omitempty"`

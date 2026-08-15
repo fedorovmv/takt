@@ -37,6 +37,8 @@ type Result struct {
 	ResolvedModel    *ProtocolModel
 	Usage            *ProtocolUsage
 	Truncated        bool
+	Adapter          string // concrete adapter registration: pi, opencode, process, mock
+	SessionPath      string // optional local session file supplied by the adapter
 }
 
 // SessionAdapter is the provider-neutral execution seam used by Takt.

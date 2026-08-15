@@ -51,16 +51,16 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		binary = "pi"
 	}
 	if err := validatePiArgs(p.spec.Args); err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "pi adapter", Err: err}
+		return Result{Adapter: "pi"}, &execution.Error{Kind: execution.KindProtocol, Op: "pi adapter", Err: err}
 	}
 	if err := validatePiPolicy(req.Policy); err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "pi policy", Err: err}
+		return Result{Adapter: "pi"}, &execution.Error{Kind: execution.KindProtocol, Op: "pi policy", Err: err}
 	}
 
 	env := piEnvironment(p.spec, req)
 	version, err := probePiVersion(ctx, binary, req.Workspace, env)
 	if err != nil {
-		return Result{}, err
+		return Result{Adapter: "pi"}, err
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -73,15 +73,15 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindStart, Op: "pi rpc stdin", Err: err}
+		return Result{Adapter: "pi"}, &execution.Error{Kind: execution.KindStart, Op: "pi rpc stdin", Err: err}
 	}
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindStart, Op: "pi rpc stdout", Err: err}
+		return Result{Adapter: "pi"}, &execution.Error{Kind: execution.KindStart, Op: "pi rpc stdout", Err: err}
 	}
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindStart, Op: "pi rpc stderr", Err: err}
+		return Result{Adapter: "pi"}, &execution.Error{Kind: execution.KindStart, Op: "pi rpc stderr", Err: err}
 	}
 
 	limit := p.spec.MaxOutputBytes
@@ -99,7 +99,7 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 	stderr := newLimitedBuffer(budget)
 
 	if err := cmd.Start(); err != nil {
-		return Result{}, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "pi rpc", Err: err}
+		return Result{Adapter: "pi"}, &execution.Error{Kind: execution.KindStart, ExitCode: -1, Op: "pi rpc", Err: err}
 	}
 
 	records := make(chan piRPCRecord, 64)
@@ -115,6 +115,7 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 
 	client := &piRPCClient{stdin: stdin, records: records, streamErr: streamErr, process: processWait, request: req}
 	finish := func(result Result, runErr error) (Result, error) {
+		result.Adapter = "pi"
 		result.AssistantVersion = version
 		_ = stdin.Close()
 		waitErr := client.waitProcess(ctx)
@@ -242,12 +243,14 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		"automatic_retries": settled.AutomaticRetries,
 	})
 	result := Result{
-		Output:     text,
-		Structured: structured,
-		SessionID:  stateAfter.SessionID,
-		Resumed:    mode == "resume",
-		ExitCode:   0,
-		Usage:      usage,
+		Output:      text,
+		Structured:  structured,
+		Adapter:     "pi",
+		SessionPath: stateAfter.SessionFile,
+		SessionID:   stateAfter.SessionID,
+		Resumed:     mode == "resume",
+		ExitCode:    0,
+		Usage:       usage,
 	}
 	result.ResolvedModel = piResolvedModel(messagesRaw, req.ModelName, stateAfter.Model)
 	if failure != "" {

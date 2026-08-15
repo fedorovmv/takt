@@ -157,6 +157,9 @@ func TestOpenCodeAdapterContract(t *testing.T) {
 		if result.Output != "fake OpenCode completed" || result.ExitCode != 0 || result.SessionID != "ses-opencode-1" || result.Resumed {
 			t.Fatalf("unexpected result: %+v", result)
 		}
+		if result.Adapter != "opencode" || result.SessionPath != "" {
+			t.Fatalf("OpenCode metadata mismatch: adapter=%q session_path=%q", result.Adapter, result.SessionPath)
+		}
 		if result.ResolvedModel == nil || result.ResolvedModel.Provider != "openai" || result.ResolvedModel.ID != "qwen-test" {
 			t.Fatalf("resolved model missing: %+v", result.ResolvedModel)
 		}

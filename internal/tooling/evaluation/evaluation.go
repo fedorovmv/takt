@@ -211,10 +211,12 @@ type NodeRecord struct {
 	ProviderAttempts int                    `json:"provider_attempts"`
 	DurationMS       *int64                 `json:"duration_ms,omitempty"`
 	Assistant        string                 `json:"assistant,omitempty"`
+	Adapter          string                 `json:"adapter,omitempty"`
 	AssistantVersion string                 `json:"assistant_version,omitempty"`
 	RequestedModel   *store.ModelRef        `json:"requested_model,omitempty"`
 	ResolvedModel    *store.ModelRef        `json:"resolved_model,omitempty"`
 	SessionID        string                 `json:"session_id,omitempty"`
+	SessionPath      string                 `json:"session_path,omitempty"`
 	Resumed          bool                   `json:"resumed"`
 	ExitCode         int                    `json:"exit_code"`
 	ErrorCode        string                 `json:"error_code,omitempty"`
@@ -235,10 +237,12 @@ type ExecutionRecord struct {
 	ProviderAttempt  int                    `json:"provider_attempt"`
 	Status           string                 `json:"status"`
 	Assistant        string                 `json:"assistant,omitempty"`
+	Adapter          string                 `json:"adapter,omitempty"`
 	AssistantVersion string                 `json:"assistant_version,omitempty"`
 	RequestedModel   *store.ModelRef        `json:"requested_model,omitempty"`
 	ResolvedModel    *store.ModelRef        `json:"resolved_model,omitempty"`
 	SessionID        string                 `json:"session_id,omitempty"`
+	SessionPath      string                 `json:"session_path,omitempty"`
 	Resumed          bool                   `json:"resumed"`
 	ExitCode         int                    `json:"exit_code"`
 	ErrorCode        string                 `json:"error_code,omitempty"`
@@ -733,9 +737,9 @@ func recordFromState(caseID string, repeat int, workspacePath string, state *sto
 			record.MixedIdentityNodes++
 		}
 		record.Nodes[id] = NodeRecord{
-			Status: node.Status, Attempts: node.Attempts, ProviderAttempts: node.ProviderAttempts, Assistant: node.Assistant, AssistantVersion: node.AssistantVersion,
+			Status: node.Status, Attempts: node.Attempts, ProviderAttempts: node.ProviderAttempts, Assistant: node.Assistant, Adapter: node.Adapter, AssistantVersion: node.AssistantVersion,
 			RequestedModel: node.RequestedModel, ResolvedModel: node.ResolvedModel,
-			SessionID: node.SessionID, Resumed: node.Resumed,
+			SessionID: node.SessionID, SessionPath: node.SessionPath, Resumed: node.Resumed,
 			ExitCode: node.ExitCode, ErrorCode: node.ErrorCode, Error: node.Error, Feedback: node.Feedback,
 			DiagnosticOutput: node.Output, Stdout: node.Stdout, Stderr: node.Stderr,
 			OutputTruncated: node.OutputTruncated, Usage: node.Usage, Diagnostic: node.Diagnostic,
@@ -748,9 +752,9 @@ func recordFromState(caseID string, repeat int, workspacePath string, state *sto
 func executionRecordFromState(state store.ExecutionState) ExecutionRecord {
 	return ExecutionRecord{
 		Attempt: state.Attempt, ProviderAttempt: state.ProviderAttempt, Status: state.Status,
-		Assistant: state.Assistant, AssistantVersion: state.AssistantVersion,
+		Assistant: state.Assistant, Adapter: state.Adapter, AssistantVersion: state.AssistantVersion,
 		RequestedModel: state.RequestedModel, ResolvedModel: state.ResolvedModel,
-		SessionID: state.SessionID, Resumed: state.Resumed,
+		SessionID: state.SessionID, SessionPath: state.SessionPath, Resumed: state.Resumed,
 		ExitCode: state.ExitCode, ErrorCode: state.ErrorCode, Error: state.Error,
 		OutputTruncated: state.OutputTruncated, Usage: state.Usage, Diagnostic: state.Diagnostic,
 	}

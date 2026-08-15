@@ -2579,3 +2579,27 @@ func TestCanonicalNodePathIsPersistedInStateAndEvents(t *testing.T) {
 		t.Fatal("no node events observed")
 	}
 }
+
+func TestAssistantAdapterSessionMetadataPersistsInExecutionAndNode(t *testing.T) {
+	dir := t.TempDir()
+	adapter := adapterFunc(func(context.Context, assistant.Request) (assistant.Result, error) {
+		return assistant.Result{Output: "ok", Stdout: "ok", ExitCode: 0, Adapter: "fake", SessionPath: "/tmp/session.jsonl"}, nil
+	})
+	wf := &spec.Workflow{Name: "metadata", Nodes: []spec.Node{{ID: "agent", Prompt: "work", Provider: "demo", Model: "m"}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "demo", ID: "m"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{
+		Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir},
+		Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg),
+	})
+	state, err := r.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := state.Nodes["agent"]
+	if node.Adapter != "fake" || node.SessionPath != "/tmp/session.jsonl" {
+		t.Fatalf("latest node metadata = adapter %q path %q", node.Adapter, node.SessionPath)
+	}
+	if len(node.Executions) != 1 || node.Executions[0].Adapter != "fake" || node.Executions[0].SessionPath != "/tmp/session.jsonl" {
+		t.Fatalf("execution metadata = %+v", node.Executions)
+	}
+}

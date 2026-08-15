@@ -16,6 +16,7 @@ func (m Mock) Run(_ context.Context, req Request) (Result, error) {
 	}
 	return Result{
 		Output:    fmt.Sprintf("mock assistant %s completed: %s", m.name, preview),
+		Adapter:   "mock",
 		SessionID: req.SessionID,
 		ExitCode:  0,
 	}, nil

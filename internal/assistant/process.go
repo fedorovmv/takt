@@ -30,7 +30,7 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 		argv[i] = renderArg(arg, req)
 	}
 	if len(argv) == 0 {
-		return Result{}, &execution.Error{Kind: execution.KindStart, Op: "assistant process", Err: fmt.Errorf("empty process argv")}
+		return Result{Adapter: "process"}, &execution.Error{Kind: execution.KindStart, Op: "assistant process", Err: fmt.Errorf("empty process argv")}
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	execution.ConfigureCommand(cmd)
@@ -42,7 +42,7 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 		rendered := renderArg(v, req)
 		resolved, resolveErr := secretResolver.Resolve(rendered)
 		if resolveErr != nil {
-			return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process secret", Err: resolveErr}
+			return Result{Adapter: "process"}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process secret", Err: resolveErr}
 		}
 		renderedEnv[k] = resolved
 		cmd.Env = append(cmd.Env, k+"="+resolved)
@@ -76,12 +76,12 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 	}
 	if p.spec.Protocol != "" {
 		if p.spec.Protocol != ProtocolV1Alpha1 {
-			return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process", Err: fmt.Errorf("unsupported protocol %q", p.spec.Protocol)}
+			return Result{Adapter: "process"}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process", Err: fmt.Errorf("unsupported protocol %q", p.spec.Protocol)}
 		}
 		protocolRequest = buildProtocolRequest(ctx, req, p.spec, renderedEnv, time.Now())
 		encoded, err := encodeProtocolRequest(protocolRequest)
 		if err != nil {
-			return Result{}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process", Err: err}
+			return Result{Adapter: "process"}, &execution.Error{Kind: execution.KindProtocol, Op: "assistant process", Err: err}
 		}
 		cmd.Stdin = strings.NewReader(string(encoded))
 	} else if !hasPrompt {
@@ -96,6 +96,7 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 	rawStdout, rawStderr := stdout.String(), stderr.String()
 	result := Result{
 		Output:    combineOutput(rawStdout, rawStderr),
+		Adapter:   "process",
 		SessionID: sessionID,
 		ExitCode:  0,
 		Stdout:    rawStdout,
@@ -163,7 +164,7 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, env map[string]string) (Result, error) {
 	stdin, stdout, stderr, err := startV1Alpha2Process(cmd)
 	if err != nil {
-		return Result{}, err
+		return Result{Adapter: "process"}, err
 	}
 	budget := &outputBudget{limit: p.spec.MaxOutputBytes}
 	rawOut, rawErr := newLimitedBuffer(budget), newLimitedBuffer(budget)
@@ -188,14 +189,14 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 	if err := encoder.Encode(protocolRequest); err != nil {
 		_ = stdin.Close()
 		_ = cmd.Process.Kill()
-		return Result{}, protocolError("assistant process v1alpha2 request", err)
+		return Result{Adapter: "process"}, protocolError("assistant process v1alpha2 request", err)
 	}
 
 	state, err := p.readV1Alpha2Stream(ctx, stdout, rawOut, req, encoder)
 	_ = stdin.Close()
 	if err != nil {
 		_ = cmd.Process.Kill()
-		return Result{Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1, Truncated: rawOut.Truncated() || rawErr.Truncated()}, err
+		return Result{Adapter: "process", Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1, Truncated: rawOut.Truncated() || rawErr.Truncated()}, err
 	}
 
 	// Drain stderr before Wait closes the StderrPipe. os/exec documents that
@@ -205,7 +206,7 @@ func (p Process) runV1Alpha2(ctx context.Context, cmd *exec.Cmd, req Request, en
 	waitErr := cmd.Wait()
 	processFinished = true
 	if copyErr != nil {
-		return Result{}, protocolError("assistant process v1alpha2 stderr", copyErr)
+		return Result{Adapter: "process"}, protocolError("assistant process v1alpha2 stderr", copyErr)
 	}
 	return finishV1Alpha2(ctx, protocolRequest, state, waitErr, rawOut, rawErr)
 }
@@ -373,25 +374,25 @@ func finishV1Alpha2(ctx context.Context, protocolRequest ProtocolRequest, state 
 		if ctx.Err() == context.DeadlineExceeded {
 			kind = execution.KindTimedOut
 		}
-		return Result{Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1}, &execution.Error{Kind: kind, ExitCode: -1, Op: "assistant process v1alpha2", Err: ctx.Err()}
+		return Result{Adapter: "process", Stdout: rawOut.String(), Stderr: rawErr.String(), ExitCode: -1}, &execution.Error{Kind: kind, ExitCode: -1, Op: "assistant process v1alpha2", Err: ctx.Err()}
 	}
 	if !state.declarationSeen {
-		return Result{}, protocolError("assistant process v1alpha2", fmt.Errorf("capability declaration is required"))
+		return Result{Adapter: "process"}, protocolError("assistant process v1alpha2", fmt.Errorf("capability declaration is required"))
 	}
 	if state.final == nil {
-		return Result{}, protocolError("assistant process v1alpha2", fmt.Errorf("final result is missing"))
+		return Result{Adapter: "process"}, protocolError("assistant process v1alpha2", fmt.Errorf("final result is missing"))
 	}
 	if err := validateProtocolResult(*state.final, protocolRequest.Session, ProtocolV1Alpha2); err != nil {
-		return Result{}, protocolError("assistant process v1alpha2 result", err)
+		return Result{Adapter: "process"}, protocolError("assistant process v1alpha2 result", err)
 	}
 	osExit, err := processExitCode(waitErr)
 	if err != nil {
-		return Result{}, err
+		return Result{Adapter: "process"}, err
 	}
 	if osExit != *state.final.ExitCode {
-		return Result{}, protocolError("assistant process v1alpha2", fmt.Errorf("process exit code %d differs from result exit_code %d", osExit, *state.final.ExitCode))
+		return Result{Adapter: "process"}, protocolError("assistant process v1alpha2", fmt.Errorf("process exit code %d differs from result exit_code %d", osExit, *state.final.ExitCode))
 	}
-	result := Result{Output: state.final.Output, Structured: state.final.Structured, ExitCode: *state.final.ExitCode, Stdout: rawOut.String(), Stderr: rawErr.String(), ResolvedModel: state.final.ResolvedModel, Usage: state.final.Usage, Truncated: rawOut.Truncated() || rawErr.Truncated()}
+	result := Result{Adapter: "process", Output: state.final.Output, Structured: state.final.Structured, ExitCode: *state.final.ExitCode, Stdout: rawOut.String(), Stderr: rawErr.String(), ResolvedModel: state.final.ResolvedModel, Usage: state.final.Usage, Truncated: rawOut.Truncated() || rawErr.Truncated()}
 	if state.final.Session != nil {
 		result.SessionID, result.Resumed = state.final.Session.ID, state.final.Session.Resumed
 	}
