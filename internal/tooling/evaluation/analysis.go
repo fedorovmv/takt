@@ -274,7 +274,7 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 			caseReport.EvidenceFingerprint = fp
 		}
 		if caseReport.AnalysisStatus != "completed" && firstErr == nil {
-			firstErr = errors.New(caseReport.ErrorCode)
+			firstErr = fmt.Errorf("analysis %s: %s", caseReport.ErrorCode, valueOrDash(caseReport.Error))
 		}
 		if callbackErr != nil && firstErr == nil {
 			firstErr = callbackErr
