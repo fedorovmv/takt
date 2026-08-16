@@ -160,7 +160,21 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 		}
 	}
 	if inspection != nil {
-		m.MissingEvidence = append(m.MissingEvidence, inspection.MissingEvidence...)
+		for _, raw := range inspection.MissingEvidence {
+			rel, err := normalizeInspectionEvidencePath(inspection.Evidence.Root, raw)
+			if err != nil {
+				return m, err
+			}
+			if rel == "" {
+				continue
+			}
+			if _, err := os.Lstat(filepath.Join(repeatRoot, filepath.FromSlash(rel))); err == nil {
+				continue
+			} else if !os.IsNotExist(err) {
+				return m, err
+			}
+			m.MissingEvidence = append(m.MissingEvidence, rel)
+		}
 		for _, p := range []string{"validation-request.json", "validation-result.json", "validator.stderr", "diff.patch", "activity.json", "executor-manifest.json", "repository.bundle"} {
 			if _, err := os.Stat(filepath.Join(repeatRoot, p)); os.IsNotExist(err) {
 				m.MissingEvidence = append(m.MissingEvidence, p)
@@ -249,8 +263,37 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 		totalBytes += info.Size()
 	}
 	sort.Strings(m.MissingEvidence)
+	m.MissingEvidence = uniqueAnalysisStrings(m.MissingEvidence)
 	sort.Slice(m.Files, func(i, j int) bool { return m.Files[i].Path < m.Files[j].Path })
 	return m, nil
+}
+
+func normalizeInspectionEvidencePath(root, raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if strings.ContainsRune(raw, '\x00') || strings.Contains(raw, "\\") || filepath.IsAbs(raw) {
+		return "", fmt.Errorf("inspection evidence path must be relative: %q", raw)
+	}
+	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(raw)))
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", fmt.Errorf("inspection evidence path escapes repeat root: %q", raw)
+	}
+	root = filepath.ToSlash(strings.Trim(strings.TrimSpace(root), "/"))
+	if root != "" {
+		if clean == root {
+			return "", nil
+		}
+		prefix := root + "/"
+		if strings.HasPrefix(clean, prefix) {
+			clean = strings.TrimPrefix(clean, prefix)
+		}
+	}
+	if clean == "" || clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", nil
+	}
+	return clean, nil
 }
 
 func validationValid(record *FlowValidationRecord) *bool {

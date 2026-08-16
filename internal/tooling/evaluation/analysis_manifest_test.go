@@ -73,6 +73,36 @@ func TestBuildAnalysisEvidenceManifestCarriesDeterministicContext(t *testing.T) 
 	}
 }
 
+func TestBuildAnalysisEvidenceManifestNormalizesInspectionMissingPaths(t *testing.T) {
+	root := t.TempDir()
+	repeat := filepath.Join(root, "evidence")
+	if err := os.MkdirAll(repeat, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{
+		"run.json":               `{"states":[]}`,
+		"validation-result.json": `{"valid":false}`,
+	} {
+		if err := os.WriteFile(filepath.Join(repeat, name), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inspection := &InspectionCase{
+		CaseID: "problem", Repeat: 1,
+		Evidence:        InspectionEvidence{Root: "cases/problem/repeat-001", Validation: "cases/problem/repeat-001/validation-result.json"},
+		MissingEvidence: []string{"cases/problem/repeat-001/validation-result.json", "executor-manifest.json"},
+	}
+	manifest, err := buildAnalysisEvidenceManifest(root, repeat, inspection, RunRecord{CaseID: "problem", Repeat: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, missing := range manifest.MissingEvidence {
+		if strings.HasPrefix(missing, "cases/problem/repeat-001/") || missing == "validation-result.json" {
+			t.Fatalf("available copied evidence reported missing: %q (all=%v)", missing, manifest.MissingEvidence)
+		}
+	}
+}
+
 func TestCopyAnalysisEvidenceRootRedactsAndBoundsFiles(t *testing.T) {
 	source, destination := t.TempDir(), t.TempDir()
 	if err := os.WriteFile(filepath.Join(source, "validator.stderr"), []byte("known-secret"), 0644); err != nil {
