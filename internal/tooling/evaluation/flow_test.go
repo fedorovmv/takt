@@ -448,7 +448,7 @@ func TestRunFlowRedactsPersistedReport(t *testing.T) {
 	report, err := RunFlow(context.Background(), FlowRunOptions{SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root, CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
 		return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunFailed, ExecutionWorkspace: request.Workspace, Error: secret, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, fmt.Errorf("callback %s", secret)
 	}})
-	if report == nil || (err != nil && !strings.Contains(err.Error(), "flow evaluation gates failed")) {
+	if report == nil || err == nil || !strings.Contains(err.Error(), "callback") {
 		t.Fatalf("report=%+v err=%v", report, err)
 	}
 	data, readErr := os.ReadFile(filepath.Join(root, "out", "report.json"))

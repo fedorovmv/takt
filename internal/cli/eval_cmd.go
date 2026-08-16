@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,9 @@ func evalCmd(ctx context.Context, args []string) error {
 		}
 		if *repeat < 0 {
 			return fmt.Errorf("repeat cannot be negative")
+		}
+		if flagPresent(args[1:], "--repeat") && *repeat == 0 {
+			return fmt.Errorf("repeat must be positive")
 		}
 		if *repeat > 0 && strings.TrimSpace(*caseID) == "" {
 			return fmt.Errorf("repeat requires --case")
