@@ -12,6 +12,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path"
@@ -151,7 +152,7 @@ func loadOracle(file string) (miniDUOracle, error) {
 	if len(oracle.AllowedPaths) == 0 || len(oracle.Scenarios) == 0 {
 		return oracle, errors.New("allowed_paths and scenarios are required")
 	}
-	known := map[string]bool{"empty": true, "nested": true, "multiple": true, "unicode": true, "spaces": true, "symlink": true, "hardlink": true, "summary": true, "kibibytes": true, "missing": true, "mixed-missing": true}
+	known := map[string]bool{"empty": true, "nested": true, "multiple": true, "unicode": true, "spaces": true, "symlink": true, "hardlink": true, "summary": true, "kibibytes": true, "humanized": true, "help_short": true, "help_long": true, "double_dash": true, "combined_flags": true, "invalid_option": true, "missing": true, "mixed-missing": true}
 	for _, scenario := range oracle.Scenarios {
 		if !known[scenario] {
 			return oracle, fmt.Errorf("unknown scenario %q", scenario)
@@ -350,7 +351,10 @@ func rejectDelegation(root string) error {
 		if e != nil {
 			return e
 		}
-		if d.IsDir() || filepath.Ext(p) != ".go" {
+		if d.IsDir() && p != root && (d.Name() == ".git" || d.Name() == ".takt") {
+			return filepath.SkipDir
+		}
+		if d.IsDir() || filepath.Ext(p) != ".go" || strings.HasSuffix(p, "_test.go") {
 			return nil
 		}
 		file, e := parser.ParseFile(token.NewFileSet(), p, nil, 0)
@@ -365,6 +369,8 @@ func rejectDelegation(root string) error {
 		bad := false
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch value := node.(type) {
+			case *ast.ImportSpec:
+				return false
 			case *ast.CallExpr:
 				if selected, ok := value.Fun.(*ast.SelectorExpr); ok {
 					if ident, ok := selected.X.(*ast.Ident); ok && ident.Name == "exec" && (selected.Sel.Name == "Command" || selected.Sel.Name == "CommandContext") {
@@ -390,8 +396,14 @@ func rejectDelegation(root string) error {
 
 func rejectForbiddenSource(root string, oracle miniDUOracle) error {
 	return filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
 			return err
+		}
+		if d.IsDir() {
+			if p != root && (d.Name() == ".git" || d.Name() == ".takt") {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		rel, _ := filepath.Rel(root, p)
 		rel = filepath.ToSlash(rel)
@@ -438,6 +450,29 @@ func compareScenario(bin, scenario string) error {
 	defer os.RemoveAll(root)
 	args := []string{root}
 	switch scenario {
+	case "help_short":
+		return compareHelp(bin, []string{"-h"})
+	case "help_long":
+		return compareHelp(bin, []string{"--help"})
+	case "invalid_option":
+		return compareInvalidOption(bin)
+	case "double_dash":
+		if err = os.WriteFile(filepath.Join(root, "-s"), []byte("x"), 0644); err != nil {
+			return err
+		}
+		return compareCandidateOracle(bin, []string{"--", "-s"}, []string{"-k", "--", "-s"}, root, root, scenario)
+	case "combined_flags":
+		for _, flags := range []string{"-sk", "-ks"} {
+			if err := compareCandidateOracle(bin, []string{flags, root}, []string{"-k", "-s", root}, "", root, scenario+flags); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "humanized":
+		if err = os.WriteFile(filepath.Join(root, "payload"), bytes.Repeat([]byte("x"), 1536*1024), 0644); err != nil {
+			return err
+		}
+		return compareHumanized(bin, root)
 	case "empty":
 	case "nested":
 		if err = os.MkdirAll(filepath.Join(root, "a", "b"), 0755); err != nil {
@@ -477,22 +512,94 @@ func compareScenario(bin, scenario string) error {
 	if err != nil {
 		return err
 	}
-	candidate := exec.CommandContext(context.Background(), bin, args...)
-	oracle := exec.CommandContext(context.Background(), "du", append([]string{"-k"}, args...)...)
+	return compareCandidateOracle(bin, args, append([]string{"-k"}, args...), "", root, scenario)
+}
+
+func compareCandidateOracle(bin string, candidateArgs, oracleArgs []string, dir, normalizeRoot, scenario string) error {
+	candidate := exec.CommandContext(context.Background(), bin, candidateArgs...)
+	oracle := exec.CommandContext(context.Background(), "du", oracleArgs...)
+	candidate.Dir, oracle.Dir = dir, dir
 	env := append(os.Environ(), "LC_ALL=C", "LANG=C", "BLOCKSIZE=1024")
 	candidate.Env = env
 	oracle.Env = env
 	co, ce := candidate.CombinedOutput()
 	oo, oe := oracle.CombinedOutput()
-	if exitCode(ce) != exitCode(oe) || normalizeOutput(string(co), root, scenario) != normalizeOutput(string(oo), root, scenario) {
+	if exitCode(ce) != exitCode(oe) || normalizeOutput(string(co), normalizeRoot, scenario) != normalizeOutput(string(oo), normalizeRoot, scenario) {
 		return fmt.Errorf("scenario %s differs", scenario)
 	}
 	return nil
 }
+
+const miniDUHelp = "Usage: mini-du [-s] [-k|-H] [--] [PATH...]\n" +
+	"  -s          display only a total for each path\n" +
+	"  -k          display sizes in 1024-byte units\n" +
+	"  -H          display humanized binary units (KiB, MiB, GiB)\n" +
+	"  -h, --help  display this help\n"
+
+func compareHelp(bin string, args []string) error {
+	cmd := exec.CommandContext(context.Background(), bin, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil || string(out) != miniDUHelp {
+		return fmt.Errorf("help scenario differs: exit=%d output=%q", exitCode(err), out)
+	}
+	return nil
+}
+
+func compareInvalidOption(bin string) error {
+	cmd := exec.CommandContext(context.Background(), bin, "-z")
+	out, err := cmd.CombinedOutput()
+	if exitCode(err) != 1 || !strings.Contains(string(out), "invalid option") {
+		return fmt.Errorf("invalid option scenario differs: exit=%d output=%q", exitCode(err), out)
+	}
+	return nil
+}
+
+func compareHumanized(bin, root string) error {
+	oracle := exec.CommandContext(context.Background(), "du", "-ks", root)
+	env := append(os.Environ(), "LC_ALL=C", "LANG=C", "BLOCKSIZE=1024")
+	oracle.Env = env
+	oracleOut, oracleErr := oracle.Output()
+	if oracleErr != nil {
+		return fmt.Errorf("humanized oracle: %w", oracleErr)
+	}
+	fields := strings.Fields(string(oracleOut))
+	if len(fields) < 1 {
+		return errors.New("humanized oracle returned no size")
+	}
+	kib, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("humanized oracle size: %w", err)
+	}
+	candidate := exec.CommandContext(context.Background(), bin, "-sH", root)
+	candidate.Env = env
+	out, runErr := candidate.CombinedOutput()
+	want := fmt.Sprintf("%s\t%s\n", humanizedSize(kib*1024), root)
+	if runErr != nil || string(out) != want {
+		return fmt.Errorf("humanized scenario differs: exit=%d got=%q want=%q", exitCode(runErr), out, want)
+	}
+	return nil
+}
+
+func humanizedSize(bytes int64) string {
+	if bytes == 0 {
+		return "0B"
+	}
+	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
+	value := float64(bytes)
+	unit := 0
+	for value >= 1024 && unit < len(units)-1 {
+		value /= 1024
+		unit++
+	}
+	if value < 10 && math.Abs(value-math.Round(value)) > 1e-9 {
+		return fmt.Sprintf("%.1f%s", value, units[unit])
+	}
+	return fmt.Sprintf("%.0f%s", value, units[unit])
+}
 func normalizeOutput(s, root, scenario string) string {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\\", "/"), filepath.ToSlash(root), "<ROOT>")
 	lines := strings.Split(strings.TrimSpace(s), "\n")
-	if scenario == "multiple" {
+	if scenario == "multiple" || scenario == "mixed-missing" {
 		for i := range lines {
 			for j := i + 1; j < len(lines); j++ {
 				if lines[j] < lines[i] {

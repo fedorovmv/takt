@@ -162,24 +162,131 @@ takt eval run <workflow> \
 
 `takt eval flow` evaluates cases sequentially: every case/repeat receives a fresh
 control workspace and produces `cases/<case>/repeat-<NNN>/` evidence containing
-the durable run snapshot, validator request/result and artifact manifest. The
-report distinguishes `true_accept`, `false_accept`, `true_reject` and
-`false_reject`; rates use evaluated runs as their denominator. Fake SCM fixtures
-are deterministic test inputs, not a security boundary or evidence of a remote
-provider effect. Start a new suite with `takt eval flow init <selector> --output
-DIR`; deterministic executable validation, not agent text, owns correctness.
+the durable run snapshot, validator request/result, artifact manifest, a
+portable full-history `repository.bundle`, a baseline-to-final `diff.patch` and
+the final product tree in `source/`. Source evidence excludes `.git/` and
+`.takt/`, rejects symlinks, preserves file modes
+and applies the common secret redactor before cleanup. The mini-du delegation
+oracle permits `os/exec` only in `_test.go` files so behavioral tests may invoke
+the system oracle; production sources remain fail-closed. The report
+distinguishes `true_accept`, `false_accept`, `true_reject` and
+`false_reject`. Fake SCM fixtures are deterministic test inputs, not a security
+boundary or evidence of a remote provider effect. Start a new suite with `takt
+eval flow init <selector> --output DIR`; deterministic executable validation,
+not agent text, owns correctness.
+
+### Runs, outcomes и проценты
+
+Один flow evaluation Run — это один полный изолированный запуск workflow для
+одной пары `case + repeat`. Retry или resume узла остаётся попыткой внутри того
+же Run и увеличивает `attempts`, но не количество Runs. Если suite содержит три
+case и команда запущена с `--repeat 3`, отчёт содержит девять Runs.
+
+После Run внешний validator независимо проверяет итоговый продукт. Сочетание
+terminal status workflow и результата validator определяет outcome:
+
+| Workflow | Validator | Outcome | Смысл |
+|---|---|---|---|
+| `completed` | `valid:true` | `true_accept` | workflow завершился и продукт корректен |
+| `completed` | `valid:false` | `false_accept` | workflow заявил завершение, но продукт некорректен |
+| не `completed` | `valid:false` | `true_reject` | workflow не завершился и продукт некорректен |
+| не `completed` | `valid:true` | `false_reject` | workflow не завершился, хотя продукт уже корректен |
+
+Знаменатели различаются намеренно:
+
+```text
+total_runs = все case/repeat Runs в отчёте
+
+evaluated_runs = Runs с успешно завершённым validator,
+                 кроме infrastructure_error
+
+valid_rate = true_accept / evaluated_runs
+false_accept_rate = false_accept / evaluated_runs
+false_reject_rate = false_reject / evaluated_runs
+
+flow_completion_rate = Runs со status=completed / total_runs
+validation_error_rate = Runs без корректного результата validator / total_runs
+```
+
+Поэтому `Flow valid` отвечает на вопрос «в какой доле измеренных запусков flow
+завершился и продукт прошёл validator», а `Completion` — только «как часто
+workflow технически дошёл до `completed`». `False accept` показывает опасные
+ложные успехи, `False reject` — потери уже корректного результата, а `Validation
+errors` — надёжность самого измерительного контура. При одном Run значение
+`100%` означает только `1/1`; для сравнения стохастических моделей нужны
+несколько cases и repeats. Если `evaluated_runs == 0`, quality rates равны
+`null`, а не `0`. Infrastructure errors сохраняют usage и diagnostics, но не
+загрязняют quality-знаменатель.
+
+The feature corpus contract is explicit in each `input.md`: `-s`, `-k`, `-H`,
+`-h`, `--help`, `--`, `-sk`, `-ks`, `-sH`, and fail-closed unknown options. Every
+feature case includes external validator scenarios for these surfaces;
+`eval-feature-smoke` runs `implement-basic`, while `eval-feature` runs all
+feature cases.
 Use `--trace` for live runs: progress and durable Run/node events are written to
 stderr, while stdout remains the final machine-readable JSON report. Periodic
 heartbeats identify the active root/child Run, idle time, limit, last normalized
-or streaming activity and awaited boundary. Eval-only
+or streaming activity, awaited boundary and last measured model-request input
+tokens. The heartbeat prints `context=<N>t` when optional message usage is
+available and `context=unknown` otherwise; it does not report cumulative usage
+or infer the model context-window limit. Human lines use `SCOPE | EVENT |
+DETAILS`; short Run ID and node attempt are placed in the scope, while full Run
+and Session IDs are announced once instead of repeated on every tool event.
+Validation/cleanup report checkpoints and the final report write have distinct
+event names. Eval-only
 assistant inactivity defaults to `5m`; override it with
 `--assistant-idle-timeout` without changing the production workflow.
+
+For a quieter external check, run `takt eval status <output-dir>` or
+`make eval-status RUN=<output-dir>` from another terminal. The command only
+reads the atomically replaced `progress.json`; it never starts or resumes a
+workflow and never contacts Pi/models. The snapshot advances through
+`prepare → validator_preflight → workflow → validator → evidence → cleanup →
+finalized`, updates on durable Run revisions and periodically while waiting,
+and retains the final completed/failed state beside `report.json`. Live token
+and cost counters contain only completed executions already persisted by the
+runtime. If the eval process is killed, `status` can remain `running`; inspect
+`Updated`/`updated_at` for staleness.
 
 Model comparisons use shared Config presets: `takt eval flow <suite.yaml>
 --model-preset <name>` or `EVAL_PRESET=mixed make eval-feature`. One-off alias
 overrides use repeated `--model alias=provider/model`; Make passes generic
 `MODEL_<ALIAS>` environment variables. Reports record the selected preset and effective model
 references in `strategy`; the benchmark fingerprint remains model-independent.
+Inspect one saved suite report with `takt eval stats <output-dir>` (human text by
+default, `--json` for structured output). It includes identity, outcomes,
+node attempts, assistant executions, attempts/retries/resumes, tokens, duration,
+time-to-valid, cost, diagnostics, per-execution identity usage and case rows.
+For new flow reports the assistant-step table shows wall time measured from the
+first durable `node.started` to the terminal node event. This includes tools,
+retry backoff and waiting and must not be interpreted as provider inference
+latency; old reports without optional node `duration_ms` show `-`.
+`ASSISTANT SESSIONS` lists the opaque Session ID of each actual assistant
+execution together with case, step, workflow attempt, provider attempt and
+fresh/resume mode. Session IDs come from durable execution records; no stable
+Pi/OpenCode URL is inferred by Takt.
+`takt eval compare A B` renders explicit A/B assessments for correctness,
+reliability, efficiency and every case/metric. Overall direction prioritizes
+valid results, then flow reliability, then resources only when quality is equal.
+Higher valid/completion is better; lower false accepts/rejects,
+infrastructure/validator errors, tokens, duration, attempts and cost is better.
+Percentages retain their numerator/denominator, missing measurements are not
+printed as percentages, all deltas are `B-A`, and differing benchmark
+fingerprints remain fail-closed.
+
+Failure investigation is deterministic and separate from scoring. `takt eval
+stats <output-dir>` attributes the first authoritative validator/runtime/node
+cause to each failed case. `takt eval inspect <output-dir> [--case ID]
+[--repeat N]` reads only persisted evidence and shows that cause, non-completed
+nodes, diff/source/full-history Git bundle, artifacts, SCM calls and normalized
+tool-start activity. `activity.json` excludes assistant messages and tool output
+and passes through the common redactor. A separate deterministic causal chain
+connects persisted terminal assistant reason/usage and tool-call counts to an
+empty result, failed validation and skipped downstream nodes. Derived observations carry explicit
+`CONFIRMED|INFERRED|UNAVAILABLE` confidence and never replace the validator
+verdict. Neither command starts/resumes a flow or contacts a model; any future
+LLM-assisted analysis must be a separate explicit opt-in command with cited
+evidence and persisted model/session/usage.
 
 ## 9. Критерий полезности Takt
 

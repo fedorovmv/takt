@@ -307,6 +307,14 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 8. usage вычисляется как дельта накопленной статистики до/после попытки; уменьшение значений и исчезновение ранее присутствовавшего usage являются protocol error;
 9. закрытие stdin штатно завершает RPC-процесс.
 
+Последний assistant message со `stopReason: length` означает исчерпание
+provider/model output limit и классифицируется как execution `exit`, даже если
+Pi затем публикует `agent_settled` и RPC-процесс завершается с кодом 0. Session
+ID и usage попытки сохраняются. Retry остаётся явной политикой workflow:
+`attempts.retry_on: [exit]` вместе с `retry_session: reuse` продолжает ту же
+сессию с feedback. `maxTokens` модели Pi, `contextWindow` и adapter
+`max_output_bytes` являются тремя разными лимитами.
+
 Поддержано:
 
 - выбор provider/model и thinking level;
@@ -323,6 +331,13 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 Интерактивный extension UI не проксируется в рамках попытки: запросы, требующие ответа, считаются protocol error. Fire-and-forget методы `notify`, `setStatus`, `setWidget`, `setTitle` и `set_editor_text` допускаются. Project-local Pi resources управляются явным `project_trust`.
 
 `Request.Metadata` является optional. Workflow runtime пока не строит mapping из workflow/node metadata; adapter обязан транспортировать поле, когда вызывающая сторона его заполнила. Pi adapter делает это через `TAKT_METADATA_JSON`.
+
+Optional `message_end.message.usage.input` нормализуется как usage самого
+`assistant.message` и может использоваться только как последнее измеренное
+число input tokens model request для live progress. Оно не заменяет
+authoritative per-attempt usage delta из `get_session_stats` после
+`agent_settled`, не суммируется повторно и не считается maximum context window.
+Если Pi не передал message usage, текущий context size остаётся неизвестным.
 
 ## 10. OpenCode adapter
 
@@ -347,9 +362,10 @@ Prompt передаётся через stdin. Stdout трактуется как
 non-negative `retry_after_ms`. Adapter выдаёт этот kind только по явному
 transient evidence: HTTP `429`, `502`, `503` или `504`; explicitly
 rate-limited/overloaded/temporarily-unavailable provider error; connection
-reset/refused, temporary DNS или equivalent transport error без наблюдаемого
-request-side effect. Unknown errors, other `4xx`, protocol/tool failures and
-assistant decisions are not this kind. Parent timeout/cancellation wins.
+reset/refused, explicit `connection error`, temporary DNS или equivalent
+transport error без наблюдаемого request-side effect. Unknown errors, other
+`4xx`, protocol/tool failures and assistant decisions are not this kind. Parent
+timeout/cancellation wins.
 
 Это terminal adapter result после собственных retries provider: Pi/OpenCode
 internal retries не являются Takt `SessionAdapter.Run` calls. Scheduler может

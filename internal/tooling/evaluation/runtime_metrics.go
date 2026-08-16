@@ -1,6 +1,7 @@
 package evaluation
 
 import (
+	"strings"
 	"time"
 
 	"takt/internal/store"
@@ -27,7 +28,26 @@ func applyRuntimeMetricsFromEvents(record *RunRecord, state *store.RunState, eve
 		return
 	}
 	var qualityCompletedAt time.Time
+	nodeStartedAt := map[string]time.Time{}
 	for _, event := range events {
+		if key := flowEventNodeKey(record, event); key != "" {
+			switch event.Type {
+			case "node.started":
+				if nodeStartedAt[key].IsZero() {
+					nodeStartedAt[key] = event.Time
+				}
+			case "node.completed", "node.failed", "node.errored", "node.timed_out", "node.cancelled", "node.blocked":
+				if started := nodeStartedAt[key]; !started.IsZero() && record.Nodes[key].DurationMS == nil {
+					duration := event.Time.Sub(started).Milliseconds()
+					if duration < 0 {
+						duration = 0
+					}
+					node := record.Nodes[key]
+					node.DurationMS = &duration
+					record.Nodes[key] = node
+				}
+			}
+		}
 		switch event.Type {
 		case "node.retry.scheduled", "node.retry", "provider.retry.scheduled":
 			record.RetryScheduled++
@@ -47,4 +67,21 @@ func applyRuntimeMetricsFromEvents(record *RunRecord, state *store.RunState, eve
 		}
 		record.TimeToValidMS = &value
 	}
+}
+
+func flowEventNodeKey(record *RunRecord, event store.Event) string {
+	if record == nil || event.RunID == "" || event.NodeID == "" {
+		return ""
+	}
+	direct := event.RunID + "/" + event.NodeID
+	if _, ok := record.Nodes[direct]; ok {
+		return direct
+	}
+	suffix := "/" + direct
+	for key := range record.Nodes {
+		if strings.HasSuffix(key, suffix) {
+			return key
+		}
+	}
+	return ""
 }

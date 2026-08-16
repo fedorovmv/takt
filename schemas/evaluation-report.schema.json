@@ -272,6 +272,10 @@
           "type": "integer",
           "minimum": 0
         },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
         "assistant": {
           "type": "string"
         },

@@ -18,6 +18,7 @@ func TestTransientProviderFailurePhrases(t *testing.T) {
 		"rate limit", "rate_limit", "too many requests", "overloaded",
 		"service unavailable", "temporarily unavailable", "temporary unavailable",
 		"connection reset", "connection refused", "econnreset", "etimedout",
+		"connection error",
 		"enotfound", "no such host", "temporary failure in name resolution",
 		"fetch failed", "socket hang up",
 	}

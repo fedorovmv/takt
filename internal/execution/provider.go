@@ -8,7 +8,7 @@ import (
 var transientProviderPhrases = []string{
 	"rate limit", "rate_limit", "too many requests", "overloaded",
 	"service unavailable", "temporarily unavailable", "temporary unavailable",
-	"connection reset", "connection refused", "econnreset", "etimedout",
+	"connection reset", "connection refused", "connection error", "econnreset", "etimedout",
 	"enotfound", "no such host", "temporary failure in name resolution",
 	"fetch failed", "socket hang up",
 }

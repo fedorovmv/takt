@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -325,5 +326,185 @@ func TestCompareFlow(t *testing.T) {
 	}
 	if _, err := Compare(baseline, &SuiteReport{Benchmark: BenchmarkIdentity{Fingerprint: fingerprint}}); err == nil {
 		t.Fatal("accepted mixed flow comparison")
+	}
+}
+
+func TestCompareIncludesExecutionResourceDeltas(t *testing.T) {
+	fingerprint := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	base := &SuiteReport{Mode: "flow", Benchmark: BenchmarkIdentity{Fingerprint: fingerprint}, Summary: Summary{InputTokens: 100, OutputTokens: 20, Attempts: 2, DurationMS: 1000}, Runs: []RunRecord{{CaseID: "a", Repeat: 1, Mode: "flow"}}}
+	candidate := &SuiteReport{Mode: "flow", Benchmark: BenchmarkIdentity{Fingerprint: fingerprint}, Summary: Summary{InputTokens: 150, OutputTokens: 30, Attempts: 3, DurationMS: 1300}, Runs: []RunRecord{{CaseID: "a", Repeat: 1, Mode: "flow"}}}
+	got, err := Compare(base, candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, metric := range []struct {
+		name string
+		got  MetricComparison
+		want float64
+	}{
+		{"input_tokens", got.Metrics.InputTokens, 50},
+		{"output_tokens", got.Metrics.OutputTokens, 10},
+		{"attempts", got.Metrics.TotalAttempts, 1},
+		{"duration_ms", got.Metrics.TotalDurationMS, 300},
+	} {
+		if metric.got.Delta == nil || *metric.got.Delta != metric.want {
+			t.Fatalf("%s delta=%v want=%v", metric.name, metric.got.Delta, metric.want)
+		}
+	}
+}
+
+func TestCompareStringFormatsResourceCountsAndDurationsForHumans(t *testing.T) {
+	fingerprint := "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	base := &SuiteReport{Mode: "flow", Benchmark: BenchmarkIdentity{Fingerprint: fingerprint}, Summary: Summary{InputTokens: 1325526, OutputTokens: 57480, Attempts: 5, DurationMS: 596287}, Runs: []RunRecord{{CaseID: "a", Repeat: 1, Mode: "flow"}}}
+	candidate := &SuiteReport{Mode: "flow", Benchmark: BenchmarkIdentity{Fingerprint: fingerprint}, Summary: Summary{InputTokens: 1325527, OutputTokens: 57482, Attempts: 6, DurationMS: 596290}, Runs: []RunRecord{{CaseID: "a", Repeat: 1, Mode: "flow"}}}
+	got, err := Compare(base, candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := got.String()
+	for _, want := range []string{
+		"Total tokens        1 383 006        1 383 009        +3 (+0.0%)",
+		"Duration            9m56.287s        9m56.29s         +3ms (+0.0%)",
+		"Node attempts       5                6                +1 (+20.0%)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("comparison text misses %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestCompareStringExplainsWhetherEachChangeIsGoodOrBad(t *testing.T) {
+	fingerprint := strings.Repeat("d", 64)
+	zero, one := 0.0, 1.0
+	baseline := &SuiteReport{
+		Mode: "flow", OutputDir: ".takt/evals/feature-development/a",
+		Strategy:  StrategyIdentity{ModelPreset: "preset-a", Models: map[string]string{"implementation": "gemini/model-a", "review": "gemini/model-a"}},
+		Benchmark: BenchmarkIdentity{ID: "suite.yaml", Fingerprint: fingerprint},
+		Summary: Summary{
+			Total: 3, Valid: 3, InputTokens: 3301501, OutputTokens: 254918, Attempts: 15, DurationMS: 1954032, CostPerValid: &zero, AverageTimeToValidMS: floatPointer(652605),
+			FinalSuccessRate: &one, Flow: &FlowSummary{EvaluatedRuns: 3, FlowCompleted: 3, TrueAccept: 3, ValidRate: &one, FalseAcceptRate: &zero, FalseRejectRate: &zero, FlowCompletionRate: &one, ValidationErrorRate: &zero},
+		},
+	}
+	candidate := &SuiteReport{
+		Mode: "flow", OutputDir: ".takt/evals/feature-development/b",
+		Strategy:  StrategyIdentity{ModelPreset: "preset-b", Models: map[string]string{"implementation": "openai/model-b", "review": "openai/model-b"}},
+		Benchmark: BenchmarkIdentity{ID: "suite.yaml", Fingerprint: fingerprint},
+		Summary: Summary{
+			Total: 3, Invalid: 3, InputTokens: 5866113, OutputTokens: 144611, Attempts: 13, DurationMS: 2521825,
+			FinalSuccessRate: &zero, Flow: &FlowSummary{EvaluatedRuns: 3, FlowCompleted: 3, FalseAccept: 3, ValidRate: &zero, FalseAcceptRate: &one, FalseRejectRate: &zero, FlowCompletionRate: &one, ValidationErrorRate: &zero},
+		},
+	}
+	for repeat := 1; repeat <= 3; repeat++ {
+		baseline.Runs = append(baseline.Runs, RunRecord{CaseID: "implement-basic", Repeat: repeat, Mode: "flow", Status: store.RunCompleted, Outcome: "true_accept", Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: true}}})
+		candidate.Runs = append(candidate.Runs, RunRecord{CaseID: "implement-basic", Repeat: repeat, Mode: "flow", Status: store.RunCompleted, Outcome: "false_accept", Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: false}}})
+	}
+	comparison, err := Compare(baseline, candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Join(strings.Fields(comparison.String()), " ")
+	for _, want := range []string{
+		"Assessment B compared with A",
+		"SUMMARY Overall WORSE Correctness WORSE Reliability WORSE Efficiency WORSE Evidence 3 paired runs",
+		"Preset A preset-a Preset B preset-b",
+		"Valid products 3/3 (100%) 0/3 (0%) -3 WORSE",
+		"Flow completed 3/3 (100%) 3/3 (100%) 0 SAME",
+		"False accepts 0/3 (0%) 3/3 (100%) +3 WORSE",
+		"Total tokens 3 556 419 6 010 724 +2 454 305 (+69.0%) WORSE",
+		"Duration 32m34.032s 42m1.825s +9m27.793s (+29.1%) WORSE",
+		"Node attempts 15 13 -2 (-13.3%) BETTER",
+		"Time to valid 10m52.605s no valid result no result WORSE",
+		"MODELS Alias A B implementation gemini/model-a openai/model-b",
+		"implement-basic#1 true_accept false_accept WORSE",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("comparison text misses %q:\n%s", want, comparison.String())
+		}
+	}
+}
+
+func TestBuildStatsSummarizesReport(t *testing.T) {
+	averageTimeToValidMS := 596287.0
+	fingerprint := "fa5ecf8482cc841061af1e8d75d0547f15b59e9dee434d052a0bda3ae999f81a"
+	report := &SuiteReport{
+		Mode: "flow", Workflow: "code:feature-development", OutputDir: ".takt/evals/run-a",
+		Strategy:  StrategyIdentity{ModelPreset: "gemini", Models: map[string]string{"implementation": "gemini/gemini-3.7-flash-high", "review": "gemini/gemini-3.7-flash-high"}},
+		Benchmark: BenchmarkIdentity{ID: "suite.yaml", Fingerprint: fingerprint, Validator: ValidatorIdentity{ID: "mini-du", Version: "2", Fingerprint: fingerprint}},
+		Summary: Summary{
+			Total: 2, Valid: 1, Invalid: 1, Attempts: 5, InputTokens: 1325526, OutputTokens: 57480, DurationMS: 595168, Cost: 0.5,
+			AverageTimeToValidMS: &averageTimeToValidMS, Flow: &FlowSummary{},
+			UsageByExecutionIdentity: map[string]UsageBreakdown{"assistant=coding-agent|version=0.84.1|requested=implementation=gemini/gemini-3.7-flash-high|resolved=implementation=gemini/gemini-3.7-flash-high": {Executions: 2, InputTokens: 815650, OutputTokens: 37746}},
+		},
+		Runs: []RunRecord{{CaseID: "implement-basic", Repeat: 1, Status: "completed", Outcome: "true_accept", Attempts: 5, InputTokens: 1325526, OutputTokens: 57480, DurationMS: 595168, Nodes: map[string]NodeRecord{
+			"run-a/implement": {Assistant: "coding-agent", RequestedModel: &store.ModelRef{Name: "implementation", Provider: "gemini", ID: "gemini-3.7-flash-high"}, Executions: []ExecutionRecord{{Assistant: "coding-agent", Attempt: 1, ProviderAttempt: 1, SessionID: "019ffb26-419f-78fc-b25f-6a7b4f54e2d1", Usage: &store.Usage{InputTokens: 535026, OutputTokens: 31236}}}},
+			"run-a/validate":  {Attempts: 1, Executions: []ExecutionRecord{{Attempt: 1}}},
+			"run-a/summary":   {Assistant: "coding-agent", RequestedModel: &store.ModelRef{Name: "review", Provider: "gemini", ID: "gemini-3.7-flash-high"}, Executions: []ExecutionRecord{{Assistant: "coding-agent", Usage: &store.Usage{InputTokens: 112129, OutputTokens: 4863}}}},
+		}}, {CaseID: "b", Repeat: 1, Status: "failed", Outcome: "true_reject"}},
+	}
+	stats := BuildStats(report)
+	if stats == nil || stats.ReportVersion != "takt-evaluation-stats/v1alpha1" || stats.Total != 2 || stats.Valid != 1 || stats.InputTokens != 1325526 || stats.OutputTokens != 57480 || stats.TotalTokens != 1383006 || stats.Cost != 0.5 || len(stats.Cases) != 2 {
+		t.Fatalf("stats=%+v", stats)
+	}
+	text := stats.String()
+	for _, want := range []string{"RUN", "RESULT", "RESOURCES", "MODELS", "USAGE", "CASES", "ASSISTANT STEPS", "ASSISTANT SESSIONS", "suite.yaml  fa5ecf8482cc", "mini-du@2", "9m55.168s", "9m56.287s", "1 383 006", "Node attempts", "Assistant executions", "implementation", "gemini/gemini-3.7-flash-high", "coding-agent@0.84.1", "implement-basic", "summary", "fresh", "019ffb26-419f-78fc-b25f-6a7b4f54e2d1"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("stats text misses %q:\n%s", want, text)
+		}
+	}
+	for _, unwanted := range []string{"fingerprint=", "|requested=", "595168ms", "1325526"} {
+		if strings.Contains(text, unwanted) {
+			t.Fatalf("stats text contains unreadable %q:\n%s", unwanted, text)
+		}
+	}
+}
+
+func TestStatsShowsPerCaseFailureCause(t *testing.T) {
+	report := &SuiteReport{Mode: "flow", Summary: Summary{Total: 1, Invalid: 1}, Runs: []RunRecord{{
+		CaseID: "implement-basic", Repeat: 1, Status: store.RunCompleted, Outcome: "false_accept",
+		Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: false, Diagnostics: []validation.Diagnostic{{Code: "mini_du_invalid", Message: "missing pull request effect", Severity: "error"}}}},
+	}}}
+	stats := BuildStats(report)
+	if len(stats.Cases) != 1 || stats.Cases[0].Cause != "mini_du_invalid: missing pull request effect" || stats.Cases[0].CauseSource != "validator" {
+		t.Fatalf("cases=%+v", stats.Cases)
+	}
+	text := strings.Join(strings.Fields(stats.String()), " ")
+	if !strings.Contains(text, "FAILURES Case Outcome Source Cause implement-basic#1 false_accept validator mini_du_invalid: missing pull request effect") {
+		t.Fatalf("stats missing failure explanation:\n%s", stats.String())
+	}
+}
+
+func TestStatsPrefersRuntimeCauseOverValidatorForFailedRun(t *testing.T) {
+	report := &SuiteReport{Mode: "flow", Summary: Summary{Total: 1, Invalid: 1}, Runs: []RunRecord{{
+		CaseID: "implement-symlink-and-hardlink", Repeat: 1, Status: store.RunFailed, Outcome: "true_reject",
+		Validation: &FlowValidationRecord{Status: "completed", Result: &validation.Result{Valid: false, Diagnostics: []validation.Diagnostic{{Code: "mini_du_invalid", Message: "missing artifact implementation.md", Severity: "error"}}}},
+		Nodes:      map[string]NodeRecord{"implement": {Status: store.NodeFailed, ErrorCode: "exit", Error: "pi agent exited with code 1: Connection error."}},
+	}}}
+	stats := BuildStats(report)
+	if len(stats.Cases) != 1 || stats.Cases[0].CauseSource != "node:implement" || stats.Cases[0].Cause != "exit: pi agent exited with code 1: Connection error." {
+		t.Fatalf("cases=%+v", stats.Cases)
+	}
+}
+
+func TestFlowStatsCaptureAssistantNodeWallTimeFromEvents(t *testing.T) {
+	started := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
+	record := RunRecord{
+		RunID: "run-a", CaseID: "case-a", Repeat: 1,
+		Nodes: map[string]NodeRecord{"run-a/implement": {Assistant: "coding-agent", Executions: []ExecutionRecord{{Assistant: "coding-agent"}}}},
+	}
+	applyRuntimeMetricsFromEvents(&record, &store.RunState{ID: "run-a"}, []store.Event{
+		{RunID: "run-a", NodeID: "implement", Type: "node.started", Time: started},
+		{RunID: "run-a", NodeID: "implement", Type: "node.completed", Time: started.Add(1500 * time.Millisecond)},
+	}, "")
+
+	encoded, err := json.Marshal(record.Nodes["run-a/implement"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, []byte(`"duration_ms":1500`)) {
+		t.Fatalf("node duration is not persisted: %s", encoded)
+	}
+	stats := BuildStats(&SuiteReport{Runs: []RunRecord{record}, Summary: Summary{}})
+	if text := stats.String(); !strings.Contains(text, "1.5s") {
+		t.Fatalf("stats do not show assistant wall time:\n%s", text)
 	}
 }

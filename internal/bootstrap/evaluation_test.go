@@ -3,9 +3,11 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -151,7 +153,7 @@ func TestFlowEvaluationTraceReportsDurableEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(trace, "\n")
-	for _, want := range []string{"run.accepted run=", "run.started run=", "node.started run=", "node.completed run=", "run.completed run="} {
+	for _, want := range []string{"| accepted | id=run-", "| run started", "NODE done#1 | started", "NODE done#1 | completed", "| run completed"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("trace missing %q:\n%s", want, joined)
 		}
@@ -166,9 +168,9 @@ func TestProviderRetryTraceShowsRunNodeAndAttempts(t *testing.T) {
 	traceEvaluationEvent(write, "run-1", store.Event{Type: "provider.retry.exhausted", NodeID: "implement", Data: map[string]any{"scope": "provider", "provider_attempts": 3, "max_provider_attempts": 3, "kind": "provider_unavailable", "fingerprint": "abc"}})
 	joined := strings.Join(trace, "\n")
 	for _, want := range []string{
-		"provider.retry.scheduled run=run-1 node=implement provider_attempt=1/3 delay=2s not_before=2026-08-13T12:00:02Z kind=provider_unavailable fingerprint=abc",
-		"provider.retry.ready run=run-1 node=implement provider_attempt=2/3",
-		"provider.retry.exhausted run=run-1 node=implement provider_attempts=3 max_provider_attempts=3 kind=provider_unavailable fingerprint=abc",
+		"RUN run-1 · NODE implement | provider retry scheduled | provider_attempt=1/3 delay=2s not_before=2026-08-13T12:00:02Z kind=provider_unavailable fingerprint=abc",
+		"RUN run-1 · NODE implement | provider retry ready | provider_attempt=2/3",
+		"RUN run-1 · NODE implement | provider retry exhausted | provider_attempts=3 max_provider_attempts=3 kind=provider_unavailable fingerprint=abc",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("trace missing %q:\n%s", want, joined)
@@ -184,10 +186,11 @@ func TestTraceFlowRunningNodesReportsCurrentDurableStatus(t *testing.T) {
 	}}
 	activity := newFlowActivityTracker()
 	activity.record(flowActivityRecord{RunID: "run-1", NodeID: "active", Attempt: 1, LastActivity: "tool.completed(write)", LastActivityAt: now.Add(-2*time.Minute - 26*time.Second), IdleTimeout: 5 * time.Minute, Active: true})
+	activity.recordEvent("child-1", "review", assistant.Event{Type: assistant.EventMessage, Time: now.Add(-5 * time.Second), Usage: &assistant.ProtocolUsage{InputTokens: 128430}}, 5*time.Minute)
 	activity.record(flowActivityRecord{RunID: "child-1", NodeID: "review", Attempt: 2, LastActivity: "provider.streaming", LastActivityAt: now.Add(-4 * time.Second), IdleTimeout: 5 * time.Minute, Active: true})
 	var trace []string
 	traceFlowRunningNodes(func(line string) { trace = append(trace, line) }, state, activity, now)
-	if got, want := strings.Join(trace, "\n"), "node.active run=child-1 node=review attempt=2 idle=4s idle_limit=5m0s last_activity=provider.streaming awaiting=provider_stream\nnode.active run=run-1 node=active attempt=1 idle=2m26s idle_limit=5m0s last_activity=tool.completed(write) awaiting=provider_response"; got != want {
+	if got, want := strings.Join(trace, "\n"), "RUN child-1 · NODE review#2 | active | idle=4s/5m0s context=128 430t last=provider.streaming awaiting=provider_stream\nRUN run-1 · NODE active#1 | active | idle=2m26s/5m0s context=unknown last=tool.completed(write) awaiting=provider_response"; got != want {
 		t.Fatalf("trace=%q want=%q", got, want)
 	}
 	activity.recordEvent("child-1", "review", assistant.Event{Type: assistant.EventCompleted, Time: now}, 5*time.Minute)
@@ -213,9 +216,9 @@ func TestTraceFlowChildFailuresFromSnapshot(t *testing.T) {
 	traceFlowChildSnapshot(func(line string) { trace = append(trace, line) }, states)
 	joined := strings.Join(trace, "\n")
 	for _, want := range []string{
-		"child_run.failed run=child-a parent=root code=protocol",
-		"child_node.errored run=child-a node=review code=protocol",
-		"child_run.cancelled run=child-b parent=root code=cancelled",
+		"RUN child-a | child failed | id=child-a parent=root code=protocol",
+		"RUN child-a · NODE review | errored | code=protocol",
+		"RUN child-b | child cancelled | id=child-b parent=root code=cancelled",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("trace missing %q:\n%s", want, joined)
@@ -226,25 +229,30 @@ func TestTraceFlowChildFailuresFromSnapshot(t *testing.T) {
 func TestTraceEvaluationAssistantEventShowsSafeProgress(t *testing.T) {
 	var trace []string
 	write := func(line string) { trace = append(trace, line) }
-	traceEvaluationAssistantEvent(write, "child-1", "implement", assistant.Event{Type: assistant.EventToolStarted, Tool: "read", Input: json.RawMessage(`{"path":"internal/du/du.go"}`)})
-	traceEvaluationAssistantEvent(write, "child-1", "implement", assistant.Event{Type: assistant.EventMessage, Message: strings.Repeat("result ", 40)})
+	formatter := newFlowTraceContext()
+	traceEvaluationAssistantEvent(formatter, write, "child-1", "implement", 1, assistant.Event{Type: assistant.EventToolStarted, Tool: "read", Provider: "gemini", SessionID: "session-1", Input: json.RawMessage(`{"path":"internal/du/du.go"}`)})
+	traceEvaluationAssistantEvent(formatter, write, "child-1", "implement", 1, assistant.Event{Type: assistant.EventToolCompleted, Tool: "read", Provider: "gemini", SessionID: "session-1", Data: map[string]any{"error": false}})
+	traceEvaluationAssistantEvent(formatter, write, "child-1", "implement", 1, assistant.Event{Type: assistant.EventMessage, Message: strings.Repeat("result ", 40)})
 	joined := strings.Join(trace, "\n")
-	for _, want := range []string{`assistant.tool.started run=child-1 node=implement tool=read model= session= path="internal/du/du.go"`, `assistant.message run=child-1 node=implement model= session= text="result result`} {
+	for _, want := range []string{`RUN child-1 · NODE implement#1 | read started | path="internal/du/du.go" session=session-1`, `RUN child-1 · NODE implement#1 | read completed | error=false`, `RUN child-1 · NODE implement#1 | message | text="result result`} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("trace missing %q:\n%s", want, joined)
 		}
 	}
-	if len(trace[1]) > 260 {
-		t.Fatalf("message preview is too large: %d", len(trace[1]))
+	if strings.Count(joined, "session=session-1") != 1 {
+		t.Fatalf("session id must be announced once:\n%s", joined)
+	}
+	if len(trace[2]) > 260 {
+		t.Fatalf("message preview is too large: %d", len(trace[2]))
 	}
 }
 
 func TestTraceEvaluationAssistantFailureShowsIdleTimeout(t *testing.T) {
 	var trace []string
-	traceEvaluationAssistantEvent(func(line string) { trace = append(trace, line) }, "run-1", "review", assistant.Event{
+	traceEvaluationAssistantEvent(newFlowTraceContext(), func(line string) { trace = append(trace, line) }, "run-1", "review", 1, assistant.Event{
 		Type: assistant.EventFailed, Message: "assistant idle timeout: node idle timeout exceeded", SessionID: "session-1",
 	})
-	if got := strings.Join(trace, "\n"); !strings.Contains(got, `assistant.failed run=run-1 node=review session=session-1 error="assistant idle timeout: node idle timeout exceeded"`) {
+	if got := strings.Join(trace, "\n"); !strings.Contains(got, `RUN run-1 · NODE review#1 | assistant failed | error="assistant idle timeout: node idle timeout exceeded" session=session-1`) {
 		t.Fatalf("trace=%q", got)
 	}
 }
@@ -268,6 +276,96 @@ func TestFlowEvaluationCaseReturnsDetachedSnapshotAndDefersCleanup(t *testing.T)
 	}
 	if _, err := result.Cleanup(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSummarizeFlowRuntimeProgress(t *testing.T) {
+	root := &store.RunState{
+		ID: "run-1", Status: store.RunRunning, Usage: &store.Usage{InputTokens: 120, OutputTokens: 30, Cost: 0.25},
+		Nodes: map[string]*store.NodeState{
+			"review":    {Status: store.NodeRunning, Attempts: 2, ProviderAttempts: 3},
+			"implement": {Status: store.NodeCompleted, Attempts: 1, ProviderAttempts: 1},
+			"route":     {Status: store.NodeRunning, Attempts: 1, ProviderAttempts: 0},
+		},
+	}
+	child := &store.RunState{ID: "child-1", Nodes: map[string]*store.NodeState{"fix": {Status: store.NodeCompleted, Attempts: 2, ProviderAttempts: 2}}}
+	got := summarizeFlowRuntimeProgress([]*store.RunState{root, child})
+	if got.RunID != "run-1" || got.Status != store.RunRunning || got.TotalNodes != 4 || got.CompletedNodes != 2 || got.NodeAttempts != 6 || got.ProviderAttempts != 6 || got.InputTokens != 120 || got.OutputTokens != 30 || got.Cost != 0.25 {
+		t.Fatalf("progress=%+v", got)
+	}
+	if want := []string{"review", "route"}; !reflect.DeepEqual(got.RunningNodes, want) {
+		t.Fatalf("running=%v want=%v", got.RunningNodes, want)
+	}
+}
+
+func TestFlowEvaluationPublishesProgressWithoutTrace(t *testing.T) {
+	workspace := t.TempDir()
+	config := filepath.Join(workspace, "config.yaml")
+	workflow := filepath.Join(workspace, "workflow.yaml")
+	if err := os.WriteFile(config, []byte("apiVersion: takt/v1alpha1\nkind: Config\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workflow, []byte("name: flow-progress\nnodes:\n  - id: done\n    bash: 'true'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var updates []evaluation.FlowRuntimeProgress
+	_, err := (evaluationEngine{}).runFlowCase(context.Background(), evaluation.FlowCaseRunRequest{
+		Workspace: workspace, Selector: workflow, ConfigPath: config,
+		Progress: func(progress evaluation.FlowRuntimeProgress) (*evaluation.FlowProgress, error) {
+			updates = append(updates, progress)
+			return &evaluation.FlowProgress{Runtime: progress}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updates) == 0 || updates[len(updates)-1].Status != store.RunCompleted {
+		t.Fatalf("updates=%+v", updates)
+	}
+}
+
+func TestFlowProgressRefreshDecision(t *testing.T) {
+	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name                  string
+		published             bool
+		lastRevision, current uint64
+		lastUpdated           time.Time
+		want                  bool
+	}{
+		{name: "first snapshot", want: true},
+		{name: "durable revision", published: true, lastRevision: 1, current: 2, lastUpdated: now, want: true},
+		{name: "unchanged before interval", published: true, lastRevision: 2, current: 2, lastUpdated: now.Add(-9 * time.Second)},
+		{name: "unchanged at interval", published: true, lastRevision: 2, current: 2, lastUpdated: now.Add(-10 * time.Second), want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := shouldPublishFlowProgress(test.published, test.lastRevision, test.current, test.lastUpdated, now); got != test.want {
+				t.Fatalf("got=%t want=%t", got, test.want)
+			}
+		})
+	}
+}
+
+func TestFlowEvaluationPropagatesProgressWriteFailure(t *testing.T) {
+	workspace := t.TempDir()
+	config := filepath.Join(workspace, "config.yaml")
+	workflow := filepath.Join(workspace, "workflow.yaml")
+	if err := os.WriteFile(config, []byte("apiVersion: takt/v1alpha1\nkind: Config\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workflow, []byte("name: flow-progress-error\nnodes:\n  - id: done\n    bash: 'true'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := "write progress"
+	result, err := (evaluationEngine{}).runFlowCase(context.Background(), evaluation.FlowCaseRunRequest{
+		Workspace: workspace, Selector: workflow, ConfigPath: config,
+		Progress: func(evaluation.FlowRuntimeProgress) (*evaluation.FlowProgress, error) { return nil, errors.New(want) },
+	})
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err=%v", err)
+	}
+	if len(result.States) != 1 || !terminalFlowRun(result.States[0].Status) {
+		t.Fatalf("progress failure left detached run active: %#v", result.States)
 	}
 }
 
@@ -321,7 +419,7 @@ func TestFlowEvaluationCancellationDuringAnswerReturnsSnapshot(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	result, err := (evaluationEngine{}).pollFlowCase(ctx, app, started.RunID, "yes", nil, nil)
+	result, err := (evaluationEngine{}).pollFlowCase(ctx, app, started.RunID, "yes", nil, nil, nil)
 	if err != context.Canceled || !result.ContextCancelled || len(result.States) == 0 || result.States[0].Status != store.RunCancelled {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}

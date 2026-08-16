@@ -168,8 +168,9 @@ node.started
 Только assistant result с kind `provider_unavailable` получает отдельный
 durable retry scope. Это строго доказанная transient provider evidence: HTTP
 `429|502|503|504`; явно rate-limited, overloaded или temporarily unavailable
-provider error; либо connection reset/refused, temporary DNS или эквивалентный
-transport failure, когда request-side effect не наблюдаем. Другие `4xx`,
+provider error; либо connection reset/refused, явное `connection error`,
+temporary DNS или эквивалентный transport failure, когда request-side effect не
+наблюдаем. Другие `4xx`,
 malformed protocol, tool failure, context overflow, agent decision и unknown
 external side effect не классифицируются так; cancellation и timeout parent
 context сохраняют приоритет.

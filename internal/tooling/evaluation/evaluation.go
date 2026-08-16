@@ -209,6 +209,7 @@ type NodeRecord struct {
 	Status           string                 `json:"status"`
 	Attempts         int                    `json:"attempts"`
 	ProviderAttempts int                    `json:"provider_attempts"`
+	DurationMS       *int64                 `json:"duration_ms,omitempty"`
 	Assistant        string                 `json:"assistant,omitempty"`
 	AssistantVersion string                 `json:"assistant_version,omitempty"`
 	RequestedModel   *store.ModelRef        `json:"requested_model,omitempty"`
@@ -1094,12 +1095,15 @@ func modelKey(model *store.ModelRef) string {
 }
 
 func writeReport(outputDir string, report *SuiteReport) error {
-	data, err := json.MarshalIndent(report, "", "  ")
+	return writeJSONAtomic(filepath.Join(outputDir, "report.json"), report)
+}
+
+func writeJSONAtomic(path string, value any) error {
+	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := filepath.Join(outputDir, "report.json.tmp")
-	path := filepath.Join(outputDir, "report.json")
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}

@@ -8,6 +8,8 @@
   `provider_unavailable`; runtime сохраняет отдельные provider attempts,
   session-preserving retries (`2s`/`4s`, `Retry-After <= 60s`) и lifecycle
   events `provider.retry.scheduled|ready|exhausted`;
+- Явный ответ Pi/OpenCode `Connection error` классифицируется как transient
+  transport outage, а не как обычный assistant `exit`.
 - предел — три Takt adapter calls на workflow attempt, без учёта Pi/OpenCode
   internal retries и без расхода workflow retry budget; recovery сохраняет
   backoff/session/исходный node deadline и не превращает in-flight retry в
@@ -15,6 +17,9 @@
 - flow evaluation сохраняет diagnostics/usage, но классифицирует exhaustion как
   infrastructure error и исключает его из quality denominators. Domain side
   effects не используют provider retry.
+- Pi model output exhaustion (`stopReason: length`) fail-closed как обычный
+  `exit`; `code:feature-development` делает до трёх exact-session попыток вместо
+  ложного `implement: completed` без результата.
 
 ## Shared model presets — реализовано
 
@@ -189,17 +194,52 @@ Deterministic fixture доказывает measurement correctness. Production q
 
 `eval flow` executes isolated flow suites through the application control path,
 persists repeat evidence and supports `eval flow init` for a validator-free
-skeleton. `--trace` streams elapsed suite stages, durable root progress and
+skeleton. Repeat evidence preserves a secret-checked full-history
+`repository.bundle`, the redacted final product source tree and baseline-to-final
+Git diff before workspace cleanup; `.git/` and `.takt/` are excluded from the
+source copy. `--trace` streams elapsed suite stages, durable root progress and
 terminal child Run/node statuses plus live bounded Pi tool/message progress to
-stderr. Pi RPC excludes cumulative partial/UI noise from durable stdout while
+stderr using aligned `SCOPE | EVENT | DETAILS` lines. Run/node context is placed
+at the start, full IDs are announced once, and repeated tool events omit stable
+model/session metadata. Pi RPC excludes cumulative partial/UI noise from durable stdout while
 retaining strict per-record limits; transient streaming updates reset inactivity
 without becoming durable events. The 30-second heartbeat reports effective
-idle/limit/last activity for root and child assistants. Flow evaluation applies a configurable `5m`
+idle/limit/last activity for root and child assistants and the last measured
+model-request input tokens when Pi exposes optional message usage; unavailable
+context is explicit. Flow evaluation applies a configurable `5m`
 assistant idle fallback when a production node has no explicit `idle_timeout`;
 provider stalls therefore end durably as `timed_out`. Deterministic contracts cover report
 persistence and worktree ordering; live Pi evidence has confirmed fresh/exact
 resume and a completed production `implement` node, while a complete multi-node
 quality result remains separate evidence.
+Each flow eval atomically publishes `progress.json`; `eval status` and
+`make eval-status RUN=...` expose the current case/phase, durable Run/node
+progress and measured persisted usage without launching a model. The completed
+or failed snapshot remains next to the report; `updated_at` makes a stale
+`running` snapshot after process death observable.
+`eval stats` provides a compact human/JSON view of one saved suite report,
+separates total node attempts from actual assistant executions and lists each
+assistant step with model, tokens and durable-event wall time. Old reports
+without node timing remain readable and show unavailable duration. A separate
+assistant-session table exposes the full durable Session ID for each execution,
+including attempt/provider-attempt and fresh/resume mode.
+Stats also attributes one primary failure cause per case. `eval inspect` and
+`make eval-inspect RUN=... [CASE=...] [REPEAT=...]` provide deterministic,
+read-only failure investigation from persisted validator/runtime/node state,
+diff/source/Git/artifact/SCM evidence and filtered redacted tool-start activity.
+`CAUSAL CHAIN` отдельно связывает доказанный assistant output limit, фактические
+tool-call counts, пустой completed result, deterministic validation failure и
+skipped downstream nodes вместо повторения одного validator verdict.
+They never contact a model or alter the validator verdict; unavailable evidence
+stays explicit, and heuristic observations are not promoted to reported facts.
+`eval compare` renders an A/B scorecard with an explicit overall,
+correctness/reliability/efficiency and per-metric `BETTER|WORSE|SAME` direction,
+human resource deltas, presets/models and per-case transitions. Missing
+measurements are distinguished from non-comparable values. Make wrappers accept
+`RUN` and short `A`/`B` paths and never launch model runs implicitly.
+The mini-du validator v2 requires the explicit per-case CLI surface `-s`, `-k`,
+`-H`, `-h`/`--help`, `--`, `-sk`/`-ks`/`-sH`, and fail-closed unknown options;
+the smoke target runs one case and the full feature target runs all three.
 
 ## Предметные поставки
 

@@ -9,11 +9,44 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"takt/internal/redact"
 	"takt/internal/store"
 	"takt/internal/validation"
 )
+
+func TestFlowEvidenceWritesFilteredRedactedAssistantActivity(t *testing.T) {
+	root := t.TempDir()
+	item := FlowEvidence{
+		CaseID: "case", Repeat: 1,
+		Events: []store.Event{
+			{Time: time.Date(2026, 8, 15, 10, 0, 0, 0, time.UTC), Type: "assistant.tool.started", RunID: "run-1", NodeID: "implement", Revision: 3, Data: map[string]any{"tool": "write", "input": map[string]any{"path": "/control/main.go", "content": "known-secret"}}},
+			{Type: "assistant.message", RunID: "run-1", Revision: 4, Data: map[string]any{"message": "known-secret"}},
+			{Type: "assistant.tool.completed", RunID: "run-1", Revision: 5, Data: map[string]any{"tool": "write", "output": "known-secret"}},
+		},
+	}
+	r := &redact.Redactor{}
+	r.AddSecret("known-secret")
+	if err := WriteFlowEvidence(root, item, r); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "cases", "case", "repeat-001", "activity.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{`"time": "2026-08-15T10:00:00Z"`, `"type": "assistant.tool.started"`, `"tool": "write"`, `"path": "/control/main.go"`, `"content": "\u003credacted\u003e"`} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("activity misses %q: %s", want, text)
+		}
+	}
+	for _, forbidden := range []string{"known-secret", "assistant.message", "assistant.tool.completed", `"output"`} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("activity contains %q: %s", forbidden, text)
+		}
+	}
+}
 
 func TestFlowEvidenceWritesRedactedAtomicRecordsAndArtifacts(t *testing.T) {
 	root := t.TempDir()
@@ -96,6 +129,33 @@ func TestFlowEvidenceRejectsBinarySecretBeforeCopy(t *testing.T) {
 	}
 }
 
+func TestFlowEvidenceRejectsSecretInGitHistoryBeforeBundle(t *testing.T) {
+	workspace := t.TempDir()
+	gitOutput(t, workspace, "init")
+	gitOutput(t, workspace, "config", "user.name", "Takt Test")
+	gitOutput(t, workspace, "config", "user.email", "takt@example.test")
+	if err := os.WriteFile(filepath.Join(workspace, "historical.txt"), []byte("known-secret\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	gitOutput(t, workspace, "add", "historical.txt")
+	gitOutput(t, workspace, "commit", "-m", "secret commit")
+	if err := os.Remove(filepath.Join(workspace, "historical.txt")); err != nil {
+		t.Fatal(err)
+	}
+	gitOutput(t, workspace, "add", "-u")
+	gitOutput(t, workspace, "commit", "-m", "remove secret")
+	base := strings.TrimSpace(gitOutput(t, workspace, "rev-parse", "HEAD"))
+	r := &redact.Redactor{}
+	r.AddSecret("known-secret")
+	err := WriteFlowEvidence(t.TempDir(), FlowEvidence{
+		CaseID: "case", Repeat: 1, PreparedHeadCommit: base,
+		Request: FlowValidationRequest{Workspace: workspace},
+	}, r)
+	if err == nil || !strings.Contains(err.Error(), "git blob contains known secret") {
+		t.Fatalf("historical secret was not rejected: %v", err)
+	}
+}
+
 func TestFlowEvidenceRedactsSCMAndStructuredJSON(t *testing.T) {
 	root, source := t.TempDir(), t.TempDir()
 	if err := os.WriteFile(filepath.Join(source, "receipt.txt"), []byte("quote\"secret"), 0644); err != nil {
@@ -124,6 +184,72 @@ func TestFlowEvidenceRedactsSCMAndStructuredJSON(t *testing.T) {
 		if strings.HasSuffix(path, ".txt") && !strings.Contains(string(data), "<redacted>") {
 			t.Fatalf("text was not redacted: %s", data)
 		}
+	}
+}
+
+func TestFlowEvidencePreservesRedactedProductSourceOnly(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	for _, path := range []string{
+		filepath.Join(workspace, "cmd", "mini-du", "main.go"),
+		filepath.Join(workspace, ".takt", "profiles", "code", "profile.yaml"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("known-secret\n"), 0750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".git"), []byte("gitdir: hidden\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	r := &redact.Redactor{}
+	r.AddSecret("known-secret")
+	if err := WriteFlowEvidence(root, FlowEvidence{CaseID: "case", Repeat: 1, Request: FlowValidationRequest{Workspace: workspace}}, r); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(root, "cases", "case", "repeat-001", "source")
+	data, err := os.ReadFile(filepath.Join(source, "cmd", "mini-du", "main.go"))
+	if err != nil || string(data) != "<redacted>\n" {
+		t.Fatalf("product source=%q err=%v", data, err)
+	}
+	info, err := os.Stat(filepath.Join(source, "cmd", "mini-du", "main.go"))
+	if err != nil || info.Mode().Perm() != 0750 {
+		t.Fatalf("product source mode=%v err=%v", info, err)
+	}
+	for _, excluded := range []string{".git", ".takt"} {
+		if _, err := os.Stat(filepath.Join(source, excluded)); !os.IsNotExist(err) {
+			t.Fatalf("%s was copied into source evidence: %v", excluded, err)
+		}
+	}
+}
+
+func TestFlowEvidenceRejectsUnsafeProductSource(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, workspace string)
+	}{
+		{"symlink", func(t *testing.T, workspace string) {
+			if err := os.Symlink(t.TempDir(), filepath.Join(workspace, "link")); err != nil {
+				t.Skip(err)
+			}
+		}},
+		{"binary secret", func(t *testing.T, workspace string) {
+			if err := os.WriteFile(filepath.Join(workspace, "secret.bin"), append([]byte{0}, []byte("known-secret")...), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			tc.setup(t, workspace)
+			r := &redact.Redactor{}
+			r.AddSecret("known-secret")
+			err := WriteFlowEvidence(t.TempDir(), FlowEvidence{CaseID: "case", Repeat: 1, Request: FlowValidationRequest{Workspace: workspace}}, r)
+			if err == nil {
+				t.Fatal("unsafe product source was accepted")
+			}
+		})
 	}
 }
 

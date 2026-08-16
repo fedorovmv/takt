@@ -62,6 +62,52 @@ func TestValidatorRejectsInvalidExpectation(t *testing.T) {
 	}
 }
 
+func TestHumanizedSizeContract(t *testing.T) {
+	for _, tc := range []struct {
+		bytes int64
+		want  string
+	}{
+		{0, "0B"},
+		{1024, "1KiB"},
+		{1536, "1.5KiB"},
+		{12 * 1024, "12KiB"},
+		{1024 * 1024, "1MiB"},
+		{1536 * 1024, "1.5MiB"},
+		{1024 * 1024 * 1024, "1GiB"},
+	} {
+		if got := humanizedSize(tc.bytes); got != tc.want {
+			t.Fatalf("humanizedSize(%d)=%q want %q", tc.bytes, got, tc.want)
+		}
+	}
+}
+
+func TestHelpScenariosAcceptConformingCandidate(t *testing.T) {
+	dir := t.TempDir()
+	source := `package main
+import ("fmt"; "os")
+func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
+		fmt.Print("Usage: mini-du [-s] [-k|-H] [--] [PATH...]\n  -s          display only a total for each path\n  -k          display sizes in 1024-byte units\n  -H          display humanized binary units (KiB, MiB, GiB)\n  -h, --help  display this help\n")
+		return
+	}
+	os.Exit(1)
+}`
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "candidate")
+	cmd := exec.Command("go", "build", "-o", bin, "main.go")
+	cmd.Dir = dir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build candidate: %v\n%s", err, output)
+	}
+	for _, scenario := range []string{"help_short", "help_long"} {
+		if err := compareScenario(bin, scenario); err != nil {
+			t.Fatalf("%s rejected conforming candidate: %v", scenario, err)
+		}
+	}
+}
+
 func TestRunWritesOneInvalidEnvelopeForProductFailure(t *testing.T) {
 	root := t.TempDir()
 	req := testRequest(root)
@@ -110,6 +156,53 @@ func TestHasPushChecksCurrentBranchInsteadOfBareRemoteHEAD(t *testing.T) {
 	gitTest(t, workspace, "commit", "-am", "two")
 	if hasPush(workspace) {
 		t.Fatal("unpushed current branch was accepted")
+	}
+}
+
+func TestSourceChecksIgnoreEvaluationControlTree(t *testing.T) {
+	root := t.TempDir()
+	control := filepath.Join(root, ".takt", "profiles", "code", "tools")
+	if err := os.MkdirAll(control, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(control, "scope-check.go"), []byte("package tools\nimport \"os/exec\"\nvar _ = exec.Command\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := rejectDelegation(root); err != nil {
+		t.Fatalf("evaluation control source was treated as candidate code: %v", err)
+	}
+	if err := rejectForbiddenSource(root, miniDUOracle{ForbiddenIdentifiers: []string{"exec.Command"}}); err != nil {
+		t.Fatalf("evaluation control source was treated as candidate code: %v", err)
+	}
+
+	product := filepath.Join(root, "cmd", "mini-du")
+	if err := os.MkdirAll(product, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(product, "main.go"), []byte("package main\nimport \"os/exec\"\nvar _ = exec.Command\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := rejectDelegation(root); err == nil {
+		t.Fatal("delegation in product source was accepted")
+	}
+	if err := rejectForbiddenSource(root, miniDUOracle{ForbiddenIdentifiers: []string{"exec.Command"}}); err == nil {
+		t.Fatal("forbidden identifier in product source was accepted")
+	}
+	production := filepath.Join(product, "main.go")
+	if err := os.Remove(production); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(product, "main_test.go"), []byte("package main\nimport \"os/exec\"\nvar _ = exec.Command\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := rejectDelegation(root); err != nil {
+		t.Fatalf("test-only oracle delegation was rejected: %v", err)
+	}
+	if err := os.WriteFile(production, []byte("package main\nimport \"os/exec\"\nvar _ = exec.Command\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := rejectDelegation(root); err == nil {
+		t.Fatal("production delegation check did not inspect the product file")
 	}
 }
 

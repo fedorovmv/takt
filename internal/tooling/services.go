@@ -40,6 +40,12 @@ type FlowEvaluationRequest struct {
 	AssistantIdleTimeout                              time.Duration
 }
 
+type EvaluationInspectRequest struct {
+	OutputDir string
+	CaseID    string
+	Repeat    int
+}
+
 type EvaluationEngine interface {
 	Run(context.Context, EvaluationRunRequest) (any, error)
 	Benchmark(context.Context, EvaluationBenchmarkRequest) (any, error)
@@ -48,6 +54,9 @@ type EvaluationEngine interface {
 	FlowInit(context.Context, string, string) (any, error)
 	Compare(context.Context, string, string) (any, error)
 	Report(context.Context, string) (any, error)
+	Stats(context.Context, string) (any, error)
+	Status(context.Context, string) (any, error)
+	Inspect(context.Context, EvaluationInspectRequest) (any, error)
 }
 
 type EvaluationService struct{ engine EvaluationEngine }
@@ -96,6 +105,24 @@ func (s *EvaluationService) Report(ctx context.Context, outputDir string) (any, 
 		return nil, fmt.Errorf("evaluation service is not configured")
 	}
 	return s.engine.Report(ctx, outputDir)
+}
+func (s *EvaluationService) Stats(ctx context.Context, outputDir string) (any, error) {
+	if s == nil || s.engine == nil {
+		return nil, fmt.Errorf("evaluation service is not configured")
+	}
+	return s.engine.Stats(ctx, outputDir)
+}
+func (s *EvaluationService) Status(ctx context.Context, outputDir string) (any, error) {
+	if s == nil || s.engine == nil {
+		return nil, fmt.Errorf("evaluation service is not configured")
+	}
+	return s.engine.Status(ctx, outputDir)
+}
+func (s *EvaluationService) Inspect(ctx context.Context, request EvaluationInspectRequest) (any, error) {
+	if s == nil || s.engine == nil {
+		return nil, fmt.Errorf("evaluation service is not configured")
+	}
+	return s.engine.Inspect(ctx, request)
 }
 
 type CompatibilityMatrix = compatibility.Matrix

@@ -3,4 +3,4 @@ oracle:
   required_artifacts: [implementation.md, validation.md, pr.md, pr-url.txt, summary.md]
   require_pr: true
   require_push: true
-  scenarios: [symlink, hardlink, kibibytes]
+  scenarios: [summary, kibibytes, humanized, help_short, help_long, double_dash, combined_flags, invalid_option, symlink, hardlink]

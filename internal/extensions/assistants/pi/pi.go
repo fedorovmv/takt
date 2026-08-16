@@ -711,7 +711,8 @@ func piProgressEvent(record piRPCRecord) (core.Event, bool) {
 	case "message_end":
 		var value struct {
 			Message struct {
-				Role    string `json:"role"`
+				Role    string          `json:"role"`
+				Usage   json.RawMessage `json:"usage"`
 				Content []struct {
 					Type string `json:"type"`
 					Text string `json:"text"`
@@ -727,10 +728,11 @@ func piProgressEvent(record piRPCRecord) (core.Event, bool) {
 				parts = append(parts, strings.TrimSpace(content.Text))
 			}
 		}
-		if len(parts) == 0 {
+		usage := decodePiUsage(value.Message.Usage)
+		if len(parts) == 0 && usage == nil {
 			return core.Event{}, false
 		}
-		return core.Event{Type: EventMessage, Message: strings.Join(parts, "\n")}, true
+		return core.Event{Type: EventMessage, Message: strings.Join(parts, "\n"), Usage: usage}, true
 	default:
 		return core.Event{}, false
 	}
@@ -970,6 +972,9 @@ func piAgentFailure(raw json.RawMessage) (string, bool) {
 		}
 		if message.StopReason == "error" || message.StopReason == "aborted" {
 			return "Pi agent stopped with reason " + message.StopReason, false
+		}
+		if message.StopReason == "length" {
+			return "Pi agent reached model output limit", false
 		}
 		return "", false
 	}

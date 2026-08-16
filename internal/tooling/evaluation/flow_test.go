@@ -48,6 +48,146 @@ func TestRunFlowUsesLexicalCaseRepeatOrderAndPreflightsBeforeCallback(t *testing
 	}
 }
 
+func TestRunFlowPublishesExternalProgressThroughFinalization(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	output := filepath.Join(root, "out")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	report, err := RunFlow(context.Background(), FlowRunOptions{
+		SuitePath: suitePath, OutputDir: output, InvocationWorkspace: root, HostPATH: "host-path",
+		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			before, err := LoadFlowProgress(output)
+			if err != nil || before.Current == nil || before.Current.Phase != "workflow" || before.Current.Ordinal != 1 || before.TotalRuns != 1 {
+				t.Fatalf("progress before run=%+v err=%v", before, err)
+			}
+			if request.Progress == nil {
+				t.Fatal("runtime progress callback is missing")
+			}
+			if _, err := request.Progress(FlowRuntimeProgress{RunID: "run", Status: store.RunRunning, TotalNodes: 2, CompletedNodes: 1, RunningNodes: []string{"implement"}, NodeAttempts: 1, ProviderAttempts: 1, InputTokens: 10, OutputTokens: 5}); err != nil {
+				t.Fatal(err)
+			}
+			live, err := LoadFlowProgress(output)
+			if err != nil || live.Runtime.RunID != "run" || live.Runtime.CompletedNodes != 1 || live.Runtime.InputTokens != 10 {
+				t.Fatalf("live progress=%+v err=%v", live, err)
+			}
+			return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, CreatedAt: time.Unix(1, 0), UpdatedAt: time.Unix(2, 0), Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	progress, err := LoadFlowProgress(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.Status != "completed" || progress.CompletedRuns != 1 || progress.Current == nil || progress.Current.Phase != "finalized" || progress.Results.Valid != 1 || progress.ReportPath == "" || report.Summary.Valid != 1 {
+		t.Fatalf("final progress=%+v report=%+v", progress, report.Summary)
+	}
+}
+
+func TestRunFlowReturnsCaseRunnerErrorAfterSavingSnapshot(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	output := filepath.Join(root, "out")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	want := "write progress"
+	report, err := RunFlow(context.Background(), FlowRunOptions{
+		SuitePath: suitePath, OutputDir: output, InvocationWorkspace: root, HostPATH: "host-path",
+		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, CreatedAt: time.Unix(1, 0), UpdatedAt: time.Unix(2, 0), Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, errors.New(want)
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err=%v", err)
+	}
+	if report == nil || len(report.Runs) != 1 || report.Runs[0].Error != want {
+		t.Fatalf("report=%+v", report)
+	}
+	progress, loadErr := LoadFlowProgress(output)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if progress.Status != "failed" || !strings.Contains(progress.Error, want) {
+		t.Fatalf("progress=%+v", progress)
+	}
+}
+
+func TestRunFlowLeavesFailedProgressWhenGateFails(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	suite, err := os.ReadFile(suitePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(suitePath, append(suite, []byte("gates:\n  valid_rate: {min: 1}\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "out")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	_, err = RunFlow(context.Background(), FlowRunOptions{
+		SuitePath: suitePath, OutputDir: output, InvocationWorkspace: root, HostPATH: "host-path",
+		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunFailed, ExecutionWorkspace: request.Workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
+		},
+	})
+	var gateErr *FlowGateFailureError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("err=%v", err)
+	}
+	progress, loadErr := LoadFlowProgress(output)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if progress.Status != "failed" || progress.Current == nil || progress.Current.Phase != "cleanup" || !strings.Contains(progress.Error, "gates failed") {
+		t.Fatalf("progress=%+v", progress)
+	}
+}
+
+func TestRunFlowPreservesCommittedAndUntrackedSourceBeforeCleanup(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	output := filepath.Join(root, "out")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	var workspace string
+	_, err := RunFlow(context.Background(), FlowRunOptions{
+		SuitePath: suitePath, OutputDir: output, InvocationWorkspace: root, HostPATH: "host-path",
+		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			workspace = request.Workspace
+			mustWrite(t, filepath.Join(workspace, "committed.txt"), "committed result\n", 0644)
+			gitOutput(t, workspace, "add", "committed.txt")
+			gitOutput(t, workspace, "commit", "-m", "candidate result")
+			mustWrite(t, filepath.Join(workspace, "untracked.txt"), "untracked result\n", 0644)
+			return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(workspace); !os.IsNotExist(err) {
+		t.Fatalf("execution workspace was not cleaned up: %v", err)
+	}
+	repeat := filepath.Join(output, "cases", "case", "repeat-001")
+	for _, name := range []string{"committed.txt", "untracked.txt"} {
+		if _, err := os.Stat(filepath.Join(repeat, "source", name)); err != nil {
+			t.Fatalf("source evidence missing %s: %v", name, err)
+		}
+	}
+	diff, err := os.ReadFile(filepath.Join(repeat, "diff.patch"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"committed.txt", "untracked.txt"} {
+		if !strings.Contains(string(diff), want) {
+			t.Fatalf("diff does not contain %s:\n%s", want, diff)
+		}
+	}
+	bundle := filepath.Join(repeat, "repository.bundle")
+	if _, err := os.Stat(bundle); err != nil {
+		t.Fatalf("git bundle missing: %v", err)
+	}
+	restored := filepath.Join(t.TempDir(), "restored")
+	gitOutput(t, root, "clone", bundle, restored)
+	if log := gitOutput(t, restored, "log", "--all", "--format=%s"); !strings.Contains(log, "candidate result") {
+		t.Fatalf("candidate commit missing from restored history: %s", log)
+	}
+}
+
 func TestRunFlowReportsAndTracesEffectiveModelSelection(t *testing.T) {
 	root, suitePath := writeFlowRunSuite(t, "case")
 	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
@@ -93,7 +233,7 @@ func TestRunFlowTracesCaseStages(t *testing.T) {
 		SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root, HostPATH: "host-path",
 		Trace: func(line string) { trace = append(trace, line) }, AssistantIdleTimeout: 5 * time.Minute,
 		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
-			request.Trace("run.accepted run=run")
+			request.Trace("RUN run | accepted | id=run")
 			return FlowCaseRunResult{States: []*store.RunState{{ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}}}, nil
 		},
 	})
@@ -101,7 +241,7 @@ func TestRunFlowTracesCaseStages(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(trace, "\n")
-	for _, want := range []string{"assistant_idle_timeout=5m0s", "case.prepare case=case repeat=1", "validator.preflight case=case", "run.accepted run=run", "validator.completed case=case", "evidence.written case=case", "report.written path="} {
+	for _, want := range []string{"EVAL | start |", "assistant_idle_timeout=5m0s", "CASE case#1 | prepare", "CASE case#1 | validator preflight", "RUN run | accepted | id=run", "CASE case#1 | validator completed", "CASE case#1 | evidence written", "REPORT | finalized | path="} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("trace missing %q:\n%s", want, joined)
 		}

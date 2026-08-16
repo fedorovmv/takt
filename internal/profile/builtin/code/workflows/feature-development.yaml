@@ -7,6 +7,9 @@ nodes:
   command: implement-change
   attempts:
     max: 3
+    retry_on:
+    - exit
+    retry_session: reuse
   hooks:
     after_node:
     - id: validation

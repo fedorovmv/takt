@@ -218,6 +218,13 @@ Takt сам задаёт `--mode rpc`, `--provider`, `--model`, `--thinking`, `-
 
 При `session: resume` adapter передаёт `--session <id>` и проверяет через `get_state`, что Pi действительно открыл тот же Session ID. Тихий переход на fresh запрещён. В режиме `fresh` сохранённый ID не передаётся.
 
+Pi `stopReason: length` не является успешным settled-result: adapter возвращает
+execution kind `exit`, сохраняя Session ID и usage. Встроенный
+`code:feature-development` повторяет такой `exit` до трёх попыток с
+`retry_session: reuse`; следующий prompt получает feedback о достигнутом output
+limit. Per-response `maxTokens` принадлежит Pi model registry и не совпадает ни
+с `contextWindow`, ни с byte-limit `max_output_bytes` Takt adapter.
+
 
 Статистика `get_session_stats` является накопленной по всей сессии. Adapter снимает её до prompt и после `agent_settled`, а в `Result.Usage` записывает неотрицательную дельту текущей попытки. Уменьшение накопленных значений или исчезновение usage из второго снимка после его наличия в первом классифицируется как `protocol`. Явные нулевые значения валидны. Полные снимки сохраняются в structured result как `stats_before` и `stats_after`.
 
@@ -344,7 +351,9 @@ Root Workflow принимает `name`, `description`, `labels`, `provider`, `m
 Классы execution error также включают внутренний adapter kind `provider_unavailable`; он не является значением `attempts.retry_on` и обрабатывается отдельным provider retry scope ниже.
 
 `provider_unavailable` — внутренний failure kind assistant adapter, а не новое
-YAML-поле и не значение `attempts.retry_on`. Takt сам делает ровно до трёх
+YAML-поле и не значение `attempts.retry_on`. Явное сообщение провайдера
+`connection error` считается эквивалентной transient transport evidence наравне
+с connection reset/refused. Takt сам делает ровно до трёх
 вызовов `SessionAdapter.Run` для одной workflow-попытки (первый вызов и два
 resume); внутренние automatic retries Pi/OpenCode в этот лимит не входят.
 Повтор использует тот же Session ID, delays `2s`, затем `4s`, либо прямой
@@ -896,6 +905,9 @@ takt worktree remove <run-id> --workspace <dir> [--force]
 takt worktree prune --workspace <dir>
 takt eval run <workflow> --config <config> --cases <dir> --workspace-template <dir> --output <dir> [--model-preset <name>] [--strategy-id <id>] [--benchmark-id <id>] [--quality-node <id>] [--generation-node <id>] [--validator-path <path>]
 takt eval report <evaluation-output-dir>
+takt eval stats <evaluation-output-dir> [--json]
+takt eval status <evaluation-output-dir> [--json]
+takt eval inspect <evaluation-output-dir> [--case ID] [--repeat N] [--json]
 takt eval benchmark <matrix.yaml> [--output <dir>] [--repeat N] [--replace]
 takt eval compare <baseline-output-dir> <candidate-output-dir>
 ```
@@ -916,16 +928,37 @@ fingerprint; editing an unselected preset does not change it. Repeated
 The strict `takt-flow-evaluation/v1alpha1` suite declares `workflow`, `config`,
 `cases.directory`, a validator command/path/timeout/output limit, and gates.
 Each repeat persists `cases/<case>/repeat-<NNN>/run.json`,
-`validation-request.json`, `validation-result.json`, and `artifacts/manifest.json`;
+`activity.json`, `validation-request.json`, `validation-result.json`, and
+`artifacts/manifest.json`;
 `report.json` remains the canonical `takt-evaluation/v1alpha1` output. Validator
 stdout alone is decoded as `takt-validation/v1alpha1`; agent text is not proof.
 Gate failure returns non-zero only after report persistence.
+From suite start through finalization, Takt atomically replaces
+`<evaluation-output-dir>/progress.json` using
+`takt-flow-evaluation-progress/v1alpha1`. `takt eval status <dir>` reads this
+snapshot without starting a workflow, contacting an assistant, or connecting to
+Pi. Its phases are exactly `prepare`, `validator_preflight`, `workflow`,
+`validator`, `evidence`, `cleanup`, and `finalized`. Runtime tokens and cost
+include only completed executions already persisted in Run state. A killed eval
+process may leave `status: running`; consumers must use `updated_at` to detect a
+stale snapshot. The final snapshot remains beside `report.json`.
 `--trace` writes elapsed suite stages, durable root Run/node events and terminal
 child Run/node statuses to stderr while stdout remains the final JSON result.
+Human trace lines use `SCOPE | EVENT | DETAILS`: `EVAL`, `CASE <id>#<repeat>`,
+`REPORT`, or `RUN <short-id> · NODE <id>#<attempt>`. The full root Run ID is
+printed once at `accepted`; child snapshots also retain their full ID. Model and
+Session ID are announced on session start/resume or the first event that reveals
+a fresh Session ID, then omitted from repeated tool/message lines. Report writes
+are labelled `checkpoint phase=validation`, `checkpoint phase=cleanup`, or
+`finalized` rather than emitted as indistinguishable duplicates.
 Bundled Pi tool start/completion and bounded assistant message previews are
 reported live without persisting transient RPC partials. After 30 seconds with
 no durable transition, `node.active` reports `run`, `node`, `attempt`, elapsed
-`idle`, effective `idle_limit`, `last_activity` and what the adapter is awaiting.
+`idle`, effective `idle_limit`, last measured model-request context,
+`last_activity` and what the adapter is awaiting. Context is formatted as
+`context=<tokens>t` only when an assistant message exposed per-request input
+tokens; otherwise it is explicitly `context=unknown`. It is neither cumulative
+attempt usage nor the model's maximum context window.
 Pi `message_update` and `tool_execution_update` reset inactivity without being
 printed per token or persisted as durable assistant events.
 `--assistant-idle-timeout` defaults to `5m` and supplies an eval-only fallback
@@ -941,14 +974,42 @@ setup: add `config.yaml`, implement `./validator`, and replace the example case.
 
 `eval run` выполняет preflight до создания output: нормализованные `case_id` должны быть уникальны, а `workspace-template` и `output` не могут совпадать или быть вложены друг в друга, включая пути через символические ссылки. До запуска вычисляются fingerprints workflow, config, Markdown-команд, упорядоченного набора заданий, копируемого workspace template и указанного валидатора.
 
-`report.json` использует `takt-evaluation/v1alpha1` и сохраняет strategy/benchmark identity, версию Takt и Go-окружение, assistant и его версию, requested model, фактический Pi `responseModel`, attempts, duration, usage, approval answers, statuses, resume, feedback, ошибки узлов и диагностический вывод.
+`report.json` использует `takt-evaluation/v1alpha1` и сохраняет strategy/benchmark identity, версию Takt и Go-окружение, assistant и его версию, requested model, фактический Pi `responseModel`, attempts, duration, usage, approval answers, statuses, resume, feedback, ошибки узлов и диагностический вывод. В flow evaluation optional `nodes.<id>.duration_ms` измеряется по durable events от первого `node.started` до terminal event. Это wall-clock длительность всего узла, включая tool calls, retry backoff и ожидания, а не чистое provider inference time; старые отчёты без событий сохраняют поле недоступным.
+
+`takt eval stats <evaluation-output-dir>` загружает существующий suite report и
+не запускает workflow или model calls. Human-readable output используется по
+умолчанию; `--json` возвращает `takt-evaluation-stats/v1alpha1` согласно
+`schemas/evaluation-stats.schema.json`: identity, outcomes, node attempts,
+assistant executions, attempts/retries, tokens, duration/time-to-valid, cost,
+diagnostics, usage identities, case rows и wall-clock таблицу assistant steps.
+Отдельный `assistant_sessions` сохраняет для каждой фактической assistant
+execution полный Session ID, workflow/provider attempt и признак resume; human
+output показывает их в секции `ASSISTANT SESSIONS`. Takt не строит URL: adapter
+contract предоставляет только opaque Session ID.
+
+Для неуспешных cases stats показывает приоритетную причину с явным источником:
+flow validator, ошибка запуска validator, quality diagnostic, root runtime или
+первый стабильный по ID node error. `takt eval inspect <evaluation-output-dir>
+[--case ID] [--repeat N]` даёт детерминированный read-only разбор той же причины,
+non-completed узлов и сохранённых `run.json`, validation, diff/source,
+`repository.bundle`, artifacts и SCM calls. `activity.json` содержит только
+redacted нормализованные `assistant.tool.started` с tool input; assistant
+messages и tool output туда не копируются. Секция `CAUSAL CHAIN` коррелирует
+только сохранённые факты: terminal assistant reason/usage и tool calls из
+redacted `run.json`, пустой assistant result, deterministic validation failure
+и skipped downstream nodes. Например, `stopReason: length` связывается с
+достигнутым output-token limit и отсутствием direct write/edit calls.
+Наблюдение маркируется отдельно от reported cause и получает
+`CONFIRMED`, `INFERRED` или `UNAVAILABLE`. `inspect` не запускает и не
+возобновляет workflow, не обращается к assistant/provider и не меняет verdict
+валидатора. LLM-анализ не является частью этой команды.
 
 Каждая фактическая попытка действия сохраняется в `nodes.<id>.executions`. Summary группирует tokens/cost по `usage_by_execution_identity`; при смене assistant, его версии, requested или resolved model узел получает `mixed_execution_identity: true`.
 
 При заданном `--quality-node` Takt декодирует доступный строгий `takt-validation/v1alpha1` только из stdout узла и независимо от exit code и terminal status. Stderr сохраняется отдельно и входит в объединённый диагностический output, но не участвует в декодировании envelope. `score`, `checks` и diagnostics сохраняются и участвуют в предметных агрегатах даже для `valid: false` с ненулевым exit code. Успех определяется только сочетанием `quality_node_status: completed` и `quality.valid: true`; результат из failed/errored/timed_out/cancelled/skipped/blocked узла не повышает success rate. Malformed envelope при любом статусе является ошибкой измерительного контура. Runner агрегирует `success_at_1`, итоговую долю корректных результатов, среднюю оценку, попытки до успеха, стоимость, `amortized_end_to_end_ms_per_valid`, настоящий `average_time_to_valid_ms`, failed-execution cost, retry и diagnostics по severity/code/fingerprint. При repeat > 1 также вычисляется стабильность каждого case.
 
 
-`EvaluationMatrix` (`takt/evaluation/v1alpha1`) задаёт общий benchmark, обязательную baseline strategy, несколько workflow/config стратегий, repeat и regression gates. `takt eval benchmark` сохраняет `benchmark.json` (`takt-evaluation-matrix/v1alpha1`), а `takt eval compare` требует одинаковый benchmark fingerprint и строит парные исходы по `case_id + repeat`. `CaseManifest` фиксирует labels корпуса и входит в benchmark fingerprint. Gate failure возвращает non-zero после сохранения полного отчёта.
+`EvaluationMatrix` (`takt/evaluation/v1alpha1`) задаёт общий benchmark, обязательную baseline strategy, несколько workflow/config стратегий, repeat и regression gates. `takt eval benchmark` сохраняет `benchmark.json` (`takt-evaluation-matrix/v1alpha1`), а `takt eval compare` требует одинаковый benchmark fingerprint и строит парные исходы по `case_id + repeat`. Human compare использует короткие имена `A`/`B`, показывает output directories, presets/models, явные `BETTER|WORSE|SAME|NOT MEASURED|NOT COMPARABLE` для correctness/reliability/efficiency и каждого показателя, а также переход каждого case. Общий verdict сначала учитывает число корректных результатов, затем reliability и только при равном качестве — resources. Поэтому экономия attempts не маскирует потерю valid results. Для flow-метрик больше valid/completion считается лучше, меньше false accepts/false rejects/infrastructure/validator errors — лучше; для tokens/time/attempts/cost лучше меньше. Проценты всегда сопровождаются счётчиком и знаменателем. Delta остаётся `B-A`. `CaseManifest` фиксирует labels корпуса и входит в benchmark fingerprint. Gate failure возвращает non-zero после сохранения полного отчёта.
 
 Измеренные нулевые доли сериализуются как `0`. Метрики, которые нельзя вычислить, например average score без score или cost per valid без корректных результатов, сериализуются как `null`. Общий benchmark fingerprint включает ID, версию и fingerprint валидатора. Workflow и предметный валидатор остаются источником критерия качества; Takt не интерпретирует семантику Route DSL.
 

@@ -136,6 +136,35 @@ func TestEvalFlowParsesOnlyItsContract(t *testing.T) {
 	}
 }
 
+func TestEvalStatsRequiresOneOutputDirectory(t *testing.T) {
+	err := evalCmd(context.Background(), []string{"stats"})
+	if err == nil || !strings.Contains(err.Error(), "usage: takt eval stats") {
+		t.Fatalf("stats error = %v", err)
+	}
+}
+
+func TestEvalStatusRequiresOneOutputDirectory(t *testing.T) {
+	err := evalCmd(context.Background(), []string{"status"})
+	if err == nil || !strings.Contains(err.Error(), "usage: takt eval status") {
+		t.Fatalf("status error = %v", err)
+	}
+}
+
+func TestEvalInspectRequiresDirectoryAndValidFilter(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"inspect"}, "usage: takt eval inspect"},
+		{[]string{"inspect", "missing", "--repeat", "-1"}, "repeat cannot be negative"},
+		{[]string{"inspect", "missing", "--repeat", "1"}, "repeat requires --case"},
+	} {
+		if err := evalCmd(context.Background(), tc.args); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("eval %v error=%v, want %q", tc.args, err, tc.want)
+		}
+	}
+}
+
 func TestEvalTraceWritesElapsedProgress(t *testing.T) {
 	var output strings.Builder
 	now := time.Unix(10, 0)

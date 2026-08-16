@@ -9,6 +9,8 @@
     "benchmark",
     "baseline",
     "candidate",
+    "baseline_output_dir",
+    "candidate_output_dir",
     "metrics",
     "paired_outcomes",
     "cases"
@@ -65,6 +67,12 @@
         }
       }
     },
+    "baseline_output_dir": {
+      "type": "string"
+    },
+    "candidate_output_dir": {
+      "type": "string"
+    },
     "metrics": {
       "type": "object",
       "required": [
@@ -81,6 +89,21 @@
           "$ref": "#/$defs/metric"
         },
         "final_success_rate": {
+          "$ref": "#/$defs/metric"
+        },
+        "input_tokens": {
+          "$ref": "#/$defs/metric"
+        },
+        "output_tokens": {
+          "$ref": "#/$defs/metric"
+        },
+        "total_tokens": {
+          "$ref": "#/$defs/metric"
+        },
+        "total_attempts": {
+          "$ref": "#/$defs/metric"
+        },
+        "total_duration_ms": {
           "$ref": "#/$defs/metric"
         },
         "average_attempts_to_valid": {

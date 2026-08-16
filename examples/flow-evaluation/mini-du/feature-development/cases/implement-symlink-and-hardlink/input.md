@@ -1,1 +1,11 @@
-Implement a `du`-compatible command supporting symlink, hardlink, and kibibyte behavior.
+Implement `mini-du` using this exact CLI contract: positional `PATH...` (default `.`), `-s`, `-k`, uppercase `-H` humanized binary units (`0B`, one decimal below 10, rounded integers from 10), `-h`/`--help`, `--`, combined `-sk`/`-ks`/`-sH`, and fail-closed unknown options. Humanized examples: `0B`, `1024 bytes as 1KiB`, `1536 bytes as 1.5KiB`, `12KiB` without a decimal. This case focuses on symlink, hardlink, and kibibyte behavior.
+
+Help stdout must be exactly:
+
+```text
+Usage: mini-du [-s] [-k|-H] [--] [PATH...]
+  -s          display only a total for each path
+  -k          display sizes in 1024-byte units
+  -H          display humanized binary units (KiB, MiB, GiB)
+  -h, --help  display this help
+```

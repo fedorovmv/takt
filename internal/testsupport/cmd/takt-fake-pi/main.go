@@ -206,7 +206,7 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 	case "live-events":
 		writeJSON(writer, map[string]any{"type": "tool_execution_start", "toolCallId": "call-1", "toolName": "read", "args": map[string]any{"path": "main.go"}})
 		writeJSON(writer, map[string]any{"type": "tool_execution_end", "toolCallId": "call-1", "toolName": "read", "isError": false})
-		writeJSON(writer, map[string]any{"type": "message_end", "message": map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "inspected main.go"}}}})
+		writeJSON(writer, map[string]any{"type": "message_end", "message": map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": "inspected main.go"}}, "usage": map[string]any{"input": 128430, "output": 512}}})
 		emitSuccess(writer, state, opts)
 	case "tool-then-hang":
 		writeJSON(writer, map[string]any{"type": "tool_execution_start", "toolCallId": "call-1", "toolName": "bash", "args": map[string]any{"command": "go test ./..."}})
@@ -227,11 +227,19 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 		writeJSON(writer, map[string]any{"type": "message_end", "message": message})
 		writeJSON(writer, map[string]any{"type": "agent_end", "messages": []any{message}, "willRetry": false})
 		writeJSON(writer, map[string]any{"type": "agent_settled"})
-	case "provider-503", "provider-429", "provider-connection-reset", "provider-sequence", "provider-by-prompt", "provider-exhausted":
+	case "output-limit":
+		message := assistantMessage(opts, "", "length", "")
+		state.finish("", []any{message})
+		writeJSON(writer, map[string]any{"type": "agent_start"})
+		writeJSON(writer, map[string]any{"type": "message_end", "message": message})
+		writeJSON(writer, map[string]any{"type": "agent_end", "messages": []any{message}, "willRetry": false})
+		writeJSON(writer, map[string]any{"type": "agent_settled"})
+	case "provider-503", "provider-429", "provider-connection-reset", "provider-connection-error", "provider-sequence", "provider-by-prompt", "provider-exhausted":
 		failure := map[string]string{
 			"provider-503":              "provider returned HTTP 503 service unavailable",
 			"provider-429":              "provider returned HTTP 429 too many requests",
 			"provider-connection-reset": "provider connection reset",
+			"provider-connection-error": "Connection error.",
 			"provider-sequence":         "provider returned HTTP 503 service unavailable",
 			"provider-by-prompt":        "provider returned HTTP 503 service unavailable",
 			"provider-exhausted":        "provider returned HTTP 503 service unavailable",

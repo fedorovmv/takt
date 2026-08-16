@@ -137,7 +137,7 @@ func TestPiRunPreservesContextPriorityWithRealOverflow(t *testing.T) {
 }
 
 func TestPiProviderFailures(t *testing.T) {
-	for _, caseName := range []string{"provider-503", "provider-429", "provider-connection-reset"} {
+	for _, caseName := range []string{"provider-503", "provider-429", "provider-connection-reset", "provider-connection-error"} {
 		t.Run(caseName, func(t *testing.T) {
 			result, err := fakePi(caseName).Run(context.Background(), fakePiRequest(t.TempDir()))
 			if execution.KindOf(err) != execution.KindProviderUnavailable {
@@ -168,8 +168,12 @@ func TestPiAdapterContract(t *testing.T) {
 	t.Run("emits compact live tool and message events", func(t *testing.T) {
 		req := fakePiRequest(t.TempDir())
 		var events []string
+		liveContext := 0
 		req.Emit = func(event core.Event) {
 			events = append(events, event.Type+":"+event.Tool+":"+event.Message+":"+string(event.Input))
+			if event.Type == EventMessage && event.Usage != nil {
+				liveContext = event.Usage.InputTokens
+			}
 		}
 		if _, err := fakePi("live-events").Run(context.Background(), req); err != nil {
 			t.Fatal(err)
@@ -179,6 +183,9 @@ func TestPiAdapterContract(t *testing.T) {
 			if !strings.Contains(joined, want) {
 				t.Fatalf("events missing %q:\n%s", want, joined)
 			}
+		}
+		if liveContext != 128430 {
+			t.Fatalf("live context tokens=%d", liveContext)
 		}
 	})
 
@@ -453,12 +460,16 @@ func TestPiAdapterContract(t *testing.T) {
 		{name: "multiple JSON records on one line", caseName: "two-json-on-line", kind: execution.KindProtocol},
 		{name: "prompt rejected", caseName: "prompt-rejected", kind: execution.KindExit},
 		{name: "agent failure", caseName: "agent-failure", kind: execution.KindExit},
+		{name: "model output limit", caseName: "output-limit", kind: execution.KindExit},
 		{name: "interactive extension UI", caseName: "extension-ui", kind: execution.KindProtocol},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := fakePi(tc.caseName).Run(context.Background(), fakePiRequest(t.TempDir()))
+			result, err := fakePi(tc.caseName).Run(context.Background(), fakePiRequest(t.TempDir()))
 			if execution.KindOf(err) != tc.kind {
 				t.Fatalf("unexpected kind for %s: %s (%v)", tc.caseName, execution.KindOf(err), err)
+			}
+			if tc.caseName == "output-limit" && (result.SessionID != "fake-pi-session-1" || result.Usage == nil || result.Usage.OutputTokens != 22 || !strings.Contains(result.Output, "output limit")) {
+				t.Fatalf("output-limit evidence was lost: %+v", result)
 			}
 		})
 	}
@@ -476,6 +487,13 @@ func TestPiAdapterContract(t *testing.T) {
 				t.Fatalf("unexpected kind for %s: %s (%v)", flag, execution.KindOf(err), err)
 			}
 		})
+	}
+}
+
+func TestPiProgressEventExposesLastModelInputTokens(t *testing.T) {
+	event, ok := piProgressEvent(piRPCRecord{Type: "message_end", Raw: json.RawMessage(`{"type":"message_end","message":{"role":"assistant","content":[],"usage":{"input":128430,"output":512}}}`)})
+	if !ok || event.Type != EventMessage || event.Usage == nil || event.Usage.InputTokens != 128430 || event.Usage.OutputTokens != 512 {
+		t.Fatalf("event=%+v ok=%t", event, ok)
 	}
 }
 

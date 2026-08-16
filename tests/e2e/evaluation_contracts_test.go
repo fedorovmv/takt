@@ -330,7 +330,7 @@ func TestProductionFlowEvaluation(t *testing.T) {
 			output := filepath.Join(t.TempDir(), "output")
 			args := []string{"eval", "flow", suite, "--output", output, "--keep-workspaces", "--trace", "--json"}
 			result := takt(t, []string{"TAKT_PRODUCTION_FLOW_VALIDATOR=1"}, args...).RequireSuccess(t)
-			if !strings.Contains(result.Stderr, "case.prepare case=smoke repeat=1") || !strings.Contains(result.Stderr, "run.accepted run=") || !strings.Contains(result.Stderr, "report.written path=") {
+			if !strings.Contains(result.Stderr, "CASE smoke#1 | prepare") || !strings.Contains(result.Stderr, "| accepted | id=run-") || !strings.Contains(result.Stderr, "REPORT | finalized | path=") || !strings.Contains(result.Stderr, "EVAL | progress |") {
 				t.Fatalf("trace missing from stderr: %s", result.Stderr)
 			}
 			report := resultObject(t, result.JSON(t))
@@ -514,6 +514,17 @@ func TestFlowInventory(t *testing.T) {
 		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
 			t.Fatalf("%s models=%v want=%v", tc.name, got, tc.want)
 		}
+	}
+	var featureImplement *spec.Node
+	for index := range loaded["feature-development.yaml"].Nodes {
+		node := &loaded["feature-development.yaml"].Nodes[index]
+		if node.ID == "implement" {
+			featureImplement = node
+			break
+		}
+	}
+	if featureImplement == nil || featureImplement.Attempts.Max != 3 || len(featureImplement.Attempts.RetryOn) != 1 || featureImplement.Attempts.RetryOn[0] != "exit" || featureImplement.Attempts.RetrySession != "reuse" {
+		t.Fatalf("feature implement retry policy=%+v", featureImplement)
 	}
 	command, err := runtime.NewCommandResolver(filepath.Join(repoRoot, "internal", "profile", "builtin", "code", "workflows", "review-block.yaml"), repoRoot, repoRoot).Resolve("review-intake")
 	if err != nil {

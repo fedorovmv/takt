@@ -2,6 +2,63 @@
 
 ## Unreleased
 
+- Исправлена классификация Pi `Connection error`: provider outage теперь
+  попадает в `provider_unavailable` и отдельный provider retry scope, не
+  загрязняя workflow retry budget и quality denominators.
+
+- Pi `stopReason=length` now fails as an execution `exit` instead of accepting
+  an empty `agent_settled` result. `code:feature-development` retries that exit
+  up to three times with the same Session ID and explicit feedback; Pi model
+  `maxTokens` remains separate from Takt's RPC byte limit.
+
+- Added deterministic `takt eval inspect <output-dir>` and `make eval-inspect`
+  failure investigation, per-case causes in `eval stats`, and redacted filtered
+  `activity.json` tool-start evidence. A persisted-evidence `CAUSAL CHAIN`
+  connects assistant output limits/tool activity to empty results, failed
+  validation and skipped nodes. Inspection is read-only, never contacts a
+  model and never changes the validator verdict. A progress publication failure
+  now cancels or joins the detached case Run before returning its error.
+
+- Reworked human `eval compare` into an A/B scorecard with explicit overall,
+  correctness/reliability/efficiency and per-row assessments, humanized resource
+  deltas, presets/models and case transitions. Validity has priority over
+  efficiency, and missing values are no longer printed as meaningless `null%`.
+  JSON compare reports now retain both evaluation output directories.
+
+- Added atomic production-flow `progress.json`, `takt eval status <output-dir>`
+  and `make eval-status RUN=...` for an external live view of suite phase,
+  durable Run/node progress and measured persisted usage. Status inspection
+  never starts workflows or models; final snapshots remain beside reports and
+  expose stale interrupted runs through `updated_at`.
+
+- Flow evaluation now preserves the redacted final product source tree and a
+  baseline-to-final diff before cleanup, plus a secret-checked full-history
+  `repository.bundle`. The mini-du oracle ignores `.git/` and `.takt/`,
+  preventing bundled profile tools from being misclassified as candidate
+  delegation; oracle invocations are allowed only in `_test.go` files.
+
+- Live flow trace now uses `SCOPE | EVENT | DETAILS`, puts short Run/node context
+  first, announces full Run/Session IDs once, removes repeated model/session
+  fields from tool traffic, and distinguishes validation/cleanup checkpoints
+  from the finalized report write. Active heartbeats show the last measured Pi
+  model-request input tokens as context, or explicit `context=unknown`; final
+  cumulative attempt usage is not mislabeled as context size.
+
+- mini-du feature evaluation now has an explicit per-case CLI contract for
+  `-s`, `-k`, `-H`, `-h`/`--help`, `--`, combined `-sk`/`-ks`/`-sH`, and invalid
+  options. `eval-feature-smoke` runs one case; `eval-feature` runs the full
+  feature corpus. `-H` uses binary humanized units (`0B`, one decimal below 10,
+  rounded integers from 10).
+
+- Added `takt eval stats <output-dir>` and `make eval-stats RUN=...` for compact
+  saved-run statistics. Flow comparison now includes input/output/total tokens,
+  attempts and duration; `make eval-compare A=... B=...` compares existing runs
+  only, with deltas defined as `B-A`. Stats now separates node attempts from
+  assistant executions and reports per-assistant-step wall time captured from
+  durable node events; old reports remain readable with unavailable timing.
+  Full per-execution Session IDs are shown separately with workflow/provider
+  attempt and fresh/resume mode for assistant-native inspection.
+
 - Added durable `provider_unavailable` recovery: up to three same-session Takt
   adapter calls per workflow attempt (`2s`/`4s`, capped `Retry-After`), separate
   provider/workflow attempt evidence and retry lifecycle events. Flow reports

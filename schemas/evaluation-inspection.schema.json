@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/evaluation-inspection.schema.json",
+  "title": "Takt Evaluation Inspection v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["report_version", "output_dir", "workflow", "cases"],
+  "properties": {
+    "report_version": {"const": "takt-evaluation-inspection/v1alpha1"},
+    "output_dir": {"type": "string"},
+    "workflow": {"type": "string"},
+    "cases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/case"}}
+  },
+  "$defs": {
+    "confidence": {"enum": ["CONFIRMED", "INFERRED", "UNAVAILABLE"]},
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "repeat", "status", "reported_cause", "non_completed_nodes", "evidence", "causal_chain", "observations"],
+      "properties": {
+        "case_id": {"type": "string", "minLength": 1},
+        "repeat": {"type": "integer", "minimum": 1},
+        "run_id": {"type": "string"},
+        "status": {"type": "string"},
+        "outcome": {"type": "string"},
+        "reported_cause": {"$ref": "#/$defs/cause"},
+        "non_completed_nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "causal_chain": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+        "observations": {"type": "array", "items": {"$ref": "#/$defs/observation"}}
+      }
+    },
+    "cause": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confidence"],
+      "properties": {
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "source": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "status": {"type": "string"},
+        "error_code": {"type": "string"},
+        "error": {"type": "string"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "diff_bytes", "source_present", "scm_calls_recorded", "scm_calls", "artifacts"],
+      "properties": {
+        "root": {"type": "string"},
+        "run": {"type": "string"},
+        "validation": {"type": "string"},
+        "diff": {"type": "string"},
+        "diff_bytes": {"type": "integer", "minimum": 0},
+        "source": {"type": "string"},
+        "source_present": {"type": "boolean"},
+        "repository_bundle": {"type": "string"},
+        "activity": {"type": "string"},
+        "scm_calls_path": {"type": "string"},
+        "scm_calls_recorded": {"type": "boolean"},
+        "scm_calls": {"type": "integer", "minimum": 0},
+        "artifacts": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "confidence", "message"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "message": {"type": "string", "minLength": 1},
+        "evidence": {"type": "string"}
+      }
+    }
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/flow-evaluation-progress.schema.json",
+  "title": "Takt Flow Evaluation Progress v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["report_version", "status", "suite", "workflow", "output_dir", "started_at", "updated_at", "total_runs", "completed_runs", "runtime", "results"],
+  "properties": {
+    "report_version": {"const": "takt-flow-evaluation-progress/v1alpha1"},
+    "status": {"enum": ["running", "completed", "failed"]},
+    "suite": {"type": "string", "minLength": 1},
+    "workflow": {"type": "string", "minLength": 1},
+    "output_dir": {"type": "string", "minLength": 1},
+    "started_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "total_runs": {"type": "integer", "minimum": 0},
+    "completed_runs": {"type": "integer", "minimum": 0},
+    "current": {"$ref": "#/$defs/current"},
+    "runtime": {"$ref": "#/$defs/runtime"},
+    "results": {"$ref": "#/$defs/results"},
+    "report_path": {"type": "string"},
+    "error": {"type": "string"}
+  },
+  "$defs": {
+    "current": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "repeat", "ordinal", "phase"],
+      "properties": {
+        "case_id": {"type": "string", "minLength": 1},
+        "repeat": {"type": "integer", "minimum": 1},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "phase": {"enum": ["prepare", "validator_preflight", "workflow", "validator", "evidence", "cleanup", "finalized"]}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_nodes", "completed_nodes", "running_nodes", "node_attempts", "provider_attempts", "input_tokens", "output_tokens", "cost"],
+      "properties": {
+        "run_id": {"type": "string"},
+        "status": {"type": "string"},
+        "total_nodes": {"type": "integer", "minimum": 0},
+        "completed_nodes": {"type": "integer", "minimum": 0},
+        "running_nodes": {"type": "array", "items": {"type": "string"}},
+        "node_attempts": {"type": "integer", "minimum": 0},
+        "provider_attempts": {"type": "integer", "minimum": 0},
+        "input_tokens": {"type": "integer", "minimum": 0},
+        "output_tokens": {"type": "integer", "minimum": 0},
+        "cost": {"type": "number", "minimum": 0}
+      }
+    },
+    "results": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valid", "invalid", "infrastructure_errors", "validation_errors"],
+      "properties": {
+        "valid": {"type": "integer", "minimum": 0},
+        "invalid": {"type": "integer", "minimum": 0},
+        "infrastructure_errors": {"type": "integer", "minimum": 0},
+        "validation_errors": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

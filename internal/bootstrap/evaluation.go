@@ -3,10 +3,12 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -64,9 +66,11 @@ func (evaluationEngine) FlowInit(_ context.Context, workflowSelector, output str
 
 func (e evaluationEngine) runFlowCase(ctx context.Context, req evaluation.FlowCaseRunRequest) (evaluation.FlowCaseRunResult, error) {
 	activity := newFlowActivityTracker()
+	traceContext := newFlowTraceContext()
 	app, err := newApp(req.Workspace, req.ConfigPath, func(runID, nodeID string, event assistant.Event) {
-		traceEvaluationAssistantEvent(req.Trace, runID, nodeID, event)
 		activity.recordEvent(runID, nodeID, event, req.AssistantIdleTimeout)
+		record, _ := activity.get(runID, nodeID)
+		traceEvaluationAssistantEvent(traceContext, req.Trace, runID, nodeID, record.Attempt, event)
 	}, func(runID, nodeID, kind string) {
 		activity.record(flowActivityRecord{RunID: runID, NodeID: nodeID, LastActivity: kind, LastActivityAt: time.Now(), Active: true})
 	}, req.AssistantIdleTimeout)
@@ -83,13 +87,15 @@ func (e evaluationEngine) runFlowCase(ctx context.Context, req evaluation.FlowCa
 	if started.RunID == "" {
 		return evaluation.FlowCaseRunResult{}, fmt.Errorf("flow evaluation start returned no run ID")
 	}
-	traceEvaluation(req.Trace, "run.accepted run=%s", started.RunID)
-	return e.pollFlowCase(ctx, app, started.RunID, req.ApprovalAnswer, req.Trace, activity)
+	traceScoped(req.Trace, started.RunID, "", 0, "accepted", "id="+started.RunID)
+	return e.pollFlowCase(ctx, app, started.RunID, req.ApprovalAnswer, req.Trace, activity, req.Progress)
 }
 
 type flowActivityRecord struct {
 	RunID, NodeID, LastActivity string
 	Attempt                     int
+	ContextTokens               int
+	ContextKnown                bool
 	LastActivityAt              time.Time
 	IdleTimeout                 time.Duration
 	Active                      bool
@@ -116,6 +122,9 @@ func (t *flowActivityTracker) record(record flowActivityRecord) {
 	if record.IdleTimeout == 0 {
 		record.IdleTimeout = previous.IdleTimeout
 	}
+	if !record.ContextKnown && previous.ContextKnown {
+		record.ContextTokens, record.ContextKnown = previous.ContextTokens, true
+	}
 	t.records[record.RunID+"\x00"+record.NodeID] = record
 	t.mu.Unlock()
 }
@@ -135,7 +144,11 @@ func (t *flowActivityTracker) recordEvent(runID, nodeID string, event assistant.
 		at = time.Now()
 	}
 	active := event.Type != assistant.EventCompleted && event.Type != assistant.EventFailed
-	t.record(flowActivityRecord{RunID: runID, NodeID: nodeID, Attempt: traceAttempt(event.Data["attempt"]), LastActivity: traceActivityName(event), LastActivityAt: at, IdleTimeout: idle, Active: active})
+	record := flowActivityRecord{RunID: runID, NodeID: nodeID, Attempt: traceAttempt(event.Data["attempt"]), LastActivity: traceActivityName(event), LastActivityAt: at, IdleTimeout: idle, Active: active}
+	if event.Type == assistant.EventMessage && event.Usage != nil {
+		record.ContextTokens, record.ContextKnown = event.Usage.InputTokens, true
+	}
+	t.record(record)
 }
 
 func (t *flowActivityTracker) get(runID, nodeID string) (flowActivityRecord, bool) {
@@ -187,39 +200,86 @@ func traceActivityName(event assistant.Event) string {
 	return event.Type
 }
 
-func traceEvaluationAssistantEvent(trace func(string), runID, nodeID string, event assistant.Event) {
+type flowTraceContext struct {
+	mu       sync.Mutex
+	sessions map[string]string
+}
+
+func newFlowTraceContext() *flowTraceContext {
+	return &flowTraceContext{sessions: map[string]string{}}
+}
+
+func (c *flowTraceContext) announceSession(runID, nodeID, sessionID string) string {
+	if c == nil || sessionID == "" {
+		return ""
+	}
+	key := runID + "\x00" + nodeID
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.sessions[key] == sessionID {
+		return ""
+	}
+	c.sessions[key] = sessionID
+	return "session=" + sessionID
+}
+
+func traceEvaluationAssistantEvent(context *flowTraceContext, trace func(string), runID, nodeID string, attempt int, event assistant.Event) {
 	if trace == nil {
 		return
 	}
+	session := context.announceSession(runID, nodeID, event.SessionID)
 	switch event.Type {
 	case assistant.EventSessionStarted, assistant.EventSessionResumed:
-		traceEvaluation(trace, "assistant.%s run=%s node=%s assistant=%v model=%v/%v attempt=%v session=%s", event.Type, runID, nodeID, event.Data["assistant"], event.Provider, event.Data["model_id"], event.Data["attempt"], event.SessionID)
+		details := []string{fmt.Sprintf("assistant=%v", event.Data["assistant"]), "model=" + traceModel(event), session}
+		traceScoped(trace, runID, nodeID, attempt, strings.ReplaceAll(event.Type, ".", " "), details...)
 	case assistant.EventToolStarted, assistant.EventToolCompleted:
-		line := fmt.Sprintf("assistant.%s run=%s node=%s tool=%s model=%s session=%s", event.Type, runID, nodeID, event.Tool, event.Provider, event.SessionID)
+		details := []string{}
 		if summary := traceToolInput(event.Input); summary != "" {
-			line += " " + summary
+			details = append(details, summary)
 		}
 		if event.Type == assistant.EventToolCompleted {
-			line += fmt.Sprintf(" error=%v", event.Data["error"])
+			details = append(details, fmt.Sprintf("error=%v", event.Data["error"]))
 		}
-		trace(line)
+		details = append(details, session)
+		traceScoped(trace, runID, nodeID, attempt, event.Tool+" "+strings.TrimPrefix(event.Type, "tool."), details...)
 	case assistant.EventMessage:
 		message := strings.Join(strings.Fields(event.Message), " ")
 		if len(message) > 160 {
 			message = message[:160] + "..."
 		}
 		if message != "" {
-			traceEvaluation(trace, "assistant.message run=%s node=%s model=%s session=%s text=%q", runID, nodeID, event.Provider, event.SessionID, message)
+			traceScoped(trace, runID, nodeID, attempt, "message", fmt.Sprintf("text=%q", message), session)
 		}
 	case assistant.EventUsage:
 		if event.Usage != nil {
-			traceEvaluation(trace, "assistant.usage run=%s node=%s input=%d output=%d cost=%.6g", runID, nodeID, event.Usage.InputTokens, event.Usage.OutputTokens, event.Usage.Cost)
+			traceScoped(trace, runID, nodeID, attempt, "usage", fmt.Sprintf("input=%d output=%d cost=%.6g", event.Usage.InputTokens, event.Usage.OutputTokens, event.Usage.Cost), session)
 		}
 	case assistant.EventCompleted:
-		traceEvaluation(trace, "assistant.%s run=%s node=%s session=%s", event.Type, runID, nodeID, event.SessionID)
+		traceScoped(trace, runID, nodeID, attempt, "assistant completed", session)
 	case assistant.EventFailed:
-		traceEvaluation(trace, "assistant.failed run=%s node=%s session=%s error=%q", runID, nodeID, event.SessionID, strings.Join(strings.Fields(event.Message), " "))
+		traceScoped(trace, runID, nodeID, attempt, "assistant failed", fmt.Sprintf("error=%q", strings.Join(strings.Fields(event.Message), " ")), session)
 	}
+}
+
+func traceModel(event assistant.Event) string {
+	modelID := fmt.Sprint(event.Data["model_id"])
+	if modelID == "<nil>" {
+		modelID = ""
+	}
+	if event.Provider == "" {
+		return valueOrDash(modelID)
+	}
+	if modelID == "" {
+		return event.Provider
+	}
+	return event.Provider + "/" + modelID
+}
+
+func valueOrDash(value string) string {
+	if value == "" {
+		return "-"
+	}
+	return value
 }
 
 func traceToolInput(raw json.RawMessage) string {
@@ -242,9 +302,12 @@ func traceToolInput(raw json.RawMessage) string {
 	return ""
 }
 
-func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, answer string, trace func(string), activity *flowActivityTracker) (evaluation.FlowCaseRunResult, error) {
+func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, answer string, trace func(string), activity *flowActivityTracker, progress func(evaluation.FlowRuntimeProgress) (*evaluation.FlowProgress, error)) (evaluation.FlowCaseRunResult, error) {
 	poll := func() (*store.RunState, error) { return app.Core.RunService.GetRun(runID) }
-	var revision uint64
+	var eventRevision, progressRevision uint64
+	var progressPublished bool
+	var progressUpdated time.Time
+	var latestProgress *evaluation.FlowProgress
 	lastRunningTrace := time.Time{}
 	for {
 		state, err := poll()
@@ -254,8 +317,23 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 			}
 			return evaluation.FlowCaseRunResult{}, err
 		}
+		now := time.Now()
+		if progress != nil && shouldPublishFlowProgress(progressPublished, progressRevision, state.Revision, progressUpdated, now) {
+			snapshot, snapshotErr := app.Core.RunService.EvaluationSnapshot(runID)
+			if snapshotErr != nil {
+				return evaluation.FlowCaseRunResult{}, snapshotErr
+			}
+			latestProgress, err = progress(summarizeFlowRuntimeProgress(snapshot.States))
+			if err != nil {
+				result, cancelErr := e.cancelFlowCase(ctx, app, runID, trace)
+				return result, errors.Join(err, cancelErr)
+			}
+			progressPublished = true
+			progressRevision = state.Revision
+			progressUpdated = now
+		}
 		if trace != nil {
-			events, err := app.Core.RunService.Events(ctx, runID, revision, 200, 0)
+			events, err := app.Core.RunService.Events(ctx, runID, eventRevision, 200, 0)
 			if err != nil {
 				if ctx.Err() != nil {
 					return e.cancelFlowCase(ctx, app, runID, trace)
@@ -265,10 +343,13 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 			for _, event := range events.Events {
 				traceEvaluationEvent(trace, runID, event)
 			}
-			revision = events.NextRevision
+			eventRevision = events.NextRevision
 			if lastRunningTrace.IsZero() || time.Since(lastRunningTrace) >= 30*time.Second {
-				traceFlowRunningNodes(trace, state, activity, time.Now())
-				lastRunningTrace = time.Now()
+				if latestProgress != nil {
+					traceFlowProgressSnapshot(trace, latestProgress)
+				}
+				traceFlowRunningNodes(trace, state, activity, now)
+				lastRunningTrace = now
 			}
 		}
 		switch state.Status {
@@ -304,6 +385,60 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 	}
 }
 
+func shouldPublishFlowProgress(published bool, lastRevision, revision uint64, lastUpdated, now time.Time) bool {
+	return !published || revision != lastRevision || now.Sub(lastUpdated) >= 10*time.Second
+}
+
+func summarizeFlowRuntimeProgress(states []*store.RunState) evaluation.FlowRuntimeProgress {
+	progress := evaluation.FlowRuntimeProgress{RunningNodes: []string{}}
+	if len(states) == 0 || states[0] == nil {
+		return progress
+	}
+	root := states[0]
+	progress.RunID = root.ID
+	progress.Status = root.Status
+	if root.Usage != nil {
+		progress.InputTokens = root.Usage.InputTokens
+		progress.OutputTokens = root.Usage.OutputTokens
+		progress.Cost = root.Usage.Cost
+	}
+	for _, state := range states {
+		if state == nil {
+			continue
+		}
+		progress.TotalNodes += len(state.Nodes)
+		for id, node := range state.Nodes {
+			if node == nil {
+				continue
+			}
+			progress.NodeAttempts += node.Attempts
+			progress.ProviderAttempts += node.ProviderAttempts
+			if node.Status == store.NodeCompleted {
+				progress.CompletedNodes++
+			}
+			if node.Status == store.NodeRunning {
+				progress.RunningNodes = append(progress.RunningNodes, id)
+			}
+		}
+	}
+	sort.Strings(progress.RunningNodes)
+	return progress
+}
+
+func traceFlowProgressSnapshot(trace func(string), progress *evaluation.FlowProgress) {
+	if trace == nil || progress == nil {
+		return
+	}
+	current, phase := "-", "-"
+	if progress.Current != nil {
+		current = fmt.Sprintf("%s#%d", progress.Current.CaseID, progress.Current.Repeat)
+		phase = progress.Current.Phase
+	}
+	trace(fmt.Sprintf("EVAL | progress | completed=%d/%d current=%s phase=%s", progress.CompletedRuns, progress.TotalRuns, current, phase))
+	runtime := progress.Runtime
+	traceScoped(trace, runtime.RunID, "", 0, "progress", fmt.Sprintf("status=%s nodes=%d/%d running=%s node_attempts=%d provider_attempts=%d tokens=%d cost=%g", runtime.Status, runtime.CompletedNodes, runtime.TotalNodes, valueOrDash(strings.Join(runtime.RunningNodes, ",")), runtime.NodeAttempts, runtime.ProviderAttempts, runtime.InputTokens+runtime.OutputTokens, runtime.Cost))
+}
+
 func traceFlowRunningNodes(trace func(string), state *store.RunState, activity *flowActivityTracker, now time.Time) {
 	if trace == nil || state == nil {
 		return
@@ -322,7 +457,7 @@ func traceFlowRunningNodes(trace func(string), state *store.RunState, activity *
 		}
 		record, ok := activity.get(state.ID, id)
 		if !ok {
-			traceEvaluation(trace, "node.active run=%s node=%s attempt=%d idle=unknown idle_limit=unknown last_activity=unknown awaiting=assistant_progress_or_completion", state.ID, id, node.Attempts)
+			traceScoped(trace, state.ID, id, node.Attempts, "active", "idle=unknown/unknown context=unknown last=unknown awaiting=assistant_progress_or_completion")
 			continue
 		}
 		if !record.Active {
@@ -343,48 +478,102 @@ func traceFlowActivity(trace func(string), record flowActivityRecord, now time.T
 	} else if record.LastActivity == "provider.streaming" {
 		awaiting = "provider_stream"
 	}
-	traceEvaluation(trace, "node.active run=%s node=%s attempt=%d idle=%s idle_limit=%s last_activity=%s awaiting=%s", record.RunID, record.NodeID, record.Attempt, idle, record.IdleTimeout, record.LastActivity, awaiting)
+	traceScoped(trace, record.RunID, record.NodeID, record.Attempt, "active", fmt.Sprintf("idle=%s/%s context=%s last=%s awaiting=%s", idle, record.IdleTimeout, traceContextSize(record), record.LastActivity, awaiting))
+}
+
+func traceContextSize(record flowActivityRecord) string {
+	if !record.ContextKnown {
+		return "unknown"
+	}
+	return formatTraceCount(int64(record.ContextTokens)) + "t"
+}
+
+func formatTraceCount(value int64) string {
+	raw := strconv.FormatInt(value, 10)
+	start := 0
+	if strings.HasPrefix(raw, "-") {
+		start = 1
+	}
+	for index := len(raw) - 3; index > start; index -= 3 {
+		raw = raw[:index] + " " + raw[index:]
+	}
+	return raw
 }
 
 func traceEvaluationEvent(trace func(string), runID string, event store.Event) {
 	if trace == nil {
 		return
 	}
-	line := event.Type + " run=" + runID
-	if event.NodeID != "" {
-		line += " node=" + event.NodeID
-	}
+	details := []string{}
 	if providerAttempt, ok := event.Data["provider_attempt"]; ok {
 		if maxAttempts, exists := event.Data["max_provider_attempts"]; exists {
-			line += fmt.Sprintf(" provider_attempt=%v/%v", providerAttempt, maxAttempts)
+			details = append(details, fmt.Sprintf("provider_attempt=%v/%v", providerAttempt, maxAttempts))
 		} else {
-			line += fmt.Sprintf(" provider_attempt=%v", providerAttempt)
+			details = append(details, fmt.Sprintf("provider_attempt=%v", providerAttempt))
 		}
 	}
 	if providerAttempts, ok := event.Data["provider_attempts"]; ok {
-		line += fmt.Sprintf(" provider_attempts=%v", providerAttempts)
+		details = append(details, fmt.Sprintf("provider_attempts=%v", providerAttempts))
 	}
 	if maxAttempts, ok := event.Data["max_provider_attempts"]; ok && event.Data["provider_attempt"] == nil {
-		line += fmt.Sprintf(" max_provider_attempts=%v", maxAttempts)
+		details = append(details, fmt.Sprintf("max_provider_attempts=%v", maxAttempts))
 	}
 	for _, field := range []string{"delay", "not_before", "kind", "fingerprint"} {
 		if value, ok := event.Data[field]; ok {
-			line += fmt.Sprintf(" %s=%v", field, value)
+			details = append(details, fmt.Sprintf("%s=%v", field, value))
 		}
 	}
-	if attempt, ok := event.Data["attempt"]; ok {
-		line += fmt.Sprintf(" attempt=%v", attempt)
-	}
 	if code, ok := event.Data["code"]; ok {
-		line += fmt.Sprintf(" code=%v", code)
+		details = append(details, fmt.Sprintf("code=%v", code))
+	}
+	attempt := traceAttempt(event.Data["attempt"])
+	if attempt == 0 {
+		attempt = traceAttempt(event.Data["attempts"])
+	}
+	eventName := strings.ReplaceAll(event.Type, ".", " ")
+	if event.NodeID != "" {
+		eventName = strings.TrimPrefix(eventName, "node ")
+	}
+	traceScoped(trace, runID, event.NodeID, attempt, eventName, strings.Join(details, " "))
+}
+
+func traceScoped(trace func(string), runID, nodeID string, attempt int, event string, details ...string) {
+	if trace == nil {
+		return
+	}
+	line := traceRunScope(runID, nodeID, attempt) + " | " + event
+	if detail := joinTraceDetails(details...); detail != "" {
+		line += " | " + detail
 	}
 	trace(line)
 }
 
-func traceEvaluation(trace func(string), format string, args ...any) {
-	if trace != nil {
-		trace(fmt.Sprintf(format, args...))
+func traceRunScope(runID, nodeID string, attempt int) string {
+	scope := "RUN " + shortTraceRunID(runID)
+	if nodeID != "" {
+		scope += " · NODE " + nodeID
+		if attempt > 0 {
+			scope += fmt.Sprintf("#%d", attempt)
+		}
 	}
+	return scope
+}
+
+func shortTraceRunID(runID string) string {
+	if strings.HasPrefix(runID, "run-") && len(runID) > len("run-")+8 {
+		return runID[len("run-") : len("run-")+8]
+	}
+	return runID
+}
+
+func joinTraceDetails(values ...string) string {
+	filtered := values[:0]
+	for _, value := range values {
+		if value != "" {
+			filtered = append(filtered, value)
+		}
+	}
+	return strings.Join(filtered, " ")
 }
 
 func traceFlowChildSnapshot(trace func(string), states []*store.RunState) {
@@ -397,7 +586,7 @@ func traceFlowChildSnapshot(trace func(string), states []*store.RunState) {
 		if state == nil {
 			continue
 		}
-		traceEvaluation(trace, "child_run.%s run=%s parent=%s code=%s", state.Status, state.ID, state.ParentRunID, state.ErrorCode)
+		traceScoped(trace, state.ID, "", 0, "child "+state.Status, "id="+state.ID, "parent="+state.ParentRunID, "code="+state.ErrorCode)
 		ids := make([]string, 0, len(state.Nodes))
 		for id := range state.Nodes {
 			ids = append(ids, id)
@@ -408,7 +597,7 @@ func traceFlowChildSnapshot(trace func(string), states []*store.RunState) {
 			if node == nil || node.Status == store.NodeCompleted || node.Status == store.NodePending || node.Status == store.NodeSkipped {
 				continue
 			}
-			traceEvaluation(trace, "child_node.%s run=%s node=%s code=%s", node.Status, state.ID, id, node.ErrorCode)
+			traceScoped(trace, state.ID, id, node.Attempts, node.Status, "code="+node.ErrorCode)
 		}
 	}
 }
@@ -524,6 +713,22 @@ func (evaluationEngine) Report(_ context.Context, outputDir string) (any, error)
 	} else {
 		return nil, fmt.Errorf("load evaluation report: suite=%v; matrix=%v; task_matrix=%v", err, matrixErr, taskErr)
 	}
+}
+
+func (evaluationEngine) Stats(_ context.Context, outputDir string) (any, error) {
+	report, err := evaluation.LoadReport(outputDir)
+	if err != nil {
+		return nil, err
+	}
+	return evaluation.BuildStats(report), nil
+}
+
+func (evaluationEngine) Status(_ context.Context, outputDir string) (any, error) {
+	return evaluation.LoadFlowProgress(outputDir)
+}
+
+func (evaluationEngine) Inspect(_ context.Context, request tooling.EvaluationInspectRequest) (any, error) {
+	return evaluation.InspectFlowEvaluation(request.OutputDir, request.CaseID, request.Repeat)
 }
 
 func (e evaluationEngine) executionFactory(wf *spec.Workflow, cfg *spec.Config, workflowPath, configPath, workspace string) (evaluation.Execution, error) {

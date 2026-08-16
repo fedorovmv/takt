@@ -594,6 +594,8 @@
         "benchmark",
         "baseline",
         "candidate",
+        "baseline_output_dir",
+        "candidate_output_dir",
         "metrics",
         "paired_outcomes",
         "cases"
@@ -611,6 +613,12 @@
         "candidate": {
           "$ref": "#/$defs/strategyIdentity"
         },
+        "baseline_output_dir": {
+          "type": "string"
+        },
+        "candidate_output_dir": {
+          "type": "string"
+        },
         "metrics": {
           "type": "object",
           "additionalProperties": false,
@@ -627,6 +635,21 @@
               "$ref": "#/$defs/metricComparison"
             },
             "final_success_rate": {
+              "$ref": "#/$defs/metricComparison"
+            },
+            "input_tokens": {
+              "$ref": "#/$defs/metricComparison"
+            },
+            "output_tokens": {
+              "$ref": "#/$defs/metricComparison"
+            },
+            "total_tokens": {
+              "$ref": "#/$defs/metricComparison"
+            },
+            "total_attempts": {
+              "$ref": "#/$defs/metricComparison"
+            },
+            "total_duration_ms": {
               "$ref": "#/$defs/metricComparison"
             },
             "average_attempts_to_valid": {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -21,6 +22,7 @@ type FlowEvidence struct {
 	CaseID             string
 	Repeat             int
 	States             []*store.RunState
+	Events             []store.Event
 	Request            FlowValidationRequest
 	Validation         FlowValidationExecution
 	Diff               []byte
@@ -73,11 +75,25 @@ func WriteFlowEvidence(root string, item FlowEvidence, redactor *redact.Redactor
 	if err := os.MkdirAll(repeatRoot, 0755); err != nil {
 		return err
 	}
+	diff := item.Diff
+	if item.PreparedHeadCommit != "" && item.Request.Workspace != "" {
+		var err error
+		diff, err = flowWorkspaceDiff(item.Request.Workspace, item.PreparedHeadCommit)
+		if err != nil {
+			return err
+		}
+		if err := writeFlowGitBundle(item.Request.Workspace, filepath.Join(repeatRoot, "repository.bundle"), redactor); err != nil {
+			return err
+		}
+	}
 	rootID := ""
 	if len(item.States) > 0 && item.States[0] != nil {
 		rootID = item.States[0].ID
 	}
 	if err := writeFlowJSON(filepath.Join(repeatRoot, "run.json"), flowRunEvidence{RootRunID: rootID, States: item.States}, redactor); err != nil {
+		return err
+	}
+	if err := writeFlowJSON(filepath.Join(repeatRoot, "activity.json"), flowActivityEvidence{Events: flowAssistantActivity(item.Events)}, redactor); err != nil {
 		return err
 	}
 	if err := writeFlowJSON(filepath.Join(repeatRoot, "validation-request.json"), item.Request, redactor); err != nil {
@@ -90,8 +106,17 @@ func WriteFlowEvidence(root string, item FlowEvidence, redactor *redact.Redactor
 	if err := writeFlowBytes(filepath.Join(repeatRoot, "validator.stderr"), item.Validation.Stderr, redactor); err != nil {
 		return err
 	}
-	if err := writeFlowBytes(filepath.Join(repeatRoot, "diff.patch"), item.Diff, redactor); err != nil {
+	if err := writeFlowBytes(filepath.Join(repeatRoot, "diff.patch"), diff, redactor); err != nil {
 		return err
+	}
+	if item.Request.Workspace != "" {
+		if _, err := os.Stat(item.Request.Workspace); err == nil {
+			if err := copyFlowEvidenceTree(item.Request.Workspace, filepath.Join(repeatRoot, "source"), redactor, ".git", ".takt"); err != nil {
+				return fmt.Errorf("copy source evidence: %w", err)
+			}
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("stat source evidence: %w", err)
+		}
 	}
 	if item.SCMDir != "" {
 		if _, err := os.Stat(item.SCMDir); err == nil {
@@ -112,6 +137,19 @@ func WriteFlowEvidence(root string, item FlowEvidence, redactor *redact.Redactor
 		}
 	}
 	return writeFlowJSON(filepath.Join(repeatRoot, "artifacts", "manifest.json"), flowArtifactManifest{Artifacts: manifest}, redactor)
+}
+
+func flowAssistantActivity(events []store.Event) []flowActivityEvent {
+	activity := []flowActivityEvent{}
+	for _, event := range events {
+		if event.Type != "assistant.tool.started" {
+			continue
+		}
+		input, _ := event.Data["input"].(map[string]any)
+		tool, _ := event.Data["tool"].(string)
+		activity = append(activity, flowActivityEvent{Time: event.Time, Type: event.Type, RunID: event.RunID, NodeID: event.NodeID, Revision: event.Revision, Tool: tool, Input: input})
+	}
+	return activity
 }
 
 func writeFlowJSON(path string, value any, redactor *redact.Redactor) error {
@@ -135,13 +173,23 @@ func writeFlowJSON(path string, value any, redactor *redact.Redactor) error {
 	return writeFlowRaw(path, data, 0644)
 }
 
-func copyFlowEvidenceTree(source, destination string, redactor *redact.Redactor) error {
+func copyFlowEvidenceTree(source, destination string, redactor *redact.Redactor, excludedDirs ...string) error {
 	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlink forbidden: %s", path)
+		}
+		if path != source {
+			for _, name := range excludedDirs {
+				if entry.Name() == name {
+					if entry.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+			}
 		}
 		rel, err := filepath.Rel(source, path)
 		if err != nil {
@@ -174,6 +222,91 @@ func copyFlowEvidenceTree(source, destination string, redactor *redact.Redactor)
 		}
 		return writeFlowRaw(target, data, info.Mode())
 	})
+}
+
+func flowWorkspaceDiff(workspace, baseCommit string) ([]byte, error) {
+	tracked, err := exec.Command("git", "-C", workspace, "diff", "--binary", baseCommit, "--", ".", ":(exclude).takt").Output()
+	if err != nil {
+		return nil, fmt.Errorf("diff flow workspace: %w", err)
+	}
+	untracked, err := exec.Command("git", "-C", workspace, "ls-files", "--others", "--exclude-standard", "-z").Output()
+	if err != nil {
+		return nil, fmt.Errorf("list untracked flow source: %w", err)
+	}
+	paths := strings.Split(string(untracked), "\x00")
+	sort.Strings(paths)
+	result := append([]byte(nil), tracked...)
+	for _, path := range paths {
+		path = filepath.Clean(filepath.FromSlash(path))
+		if path == "." || path == ".takt" || strings.HasPrefix(path, ".takt"+string(filepath.Separator)) {
+			continue
+		}
+		cmd := exec.Command("git", "diff", "--binary", "--no-index", "--", os.DevNull, path)
+		cmd.Dir = workspace
+		patch, err := cmd.Output()
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
+				return nil, fmt.Errorf("diff untracked flow source %s: %w", path, err)
+			}
+		}
+		result = append(result, patch...)
+	}
+	return result, nil
+}
+
+func writeFlowGitBundle(workspace, destination string, redactor *redact.Redactor) error {
+	if err := scanGitHistoryForSecrets(workspace, redactor); err != nil {
+		return err
+	}
+	tmp := destination + ".tmp"
+	_ = os.Remove(tmp)
+	cmd := exec.Command("git", "-C", workspace, "bundle", "create", tmp, "--all")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("create git bundle: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	if err := os.Rename(tmp, destination); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("publish git bundle: %w", err)
+	}
+	return nil
+}
+
+func scanGitHistoryForSecrets(workspace string, redactor *redact.Redactor) error {
+	if redactor == nil {
+		return nil
+	}
+	objects, err := exec.Command("git", "-C", workspace, "rev-list", "--objects", "--all").Output()
+	if err != nil {
+		return fmt.Errorf("list Git history: %w", err)
+	}
+	seen := make(map[string]struct{})
+	for _, line := range strings.Split(string(objects), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		objectID := fields[0]
+		if _, ok := seen[objectID]; ok {
+			continue
+		}
+		seen[objectID] = struct{}{}
+		kind, err := exec.Command("git", "-C", workspace, "cat-file", "-t", objectID).Output()
+		if err != nil {
+			return fmt.Errorf("inspect Git object %s: %w", objectID, err)
+		}
+		if strings.TrimSpace(string(kind)) != "blob" {
+			continue
+		}
+		data, err := exec.Command("git", "-C", workspace, "cat-file", "blob", objectID).Output()
+		if err != nil {
+			return fmt.Errorf("read Git blob %s: %w", objectID, err)
+		}
+		if _, matched := redactor.Bytes(data); matched {
+			return fmt.Errorf("git blob contains known secret: %s", objectID)
+		}
+	}
+	return nil
 }
 
 func writeFlowBytes(path string, data []byte, redactor *redact.Redactor) error {

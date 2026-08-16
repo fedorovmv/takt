@@ -15,7 +15,7 @@ import (
 
 func evalCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: takt eval <flow|run|report|benchmark|task-benchmark|compare> [flags]")
+		return fmt.Errorf("usage: takt eval <flow|run|report|stats|status|inspect|benchmark|task-benchmark|compare> [flags]")
 	}
 	app, err := bootstrap.New(".", ".takt/config.yaml")
 	if err != nil {
@@ -203,6 +203,56 @@ func evalCmd(ctx context.Context, args []string) error {
 			return err
 		}
 		return printResult(*jsonOut, report)
+	case "stats":
+		fs := newFlagSet("eval stats")
+		jsonOut := fs.Bool("json", false, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt eval stats <evaluation-output-dir> [--json]")
+		}
+		stats, err := service.Stats(ctx, fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, stats)
+	case "status":
+		fs := newFlagSet("eval status")
+		jsonOut := fs.Bool("json", false, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt eval status <evaluation-output-dir> [--json]")
+		}
+		status, err := service.Status(ctx, fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, status)
+	case "inspect":
+		fs := newFlagSet("eval inspect")
+		caseID := fs.String("case", "", "inspect one case")
+		repeat := fs.Int("repeat", 0, "inspect one repeat of the selected case")
+		jsonOut := fs.Bool("json", false, "JSON output")
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--case": true, "--repeat": true, "--json": false})); err != nil {
+			return err
+		}
+		if fs.NArg() != 1 {
+			return fmt.Errorf("usage: takt eval inspect <evaluation-output-dir> [--case ID] [--repeat N] [--json]")
+		}
+		if *repeat < 0 {
+			return fmt.Errorf("repeat cannot be negative")
+		}
+		if *repeat > 0 && *caseID == "" {
+			return fmt.Errorf("repeat requires --case")
+		}
+		inspection, err := service.Inspect(ctx, tooling.EvaluationInspectRequest{OutputDir: fs.Arg(0), CaseID: *caseID, Repeat: *repeat})
+		if err != nil {
+			return err
+		}
+		return printResult(*jsonOut, inspection)
 	case "report":
 		fs := newFlagSet("eval report")
 		jsonOut := fs.Bool("json", true, "JSON output")
@@ -218,7 +268,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		}
 		return printResult(*jsonOut, report)
 	default:
-		return fmt.Errorf("usage: takt eval <flow|run|report|benchmark|task-benchmark|compare> [flags]")
+		return fmt.Errorf("usage: takt eval <flow|run|report|stats|status|inspect|benchmark|task-benchmark|compare> [flags]")
 	}
 }
 

@@ -5,7 +5,7 @@ EVAL_IDLE_TIMEOUT ?= 5m
 EVAL_PRESET ?=
 EVAL_MODEL_FLAGS ?=
 
-.PHONY: build test race vet fmt contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract architecture-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract host-integration-typescript simple-reliable-contract evidence-routing-contract e2e journeys smoke check demo eval-smoke eval-feature eval-review eval-architect
+.PHONY: build test race vet fmt contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract architecture-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract host-integration-typescript simple-reliable-contract evidence-routing-contract e2e journeys smoke check demo eval-smoke eval-feature-smoke eval-feature eval-review eval-architect eval-stats eval-status eval-inspect eval-compare
 
 build:
 	go build -o bin/takt ./cmd/takt
@@ -33,10 +33,33 @@ pi-contracts:
 eval-smoke:
 	TAKT_PI_SMOKE=1 TAKT_PI_SMOKE_PROVIDER=$(PI_SMOKE_PROVIDER) TAKT_PI_SMOKE_MODEL=$(PI_SMOKE_MODEL) go test ./internal/extensions/assistants/pi -run '^TestPiAdapterOptInSmoke$$' -count=1 -v
 
+eval-feature-smoke:
+	@test -f examples/flow-evaluation/mini-du/config.yaml || { echo 'missing examples/flow-evaluation/mini-du/config.yaml'; exit 1; }
+	@echo 'Starting live feature smoke: workflow=code:feature-development case=implement-basic flags=-s,-k,-H,-h,--help,--,-sk,-ks,-sH preset=$(EVAL_PRESET) model_flags=$(EVAL_MODEL_FLAGS) assistant_idle_timeout=$(EVAL_IDLE_TIMEOUT)'
+	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/feature-development/suite.yaml --case implement-basic $(if $(EVAL_PRESET),--model-preset $(EVAL_PRESET)) $(EVAL_MODEL_FLAGS) --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
+
 eval-feature:
 	@test -f examples/flow-evaluation/mini-du/config.yaml || { echo 'missing examples/flow-evaluation/mini-du/config.yaml'; exit 1; }
-	@echo 'Starting live feature evaluation: workflow=code:feature-development case=implement-basic preset=$(EVAL_PRESET) model_flags=$(EVAL_MODEL_FLAGS) assistant_idle_timeout=$(EVAL_IDLE_TIMEOUT)'
-	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/feature-development/suite.yaml --case implement-basic $(if $(EVAL_PRESET),--model-preset $(EVAL_PRESET)) $(EVAL_MODEL_FLAGS) --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
+	@echo 'Starting full live feature evaluation: workflow=code:feature-development cases=all flags=-s,-k,-H,-h,--help,--,-sk,-ks,-sH preset=$(EVAL_PRESET) model_flags=$(EVAL_MODEL_FLAGS) assistant_idle_timeout=$(EVAL_IDLE_TIMEOUT)'
+	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/feature-development/suite.yaml $(if $(EVAL_PRESET),--model-preset $(EVAL_PRESET)) $(EVAL_MODEL_FLAGS) --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
+
+eval-stats:
+	@test -n "$(RUN)" || { echo 'usage: make eval-stats RUN=.takt/evals/...'; exit 1; }
+	@go run ./cmd/takt eval stats "$(RUN)" --json=false
+
+eval-status:
+	@test -n "$(RUN)" || { echo 'usage: make eval-status RUN=.takt/evals/...'; exit 1; }
+	@go run ./cmd/takt eval status "$(RUN)" --json=false
+
+eval-inspect:
+	@test -n "$(RUN)" || { echo 'usage: make eval-inspect RUN=.takt/evals/... [CASE=case-id] [REPEAT=1]'; exit 1; }
+	@go run ./cmd/takt eval inspect "$(RUN)" $(if $(CASE),--case "$(CASE)") $(if $(REPEAT),--repeat "$(REPEAT)") --json=false
+
+eval-compare:
+	@test -n "$(A)" || { echo 'usage: make eval-compare A=.takt/evals/run-a B=.takt/evals/run-b'; exit 1; }
+	@test -n "$(B)" || { echo 'usage: make eval-compare A=.takt/evals/run-a B=.takt/evals/run-b'; exit 1; }
+	@echo 'Comparing evaluation runs: A=$(A) B=$(B) delta=B-A'
+	@go run ./cmd/takt eval compare "$(A)" "$(B)" --json=false
 
 eval-review:
 	@test -f examples/flow-evaluation/mini-du/config.yaml || { echo 'missing examples/flow-evaluation/mini-du/config.yaml'; exit 1; }

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"takt/internal/tooling/evaluation"
@@ -47,6 +48,31 @@ func TestFeatureCorpusManifest(t *testing.T) {
 		if len(oracle.AllowedPaths) != 5 || len(oracle.Scenarios) == 0 || len(oracle.Artifacts) != 5 || !oracle.RequirePR || !oracle.RequirePush {
 			t.Fatalf("case %s oracle=%+v", c.ID, oracle)
 		}
+		input, err := os.ReadFile(c.InputPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, contract := range []string{"Usage: mini-du [-s] [-k|-H] [--] [PATH...]", "1536 bytes as 1.5KiB", "-sH"} {
+			if !strings.Contains(string(input), contract) {
+				t.Fatalf("case %s input omits contract %q", c.ID, contract)
+			}
+		}
+		for _, scenario := range []string{"summary", "kibibytes", "humanized", "help_short", "help_long", "double_dash", "combined_flags", "invalid_option"} {
+			if !containsString(oracle.Scenarios, scenario) {
+				t.Fatalf("case %s omits public flag scenario %s: %v", c.ID, scenario, oracle.Scenarios)
+			}
+		}
+		if c.ID == "implement-basic" {
+			for _, flag := range []string{"-s", "-k", "-H", "-h", "--help", "--"} {
+				if !strings.Contains(string(input), flag) {
+					t.Fatalf("basic input omits public flag %s: %s", flag, input)
+				}
+			}
+			wantScenarios := []string{"empty", "nested", "summary", "kibibytes", "humanized", "help_short", "help_long", "double_dash", "combined_flags", "invalid_option", "missing"}
+			if !reflect.DeepEqual(oracle.Scenarios, wantScenarios) {
+				t.Fatalf("basic scenarios=%v want=%v", oracle.Scenarios, wantScenarios)
+			}
+		}
 		cmd := exec.Command("go", "test", "./...")
 		cmd.Dir = filepath.Join(c.WorkspacePath)
 		if err := cmd.Run(); err != nil {
@@ -56,4 +82,13 @@ func TestFeatureCorpusManifest(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("cases=%v want=%v", got, want)
 	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
