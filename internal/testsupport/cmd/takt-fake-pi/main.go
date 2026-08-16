@@ -445,6 +445,10 @@ func parseArgs(args []string) (options, error) {
 		case "--session-dir":
 			value, err = next()
 			opts.sessionDir = value
+		case "--tools", "--skill":
+			_, err = next()
+		case "--no-tools", "--no-skills":
+			// Policy flags are accepted by the fake and intentionally have no effect on its deterministic response.
 		case "--approve", "-a":
 			opts.projectTrust = "approve"
 		case "--no-approve", "-na":
