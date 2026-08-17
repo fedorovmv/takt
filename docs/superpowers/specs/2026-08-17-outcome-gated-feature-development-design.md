@@ -1,6 +1,6 @@
 # Outcome-gated `feature-development`: дизайн
 
-Статус: **UPDATED AFTER BASELINE; CONDITIONAL design gate; implementation not started**
+Статус: **REVIEWED AFTER BASELINE; READY design gate; implementation not started**
 Дата: 2026-08-17
 Обновлено: 2026-08-18
 
@@ -347,28 +347,31 @@ exactly-once eval PR gate из §5. Fresh retry исключён из production
    допустима только для `action: retry`;
 2. verdict parser принимает ровно одну строку `verdict: PASS|REPAIR|BLOCKED` и
    fail-closed отклоняет missing, unknown, malformed и duplicate verdict;
-3. initial `PASS` skips repair/revalidation и допускает final deterministic validate;
-4. initial `BLOCKED` safe-stops до PR;
-5. initial `REPAIR` запускает ровно один fresh repair node и одну независимую
+3. terminal failure `validate-agent` приводит к явному verdict/parser failure и
+   `review-acceptance-gate` reject; skipped repair/revalidation не могут превратить
+   эту цепочку в success;
+4. initial `PASS` skips repair/revalidation и допускает final deterministic validate;
+5. initial `BLOCKED` safe-stops до PR;
+6. initial `REPAIR` запускает ровно один fresh repair node и одну независимую
    revalidation;
-6. revalidation `PASS` допускает final deterministic validate;
-7. revalidation `REPAIR` и `BLOCKED` safe-stop до PR без второй repair-попытки;
-8. repair assistant failure, missing `review-fixes.md`, missing
+7. revalidation `PASS` допускает final deterministic validate;
+8. revalidation `REPAIR` и `BLOCKED` safe-stop до PR без второй repair-попытки;
+9. repair assistant failure, missing `review-fixes.md`, missing
    `revalidation.md` или invalid second verdict safe-stop до PR;
-9. отсутствие PR effect safe-stops без повторного create;
-10. assistant `exit` после одного подтверждённого create и корректных PR artifacts
+10. отсутствие PR effect safe-stops без повторного create;
+11. assistant `exit` после одного подтверждённого create и корректных PR artifacts
     принимается result gate без повторного SCM call;
-11. два `pr create` в одном fixture run отклоняются exactly-once gate;
-12. один fixture `pr create` плюс non-empty `pr.md`/`pr-url.txt` принимается;
-13. missing/empty/directory artifacts отклоняются соответствующим stage gate;
-14. полный fake-agent E2E сохраняет пять стандартных feature artifacts и
+12. два `pr create` в одном fixture run отклоняются exactly-once gate;
+13. один fixture `pr create` плюс non-empty `pr.md`/`pr-url.txt` принимается;
+14. missing/empty/directory artifacts отклоняются соответствующим stage gate;
+15. полный fake-agent E2E сохраняет пять стандартных feature artifacts и
     conditional repair/revalidation artifacts, когда выбрана repair branch;
-15. mini-du validator version 3 содержит regression scenarios для cross-argument
+16. mini-du validator version 3 содержит regression scenarios для cross-argument
     hardlink dedup и bare `--`; focused validator tests показывают, что прежний
     baseline patch ими отклоняется;
-16. profile compatibility tests фиксируют новую profile version и materialized
+17. profile compatibility tests фиксируют новую profile version и materialized
     workflow/commands;
-17. focused Go suites, `go test ./... -count=1`, race, vet, `make check` и
+18. focused Go suites, `go test ./... -count=1`, race, vet, `make check` и
     `scripts/verify.sh` проходят.
 
 После implementation выполняется реальный Pi smoke поколения v2. Критерий:
@@ -417,12 +420,13 @@ workflow/command profile version; persistence schema не меняется.
 
 ## 11. Проектный шлюз
 
-**Статус: CONDITIONAL. Уверенность: высокая.**
+**Статус: READY. Уверенность: высокая.**
 
-Открытых P0 нет. Baseline выполнен, U-03 закрыт отказом от fresh retry, а U-10-U-12
-получили fail-closed contracts. Условие перехода к regression tests и production
-diff — повторный review этой обновлённой spec. После implementation Pi smoke
-поколения v2 закрывает условие перед финальным commit либо фиксирует safe rollback.
+Открытых P0/P1 нет. Baseline выполнен, U-03 закрыт отказом от fresh retry,
+U-10-U-12 получили fail-closed contracts, а повторный review подтвердил topology
+по существующим runtime semantics. Можно переходить к regression tests и production
+diff. После implementation Pi smoke поколения v2 закрывает release condition либо
+фиксирует safe rollback.
 
 ## 12. Контракт передачи в реализацию
 
@@ -432,10 +436,10 @@ diff — повторный review этой обновлённой spec. Пос�
 новые runtime/YAML semantics не добавляются.
 
 Если обнаружится факт, который меняет эти contracts, persistence, side-effect
-semantics или опровергает U-03/U-10/U-11/U-12, остановить реализацию, зафиксировать evidence и
-вернуть задачу на `design-unknowns`. Локальные изменения prompts/tests допустимы
-только когда они реализуют описанные output contracts и не предписывают модели
-метод работы.
+semantics или опровергает U-03/U-10/U-11/U-12, остановить реализацию,
+зафиксировать evidence и вернуть задачу на `design-unknowns`. Локальные изменения
+prompts/tests допустимы только когда они реализуют описанные output contracts и
+не предписывают модели метод работы.
 
 Фактический implementation delta:
 
@@ -444,6 +448,9 @@ semantics или опровергает U-03/U-10/U-11/U-12, остановит�
   session и session при `action != retry`;
 - schema/authoring contracts: добавляются focused tests для JSON Schema и Go
   validation, а `docs/03-specification.md` фиксирует допустимые значения;
+- product version: ужесточение Workflow/schema contract резервирует следующий alpha
+  `0.1.59-alpha`; синхронно обновляются root `VERSION`, `internal/version.Value`,
+  changelog и version/status documentation;
 - `implement`: topology baseline сохраняется; fresh/allow-failure retry change не
   добавляется, обязательный `implementation.md` и repository hook остаются;
 - `validate-agent`: пишет `validation.md` со strict verdict line;
@@ -466,8 +473,7 @@ semantics или опровергает U-03/U-10/U-11/U-12, остановит�
   retry policy;
 - code profile: при фактическом profile change версия повышается с `0.18.0` до
   `0.19.0`, синхронно обновляются profile README, compatibility/core contract,
-  implementation status и changelog; schema-only change до baseline profile
-  version не повышает;
+  implementation status и changelog;
 - mini-du validator: добавляются cross-argument hardlink и bare `--` scenarios;
   все mini-du suite descriptors, использующие общий validator
   (`feature-development`, `review`, `architect`), повышаются `2 -> 3`, обновляются
@@ -476,6 +482,4 @@ semantics или опровергает U-03/U-10/U-11/U-12, остановит�
   trend; сохранённые evidence не переписываются.
 
 Не добавлять fresh retry, второй repair, semantic Markdown parser сверх strict
-verdict line, model-specific prompting или production SCM reconciliation. Эта
-обновлённая spec должна пройти повторный review gate до regression tests и
-production edits.
+verdict line, model-specific prompting или production SCM reconciliation.
