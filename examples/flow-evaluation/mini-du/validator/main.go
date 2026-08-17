@@ -164,7 +164,7 @@ func loadOracle(file string) (miniDUOracle, error) {
 	if len(oracle.AllowedPaths) == 0 || len(oracle.Scenarios) == 0 {
 		return oracle, errors.New("allowed_paths and scenarios are required")
 	}
-	known := map[string]bool{"empty": true, "nested": true, "multiple": true, "unicode": true, "spaces": true, "symlink": true, "hardlink": true, "summary": true, "kibibytes": true, "humanized": true, "help_short": true, "help_long": true, "double_dash": true, "combined_flags": true, "invalid_option": true, "missing": true, "mixed-missing": true}
+	known := map[string]bool{"empty": true, "nested": true, "multiple": true, "unicode": true, "spaces": true, "symlink": true, "hardlink": true, "hardlink_multiple": true, "summary": true, "kibibytes": true, "humanized": true, "help_short": true, "help_long": true, "double_dash": true, "double_dash_default": true, "combined_flags": true, "invalid_option": true, "missing": true, "mixed-missing": true}
 	for _, scenario := range oracle.Scenarios {
 		if !known[scenario] {
 			return oracle, fmt.Errorf("unknown scenario %q", scenario)
@@ -482,6 +482,8 @@ func compareScenario(bin, scenario string) error {
 			return err
 		}
 		return compareCandidateOracle(bin, []string{"--", "-s"}, []string{"-k", "--", "-s"}, root, root, scenario)
+	case "double_dash_default":
+		return compareCandidateOracle(bin, []string{"--"}, []string{"-k", "--"}, root, root, scenario)
 	case "combined_flags":
 		for _, flags := range []string{"-sk", "-ks"} {
 			if err := compareCandidateOracle(bin, []string{flags, root}, []string{"-k", "-s", root}, "", root, scenario+flags); err != nil {
@@ -519,6 +521,12 @@ func compareScenario(bin, scenario string) error {
 		if err = os.WriteFile(filepath.Join(root, "target"), []byte("x"), 0644); err == nil {
 			err = os.Link(filepath.Join(root, "target"), filepath.Join(root, "link"))
 		}
+	case "hardlink_multiple":
+		first, second := filepath.Join(root, "first"), filepath.Join(root, "second")
+		if err = os.WriteFile(first, bytes.Repeat([]byte("x"), 8192), 0644); err == nil {
+			err = os.Link(first, second)
+		}
+		args = []string{first, second}
 	case "summary":
 		args = []string{"-s", root}
 	case "kibibytes":
@@ -660,7 +668,7 @@ func humanizedSize(bytes int64) string {
 func normalizeOutput(s, root, scenario string) string {
 	s = strings.ReplaceAll(strings.ReplaceAll(s, "\\", "/"), filepath.ToSlash(root), "<ROOT>")
 	lines := strings.Split(strings.TrimSpace(s), "\n")
-	if scenario == "multiple" || scenario == "mixed-missing" {
+	if scenario == "multiple" || scenario == "hardlink_multiple" || scenario == "mixed-missing" {
 		for i := range lines {
 			for j := i + 1; j < len(lines); j++ {
 				if lines[j] < lines[i] {

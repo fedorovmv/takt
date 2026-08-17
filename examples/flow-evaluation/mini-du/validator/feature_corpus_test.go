@@ -62,13 +62,19 @@ func TestFeatureCorpusManifest(t *testing.T) {
 				t.Fatalf("case %s omits public flag scenario %s: %v", c.ID, scenario, oracle.Scenarios)
 			}
 		}
+		if c.ID == "implement-basic" && !containsString(oracle.Scenarios, "double_dash_default") {
+			t.Fatalf("case %s omits validator-v3 scenario double_dash_default: %v", c.ID, oracle.Scenarios)
+		}
+		if c.ID == "implement-symlink-and-hardlink" && !containsString(oracle.Scenarios, "hardlink_multiple") {
+			t.Fatalf("case %s omits validator-v3 scenario hardlink_multiple: %v", c.ID, oracle.Scenarios)
+		}
 		if c.ID == "implement-basic" {
 			for _, flag := range []string{"-s", "-k", "-H", "-h", "--help", "--"} {
 				if !strings.Contains(string(input), flag) {
 					t.Fatalf("basic input omits public flag %s: %s", flag, input)
 				}
 			}
-			wantScenarios := []string{"empty", "nested", "summary", "kibibytes", "humanized", "help_short", "help_long", "double_dash", "combined_flags", "invalid_option", "missing"}
+			wantScenarios := []string{"empty", "nested", "summary", "kibibytes", "humanized", "help_short", "help_long", "double_dash", "combined_flags", "invalid_option", "missing", "double_dash_default"}
 			if !reflect.DeepEqual(oracle.Scenarios, wantScenarios) {
 				t.Fatalf("basic scenarios=%v want=%v", oracle.Scenarios, wantScenarios)
 			}

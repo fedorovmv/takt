@@ -6,7 +6,7 @@ external:
   github: {mode: fixture, require: repository}
 validator:
   id: mini-du
-  version: "2"
+  version: "3"
   command: [go, run, ../validator]
   path: ../validator
   timeout: 2m

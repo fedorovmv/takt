@@ -182,6 +182,13 @@ outputs in the validator diagnostic. Advisory analysis must explain that exact
 delta; an unrelated discrepancy mentioned by a validation assistant is not a
 causally sufficient root cause.
 
+The mini-du validator version 3 adds the `hardlink_multiple` and
+`double_dash_default` scenarios. Its evaluation generations are deliberately
+non-comparable: registry-old runs are generation v0, the corrected-registry /
+validator-2 baseline is generation v1, and validator-3 runs are generation v2.
+Cross-generation trend comparison is forbidden; compare quality only within one
+validator/oracle generation.
+
 ### Runs, outcomes и проценты
 
 Один flow evaluation Run — это один полный изолированный запуск workflow для
