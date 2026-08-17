@@ -233,6 +233,9 @@ func validateHookSet(hooks spec.HookSet, scope string) error {
 	for _, list := range lists {
 		for _, hook := range list.items {
 			if hook.OnFailure.Session == "" {
+				if hook.OnFailure.HasSession() {
+					return fmt.Errorf("%s.%s hook %q session must be fresh or resume", scope, list.name, hook.ID)
+				}
 				continue
 			}
 			if hook.OnFailure.Action != "retry" {

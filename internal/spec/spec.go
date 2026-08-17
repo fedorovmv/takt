@@ -1,6 +1,9 @@
 package spec
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 const MaxLoopGroupIterations = 64
 
@@ -301,8 +304,46 @@ type HookSpec struct {
 }
 
 type HookDecision struct {
-	Action  string `json:"action,omitempty"`
-	Session string `json:"session,omitempty"`
+	Action         string `json:"action,omitempty"`
+	Session        string `json:"session,omitempty"`
+	sessionPresent bool
+}
+
+func (d *HookDecision) UnmarshalJSON(data []byte) error {
+	var value struct {
+		Action  string          `json:"action,omitempty"`
+		Session json.RawMessage `json:"session"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		return err
+	}
+	*d = HookDecision{Action: value.Action}
+	if value.Session == nil {
+		return nil
+	}
+	d.sessionPresent = true
+	if bytes.Equal(bytes.TrimSpace(value.Session), []byte("null")) {
+		return nil
+	}
+	return json.Unmarshal(value.Session, &d.Session)
+}
+
+func (d HookDecision) HasSession() bool {
+	return d.sessionPresent || d.Session != ""
+}
+
+func (d HookDecision) MarshalJSON() ([]byte, error) {
+	if !d.HasSession() {
+		return json.Marshal(struct {
+			Action string `json:"action,omitempty"`
+		}{Action: d.Action})
+	}
+	return json.Marshal(struct {
+		Action  string `json:"action,omitempty"`
+		Session string `json:"session"`
+	}{Action: d.Action, Session: d.Session})
 }
 
 type Config struct {

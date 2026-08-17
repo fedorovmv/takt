@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -427,5 +428,61 @@ func TestValidateHookFailureSession(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestLoadRejectsExplicitEmptyHookFailureSession(t *testing.T) {
+	for _, session := range []string{"\"\"", "null"} {
+		t.Run(session, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "workflow.yaml")
+			source := fmt.Sprintf(`name: hook-session
+nodes:
+  - id: run
+    bash: 'true'
+    hooks:
+      after_node:
+        - bash: 'true'
+          on_failure:
+            action: continue
+            session: %s
+`, session)
+			if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			wf, err := Load(path)
+			if err == nil || !strings.Contains(err.Error(), "session") {
+				var hasSession bool
+				if wf != nil {
+					hasSession = wf.Nodes[0].Hooks.AfterNode[0].OnFailure.HasSession()
+				}
+				t.Fatalf("explicit session %s was accepted: %v (has session: %v)", session, err, hasSession)
+			}
+		})
+	}
+}
+
+func TestLoadAcceptsOmittedHookFailureSession(t *testing.T) {
+	for _, action := range []string{"continue", "retry"} {
+		t.Run(action, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "workflow.yaml")
+			source := fmt.Sprintf(`name: hook-session
+nodes:
+  - id: run
+    bash: 'true'
+    hooks:
+      after_node:
+        - bash: 'true'
+          on_failure:
+            action: %s
+`, action)
+			if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(path); err != nil {
+				t.Fatalf("omitted session with action %s rejected: %v", action, err)
+			}
+		})
 	}
 }
