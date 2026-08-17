@@ -146,6 +146,19 @@ func TestDoubleDashDefaultRejectsNoOutput(t *testing.T) {
 	}
 }
 
+func TestValidatorV3ScenariosAcceptDuWrapper(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "candidate")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexec du \"$@\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []string{"hardlink_multiple", "double_dash_default"} {
+		if err := compareScenario(bin, scenario); err != nil {
+			t.Fatalf("du wrapper rejected for %s: %v", scenario, err)
+		}
+	}
+}
+
 func TestInvalidOptionAcceptsAnyStderrDiagnostic(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "candidate")
