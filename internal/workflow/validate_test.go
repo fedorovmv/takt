@@ -388,3 +388,44 @@ func TestValidateAcceptsConstitutionalWhenGate(t *testing.T) {
 		t.Fatalf("small declarative when gate rejected: %v", err)
 	}
 }
+
+func TestValidateHookFailureSession(t *testing.T) {
+	hookLists := map[string]func(*spec.HookSet, spec.HookSpec){
+		"before_node":     func(h *spec.HookSet, hook spec.HookSpec) { h.BeforeNode = []spec.HookSpec{hook} },
+		"after_node":      func(h *spec.HookSet, hook spec.HookSpec) { h.AfterNode = []spec.HookSpec{hook} },
+		"before_complete": func(h *spec.HookSet, hook spec.HookSpec) { h.BeforeComplete = []spec.HookSpec{hook} },
+		"on_failure":      func(h *spec.HookSet, hook spec.HookSpec) { h.OnFailure = []spec.HookSpec{hook} },
+	}
+	cases := []struct {
+		name       string
+		action     string
+		session    string
+		want       string
+		wantAccept bool
+	}{
+		{name: "retry fresh", action: "retry", session: "fresh", wantAccept: true},
+		{name: "retry resume", action: "retry", session: "resume", wantAccept: true},
+		{name: "retry unknown session", action: "retry", session: "reuse", want: "must be fresh or resume"},
+		{name: "continue fresh", action: "continue", session: "fresh", want: "requires action retry"},
+		{name: "fail resume", action: "fail", session: "resume", want: "requires action retry"},
+	}
+	for listName, setHooks := range hookLists {
+		for _, tc := range cases {
+			t.Run(listName+"/"+tc.name, func(t *testing.T) {
+				hooks := spec.HookSet{}
+				setHooks(&hooks, spec.HookSpec{Bash: "true", OnFailure: spec.HookDecision{Action: tc.action, Session: tc.session}})
+				wf := &spec.Workflow{Name: "hook-session", Nodes: []spec.Node{{ID: "run", Bash: "true", Hooks: hooks}}}
+				err := Validate(wf)
+				if tc.wantAccept {
+					if err != nil {
+						t.Fatalf("valid hook session rejected: %v", err)
+					}
+					return
+				}
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("expected error containing %q, got %v", tc.want, err)
+				}
+			})
+		}
+	}
+}

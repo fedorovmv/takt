@@ -779,6 +779,9 @@ Timeout и cancellation portable hook относятся ко всей попы�
 - `retry`;
 - `fail`.
 
+`hook.on_failure.session` accepts only `fresh` or `resume` and is valid only when
+`action` is `retry`.
+
 Stdout и stderr неуспешного hook добавляются в `$FEEDBACK` следующей попытки.
 
 ## 9. YAML input

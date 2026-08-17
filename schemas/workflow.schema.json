@@ -260,9 +260,31 @@
           ]
         },
         "session": {
-          "type": "string"
+          "enum": [
+            "fresh",
+            "resume"
+          ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "session"
+            ]
+          },
+          "then": {
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "const": "retry"
+              }
+            }
+          }
+        }
+      ]
     },
     "hook": {
       "type": "object",

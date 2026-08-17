@@ -32,6 +32,9 @@ binding из `config.assistants`.
 - валидатор действительно возвращает ненулевой exit code;
 - попытка не завершилась timeout/cancellation/runtime error.
 
+`hook.on_failure.session` принимает только `fresh` или `resume` и используется
+только вместе с `action: retry`.
+
 ## Модель не та
 
 Проверь приоритет:

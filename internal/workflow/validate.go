@@ -41,6 +41,9 @@ func Validate(wf *spec.Workflow) error {
 			return fmt.Errorf("input.format must be text, markdown, or json")
 		}
 	}
+	if err := validateHookSet(wf.Hooks, "workflow.hooks"); err != nil {
+		return err
+	}
 	return validateNodes(wf.Nodes, "nodes", false)
 }
 
@@ -194,6 +197,7 @@ func indexNodes(nodes []spec.Node, scope string) (map[string]spec.Node, error) {
 
 func validateNode(node spec.Node, scope string, insideLoop bool) error {
 	checks := []func(spec.Node) error{
+		func(node spec.Node) error { return validateHookSet(node.Hooks, fmt.Sprintf("node %q hooks", node.ID)) },
 		validateActionShape,
 		validateWorkflowAction,
 		validateInternalAction,
@@ -214,6 +218,32 @@ func validateNode(node spec.Node, scope string, insideLoop bool) error {
 		}
 	}
 	return validateLoop(node, scope, insideLoop)
+}
+
+func validateHookSet(hooks spec.HookSet, scope string) error {
+	lists := []struct {
+		name  string
+		items []spec.HookSpec
+	}{
+		{name: "before_node", items: hooks.BeforeNode},
+		{name: "on_failure", items: hooks.OnFailure},
+		{name: "after_node", items: hooks.AfterNode},
+		{name: "before_complete", items: hooks.BeforeComplete},
+	}
+	for _, list := range lists {
+		for _, hook := range list.items {
+			if hook.OnFailure.Session == "" {
+				continue
+			}
+			if hook.OnFailure.Action != "retry" {
+				return fmt.Errorf("%s.%s hook %q session requires action retry", scope, list.name, hook.ID)
+			}
+			if hook.OnFailure.Session != "fresh" && hook.OnFailure.Session != "resume" {
+				return fmt.Errorf("%s.%s hook %q session must be fresh or resume", scope, list.name, hook.ID)
+			}
+		}
+	}
+	return nil
 }
 
 var nodeIDRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)

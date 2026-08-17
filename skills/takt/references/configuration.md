@@ -126,6 +126,9 @@ assistants:
 - `{{workspace}}`;
 - `{{session.mode}}`, `{{session.id}}`.
 
+`hook.on_failure.session` accepts only `fresh` or `resume` and is valid only when
+`action` is `retry`.
+
 Если protocol не задан и `{{prompt}}` отсутствует, prompt передаётся через stdin. `v1alpha2` является нейтральной границей `SessionAdapter` для Codex, Oh My Pi, Qwen CLI и других coding-agent wrappers; имена примеров не означают, что wrappers входят в поставку.
 
 ## Логический coding-agent

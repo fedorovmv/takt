@@ -205,6 +205,8 @@ hooks:
 ```
 
 Действия hook: `continue`, `retry`, `fail`.
+`hook.on_failure.session` accepts only `fresh` or `resume` and is valid only when
+`action` is `retry`.
 
 ## Переменные
 

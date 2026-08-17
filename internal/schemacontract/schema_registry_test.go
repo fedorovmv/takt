@@ -65,6 +65,57 @@ func TestSchemaRegistryIsOfflineAndDocumented(t *testing.T) {
 	}
 }
 
+func TestWorkflowSchemaValidatesHookFailureSessions(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "schemas", "workflow.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	document, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compiler.AddResource("workflow.schema.json", document); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := compiler.Compile("workflow.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := map[string]any{
+		"name": "hook-session",
+		"nodes": []any{map[string]any{
+			"id": "run", "bash": "true",
+			"hooks": map[string]any{"after_node": []any{map[string]any{
+				"bash":       "true",
+				"on_failure": map[string]any{"action": "retry", "session": "fresh"},
+			}}},
+		}},
+	}
+	for _, session := range []string{"fresh", "resume"} {
+		fixture := cloneJSONMap(base)
+		hook := fixture["nodes"].([]any)[0].(map[string]any)["hooks"].(map[string]any)["after_node"].([]any)[0].(map[string]any)
+		hook["on_failure"].(map[string]any)["session"] = session
+		if err := schema.Validate(fixture); err != nil {
+			t.Fatalf("retry + %s rejected: %v", session, err)
+		}
+	}
+	for name, mutate := range map[string]func(map[string]any){
+		"retry reuse":    func(h map[string]any) { h["session"] = "reuse" },
+		"continue fresh": func(h map[string]any) { h["action"] = "continue" },
+		"fail resume":    func(h map[string]any) { h["action"], h["session"] = "fail", "resume" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			fixture := cloneJSONMap(base)
+			hook := fixture["nodes"].([]any)[0].(map[string]any)["hooks"].(map[string]any)["after_node"].([]any)[0].(map[string]any)["on_failure"].(map[string]any)
+			mutate(hook)
+			if err := schema.Validate(fixture); err == nil {
+				t.Fatal("expected schema rejection")
+			}
+		})
+	}
+}
+
 func TestEvaluationSchemasValidateFlowFixtures(t *testing.T) {
 	sha := strings.Repeat("a", 64)
 	metric := map[string]any{"baseline": nil, "candidate": nil, "delta": nil, "delta_percent": nil}
