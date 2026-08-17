@@ -147,4 +147,30 @@ func TestEvaluationProfileInstallsReadOnlyAnalysisWorkflow(t *testing.T) {
 	if got := resolved.EffectiveInput(); got.Format != "json" || got.PreservePath {
 		t.Fatalf("unexpected analysis input: %+v", got)
 	}
+	command, err := os.ReadFile(filepath.Join(root, ".takt", "profiles", "evaluation", "commands", "analyze.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	commandText := strings.Join(strings.Fields(string(command)), " ")
+	for _, contract := range []string{"causally sufficient", "exact observed candidate/oracle delta", "unrelated discrepancy"} {
+		if !strings.Contains(commandText, contract) {
+			t.Fatalf("analysis command omits %q", contract)
+		}
+	}
+}
+
+func TestCodeValidationCommandRequiresExactReferenceParity(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init("code", root, false); err != nil {
+		t.Fatal(err)
+	}
+	command, err := os.ReadFile(filepath.Join(root, ".takt", "profiles", "code", "commands", "validate-change.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contract := range []string{"exact exit code, stdout, and stderr", "must not be waived as presentation-only"} {
+		if !strings.Contains(string(command), contract) {
+			t.Fatalf("validation command omits %q", contract)
+		}
+	}
 }

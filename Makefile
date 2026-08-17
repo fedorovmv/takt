@@ -72,8 +72,8 @@ eval-architect:
 	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/architect/suite.yaml --case collapse-redundant-layers $(if $(EVAL_PRESET),--model-preset $(EVAL_PRESET)) $(EVAL_MODEL_FLAGS) --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
 
 eval-analyze:
-	@test -n "$(RUN)" || { echo 'usage: make eval-analyze RUN=.takt/evals/... [CASE=case-id] [REPEAT=1] [EVAL_CONFIG=path] [EVAL_PRESET=name]'; exit 1; }
-	@go run ./cmd/takt eval analyze "$(RUN)" $(if $(CASE),--case "$(CASE)") $(if $(REPEAT),--repeat "$(REPEAT)") $(if $(EVAL_CONFIG),--config "$(EVAL_CONFIG)") $(if $(EVAL_PRESET),--model-preset "$(EVAL_PRESET)") --trace --json=false
+	@test -n "$(RUN)" || { echo 'usage: make eval-analyze RUN=.takt/evals/... [CASE=case-id] [REPEAT=1] [EVAL_CONFIG=path] [EVAL_PRESET=name] [EVAL_ANALYSIS_LANGUAGE=en|ru]'; exit 1; }
+	@go run ./cmd/takt eval analyze "$(RUN)" $(if $(CASE),--case "$(CASE)") $(if $(REPEAT),--repeat "$(REPEAT)") $(if $(EVAL_CONFIG),--config "$(EVAL_CONFIG)") $(if $(EVAL_PRESET),--model-preset "$(EVAL_PRESET)") $(if $(EVAL_ANALYSIS_LANGUAGE),--language "$(EVAL_ANALYSIS_LANGUAGE)") --trace --json=false
 
 opencode-contracts:
 	go test ./internal/assistant -run 'OpenCode|VersionProbe' -count=1

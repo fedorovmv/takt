@@ -1340,6 +1340,7 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
 
 **Interfaces:**
 - `flow_scm.go` embeds the canonical script with `//go:embed fixtures/fake-gh` and writes it mode `0755` before baseline commit.
+- The script first derives fixture and state paths from runtime-provided `TAKT_WORKSPACE`, then from an installed `.takt/eval/bin/gh` layout, and ignores `FAKE_GH_*` in either mode; environment paths remain a standalone-test fallback.
 - Effective assistant env is applied to every configured assistant in the copied config and uses `{{workspace}}` paths.
 
 - [ ] **Step 1: Write failing fake-`gh` contract tests.**
@@ -1478,7 +1479,7 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
   Assert:
 
   - feature record/events contain completed `implement`, `validate-agent`,
-    deterministic `validate`, `create-pr`, `summary`; local origin contains the
+    deterministic `validate`, `create-pr`, `pr-effect-gate`, `summary`; local origin contains the
     head ref; fake-gh log contains `pr create`; evidence contains `implementation.md`,
     `validation.md`, `pr.md`, `pr-url.txt`, `summary.md`; oracle ran before cleanup;
   - comprehensive record/events contain completed root `review`, root `summary`,
@@ -1514,7 +1515,7 @@ Public examples live under `examples/flow-evaluation/mini-du/`; they do not ente
 
   ```text
   feature-development.yaml:
-    implement, validate-agent, validate, create-pr, summary
+    implement, validate-agent, validate, create-pr, pr-effect-gate, summary
 
   comprehensive-pr-review.yaml:
     review, summary

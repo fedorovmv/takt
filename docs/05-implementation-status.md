@@ -20,6 +20,9 @@
 - Pi model output exhaustion (`stopReason: length`) fail-closed как обычный
   `exit`; `code:feature-development` делает до трёх exact-session попыток вместо
   ложного `implement: completed` без результата.
+- `code:feature-development` после assistant `create-pr` выполняет eval-only
+  deterministic `pr-effect-gate`: при наличии SCM fixture он требует запись
+  `pr create` в `calls.log` и не запускает `summary` при отсутствии side effect.
 
 ## Shared model presets — реализовано
 
@@ -246,7 +249,35 @@ the same application/runFlowCase boundary. It selects non-`true_accept` cases by
 default, requires `takt_analyze`, persists redacted timestamped manifests and
 structured advisory reports, including redacted prompt fingerprints, deterministic
 inspection context, citation-checked evidence, analyzer session evidence and
-trace, and leaves the source evaluation report unchanged.
+trace, and leaves the source evaluation report unchanged. The generated
+`evidence-manifest.json` is a validated citation target; relative analyzer
+session paths are resolved inside the execution workspace, and bounded redacted
+raw model output is retained for protocol failures. Citations that repeat the
+manifest's `evidence_root/` prefix are normalized only to a listed evidence
+file. Equivalent `#/pointer`, `path:line-range`, and zero-based text `/N`
+forms are normalized to the canonical citation syntax. Completed analyses must
+state a causal mechanism, classify the failure point and name a concrete
+prevention, backed by at least one checked non-validator runtime/assistant/
+artifact/source/diff/SCM citation; the deterministic verdict remains immutable.
+The analyzer accepts `--language en|ru` (default `en`); the selected language
+is persisted in the analysis report and manifest while schema keys remain
+stable. `failure_mode` remains an untranslated lowercase snake_case machine
+code so reports in different languages stay comparable.
+
+The evaluation fake `gh` derives its immutable fixture and mutable SCM log
+paths from runtime-provided `TAKT_WORKSPACE`, falling back to its installed
+`.takt/eval/bin/gh` location. Assistant-provided `FAKE_GH_*` overrides cannot
+redirect eval side effects. Standalone fixture tests retain the environment-
+based mode when neither trusted workspace source is available.
+
+Flow evaluation polling tolerates the transient absence of `state.json` after
+detached `run.start` has returned an accepted Run ID. It waits for the first
+durable state while preserving fail-fast handling for launch and Store errors.
+
+`eval-status` renders elapsed duration, completed case/node percentages, input,
+output and total durable tokens, the current measured model context when an
+assistant has emitted it, and a separate valid-rate percentage over already
+validated cases; zero denominators are shown as `n/a`.
 
 ## Предметные поставки
 

@@ -77,6 +77,11 @@ func resolveFlowReference(ref flowref.Reference, state *store.RunState, local ma
 				return state.Worktree.BaseRef, true
 			}
 			return "", false
+		case "TAKT_WORKSPACE":
+			if state.ExecutionWorkspace != "" {
+				return state.ExecutionWorkspace, true
+			}
+			return state.Workspace, state.Workspace != ""
 		}
 	case flowref.KindInput:
 		if ref.Name == "input" || ref.Name == "message" {

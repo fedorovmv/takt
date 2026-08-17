@@ -10,6 +10,7 @@ import (
 
 	cfgpkg "takt/internal/config"
 	"takt/internal/gitworktree"
+	"takt/internal/profile"
 	"takt/internal/store"
 	"takt/internal/workflow"
 )
@@ -54,6 +55,47 @@ nodes:
 	}
 	if err := gitworktree.Remove(context.Background(), state.Worktree.RepositoryRoot, state.Worktree.Path, true); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunRemapsControlInputPathIntoExecutionWorkspace(t *testing.T) {
+	repo, workflowPath, configPath := runtimeWorktreeRepo(t, `name: input-remap
+worktree:
+  enabled: true
+  cleanup: on_success
+nodes:
+  - id: inspect
+    bash: test -f "$TAKT_WORKSPACE/.takt/eval/input.md"
+`)
+	inputPath := filepath.Join(repo, ".takt", "eval", "input.md")
+	if err := os.MkdirAll(filepath.Dir(inputPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inputPath, []byte("task\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runtimeGit(t, repo, "add", ".takt/eval/input.md")
+	runtimeGit(t, repo, "commit", "-m", "input")
+
+	wf, err := workflow.Load(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := cfgpkg.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparedInput, err := profile.PrepareInput(profile.InputSpec{Format: "markdown", PreservePath: true}, inputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := New(wf, cfg, workflowPath, configPath, repo).Start(context.Background(), preparedInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(state.ExecutionWorkspace, ".takt", "eval", "input.md")
+	if !strings.Contains(state.Input, "Source file: `"+want+"`") || strings.Contains(state.Input, "Source file: `"+inputPath+"`") {
+		t.Fatalf("state input did not remap source header to execution path:\n%s", state.Input)
 	}
 }
 

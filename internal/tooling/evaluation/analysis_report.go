@@ -64,6 +64,9 @@ type AdvisoryAnalysis struct {
 	FailureMode         string               `json:"failure_mode"`
 	Confidence          string               `json:"confidence"`
 	RootCause           string               `json:"root_cause"`
+	CausalMechanism     string               `json:"causal_mechanism"`
+	FailurePoint        string               `json:"failure_point"`
+	Prevention          string               `json:"prevention"`
 	CausalChain         []AdvisoryCausalLink `json:"causal_chain"`
 	Evidence            []AdvisoryEvidence   `json:"evidence"`
 	ContributingFactors []string             `json:"contributing_factors"`
@@ -85,8 +88,10 @@ type AnalysisCaseReport struct {
 	Session             AnalysisSession       `json:"session"`
 	Usage               AnalysisUsage         `json:"usage"`
 	TracePath           string                `json:"trace_path,omitempty"`
+	RawOutputPath       string                `json:"raw_output_path,omitempty"`
 	ErrorCode           string                `json:"error_code,omitempty"`
 	Error               string                `json:"error,omitempty"`
+	rawOutput           string                `json:"-"`
 }
 
 // AnalysisRunReport is the durable report for one analysis invocation.
@@ -98,6 +103,7 @@ type AnalysisRunReport struct {
 	StartedAt           time.Time            `json:"started_at"`
 	FinishedAt          time.Time            `json:"finished_at"`
 	DurationMS          int64                `json:"duration_ms"`
+	Language            string               `json:"language,omitempty"`
 	TracePath           string               `json:"trace_path,omitempty"`
 	Model               AnalysisModel        `json:"model"`
 	SelectedCases       []AnalysisCaseRef    `json:"selected_cases"`
@@ -119,6 +125,7 @@ func (r AnalysisRunReport) String() string {
 		model = "UNAVAILABLE"
 	}
 	fmt.Fprintf(&out, "  Model         %s\n", model)
+	fmt.Fprintf(&out, "  Language      %s\n", valueOrDash(r.Language))
 	for _, item := range r.Analyses {
 		fmt.Fprintf(&out, "\nCASE %s#%d\n", item.CaseID, item.Repeat)
 		session := item.Session.Adapter + "/" + item.Session.SessionID
@@ -131,6 +138,9 @@ func (r AnalysisRunReport) String() string {
 		if item.Analysis != nil {
 			fmt.Fprintf(&out, "  Advisory     %s / %s %s\n", valueOrDash(item.Analysis.PrimaryClass), valueOrDash(item.Analysis.FailureMode), valueOrDash(item.Analysis.Confidence))
 			fmt.Fprintf(&out, "  Root cause   %s\n", valueOrDash(item.Analysis.RootCause))
+			fmt.Fprintf(&out, "  Mechanism    %s\n", valueOrDash(item.Analysis.CausalMechanism))
+			fmt.Fprintf(&out, "  Failure point %s\n", valueOrDash(item.Analysis.FailurePoint))
+			fmt.Fprintf(&out, "  Prevention   %s\n", valueOrDash(item.Analysis.Prevention))
 			if len(item.Analysis.Evidence) == 0 {
 				fmt.Fprintln(&out, "  Evidence     UNAVAILABLE")
 			} else {
@@ -149,6 +159,9 @@ func (r AnalysisRunReport) String() string {
 			fmt.Fprintf(&out, "  Advisory     UNAVAILABLE (%s)\n", valueOrDash(item.AnalysisStatus))
 			fmt.Fprintln(&out, "  Root cause   UNAVAILABLE")
 			fmt.Fprintln(&out, "  Evidence     UNAVAILABLE")
+		}
+		if item.RawOutputPath != "" {
+			fmt.Fprintf(&out, "  Raw output   %s\n", item.RawOutputPath)
 		}
 		if item.Error != "" {
 			fmt.Fprintf(&out, "  Error        %s\n", item.Error)

@@ -6,10 +6,12 @@ one `takt-validation/v1alpha1` result. Product failures are measured as
 `valid:false`; malformed requests or an unavailable host `du` oracle exit 2.
 
 The candidate contract is `mini-du [-s] [-k] [-H] [-h|--help] [--] PATH...`.
-`-k` uses 1024-byte units; `-H` uses binary humanized units (`0B`, one decimal
-below 10, rounded integers from 10). The validator builds the candidate,
+Default numeric output and `-k` both use integer kibibytes matching host
+`du -k`; `-k` is an accepted alias, not a different unit. `-H` uses binary
+humanized units (`0B`, one decimal below 10, rounded integers from 10). The validator builds the candidate,
 rejects delegation to host `du`, compares fixed filesystem scenarios against
-host `du -k`, checks help/option behavior and the humanized oracle, and checks
+host `du -k`, persists bounded normalized candidate/oracle output in mismatch
+diagnostics, checks help/option behavior and the humanized oracle, and checks
 the declared path/artifact/SCM requirements.
 Copy exactly one host-specific config example to `config.yaml` before running
 the suite; the generated file is intentionally ignored by git.

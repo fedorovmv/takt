@@ -296,7 +296,7 @@ report_version = takt-evaluation-analysis/v1alpha1
 output_dir, source_evaluation_dir, status, selected_cases, analyses
 ```
 
-`status` is exactly `completed|no_cases|failed`. The top-level object also requires `started_at`, `finished_at`, `duration_ms`, and `model` (the resolved `takt_analyze` model). Each case analysis requires `case_id`, `repeat`, `deterministic`, `analysis_status`, `model`, `session`, `usage`, and `evidence_fingerprint`. The `analysis` property is required only when `analysis_status=completed`; otherwise a non-empty `error_code` and `error` are required. Encode that rule with JSON Schema `allOf`: an `if` checking `analysis_status=completed` and a `then` requiring `analysis`, plus an `else` requiring `error_code` and `error`. `analysis_status` is `completed|provider_unavailable|timed_out|protocol|persistence_error|not_run`. The nested `analysis` object uses the approved fields `primary_class`, `failure_mode`, `confidence`, `root_cause`, `causal_chain`, `evidence`, `contributing_factors`, `recommended_actions`, `missing_evidence`, and `disagreement`; `primary_class` and `confidence` use the approved enums. `model` requires `preset`, `alias`, `provider`, and `id`; `session` requires `adapter`, `session_id`, `session_evidence`, and allows `session_path`/`session_evidence_path`; `usage` requires numeric `input_tokens`, `output_tokens`, `cost`, and `duration_ms`.
+`status` is exactly `completed|no_cases|failed`. The top-level object also requires `started_at`, `finished_at`, `duration_ms`, and `model` (the resolved `takt_analyze` model). Each case analysis requires `case_id`, `repeat`, `deterministic`, `analysis_status`, `model`, `session`, `usage`, and `evidence_fingerprint`. The `analysis` property is required only when `analysis_status=completed`; otherwise a non-empty `error_code` and `error` are required. Encode that rule with JSON Schema `allOf`: an `if` checking `analysis_status=completed` and a `then` requiring `analysis`, plus an `else` requiring `error_code` and `error`. `analysis_status` is `completed|provider_unavailable|timed_out|protocol|persistence_error|not_run`. The nested `analysis` object uses the approved fields `primary_class`, `failure_mode`, `confidence`, `root_cause`, `causal_mechanism`, `failure_point`, `prevention`, `causal_chain`, `evidence`, `contributing_factors`, `recommended_actions`, `missing_evidence`, and `disagreement`; `primary_class`, `confidence`, and `failure_point` use the approved enums, while `failure_mode` is an untranslated machine code matching `^[a-z][a-z0-9_]*$`. `model` requires `preset`, `alias`, `provider`, and `id`; `session` requires `adapter`, `session_id`, `session_evidence`, and allows `session_path`/`session_evidence_path`; `usage` requires numeric `input_tokens`, `output_tokens`, `cost`, and `duration_ms`.
 
 - [ ] **Step 3: Create the fixed profile/workflow.**
 
@@ -334,12 +334,15 @@ nodes:
   output_format:
     type: object
     additionalProperties: false
-    required: [primary_class, failure_mode, confidence, root_cause, causal_chain, evidence, contributing_factors, recommended_actions, missing_evidence, disagreement]
+    required: [primary_class, failure_mode, confidence, root_cause, causal_mechanism, failure_point, prevention, causal_chain, evidence, contributing_factors, recommended_actions, missing_evidence, disagreement]
     properties:
       primary_class: {type: string, enum: [infrastructure, assistant, workflow, candidate, validator, task, unknown]}
-      failure_mode: {type: string, minLength: 1}
+      failure_mode: {type: string, pattern: "^[a-z][a-z0-9_]*$"}
       confidence: {type: string, enum: [high, medium, low]}
       root_cause: {type: string, minLength: 1}
+      causal_mechanism: {type: string, minLength: 1}
+      failure_point: {type: string, enum: [assistant_decision, workflow_control, validator, infrastructure, unknown]}
+      prevention: {type: string, minLength: 1}
       causal_chain: {type: array, items: {type: object, additionalProperties: false, required: [fact, consequence, evidence], properties: {fact: {type: string, minLength: 1}, consequence: {type: string, minLength: 1}, evidence: {type: array, minItems: 1, items: {type: string}}}}}
       evidence: {type: array, minItems: 1, items: {type: object, additionalProperties: false, required: [path, pointer, fact], properties: {path: {type: string, minLength: 1}, pointer: {type: string, minLength: 1}, fact: {type: string, minLength: 1}}}}
       contributing_factors: {type: array, items: {type: string}}
@@ -426,6 +429,7 @@ const AnalysisReportVersion = "takt-evaluation-analysis/v1alpha1"
 type AnalysisRunOptions struct {
 	OutputDir, ConfigPath string
 	ModelPreset, CaseID string
+	Language string
 	Repeat int
 	Trace func(string)
 	Now func() time.Time
@@ -437,6 +441,7 @@ type AnalysisCaseInput struct {
 	Repeat int `json:"repeat"`
 	ManifestPath string `json:"manifest_path"`
 	EvidenceRoot string `json:"evidence_root"`
+	Language string `json:"language"`
 }
 ```
 
@@ -473,6 +478,9 @@ type AdvisoryAnalysis struct {
 	FailureMode string `json:"failure_mode"`
 	Confidence string `json:"confidence"`
 	RootCause string `json:"root_cause"`
+	CausalMechanism string `json:"causal_mechanism"`
+	FailurePoint string `json:"failure_point"`
+	Prevention string `json:"prevention"`
 	CausalChain []AdvisoryCausalLink `json:"causal_chain"`
 	Evidence []AdvisoryEvidence `json:"evidence"`
 	ContributingFactors []string `json:"contributing_factors"`
@@ -515,6 +523,7 @@ type AnalysisRunReport struct {
 	StartedAt time.Time `json:"started_at"`
 	FinishedAt time.Time `json:"finished_at"`
 	DurationMS int64 `json:"duration_ms"`
+	Language string `json:"language,omitempty"`
 	Model AnalysisModel `json:"model"`
 	SelectedCases []AnalysisCaseRef `json:"selected_cases"`
 	Analyses []AnalysisCaseReport `json:"analyses"`
@@ -543,7 +552,7 @@ Use the existing `safeCaseID`, `relativeEvidencePath`, `hashPath`/`hashFiles` he
 
 Before the first case, convert `opts.ConfigPath` to an absolute path; a missing path is an error before `profile.Init` or any model call. For each `AnalysisCase`, call `opts.CaseRunner` with `FlowCaseRunRequest{Workspace: analysisWorkspace, Selector: "evaluation:analyze", ConfigPath: absoluteConfigPath, InputValue: inputJSON, ModelPreset: opts.ModelPreset, Trace: opts.Trace}`. The callback is the existing bootstrap `runFlowCase`, so no direct adapter call or second executor is permitted.
 
-Read the terminal `analyze` node from the returned root snapshot. A completed node with normalized JSON output is `analysis_status=completed`; a provider-unavailable, timeout, protocol or other terminal error maps to the exact status enum in the schema and stores the durable error. Do not accept plain assistant text as an analysis result. Persist the per-case `analysis.json` before moving to the next case.
+Read the terminal `analyze` node from the returned root snapshot. A completed node with normalized JSON output is `analysis_status=completed`; a provider-unavailable, timeout, protocol or other terminal error maps to the exact status enum in the schema and stores the durable error. Do not accept plain assistant text as an analysis result. Persist the per-case `analysis.json` before moving to the next case. For protocol decode/validation failures, also persist bounded redacted raw model output when available. Validate citations against copied evidence and allow the generated sibling `evidence-manifest.json` as a special checked JSON citation target. Accept an optional `manifest.evidence_root/` prefix only when the resulting suffix is listed in `files`; normalize equivalent `#/pointer`, `path:line-range`, and zero-based text `/N` forms. Resolve relative analyzer session paths against the execution workspace, rejecting paths that escape or traverse symlinks before cleanup.
 
 - [ ] **Step 5: Implement immutable report writes and no-case behavior.**
 
@@ -574,10 +583,10 @@ git commit -m "feat: prepare and persist evaluation analysis reports"
 Add a fake `EvaluationEngine` method assertion for `Analyze`, and CLI parsing tests for:
 
 ```text
-takt eval analyze evaluation-output-dir --case c --repeat 2 --config analyzer.yaml --model-preset gemini --trace --json
+takt eval analyze evaluation-output-dir --case c --repeat 2 --config analyzer.yaml --model-preset gemini --language ru --trace --json
 ```
 
-Expected request: `OutputDir=run`, `CaseID=c`, `Repeat=2`, `ConfigPath=analyzer.yaml`, `ModelPreset=gemini`, `Trace != nil`. Assert `--repeat 2` without `--case` returns `repeat requires --case`, negative repeat returns `repeat cannot be negative`, and missing positional directory returns the exact usage string.
+Expected request: `OutputDir=run`, `CaseID=c`, `Repeat=2`, `ConfigPath=analyzer.yaml`, `ModelPreset=gemini`, `Language=ru`, `Trace != nil`. Assert `--repeat 2` without `--case` returns `repeat requires --case`, negative repeat returns `repeat cannot be negative`, and missing positional directory returns the exact usage string.
 
 Run:
 
@@ -672,8 +681,8 @@ Add to `Makefile`:
 
 ```make
 eval-analyze:
-	@test -n "$(RUN)" || { echo 'usage: make eval-analyze RUN=.takt/evals/... [CASE=case-id] [REPEAT=1] [EVAL_CONFIG=path] [EVAL_PRESET=name]'; exit 1; }
-	@go run ./cmd/takt eval analyze "$(RUN)" $(if $(CASE),--case "$(CASE)") $(if $(REPEAT),--repeat "$(REPEAT)") $(if $(EVAL_CONFIG),--config "$(EVAL_CONFIG)") $(if $(EVAL_PRESET),--model-preset "$(EVAL_PRESET)") --trace --json=false
+	@test -n "$(RUN)" || { echo 'usage: make eval-analyze RUN=.takt/evals/... [CASE=case-id] [REPEAT=1] [EVAL_CONFIG=path] [EVAL_PRESET=name] [EVAL_ANALYSIS_LANGUAGE=en|ru]'; exit 1; }
+	@go run ./cmd/takt eval analyze "$(RUN)" $(if $(CASE),--case "$(CASE)") $(if $(REPEAT),--repeat "$(REPEAT)") $(if $(EVAL_CONFIG),--config "$(EVAL_CONFIG)") $(if $(EVAL_PRESET),--model-preset "$(EVAL_PRESET)") $(if $(EVAL_ANALYSIS_LANGUAGE),--language "$(EVAL_ANALYSIS_LANGUAGE)") --trace --json=false
 ```
 
 Add `eval-analyze` to `.PHONY`. Do not make the Make target invoke analysis implicitly after `eval-feature`.
@@ -706,9 +715,9 @@ git commit -m "docs: document advisory evaluation analysis"
 
 Add a fake analysis adapter case that records the received prompt and policy, reads the manifest path, and returns the exact valid JSON object from Task 3. Add tests for:
 
-1. valid explicit case analysis;
+1. valid explicit case analysis, including a citation to `evidence-manifest.json`;
 2. default selection of only problem cases;
-3. malformed model JSON → `analysis_status=protocol`, saved report, original report unchanged;
+3. malformed model JSON → `analysis_status=protocol`, bounded redacted raw output saved, original report unchanged;
 4. provider-unavailable analysis → saved `provider_unavailable`, non-zero command result, original report unchanged;
 5. `read` allowed and `write`, `edit`, `apply_patch`, `bash`, SCM and network absent from the request policy;
 6. Pi session copied and redacted, OpenCode path unavailable;

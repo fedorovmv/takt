@@ -95,9 +95,9 @@ func TestEvaluationInspectServiceForwardsFilters(t *testing.T) {
 
 func TestEvaluationAnalyzeServiceForwardsRequest(t *testing.T) {
 	engine := &flowEvaluationEngine{}
-	request := EvaluationAnalyzeRequest{OutputDir: "run", ConfigPath: "analyzer.yaml", CaseID: "c", Repeat: 2, ModelPreset: "gemini", Trace: func(string) {}}
+	request := EvaluationAnalyzeRequest{OutputDir: "run", ConfigPath: "analyzer.yaml", CaseID: "c", Repeat: 2, ModelPreset: "gemini", Language: "ru", Trace: func(string) {}}
 	result, err := NewEvaluation(engine).Analyze(context.Background(), request)
-	if err != nil || result != "analyze" || engine.analyzeRequest.OutputDir != request.OutputDir || engine.analyzeRequest.ConfigPath != request.ConfigPath || engine.analyzeRequest.CaseID != request.CaseID || engine.analyzeRequest.Repeat != request.Repeat || engine.analyzeRequest.ModelPreset != request.ModelPreset || engine.analyzeRequest.Trace == nil {
+	if err != nil || result != "analyze" || engine.analyzeRequest.OutputDir != request.OutputDir || engine.analyzeRequest.ConfigPath != request.ConfigPath || engine.analyzeRequest.CaseID != request.CaseID || engine.analyzeRequest.Repeat != request.Repeat || engine.analyzeRequest.ModelPreset != request.ModelPreset || engine.analyzeRequest.Language != request.Language || engine.analyzeRequest.Trace == nil {
 		t.Fatalf("result=%#v request=%#v err=%v", result, engine.analyzeRequest, err)
 	}
 }

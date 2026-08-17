@@ -325,6 +325,32 @@ ID и usage попытки сохраняются. Retry остаётся явн
 сессию с feedback. `maxTokens` модели Pi, `contextWindow` и adapter
 `max_output_bytes` являются тремя разными лимитами.
 
+Таймауты самого Pi задаются в `~/.pi/agent/settings.json` (global) или
+`.pi/settings.json` (project; он имеет приоритет), а в интерактивном режиме
+доступны также через `/settings`. Для долгих provider-запросов можно, например,
+указать:
+
+```json
+{
+  "httpIdleTimeoutMs": 1800000,
+  "retry": {
+    "provider": {
+      "timeoutMs": 1800000,
+      "maxRetries": 0
+    }
+  }
+}
+```
+
+`httpIdleTimeoutMs` ограничивает отсутствие HTTP headers/body (default
+`300000` мс, `0` отключает ограничение), а `retry.provider.timeoutMs`
+ограничивает один запрос provider SDK и задаётся в миллисекундах (по умолчанию
+используется значение SDK). `retry.provider.maxRetries` — число повторов SDK
+(по умолчанию `0`). Отдельного CLI-флага `pi --timeout` нет. Это настройки Pi,
+не Takt:
+они не продлевают `timeout` попытки и не заменяют Takt `idle_timeout`, который
+измеряет отсутствие нормализованной активности assistant.
+
 Поддержано:
 
 - выбор provider/model и thinking level;

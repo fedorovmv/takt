@@ -57,6 +57,7 @@ type AnalysisManifest struct {
 	SourceEvaluationDir string                 `json:"source_evaluation_dir"`
 	SelectedCases       []AnalysisCaseRef      `json:"selected_cases"`
 	ConfigFingerprint   string                 `json:"config_fingerprint"`
+	Language            string                 `json:"language,omitempty"`
 	Model               AnalysisModel          `json:"model"`
 	Trace               string                 `json:"trace,omitempty"`
 	Workspaces          []AnalysisWorkspaceRef `json:"workspaces"`

@@ -16,6 +16,9 @@ nodes:
     - failure_mode
     - confidence
     - root_cause
+    - causal_mechanism
+    - failure_point
+    - prevention
     - causal_chain
     - evidence
     - contributing_factors
@@ -35,7 +38,7 @@ nodes:
         - unknown
       failure_mode:
         type: string
-        minLength: 1
+        pattern: ^[a-z][a-z0-9_]*$
       confidence:
         type: string
         enum:
@@ -43,6 +46,20 @@ nodes:
         - medium
         - low
       root_cause:
+        type: string
+        minLength: 1
+      causal_mechanism:
+        type: string
+        minLength: 1
+      failure_point:
+        type: string
+        enum:
+        - assistant_decision
+        - workflow_control
+        - validator
+        - infrastructure
+        - unknown
+      prevention:
         type: string
         minLength: 1
       causal_chain:

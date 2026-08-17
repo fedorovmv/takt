@@ -2,12 +2,22 @@ package runtime
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"takt/internal/execution"
 	"takt/internal/spec"
+	"takt/internal/store"
 )
+
+func TestShellEnvironmentExposesExecutionWorkspace(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "execution")
+	env := shellEnvironment(&store.RunState{ExecutionWorkspace: workspace}, "", "")
+	if env["TAKT_WORKSPACE"] != workspace {
+		t.Fatalf("TAKT_WORKSPACE=%q, want %q", env["TAKT_WORKSPACE"], workspace)
+	}
+}
 
 func TestRunBashSeparatesStdoutAndStderr(t *testing.T) {
 	runner := &Runner{workspace: t.TempDir()}

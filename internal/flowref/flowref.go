@@ -55,7 +55,7 @@ var (
 )
 
 var reserved = map[string]bool{
-	"ARGUMENTS": true, "ARTIFACTS_DIR": true, "BASE_BRANCH": true,
+	"ARGUMENTS": true, "ARTIFACTS_DIR": true, "BASE_BRANCH": true, "TAKT_WORKSPACE": true,
 	"INPUTS": true, "LOOP_PREV": true, "FEEDBACK": true, "FANOUT": true,
 }
 
@@ -93,7 +93,7 @@ func Parse(source string, surface Surface) (Reference, error) {
 	if len(parts) == 1 {
 		if reserved[parts[0]] {
 			switch parts[0] {
-			case "ARGUMENTS", "ARTIFACTS_DIR", "BASE_BRANCH", "FEEDBACK":
+			case "ARGUMENTS", "ARTIFACTS_DIR", "BASE_BRANCH", "FEEDBACK", "TAKT_WORKSPACE":
 				return Reference{Kind: KindBare, Name: parts[0], Optional: optional, Default: def}, nil
 			default:
 				return Reference{}, fmt.Errorf("%s requires a suffix", parts[0])

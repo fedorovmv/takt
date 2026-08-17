@@ -82,6 +82,15 @@ func (r *Runner) executeCancelAction(state *store.RunState, node spec.Node, acti
 
 func shellEnvironment(state *store.RunState, feedback, artifactsDir string) map[string]string {
 	env := map[string]string{"ARGUMENTS": state.Input, "FEEDBACK": feedback, "ARTIFACTS_DIR": artifactsDir}
+	if state != nil {
+		workspace := state.ExecutionWorkspace
+		if workspace == "" {
+			workspace = state.Workspace
+		}
+		if workspace != "" {
+			env["TAKT_WORKSPACE"] = workspace
+		}
+	}
 	if state.Worktree != nil && strings.TrimSpace(state.Worktree.BaseRef) != "" {
 		env["BASE_BRANCH"] = state.Worktree.BaseRef
 	}

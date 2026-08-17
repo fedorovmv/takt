@@ -137,6 +137,83 @@ func TestFakeGHFixtureIsolatesState(t *testing.T) {
 	}
 }
 
+func TestInstalledFakeGHIgnoresFixtureEnvironmentOverrides(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, ".takt", "eval", "bin")
+	fixture := filepath.Join(root, ".takt", "eval", "scm-fixture")
+	state := filepath.Join(root, ".takt", "evals", "scm")
+	otherFixture := filepath.Join(root, "other-fixture")
+	otherState := filepath.Join(root, "other-state")
+	for _, dir := range []string{bin, fixture, otherFixture} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(bin, "gh"), FakeGHFixture(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture, "pr-url-prefix"), []byte("https://example.test/canonical/pull/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(otherFixture, "pr-url-prefix"), []byte("https://example.test/redirected/pull/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(filepath.Join(bin, "gh"), "pr", "create", "--title", "x", "--body", "y")
+	cmd.Env = append(os.Environ(), "FAKE_GH_FIXTURE_DIR="+otherFixture, "FAKE_GH_STATE_DIR="+otherState)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(out), "https://example.test/canonical/pull/1\n"; got != want {
+		t.Fatalf("output = %q; want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(state, "calls.log")); err != nil {
+		t.Fatalf("canonical calls log: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(otherState, "calls.log")); !os.IsNotExist(err) {
+		t.Fatalf("override state was used: %v", err)
+	}
+}
+
+func TestFakeGHUsesExecutionWorkspaceWhenInvokedFromControlCopy(t *testing.T) {
+	root := t.TempDir()
+	controlBin := filepath.Join(root, "control", ".takt", "eval", "bin")
+	execution := filepath.Join(root, "execution")
+	fixture := filepath.Join(execution, ".takt", "eval", "scm-fixture")
+	state := filepath.Join(execution, ".takt", "evals", "scm")
+	otherFixture := filepath.Join(root, "other-fixture")
+	otherState := filepath.Join(root, "other-state")
+	for _, dir := range []string{controlBin, fixture, otherFixture} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(controlBin, "gh"), FakeGHFixture(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture, "pr-url-prefix"), []byte("https://example.test/execution/pull/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(otherFixture, "pr-url-prefix"), []byte("https://example.test/redirected/pull/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(filepath.Join(controlBin, "gh"), "pr", "create", "--title", "x", "--body", "y")
+	cmd.Env = append(os.Environ(), "TAKT_WORKSPACE="+execution, "FAKE_GH_FIXTURE_DIR="+otherFixture, "FAKE_GH_STATE_DIR="+otherState)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(out), "https://example.test/execution/pull/1\n"; got != want {
+		t.Fatalf("output = %q; want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(state, "calls.log")); err != nil {
+		t.Fatalf("execution calls log: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(otherState, "calls.log")); !os.IsNotExist(err) {
+		t.Fatalf("override state was used: %v", err)
+	}
+}
+
 func TestLoadFlowSCMFixtureStrictContract(t *testing.T) {
 	for _, test := range []struct {
 		name, require, repository, pullRequest, patch string

@@ -52,8 +52,9 @@ func TestFlowProviderUnavailableRecoversWithSamePiSession(t *testing.T) {
 
 func TestEvaluationAnalyzeRequiresExistingConfigBeforeRun(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "evaluation")
-	if _, err := (evaluationEngine{}).Analyze(context.Background(), tooling.EvaluationAnalyzeRequest{OutputDir: output, ConfigPath: filepath.Join(output, "missing.yaml")}); err == nil || !strings.Contains(err.Error(), "analysis config") {
-		t.Fatalf("error=%v", err)
+	result, err := (evaluationEngine{}).Analyze(context.Background(), tooling.EvaluationAnalyzeRequest{OutputDir: output, ConfigPath: filepath.Join(output, "missing.yaml")})
+	if result != nil || err == nil || !strings.Contains(err.Error(), "analysis config") {
+		t.Fatalf("result=%#v error=%v", result, err)
 	}
 }
 
@@ -165,6 +166,37 @@ func TestFlowEvaluationTraceReportsDurableEvents(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("trace missing %q:\n%s", want, joined)
 		}
+	}
+}
+
+func TestFlowEvaluationPollWaitsForAcceptedRunState(t *testing.T) {
+	workspace := t.TempDir()
+	config := filepath.Join(workspace, "config.yaml")
+	if err := os.WriteFile(config, []byte("apiVersion: takt/v1alpha1\nkind: Config\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	app, err := New(workspace, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := "run-delayed-state"
+	committed := make(chan error, 1)
+	go func() {
+		time.Sleep(75 * time.Millisecond)
+		state := &store.RunState{ID: runID, Status: store.RunCompleted, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}
+		committed <- (store.FS{Workspace: workspace}).Commit(state, store.Event{Type: "run.completed"})
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, err := (evaluationEngine{}).pollFlowCase(ctx, app, runID, "", nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-committed; err != nil {
+		t.Fatal(err)
+	}
+	if len(result.States) != 1 || result.States[0].Status != store.RunCompleted {
+		t.Fatalf("result=%#v", result)
 	}
 }
 
@@ -297,12 +329,17 @@ func TestSummarizeFlowRuntimeProgress(t *testing.T) {
 		},
 	}
 	child := &store.RunState{ID: "child-1", Nodes: map[string]*store.NodeState{"fix": {Status: store.NodeCompleted, Attempts: 2, ProviderAttempts: 2}}}
-	got := summarizeFlowRuntimeProgress([]*store.RunState{root, child})
+	activity := newFlowActivityTracker()
+	activity.recordEvent("child-1", "review", assistant.Event{Type: assistant.EventMessage, Usage: &assistant.ProtocolUsage{InputTokens: 43439}}, 5*time.Minute)
+	got := summarizeFlowRuntimeProgress([]*store.RunState{root, child}, activity)
 	if got.RunID != "run-1" || got.Status != store.RunRunning || got.TotalNodes != 4 || got.CompletedNodes != 2 || got.NodeAttempts != 6 || got.ProviderAttempts != 6 || got.InputTokens != 120 || got.OutputTokens != 30 || got.Cost != 0.25 {
 		t.Fatalf("progress=%+v", got)
 	}
 	if want := []string{"review", "route"}; !reflect.DeepEqual(got.RunningNodes, want) {
 		t.Fatalf("running=%v want=%v", got.RunningNodes, want)
+	}
+	if !got.ContextKnown || got.ContextTokens != 43439 {
+		t.Fatalf("context=%d known=%t", got.ContextTokens, got.ContextKnown)
 	}
 }
 

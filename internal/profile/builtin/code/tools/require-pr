@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+# This gate is active only in the isolated flow-evaluation fixture. Ordinary
+# production runs use their configured SCM provider and have no fixture tree.
+fixture_dir="${TAKT_WORKSPACE:-}/.takt/eval/scm-fixture"
+if [ ! -d "$fixture_dir" ]; then
+  exit 0
+fi
+
+calls_log="${TAKT_WORKSPACE}/.takt/evals/scm/calls.log"
+if [ ! -f "$calls_log" ] || ! grep -Fq 'pr create' "$calls_log"; then
+  printf '%s\n' 'required SCM side effect missing: gh pr create was not recorded' >&2
+  exit 1
+fi

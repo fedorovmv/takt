@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Clarified the mini-du corpus contract that default numeric output and `-k`
+  both match `du -k`. Validator mismatch diagnostics now retain bounded
+  normalized candidate/oracle exits and outputs, while production validation
+  and advisory analysis prompts require exact reference parity and a causally
+  sufficient explanation of the observed delta.
+
+- `takt eval inspect` now reports a live case from `progress.json` before the
+  first `report.json` checkpoint. `takt eval analyze` fails clearly while the
+  evaluation is still running, does not start an analyzer, and no longer prints
+  a typed `<nil>` result before the error.
+
+- Evaluation worktree inputs now remap control-local absolute paths to the
+  corresponding execution worktree before assistant nodes run. Inspection no
+  longer reports writes to the durable run-artifact directory as control
+  workspace mutations. Production implementation/validation/PR prompts keep
+  repository operations inside the execution workspace and do not search
+  sibling workspaces or previous runs when optional artifacts are absent.
+
 - Added read-only `takt eval analyze` over saved flow evaluations. The dedicated
   `takt_analyze` alias produces timestamped redacted manifests and structured
   advisory diagnoses while preserving deterministic outcomes and the original
@@ -13,6 +31,39 @@
   workspaces, deterministic inspection context and validator diagnostics are
   included, citations are resolved against the manifest, and analyzer session
   evidence/trace are retained before cleanup.
+
+- Evaluation analysis now accepts checked citations to the generated
+  `evidence-manifest.json`, resolves relative analyzer session paths inside the
+  execution workspace with symlink/escape rejection, and preserves bounded
+  redacted raw model output for protocol failures. Citations may also repeat
+  the manifest evidence-root prefix when the normalized suffix is listed, and
+  common pointer/line citation variants are normalized before validation.
+  Completed advisory results now require an evidence-backed causal mechanism,
+  bounded failure point and concrete prevention instead of restating the
+  deterministic validator verdict.
+
+- `takt eval analyze` now accepts `--language en|ru` (default `en`) and stores
+  the selected language in its report and manifest; JSON keys and enum values
+  remain stable. `failure_mode` is now an untranslated lowercase snake_case
+  machine code, keeping localized analysis reports comparable.
+
+- `code:feature-development` now places an eval-only `pr-effect-gate` between
+  `create-pr` and `summary`. When the SCM fixture is present, a missing
+  recorded `gh pr create` fails the Run instead of producing a false accept;
+  ordinary production SCM runs are unchanged.
+
+- The evaluation fake `gh` now derives fixture and state paths from
+  runtime-provided `TAKT_WORKSPACE`, with its committed `.takt/eval/bin/gh`
+  location as fallback, so assistant `FAKE_GH_*` overrides cannot redirect the
+  recorded SCM side effect even when a control-workspace copy is invoked.
+
+- Flow evaluation now waits for the first durable Run state after detached
+  start acceptance instead of failing when worktree preparation takes longer
+  than the start response window.
+
+- `eval-status` now shows fixed elapsed duration, case/node completion
+  percentages, input/output/total durable tokens, current measured model
+  context, and the quality valid rate for completed validation results.
 
 - Исправлена классификация Pi `Connection error`: provider outage теперь
   попадает в `provider_unavailable` и отдельный provider retry scope, не

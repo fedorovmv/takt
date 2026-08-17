@@ -204,6 +204,9 @@ func firstLine(s string) string {
 	return ""
 }
 func exitCode(err error) int {
+	if err == nil {
+		return 0
+	}
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
 		return exit.ExitCode()
@@ -524,10 +527,22 @@ func compareCandidateOracle(bin string, candidateArgs, oracleArgs []string, dir,
 	oracle.Env = env
 	co, ce := candidate.CombinedOutput()
 	oo, oe := oracle.CombinedOutput()
-	if exitCode(ce) != exitCode(oe) || normalizeOutput(string(co), normalizeRoot, scenario) != normalizeOutput(string(oo), normalizeRoot, scenario) {
-		return fmt.Errorf("scenario %s differs", scenario)
+	candidateExit, oracleExit := exitCode(ce), exitCode(oe)
+	candidateOutput := normalizeOutput(string(co), normalizeRoot, scenario)
+	oracleOutput := normalizeOutput(string(oo), normalizeRoot, scenario)
+	if candidateExit != oracleExit || candidateOutput != oracleOutput {
+		return fmt.Errorf("scenario %s differs: candidate_exit=%d oracle_exit=%d candidate_output=%q oracle_output=%q", scenario, candidateExit, oracleExit, boundedScenarioOutput(candidateOutput), boundedScenarioOutput(oracleOutput))
 	}
 	return nil
+}
+
+const scenarioDiagnosticOutputLimit = 4096
+
+func boundedScenarioOutput(value string) string {
+	if len(value) <= scenarioDiagnosticOutputLimit {
+		return value
+	}
+	return value[:scenarioDiagnosticOutputLimit] + "...[truncated]"
 }
 
 const miniDUHelp = "Usage: mini-du [-s] [-k|-H] [--] [PATH...]\n" +

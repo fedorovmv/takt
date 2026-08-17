@@ -52,6 +52,8 @@ type FlowRuntimeProgress struct {
 	InputTokens      int      `json:"input_tokens"`
 	OutputTokens     int      `json:"output_tokens"`
 	Cost             float64  `json:"cost"`
+	ContextTokens    int      `json:"context_tokens,omitempty"`
+	ContextKnown     bool     `json:"context_known,omitempty"`
 }
 
 type FlowProgressResults struct {
@@ -217,7 +219,7 @@ func validateFlowProgress(progress *FlowProgress) error {
 	if progress.TotalRuns < 0 || progress.CompletedRuns < 0 || progress.CompletedRuns > progress.TotalRuns {
 		return fmt.Errorf("invalid flow evaluation run counts completed=%d total=%d", progress.CompletedRuns, progress.TotalRuns)
 	}
-	if progress.Runtime.TotalNodes < 0 || progress.Runtime.CompletedNodes < 0 || progress.Runtime.CompletedNodes > progress.Runtime.TotalNodes || progress.Runtime.NodeAttempts < 0 || progress.Runtime.ProviderAttempts < 0 || progress.Runtime.InputTokens < 0 || progress.Runtime.OutputTokens < 0 || progress.Runtime.Cost < 0 {
+	if progress.Runtime.TotalNodes < 0 || progress.Runtime.CompletedNodes < 0 || progress.Runtime.CompletedNodes > progress.Runtime.TotalNodes || progress.Runtime.NodeAttempts < 0 || progress.Runtime.ProviderAttempts < 0 || progress.Runtime.InputTokens < 0 || progress.Runtime.OutputTokens < 0 || progress.Runtime.Cost < 0 || progress.Runtime.ContextTokens < 0 {
 		return fmt.Errorf("invalid flow runtime progress counters")
 	}
 	if progress.Runtime.RunningNodes == nil {
@@ -245,7 +247,8 @@ func (p FlowProgress) render(now time.Time) string {
 	fmt.Fprintln(table, "EVALUATION")
 	fmt.Fprintf(table, "  Status\t%s\n", valueOrDash(p.Status))
 	fmt.Fprintf(table, "  Updated\t%s\n", progressAge(now, p.UpdatedAt))
-	fmt.Fprintf(table, "  Progress\t%s / %s runs\n", formatNumber(int64(p.CompletedRuns)), formatNumber(int64(p.TotalRuns)))
+	fmt.Fprintf(table, "  Elapsed\t%s\n", progressElapsed(p, now))
+	fmt.Fprintf(table, "  Progress\t%s / %s runs (%s)\n", formatNumber(int64(p.CompletedRuns)), formatNumber(int64(p.TotalRuns)), progressPercent(p.CompletedRuns, p.TotalRuns))
 	if p.Current != nil {
 		fmt.Fprintf(table, "  Current\t%s#%d\n", p.Current.CaseID, p.Current.Repeat)
 		fmt.Fprintf(table, "  Phase\t%s\n", p.Current.Phase)
@@ -258,10 +261,17 @@ func (p FlowProgress) render(now time.Time) string {
 	fmt.Fprintf(table, "  Run\t%s\n", valueOrDash(p.Runtime.RunID))
 	fmt.Fprintf(table, "  Status\t%s\n", valueOrDash(p.Runtime.Status))
 	fmt.Fprintf(table, "  Running nodes\t%s\n", formatList(p.Runtime.RunningNodes))
-	fmt.Fprintf(table, "  Nodes\t%s / %s completed\n", formatNumber(int64(p.Runtime.CompletedNodes)), formatNumber(int64(p.Runtime.TotalNodes)))
+	fmt.Fprintf(table, "  Nodes\t%s / %s completed (%s)\n", formatNumber(int64(p.Runtime.CompletedNodes)), formatNumber(int64(p.Runtime.TotalNodes)), progressPercent(p.Runtime.CompletedNodes, p.Runtime.TotalNodes))
 	fmt.Fprintf(table, "  Node attempts\t%s\n", formatNumber(int64(p.Runtime.NodeAttempts)))
 	fmt.Fprintf(table, "  Provider attempts\t%s\n", formatNumber(int64(p.Runtime.ProviderAttempts)))
-	fmt.Fprintf(table, "  Tokens measured\t%s\n", formatNumber(int64(p.Runtime.InputTokens+p.Runtime.OutputTokens)))
+	fmt.Fprintf(table, "  Tokens input\t%s\n", formatNumber(int64(p.Runtime.InputTokens)))
+	fmt.Fprintf(table, "  Tokens output\t%s\n", formatNumber(int64(p.Runtime.OutputTokens)))
+	fmt.Fprintf(table, "  Tokens total\t%s\n", formatNumber(int64(p.Runtime.InputTokens+p.Runtime.OutputTokens)))
+	contextTokens := "n/a"
+	if p.Runtime.ContextKnown {
+		contextTokens = formatNumber(int64(p.Runtime.ContextTokens))
+	}
+	fmt.Fprintf(table, "  Context tokens\t%s\n", contextTokens)
 	fmt.Fprintf(table, "  Cost measured\t%g\n", p.Runtime.Cost)
 
 	fmt.Fprintln(table, "\nRESULTS SO FAR")
@@ -269,11 +279,32 @@ func (p FlowProgress) render(now time.Time) string {
 	fmt.Fprintf(table, "  Invalid\t%s\n", formatNumber(int64(p.Results.Invalid)))
 	fmt.Fprintf(table, "  Infrastructure errors\t%s\n", formatNumber(int64(p.Results.InfrastructureErrors)))
 	fmt.Fprintf(table, "  Validation errors\t%s\n", formatNumber(int64(p.Results.ValidationErrors)))
+	qualityCases := p.Results.Valid + p.Results.Invalid
+	fmt.Fprintf(table, "  Quality valid\t%s / %s completed (%s)\n", formatNumber(int64(p.Results.Valid)), formatNumber(int64(qualityCases)), progressPercent(p.Results.Valid, qualityCases))
 	if p.Error != "" {
 		fmt.Fprintf(table, "  Error\t%s\n", p.Error)
 	}
 	_ = table.Flush()
 	return strings.TrimSpace(output.String())
+}
+
+func progressElapsed(progress FlowProgress, now time.Time) string {
+	end := now
+	if progress.Status != "running" {
+		end = progress.UpdatedAt
+	}
+	duration := end.Sub(progress.StartedAt)
+	if duration < 0 {
+		duration = 0
+	}
+	return duration.Truncate(time.Second).String()
+}
+
+func progressPercent(value, total int) string {
+	if total <= 0 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.1f%%", float64(value)*100/float64(total))
 }
 
 func progressAge(now, updated time.Time) string {

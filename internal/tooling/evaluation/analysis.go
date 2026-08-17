@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,13 +20,22 @@ import (
 	"takt/internal/profile"
 	"takt/internal/redact"
 	"takt/internal/store"
+	toolingpkg "takt/internal/tooling"
 )
 
 const AnalysisReportVersion = "takt-evaluation-analysis/v1alpha1"
+const DefaultAnalysisLanguage = toolingpkg.DefaultEvaluationAnalysisLanguage
+
+var analysisFailureModePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+func NormalizeAnalysisLanguage(raw string) (string, error) {
+	return toolingpkg.NormalizeEvaluationAnalysisLanguage(raw)
+}
 
 type AnalysisRunOptions struct {
 	OutputDir, ConfigPath string
 	ModelPreset, CaseID   string
+	Language              string
 	Repeat                int
 	Trace                 func(string)
 	Now                   func() time.Time
@@ -37,6 +47,7 @@ type AnalysisCaseInput struct {
 	Repeat       int    `json:"repeat"`
 	ManifestPath string `json:"manifest_path"`
 	EvidenceRoot string `json:"evidence_root"`
+	Language     string `json:"language"`
 }
 
 func traceAnalysis(trace func(string), format string, args ...any) {
@@ -110,6 +121,10 @@ func SelectAnalysisCases(report *SuiteReport, caseID string, repeat int) ([]Anal
 }
 
 func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunReport, error) {
+	language, err := NormalizeAnalysisLanguage(opts.Language)
+	if err != nil {
+		return nil, err
+	}
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
@@ -126,6 +141,16 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 	output, err := filepath.Abs(opts.OutputDir)
 	if err != nil {
 		return nil, err
+	}
+	if _, statErr := os.Stat(filepath.Join(output, "report.json")); os.IsNotExist(statErr) {
+		if progress, progressErr := LoadFlowProgress(output); progressErr == nil && progress.Status == "running" {
+			current, phase := "unknown", "unknown"
+			if progress.Current != nil {
+				current = fmt.Sprintf("%s#%d", progress.Current.CaseID, progress.Current.Repeat)
+				phase = progress.Current.Phase
+			}
+			return nil, fmt.Errorf("evaluation is still running: current=%s phase=%s; analysis requires completed case evidence", current, phase)
+		}
 	}
 	configPath, err := filepath.Abs(opts.ConfigPath)
 	if err != nil {
@@ -192,11 +217,11 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 	}
 	// Keep every incremental report schema-valid. A run is pessimistically
 	// failed until finalization proves that all selected cases completed.
-	runReport := &AnalysisRunReport{ReportVersion: AnalysisReportVersion, OutputDir: analysisDir, SourceEvaluationDir: output, Status: "failed", StartedAt: started, Model: modelInfo, TracePath: "trace.log", SelectedCases: make([]AnalysisCaseRef, len(cases)), Analyses: []AnalysisCaseReport{}}
+	runReport := &AnalysisRunReport{ReportVersion: AnalysisReportVersion, OutputDir: analysisDir, SourceEvaluationDir: output, Status: "failed", StartedAt: started, Language: language, Model: modelInfo, TracePath: "trace.log", SelectedCases: make([]AnalysisCaseRef, len(cases)), Analyses: []AnalysisCaseReport{}}
 	for i, c := range cases {
 		runReport.SelectedCases[i] = AnalysisCaseRef{CaseID: c.CaseID, Repeat: c.Repeat}
 	}
-	manifest := AnalysisManifest{Version: analysisManifestVersion, SourceEvaluationDir: output, SelectedCases: runReport.SelectedCases, ConfigFingerprint: configFingerprint, Model: modelInfo, Trace: "trace.log", Workspaces: []AnalysisWorkspaceRef{}}
+	manifest := AnalysisManifest{Version: analysisManifestVersion, SourceEvaluationDir: output, SelectedCases: runReport.SelectedCases, ConfigFingerprint: configFingerprint, Language: language, Model: modelInfo, Trace: "trace.log", Workspaces: []AnalysisWorkspaceRef{}}
 	traceAnalysis(analysisTrace, "analysis.selected cases=%d source=%s", len(cases), output)
 	if err := analysisAtomicJSONRedacted(filepath.Join(analysisDir, "manifest.json"), manifest, redactor); err != nil {
 		return nil, err
@@ -237,6 +262,14 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 		}
 		caseTrace(fmt.Sprintf("analysis.case.selected case=%s repeat=%d", c.CaseID, c.Repeat))
 		persistCase := func(caseReport AnalysisCaseReport) {
+			if caseReport.rawOutput != "" {
+				if path, err := persistAnalysisRawOutput(caseOutputDir, caseReport.rawOutput, redactor); err != nil {
+					rememberErr(fmt.Errorf("persist analysis raw output %s#%d: %w", c.CaseID, c.Repeat, err))
+				} else {
+					caseReport.RawOutputPath = path
+				}
+				caseReport.rawOutput = ""
+			}
 			caseTrace(fmt.Sprintf("analysis.report.write case=%s repeat=%d", c.CaseID, c.Repeat))
 			if err := persistAnalysisTrace(caseOutputDir, traceLines, redactor); err != nil {
 				rememberErr(fmt.Errorf("persist analysis trace %s#%d: %w", c.CaseID, c.Repeat, err))
@@ -336,7 +369,7 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 			continue
 		}
 		caseTrace(fmt.Sprintf("analysis.evidence.manifest path=%s", filepath.Join(workspace, "evidence-manifest.json")))
-		input := AnalysisCaseInput{CaseID: c.CaseID, Repeat: c.Repeat, ManifestPath: "evidence-manifest.json", EvidenceRoot: em.EvidenceRoot}
+		input := AnalysisCaseInput{CaseID: c.CaseID, Repeat: c.Repeat, ManifestPath: "evidence-manifest.json", EvidenceRoot: em.EvidenceRoot, Language: language}
 		inputJSON, _ := json.Marshal(input)
 		inputJSON, _ = redactor.Bytes(inputJSON)
 		if err := analysisAtomicBytes(filepath.Join(workspace, "input.json"), inputJSON); err != nil {
@@ -363,7 +396,7 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 		}
 		if len(result.States) > 0 && result.States[0] != nil {
 			if node := result.States[0].Nodes["analyze"]; node != nil {
-				if err := captureAnalysisSessionEvidence(caseOutputDir, &caseReport.Session, redactor); err != nil {
+				if err := captureAnalysisSessionEvidence(caseOutputDir, result.States[0].ExecutionWorkspace, &caseReport.Session, redactor); err != nil {
 					caseReport.AnalysisStatus, caseReport.ErrorCode, caseReport.Error, caseReport.Analysis = "persistence_error", "persistence_error", err.Error(), nil
 				}
 				caseTrace(fmt.Sprintf("analysis.session adapter=%s session=%s evidence=%s path=%s", caseReport.Session.Adapter, caseReport.Session.SessionID, caseReport.Session.SessionEvidence, caseReport.Session.SessionEvidencePath))
@@ -487,6 +520,12 @@ func analysisCaseReportFromRunEvidence(c AnalysisCase, deterministic RunRecord, 
 		}
 		r.AnalysisStatus = normalizeAnalysisStatus(r.ErrorCode)
 		r.ErrorCode = r.AnalysisStatus
+		if r.AnalysisStatus == "protocol" {
+			r.rawOutput = node.Output
+			if r.rawOutput == "" {
+				r.rawOutput = node.Stdout
+			}
+		}
 		return r
 	}
 	var analysis AdvisoryAnalysis
@@ -494,12 +533,14 @@ func analysisCaseReportFromRunEvidence(c AnalysisCase, deterministic RunRecord, 
 		r.AnalysisStatus = "protocol"
 		r.ErrorCode = "protocol"
 		r.Error = err.Error()
+		r.rawOutput = node.Output
 		return r
 	}
 	if err := validateAdvisoryAnalysis(analysis); err != nil {
 		r.AnalysisStatus = "protocol"
 		r.ErrorCode = "protocol"
 		r.Error = err.Error()
+		r.rawOutput = node.Output
 		return r
 	}
 	if manifest != nil {
@@ -507,6 +548,7 @@ func analysisCaseReportFromRunEvidence(c AnalysisCase, deterministic RunRecord, 
 			r.AnalysisStatus = "protocol"
 			r.ErrorCode = "protocol"
 			r.Error = err.Error()
+			r.rawOutput = node.Output
 			return r
 		}
 	}
@@ -523,6 +565,17 @@ func validateAdvisoryAnalysis(value AdvisoryAnalysis) error {
 	}
 	if strings.TrimSpace(value.FailureMode) == "" || strings.TrimSpace(value.RootCause) == "" {
 		return errors.New("analysis failure_mode and root_cause are required")
+	}
+	if !analysisFailureModePattern.MatchString(value.FailureMode) {
+		return fmt.Errorf("analysis failure_mode %q must be a lowercase machine code", value.FailureMode)
+	}
+	if strings.TrimSpace(value.CausalMechanism) == "" || strings.TrimSpace(value.FailurePoint) == "" || strings.TrimSpace(value.Prevention) == "" {
+		return errors.New("analysis causal_mechanism, failure_point and prevention are required")
+	}
+	switch value.FailurePoint {
+	case "assistant_decision", "workflow_control", "validator", "infrastructure", "unknown":
+	default:
+		return fmt.Errorf("analysis failure_point %q is invalid", value.FailurePoint)
 	}
 	switch value.Confidence {
 	case "high", "medium", "low":
@@ -550,26 +603,92 @@ func validateAdvisoryAnalysisEvidence(value AdvisoryAnalysis, manifest AnalysisE
 	for _, file := range manifest.Files {
 		files[file.Path] = file
 	}
+	runtimeEvidence := false
 	for i, evidence := range value.Evidence {
-		if err := validateEvidenceCitation(evidence.Path, evidence.Pointer, files, evidenceRoot); err != nil {
+		path := normalizeAnalysisCitationPath(evidence.Path, manifest, files)
+		if err := validateEvidenceCitation(path, normalizeAnalysisCitationPointer(evidence.Pointer), files, evidenceRoot); err != nil {
 			return fmt.Errorf("analysis evidence[%d] citation: %w", i, err)
+		}
+		if !analysisValidatorOnlyPath(path) {
+			runtimeEvidence = true
 		}
 	}
 	for i, link := range value.CausalChain {
 		for j, citation := range link.Evidence {
-			path, pointer, ok := strings.Cut(citation, "#")
-			if !ok || path == "" || pointer == "" {
+			path, pointer, ok := splitAnalysisCitation(citation)
+			if !ok {
 				return fmt.Errorf("analysis causal_chain[%d].evidence[%d] citation %q is invalid", i, j, citation)
 			}
+			path = normalizeAnalysisCitationPath(path, manifest, files)
 			if err := validateEvidenceCitation(path, pointer, files, evidenceRoot); err != nil {
 				return fmt.Errorf("analysis causal_chain[%d].evidence[%d] citation: %w", i, j, err)
 			}
+			if !analysisValidatorOnlyPath(path) {
+				runtimeEvidence = true
+			}
 		}
+	}
+	if !runtimeEvidence {
+		return errors.New("analysis evidence must include runtime, assistant, artifact, source, diff or SCM evidence beyond the validator verdict")
 	}
 	return nil
 }
 
+func analysisValidatorOnlyPath(path string) bool {
+	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
+	switch clean {
+	case "validation-request.json", "validation-result.json", "validator.stderr", "evidence-manifest.json":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeAnalysisCitationPointer(raw string) string {
+	pointer := strings.TrimSpace(raw)
+	if strings.HasPrefix(pointer, "#") {
+		pointer = strings.TrimPrefix(pointer, "#")
+	}
+	if strings.HasPrefix(pointer, ":") {
+		return "line:" + strings.TrimPrefix(pointer, ":")
+	}
+	return pointer
+}
+
+func splitAnalysisCitation(raw string) (string, string, bool) {
+	if path, pointer, ok := strings.Cut(raw, "#"); ok && path != "" && pointer != "" {
+		return path, normalizeAnalysisCitationPointer(pointer), true
+	}
+	colon := strings.LastIndex(raw, ":")
+	if colon <= 0 || colon == len(raw)-1 {
+		return "", "", false
+	}
+	line := raw[colon+1:]
+	if _, _, ok := parseLineCitation("line:" + line); !ok {
+		return "", "", false
+	}
+	return raw[:colon], "line:" + line, true
+}
+
+func normalizeAnalysisCitationPath(raw string, manifest AnalysisEvidenceManifest, files map[string]AnalysisEvidenceFile) string {
+	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(raw)))
+	root := filepath.ToSlash(filepath.Clean(filepath.FromSlash(manifest.EvidenceRoot)))
+	if root == "." || root == "" || strings.HasPrefix(root, "../") || filepath.IsAbs(root) {
+		return clean
+	}
+	prefix := root + "/"
+	if !strings.HasPrefix(clean, prefix) {
+		return clean
+	}
+	trimmed := strings.TrimPrefix(clean, prefix)
+	if _, listed := files[trimmed]; listed || trimmed == "evidence-manifest.json" {
+		return trimmed
+	}
+	return clean
+}
+
 func validateEvidenceCitation(rawPath, pointer string, files map[string]AnalysisEvidenceFile, evidenceRoot string) error {
+	pointer = normalizeAnalysisCitationPointer(pointer)
 	if strings.TrimSpace(rawPath) == "" || strings.ContainsRune(rawPath, '\x00') || strings.Contains(rawPath, "\\") || filepath.IsAbs(rawPath) {
 		return fmt.Errorf("path %q is not relative", rawPath)
 	}
@@ -577,8 +696,9 @@ func validateEvidenceCitation(rawPath, pointer string, files map[string]Analysis
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
 		return fmt.Errorf("path %q escapes evidence root", rawPath)
 	}
+	manifestCitation := clean == "evidence-manifest.json"
 	file, ok := files[clean]
-	if !ok {
+	if !ok && !manifestCitation {
 		return fmt.Errorf("path %q is not in evidence manifest", rawPath)
 	}
 	root, err := filepath.Abs(evidenceRoot)
@@ -586,9 +706,14 @@ func validateEvidenceCitation(rawPath, pointer string, files map[string]Analysis
 		return err
 	}
 	path := filepath.Join(root, filepath.FromSlash(clean))
-	rel, err := filepath.Rel(root, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("path %q escapes evidence root", rawPath)
+	if manifestCitation {
+		path = filepath.Join(filepath.Dir(root), "evidence-manifest.json")
+	}
+	if !manifestCitation {
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("path %q escapes evidence root", rawPath)
+		}
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -601,7 +726,7 @@ func validateEvidenceCitation(rawPath, pointer string, files map[string]Analysis
 	if err != nil {
 		return err
 	}
-	if (file.Size > 0 || file.SHA256 != "") && (file.Size != int64(len(data)) || (file.SHA256 != "" && !strings.EqualFold(file.SHA256, sha256Bytes(data)))) {
+	if !manifestCitation && (file.Size > 0 || file.SHA256 != "") && (file.Size != int64(len(data)) || (file.SHA256 != "" && !strings.EqualFold(file.SHA256, sha256Bytes(data)))) {
 		return fmt.Errorf("path %q does not match evidence manifest", rawPath)
 	}
 	if start, end, ok := parseLineCitation(pointer); ok {
@@ -614,20 +739,38 @@ func validateEvidenceCitation(rawPath, pointer string, files map[string]Analysis
 		}
 		return nil
 	}
+	if strings.HasPrefix(pointer, "/") && isTextEvidence(data) && json.Valid(data) {
+		var document any
+		if err := json.Unmarshal(data, &document); err != nil {
+			return fmt.Errorf("decode JSON evidence: %w", err)
+		}
+		if _, err := resolveJSONPointer(document, pointer); err != nil {
+			return err
+		}
+		return nil
+	}
+	if isTextEvidence(data) {
+		if line, ok := parseZeroBasedLineCitation(pointer); ok {
+			lineCount := len(strings.Split(string(data), "\n"))
+			if line < 0 || line >= lineCount {
+				return fmt.Errorf("line citation %q is outside file", pointer)
+			}
+			return nil
+		}
+	}
 	if !strings.HasPrefix(pointer, "/") {
 		return fmt.Errorf("JSON pointer %q is invalid", pointer)
 	}
-	if !isTextEvidence(data) || !json.Valid(data) {
-		return fmt.Errorf("JSON pointer requires a JSON text file")
+	return fmt.Errorf("JSON pointer requires a JSON text file")
+}
+
+func parseZeroBasedLineCitation(pointer string) (int, bool) {
+	value := strings.TrimPrefix(strings.TrimSpace(pointer), "/")
+	if value == "" || strings.Contains(value, "/") {
+		return 0, false
 	}
-	var document any
-	if err := json.Unmarshal(data, &document); err != nil {
-		return fmt.Errorf("decode JSON evidence: %w", err)
-	}
-	if _, err := resolveJSONPointer(document, pointer); err != nil {
-		return err
-	}
-	return nil
+	line, err := strconv.Atoi(value)
+	return line, err == nil && line >= 0
 }
 
 func isTextEvidence(data []byte) bool {
@@ -711,18 +854,59 @@ func failedAnalysisCase(c AnalysisCase, deterministic RunRecord, model AnalysisM
 	return r
 }
 
-func captureAnalysisSessionEvidence(caseOutputDir string, session *AnalysisSession, redactor *redact.Redactor) error {
+const maxAnalysisRawOutputBytes = 1 << 20
+
+func persistAnalysisRawOutput(caseOutputDir, raw string, redactor *redact.Redactor) (string, error) {
+	data := []byte(raw)
+	if redactor != nil {
+		data, _ = redactor.Bytes(data)
+	}
+	if len(data) > maxAnalysisRawOutputBytes {
+		data = data[:maxAnalysisRawOutputBytes]
+	}
+	const relativePath = "raw-output.txt"
+	if err := analysisAtomicBytes(filepath.Join(caseOutputDir, relativePath), data); err != nil {
+		return "", err
+	}
+	return relativePath, nil
+}
+
+func captureAnalysisSessionEvidence(caseOutputDir, executionWorkspace string, session *AnalysisSession, redactor *redact.Redactor) error {
 	if session == nil || session.SessionPath == "" {
 		return nil
 	}
-	if !filepath.IsAbs(session.SessionPath) {
-		return nil
+	sourcePath := session.SessionPath
+	if !filepath.IsAbs(sourcePath) {
+		if executionWorkspace == "" {
+			return nil
+		}
+		workspace, err := filepath.Abs(executionWorkspace)
+		if err != nil {
+			return nil
+		}
+		sourcePath = filepath.Join(workspace, filepath.FromSlash(sourcePath))
+		rel, err := filepath.Rel(workspace, sourcePath)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil
+		}
+		resolvedWorkspace, err := filepath.EvalSymlinks(workspace)
+		if err != nil {
+			return nil
+		}
+		resolvedSource, err := filepath.EvalSymlinks(sourcePath)
+		if err != nil {
+			return nil
+		}
+		resolvedRel, err := filepath.Rel(resolvedWorkspace, resolvedSource)
+		if err != nil || resolvedRel != rel || resolvedRel == ".." || strings.HasPrefix(resolvedRel, ".."+string(filepath.Separator)) {
+			return nil
+		}
 	}
-	info, err := os.Lstat(session.SessionPath)
+	info, err := os.Lstat(sourcePath)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > maxSessionEvidenceBytes {
 		return nil
 	}
-	data, err := os.ReadFile(session.SessionPath)
+	data, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return nil
 	}
@@ -732,7 +916,7 @@ func captureAnalysisSessionEvidence(caseOutputDir string, session *AnalysisSessi
 	if redactor != nil {
 		redacted, matched := redactor.Bytes(data)
 		if matched && !isTextEvidence(data) {
-			return fmt.Errorf("analysis session contains known secret in non-UTF-8 data: %s", session.SessionPath)
+			return fmt.Errorf("analysis session contains known secret in non-UTF-8 data: %s", sourcePath)
 		}
 		data = redacted
 	}

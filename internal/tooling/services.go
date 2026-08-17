@@ -3,12 +3,28 @@ package tooling
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"takt/internal/assistant"
 	cfgpkg "takt/internal/config"
 	"takt/internal/tooling/compatibility"
 )
+
+const DefaultEvaluationAnalysisLanguage = "en"
+
+func NormalizeEvaluationAnalysisLanguage(raw string) (string, error) {
+	language := strings.ToLower(strings.TrimSpace(raw))
+	if language == "" {
+		return DefaultEvaluationAnalysisLanguage, nil
+	}
+	switch language {
+	case "en", "ru":
+		return language, nil
+	default:
+		return "", fmt.Errorf("unsupported analysis language %q (want en or ru)", language)
+	}
+}
 
 type EvaluationRunRequest struct {
 	WorkflowPath, ConfigPath, CasesDir, CaseManifestPath string
@@ -50,6 +66,7 @@ type EvaluationAnalyzeRequest struct {
 	OutputDir, ConfigPath, CaseID string
 	Repeat                        int
 	ModelPreset                   string
+	Language                      string
 	Trace                         func(string)
 }
 

@@ -30,9 +30,13 @@ nodes:
   depends_on:
   - validate
   command: create-pr
-- id: summary
+- id: pr-effect-gate
   depends_on:
   - create-pr
+  bash: "./.takt/profiles/code/tools/require-pr"
+- id: summary
+  depends_on:
+  - pr-effect-gate
   command: summary
   model: review
 name: feature-development

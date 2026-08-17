@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-fixture_dir="${FAKE_GH_FIXTURE_DIR:?FAKE_GH_FIXTURE_DIR is required}"
-state_dir="${FAKE_GH_STATE_DIR:?FAKE_GH_STATE_DIR is required}"
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
+if [ -n "${TAKT_WORKSPACE:-}" ] && [ -d "$TAKT_WORKSPACE/.takt/eval/scm-fixture" ]; then
+  fixture_dir="$TAKT_WORKSPACE/.takt/eval/scm-fixture"
+  state_dir="$TAKT_WORKSPACE/.takt/evals/scm"
+elif [ -d "$script_dir/../scm-fixture" ]; then
+  fixture_dir="$script_dir/../scm-fixture"
+  state_dir="$script_dir/../../evals/scm"
+else
+  fixture_dir="${FAKE_GH_FIXTURE_DIR:?FAKE_GH_FIXTURE_DIR is required}"
+  state_dir="${FAKE_GH_STATE_DIR:?FAKE_GH_STATE_DIR is required}"
+fi
 mkdir -p "$state_dir"
 printf '%q ' "$@" >> "$state_dir/calls.log"
 printf '\n' >> "$state_dir/calls.log"

@@ -349,6 +349,11 @@ FAKE_GH_FIXTURE_DIR={{workspace}}/.takt/eval/scm-fixture
 FAKE_GH_STATE_DIR={{workspace}}/.takt/evals/scm
 ```
 
+These paths are derived first from runtime-provided `TAKT_WORKSPACE` and then,
+for an installed `.takt/eval/bin/gh`, from the script location. Both sources
+are authoritative, so `FAKE_GH_*` cannot redirect fixture or state.
+Environment lookup remains only for standalone fixture tests.
+
 `{{workspace}}` рендерится существующим assistant environment renderer. Overlay
 попадает в effective config fingerprint; временный абсолютный output path — нет.
 Один snapshot host PATH применяется ко всему suite и входит в environment identity.
@@ -370,8 +375,10 @@ emulator.
 который намеренно обходит `PATH` или использует другой сетевой клиент, не
 изолируется этим fixture. В первом срезе inventory contract фиксирует, что выбранные
 production flows обращаются к GitHub только обычной командой `gh` из assistant
-process. Если flow добавит deterministic action, adapter или иной GitHub transport,
-suite отклоняется до обновления безопасной fixture boundary. Настоящие GitHub
+process. Если flow добавит deterministic action, выполняющий внешний SCM side effect,
+adapter или иной GitHub transport, suite отклоняется до обновления безопасной
+fixture boundary. Проверяющий `pr-effect-gate` внешний side effect не выполняет.
+Настоящие GitHub
 credentials не передаются через suite overlay; для полного network deny нужен
 отдельный доказанный assistant sandbox capability, а не заявление eval-runner.
 
@@ -396,7 +403,8 @@ tools и config так же, как обычный пользовательск�
 
 ```text
 feature-development:
-  implement → validate-agent → deterministic validate → create-pr → summary
+  implement → validate-agent → deterministic validate → create-pr
+    → eval-only pr-effect-gate → summary
 
 comprehensive-pr-review:
   scope → perspectives → reviews → synthesize → optional fixes

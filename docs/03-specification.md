@@ -212,6 +212,12 @@ side_effect:
 - `env` — дополнительные переменные окружения;
 - `max_output_bytes` — общий лимит RPC stdout и stderr; при нуле используется безопасный лимит adapter по умолчанию. Если timeout или cancellation совпали с переполнением, причина context сохраняет классификацию `timed_out` или `cancelled`, а truncation остаётся диагностическим признаком.
 
+Настройки таймаутов самого Pi (`httpIdleTimeoutMs` и
+`retry.provider.timeoutMs`) описаны в [спецификации Pi adapter](10-assistant-adapter-spec.md#9-pi-adapter).
+Они не меняют Takt `timeout` (общий deadline попытки) и `idle_timeout`
+(отсутствие нормализованной активности узла): каждый из этих лимитов может
+завершить выполнение независимо.
+
 Takt сам задаёт `--mode rpc`, `--provider`, `--model`, `--thinking`, `--session` и параметры trust/session directory. Эти флаги запрещены в `args`, чтобы исключить расхождение структурированного Request и фактического запуска.
 
 `model.provider` и `model.id` должны соответствовать каталогу моделей Pi. Параметры `thinking` или `reasoning_effort` переводятся в `--thinking`; остальные model params доступны расширениям через `TAKT_MODEL_PARAMS_JSON`, но не интерпретируются adapter.
@@ -792,7 +798,7 @@ YAML syntax разбирается upstream-библиотекой `go.yaml.in/y
   `$<id>.output[.<field>]`, `$<id>.status`, `$<id>.exit_code`,
   `$LOOP_PREV.<id>.output[.<field>]`, `$<approval>.output`;
 - `Shell`: те же ссылки с context-aware quoting; `$ARGUMENTS`, `$FEEDBACK`,
-  `$ARTIFACTS_DIR` и `$BASE_BRANCH` передаются через env;
+  `$ARTIFACTS_DIR`, `$BASE_BRANCH` и `$TAKT_WORKSPACE` передаются через env;
 - `ScriptArg`/`ScriptEnv`: значения передаются как argv/env без shell
   interpolation;
 - `When`: только левая ссылка из `nodes`/`inputs` и операторы `==`, `!=`, `&&`,
@@ -811,7 +817,8 @@ fan-out; `$INPUTS.<name>` — внутри подключённого subworkflo
 single-quoted сегменте значение экранируется внутри существующей кавычки.
 Нативные `$PATH`, `${PATH}`, `$?`, `$$`, `$((...))` и `$(...)` сохраняются.
 `$BASE_BRANCH` разрешается только из durable worktree base и при его отсутствии
-fail-closed до запуска bash.
+fail-closed до запуска bash. `$TAKT_WORKSPACE` указывает на текущий
+execution workspace, а при его отсутствии — на control workspace.
 
 ## 11. Состояние и воспроизводимость
 
@@ -908,7 +915,7 @@ takt eval report <evaluation-output-dir>
 takt eval stats <evaluation-output-dir> [--json]
 takt eval status <evaluation-output-dir> [--json]
 takt eval inspect <evaluation-output-dir> [--case ID] [--repeat N] [--json]
-takt eval analyze <evaluation-output-dir> [--case <case-id>] [--repeat N] [--config <analyzer-config>] [--model-preset <name>] [--trace] [--json]
+takt eval analyze <evaluation-output-dir> [--case <case-id>] [--repeat N] [--config <analyzer-config>] [--model-preset <name>] [--language en|ru] [--trace] [--json]
 takt eval benchmark <matrix.yaml> [--output <dir>] [--repeat N] [--replace]
 takt eval compare <baseline-output-dir> <candidate-output-dir>
 ```
@@ -943,6 +950,12 @@ Pi. Its phases are exactly `prepare`, `validator_preflight`, `workflow`,
 include only completed executions already persisted in Run state. A killed eval
 process may leave `status: running`; consumers must use `updated_at` to detect a
 stale snapshot. The final snapshot remains beside `report.json`.
+`report.json` is first checkpointed after a case reaches validator/evidence; it
+is not a live heartbeat. Before that checkpoint, `takt eval inspect <dir>`
+synthesizes the current case and running nodes from `progress.json` with
+`reported_cause.confidence=UNAVAILABLE`. `takt eval analyze <dir>` requires
+completed case evidence and fails immediately with `evaluation is still
+running` without loading analyzer configuration or contacting a model.
 `--trace` writes elapsed suite stages, durable root Run/node events and terminal
 child Run/node statuses to stderr while stdout remains the final JSON result.
 Human trace lines use `SCOPE | EVENT | DETAILS`: `EVAL`, `CASE <id>#<repeat>`,
@@ -966,6 +979,11 @@ printed per token or persisted as durable assistant events.
 for assistant nodes that omit `idle_timeout`; explicit node values win. Valid
 assistant tool/message events reset the timer, and expiry is persisted as
 `node.timed_out` with `error_code=timed_out` before validation and report writing.
+Make targets `eval-feature`, `eval-feature-smoke`, `eval-review` и
+`eval-architect` передают в этот флаг переменную `EVAL_IDLE_TIMEOUT` (по
+умолчанию `5m`),
+например: `EVAL_IDLE_TIMEOUT=10m make eval-feature`. Это настройка только
+evaluation и не изменяет production workflow.
 
 `takt eval flow init <workflow-selector> --output <directory>` creates only a
 suite skeleton and one example case. It never creates a validator or executable
@@ -973,7 +991,12 @@ setup: add `config.yaml`, implement `./validator`, and replace the example case.
 
 `takt eval analyze` is a read-only advisory pass over a saved flow evaluation.
 The selected analyzer Config must materialize the dedicated `takt_analyze` model
-alias; no other alias is used as a fallback. Without `--case`, every saved run
+alias; no other alias is used as a fallback. `--language en|ru` controls the
+language of human-readable advisory values and defaults to `en`; JSON keys and
+enum values remain stable. `failure_mode` is also language-independent and must
+be a lowercase snake_case machine code matching `^[a-z][a-z0-9_]*$`; localized
+explanations belong in `root_cause`, `causal_mechanism`, and `prevention`. The
+selected language is persisted in the analysis report and manifest. Without `--case`, every saved run
 whose outcome is not `true_accept` is selected. `--repeat` requires `--case`.
 The command creates a UTC timestamped `analyses/<timestamp>/` directory with a
 redacted manifest, per-case evidence manifest and `analysis.json`, and leaves the
@@ -981,7 +1004,29 @@ source `report.json` byte-for-byte unchanged. An empty selection succeeds with
 `status=no_cases`; provider, protocol and persistence failures are retained in a
 saved `status=failed` report and never change the deterministic verdict. The
 case report stores the redacted rendered analyzer prompt and its SHA-256
-fingerprint; citations are resolved against the bounded evidence manifest.
+fingerprint; citations are resolved against the bounded evidence manifest. The
+generated `evidence-manifest.json` itself is a checked citation target (for
+example `evidence-manifest.json#/deterministic_verdict/outcome`) in addition to
+the files listed under `files`; its JSON pointer is validated against the
+saved manifest before the advisory result is accepted. A citation may include
+the manifest's `evidence_root/` prefix (for example `evidence/run.json`) and is
+normalized only when its suffix is listed in `files`. Citation validation also
+normalizes common equivalent forms: `#/pointer` in structured entries,
+`path:line-range` in causal strings, and zero-based `/N` for a text file's
+line index. Canonical output remains `/pointer`, `line:N`, and
+`path#line:N`. If the analyzer returns
+malformed JSON or violates the advisory contract, the bounded model output is
+saved as redacted `raw_output_path` beside that case's `analysis.json` when
+available. An adapter-provided relative `session_path` is resolved against the
+analysis execution workspace before cleanup; paths that escape it or traverse
+a symlink are recorded as unavailable. A completed advisory analysis must add
+`causal_mechanism`, bounded `failure_point` (`assistant_decision`,
+`workflow_control`, `validator`, `infrastructure`, or `unknown`) and one
+concrete `prevention` to the deterministic cause. At least one checked citation
+must come from runtime, assistant, artifact, source, diff, or SCM evidence;
+validator request/result/stderr and the evidence manifest alone are
+insufficient. These advisory fields explain how the persisted failure arose
+but cannot replace or modify the deterministic verdict.
 
 Все команды поддерживают `--json`; `run`, `answer`, `resume`, `status`, `children`, `artifacts`, `cancel`, `command run` и `eval` используют JSON по умолчанию.
 

@@ -14,12 +14,23 @@ func TestFlowProgressRendersExternalLiveStatus(t *testing.T) {
 		ReportVersion: FlowProgressVersion, Status: "running", Workflow: "code:feature-development", OutputDir: ".takt/evals/run-a",
 		StartedAt: now.Add(-10 * time.Minute), UpdatedAt: now.Add(-8 * time.Second), TotalRuns: 3, CompletedRuns: 0,
 		Current: &FlowProgressCurrent{CaseID: "implement-basic", Repeat: 1, Ordinal: 1, Phase: "workflow"},
-		Runtime: FlowRuntimeProgress{RunID: "run-8d0636ca857eefbc068a767d", Status: "running", TotalNodes: 5, CompletedNodes: 0, RunningNodes: []string{"implement"}, NodeAttempts: 1, ProviderAttempts: 1},
+		Runtime: FlowRuntimeProgress{RunID: "run-8d0636ca857eefbc068a767d", Status: "running", TotalNodes: 5, CompletedNodes: 0, RunningNodes: []string{"implement"}, NodeAttempts: 1, ProviderAttempts: 1, InputTokens: 1200, OutputTokens: 300, ContextTokens: 43439, ContextKnown: true},
 	}
 	text := progress.render(now)
-	for _, want := range []string{"EVALUATION", "Status", "running", "Updated", "8s ago", "Progress", "0 / 3 runs", "implement-basic#1", "workflow", "FLOW", "run-8d0636ca857eefbc068a767d", "implement", "0 / 5 completed", "Node attempts", "Provider attempts", "RESULTS SO FAR"} {
+	for _, want := range []string{"EVALUATION", "Status", "running", "Updated", "8s ago", "Elapsed", "10m0s", "Progress", "0 / 3 runs (0.0%)", "implement-basic#1", "workflow", "FLOW", "run-8d0636ca857eefbc068a767d", "implement", "0 / 5 completed (0.0%)", "Node attempts", "Provider attempts", "Context tokens", "43 439", "Tokens input", "1 200", "Tokens output", "300", "Tokens total", "1 500", "RESULTS SO FAR", "Quality valid", "0 / 0 completed (n/a)"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("progress text misses %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestFlowProgressUsesFixedElapsedForFinishedEvaluation(t *testing.T) {
+	started := time.Date(2026, 8, 14, 15, 0, 0, 0, time.UTC)
+	updated := started.Add(2*time.Minute + 3*time.Second)
+	text := (FlowProgress{ReportVersion: FlowProgressVersion, Status: "completed", Suite: "suite.yaml", Workflow: "flow", OutputDir: "out", StartedAt: started, UpdatedAt: updated, TotalRuns: 2, CompletedRuns: 2, Runtime: FlowRuntimeProgress{TotalNodes: 4, CompletedNodes: 4, RunningNodes: []string{}}, Results: FlowProgressResults{Valid: 1, Invalid: 1}}).render(updated.Add(10 * time.Minute))
+	for _, want := range []string{"Elapsed", "2m3s", "Progress", "2 / 2 runs (100.0%)", "Nodes", "4 / 4 completed (100.0%)", "Quality valid", "1 / 2 completed (50.0%)"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("finished progress text misses %q:\n%s", want, text)
 		}
 	}
 }

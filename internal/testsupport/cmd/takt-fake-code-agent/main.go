@@ -282,9 +282,14 @@ func handleFlowEvaluationSmoke(prompt string) bool {
 		if out, err := push.CombinedOutput(); err != nil {
 			fail(fmt.Errorf("git push origin HEAD: %s", strings.TrimSpace(string(out))))
 		}
-		url, err := exec.Command("gh", "pr", "create", "--draft", "--title", "fixture PR", "--body", "fixture body").CombinedOutput()
-		if err != nil {
-			fail(fmt.Errorf("gh pr create: %s", strings.TrimSpace(string(url))))
+		var url []byte
+		if os.Getenv("FAKE_SKIP_PR_CREATE") == "1" {
+			url = []byte("https://example.test/example/mini-du/pull/1\n")
+		} else {
+			url, err = exec.Command("gh", "pr", "create", "--draft", "--title", "fixture PR", "--body", "fixture body").CombinedOutput()
+			if err != nil {
+				fail(fmt.Errorf("gh pr create: %s", strings.TrimSpace(string(url))))
+			}
 		}
 		writeArtifact("pr.md", "fixture pull request\n")
 		writeArtifact("pr-url.txt", string(url))

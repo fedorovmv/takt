@@ -175,6 +175,13 @@ boundary or evidence of a remote provider effect. Start a new suite with `takt
 eval flow init <selector> --output DIR`; deterministic executable validation,
 not agent text, owns correctness.
 
+The mini-du public task text explicitly states the corpus-specific numeric
+contract: default output and `-k` are both integer KiB matching `du -k`.
+Scenario mismatches retain bounded normalized candidate/oracle exit codes and
+outputs in the validator diagnostic. Advisory analysis must explain that exact
+delta; an unrelated discrepancy mentioned by a validation assistant is not a
+causally sufficient root cause.
+
 ### Runs, outcomes и проценты
 
 Один flow evaluation Run — это один полный изолированный запуск workflow для
@@ -288,12 +295,32 @@ verdict. Neither command starts/resumes a flow or contacts a model; any future
 LLM-assisted analysis must be a separate explicit opt-in command with cited
 evidence and persisted model/session/usage.
 
+Before the first case checkpoint creates `report.json`, `eval inspect` falls
+back to `progress.json` and reports the current case/running nodes with an
+explicit `UNAVAILABLE` cause. `eval analyze` does not run against incomplete
+evidence: it returns `evaluation is still running` without starting the
+dedicated analyzer model.
+
 `takt eval analyze <saved-output-dir>` is an optional, read-only advisory
 investigation of saved problem cases. It requires the dedicated `takt_analyze`
 alias, stores redacted timestamped manifests and structured citations, and never
 changes deterministic outcomes, benchmark identity or quality denominators.
-Provider/protocol failures remain explicit analysis statuses; the original
-evaluation report remains immutable.
+Provider/protocol failures remain explicit analysis statuses; protocol failures
+retain bounded redacted raw model output when available, the generated
+`evidence-manifest.json` is a validated citation target, and relative analyzer
+session paths are resolved within the execution workspace before cleanup. The
+manifest-root-prefixed citations are accepted only when their suffix is listed
+in the manifest. Equivalent `#/pointer`, `path:line-range`, and zero-based text
+`/N` forms are normalized to canonical citations. `--language en|ru` (default
+`en`) controls human-readable advisory strings and is persisted in the analysis
+report and manifest; JSON keys and enum values remain stable. `failure_mode`
+remains an untranslated lowercase snake_case machine code for cross-run
+comparison. A completed
+advisory result must explain the causal mechanism, identify the bounded failure
+point and give
+one concrete prevention. Validator-only citations are insufficient: at least
+one checked runtime, assistant, artifact, source, diff, or SCM citation is
+required. The original evaluation report remains immutable.
 
 ## 9. Критерий полезности Takt
 

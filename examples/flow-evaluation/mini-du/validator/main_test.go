@@ -108,6 +108,43 @@ func main() {
 	}
 }
 
+func TestScenarioMismatchReportsExactNormalizedDelta(t *testing.T) {
+	dir := t.TempDir()
+	source := `package main
+import ("fmt"; "os")
+func main() { fmt.Printf("999\t%s\n", os.Args[len(os.Args)-1]) }
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "candidate")
+	cmd := exec.Command("go", "build", "-o", bin, "main.go")
+	cmd.Dir = dir
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build candidate: %v\n%s", err, output)
+	}
+	err := compareScenario(bin, "nested")
+	if err == nil {
+		t.Fatal("mismatching candidate was accepted")
+	}
+	message := err.Error()
+	for _, want := range []string{"candidate_exit=0", "oracle_exit=0", `candidate_output="999\t<ROOT>"`, "oracle_output=", "<ROOT>/a/b"} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("diagnostic misses %q: %s", want, message)
+		}
+	}
+	if strings.Contains(message, dir) {
+		t.Fatalf("diagnostic leaked temporary root: %s", message)
+	}
+}
+
+func TestBoundedScenarioOutputTruncatesLargeCandidateOutput(t *testing.T) {
+	got := boundedScenarioOutput(strings.Repeat("x", scenarioDiagnosticOutputLimit+1))
+	if len(got) > scenarioDiagnosticOutputLimit+len("...[truncated]") || !strings.HasSuffix(got, "...[truncated]") {
+		t.Fatalf("bounded output=%q len=%d", got, len(got))
+	}
+}
+
 func TestRunWritesOneInvalidEnvelopeForProductFailure(t *testing.T) {
 	root := t.TempDir()
 	req := testRequest(root)

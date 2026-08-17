@@ -94,6 +94,13 @@ func InspectFlowEvaluation(outputDir, caseID string, repeat int) (*EvaluationIns
 	}
 	report, err := LoadReport(outputDir)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		progress, progressErr := LoadFlowProgress(outputDir)
+		if progressErr == nil && progress.Status == "running" {
+			return inspectRunningFlowProgress(progress, caseID, repeat)
+		}
 		return nil, err
 	}
 	abs, err := filepath.Abs(outputDir)
@@ -125,6 +132,36 @@ func InspectFlowEvaluation(outputDir, caseID string, repeat int) (*EvaluationIns
 		return nil, fmt.Errorf("no evaluation cases match case=%q repeat=%d", caseID, repeat)
 	}
 	return inspection, nil
+}
+
+func inspectRunningFlowProgress(progress *FlowProgress, caseID string, repeat int) (*EvaluationInspection, error) {
+	if progress == nil || progress.Current == nil {
+		return nil, fmt.Errorf("running evaluation has no current case")
+	}
+	current := progress.Current
+	if caseID != "" && caseID != current.CaseID || repeat > 0 && repeat != current.Repeat {
+		return nil, fmt.Errorf("no evaluation cases match case=%q repeat=%d", caseID, repeat)
+	}
+	status := progress.Runtime.Status
+	if status == "" {
+		status = progress.Status
+	}
+	nodes := make([]InspectionNode, 0, len(progress.Runtime.RunningNodes))
+	for _, id := range progress.Runtime.RunningNodes {
+		nodes = append(nodes, InspectionNode{ID: id, Status: "running"})
+	}
+	message := fmt.Sprintf("evaluation is still running: phase=%s nodes=%d/%d completed; evidence is available after the case checkpoint", current.Phase, progress.Runtime.CompletedNodes, progress.Runtime.TotalNodes)
+	return &EvaluationInspection{
+		ReportVersion: InspectionReportVersion,
+		OutputDir:     progress.OutputDir,
+		Workflow:      progress.Workflow,
+		Cases: []InspectionCase{{
+			CaseID: current.CaseID, Repeat: current.Repeat, RunID: progress.Runtime.RunID, Status: status,
+			Cause: InspectionCause{Confidence: "UNAVAILABLE", Source: "runtime", Message: message},
+			Nodes: nodes, Evidence: InspectionEvidence{Artifacts: []string{}}, CausalChain: []InspectionObservation{},
+			Observations: []InspectionObservation{{Code: "live_progress", Confidence: "UNAVAILABLE", Message: message}},
+		}},
+	}, nil
 }
 
 func inspectFlowCase(output string, run RunRecord) (InspectionCase, error) {
@@ -413,6 +450,10 @@ func inspectWorkspaceActivity(output, repeatRoot string) ([]InspectionObservatio
 			path = filepath.Join(workspace[1], path)
 		}
 		if path != "" && workspace[0] != "" && workspace[1] != "" && workspace[0] != workspace[1] && pathContains(workspace[0], path) && !pathContains(workspace[1], path) {
+			artifacts := filepath.Join(workspace[0], ".takt", "runs", event.RunID, "artifacts")
+			if pathContains(artifacts, path) {
+				continue
+			}
 			return []InspectionObservation{{Code: "control_workspace_mutation", Confidence: "CONFIRMED", Message: "assistant mutation targeted control workspace instead of execution workspace", Evidence: relativeEvidencePath(output, filepath.Join(repeatRoot, "activity.json"))}}, nil
 		}
 	}
@@ -499,7 +540,7 @@ func (i EvaluationInspection) String() string {
 			fmt.Fprintln(table, "    -\t-\t-")
 		}
 		fmt.Fprintln(table, "\n  EVIDENCE")
-		fmt.Fprintf(table, "    Root\t%s\n", item.Evidence.Root)
+		fmt.Fprintf(table, "    Root\t%s\n", valueOrDash(item.Evidence.Root))
 		fmt.Fprintf(table, "    Run\t%s\n", valueOrDash(item.Evidence.Run))
 		fmt.Fprintf(table, "    Validation\t%s\n", valueOrDash(item.Evidence.Validation))
 		fmt.Fprintf(table, "    Diff\t%s (%d bytes)\n", valueOrDash(item.Evidence.Diff), item.Evidence.DiffBytes)

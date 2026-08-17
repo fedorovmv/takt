@@ -54,9 +54,9 @@ func (e evaluationEngine) Flow(ctx context.Context, req tooling.FlowEvaluationRe
 }
 
 func (e evaluationEngine) Analyze(ctx context.Context, req tooling.EvaluationAnalyzeRequest) (any, error) {
-	return evaluation.AnalyzeFlow(ctx, evaluation.AnalysisRunOptions{
+	report, err := evaluation.AnalyzeFlow(ctx, evaluation.AnalysisRunOptions{
 		OutputDir: req.OutputDir, ConfigPath: req.ConfigPath, CaseID: req.CaseID,
-		Repeat: req.Repeat, ModelPreset: req.ModelPreset, Trace: req.Trace,
+		Repeat: req.Repeat, ModelPreset: req.ModelPreset, Language: req.Language, Trace: req.Trace,
 		Now: time.Now, CaseRunner: func(caseCtx context.Context, flowReq evaluation.FlowCaseRunRequest) (evaluation.FlowCaseRunResult, error) {
 			if flowReq.AssistantIdleTimeout <= 0 {
 				flowReq.AssistantIdleTimeout = 5 * time.Minute
@@ -64,6 +64,10 @@ func (e evaluationEngine) Analyze(ctx context.Context, req tooling.EvaluationAna
 			return e.runFlowCase(caseCtx, flowReq)
 		},
 	})
+	if report == nil {
+		return nil, err
+	}
+	return report, err
 }
 
 func (evaluationEngine) FlowInit(_ context.Context, workflowSelector, output string) (any, error) {
@@ -193,6 +197,26 @@ func (t *flowActivityTracker) active() []flowActivityRecord {
 		return records[i].NodeID < records[j].NodeID
 	})
 	return records
+}
+
+func (t *flowActivityTracker) currentContext() (int, bool) {
+	if t == nil {
+		return 0, false
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	maxTokens := 0
+	known := false
+	for _, record := range t.records {
+		if !record.Active || !record.ContextKnown {
+			continue
+		}
+		if !known || record.ContextTokens > maxTokens {
+			maxTokens = record.ContextTokens
+			known = true
+		}
+	}
+	return maxTokens, known
 }
 
 func traceAttempt(value any) int {
@@ -325,6 +349,13 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 	for {
 		state, err := poll()
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) && ctx.Err() == nil {
+				select {
+				case <-ctx.Done():
+				case <-time.After(50 * time.Millisecond):
+					continue
+				}
+			}
 			if ctx.Err() != nil {
 				return e.cancelFlowCase(ctx, app, runID, trace)
 			}
@@ -336,7 +367,7 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 			if snapshotErr != nil {
 				return evaluation.FlowCaseRunResult{}, snapshotErr
 			}
-			latestProgress, err = progress(summarizeFlowRuntimeProgress(snapshot.States))
+			latestProgress, err = progress(summarizeFlowRuntimeProgress(snapshot.States, activity))
 			if err != nil {
 				result, cancelErr := e.cancelFlowCase(ctx, app, runID, trace)
 				return result, errors.Join(err, cancelErr)
@@ -402,7 +433,7 @@ func shouldPublishFlowProgress(published bool, lastRevision, revision uint64, la
 	return !published || revision != lastRevision || now.Sub(lastUpdated) >= 10*time.Second
 }
 
-func summarizeFlowRuntimeProgress(states []*store.RunState) evaluation.FlowRuntimeProgress {
+func summarizeFlowRuntimeProgress(states []*store.RunState, activity *flowActivityTracker) evaluation.FlowRuntimeProgress {
 	progress := evaluation.FlowRuntimeProgress{RunningNodes: []string{}}
 	if len(states) == 0 || states[0] == nil {
 		return progress
@@ -435,6 +466,9 @@ func summarizeFlowRuntimeProgress(states []*store.RunState) evaluation.FlowRunti
 		}
 	}
 	sort.Strings(progress.RunningNodes)
+	if activity != nil {
+		progress.ContextTokens, progress.ContextKnown = activity.currentContext()
+	}
 	return progress
 }
 

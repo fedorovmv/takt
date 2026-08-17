@@ -28,11 +28,12 @@ func evalCmd(ctx context.Context, args []string) error {
 		fs := newFlagSet("eval analyze")
 		configPath := fs.String("config", ".takt/config.yaml", "analyzer config path")
 		modelPreset := fs.String("model-preset", "", "analyzer model preset")
+		language := fs.String("language", tooling.DefaultEvaluationAnalysisLanguage, "analysis output language: en or ru")
 		caseID := fs.String("case", "", "analyze one case")
 		repeat := fs.Int("repeat", 0, "analyze one repeat of the selected case")
 		trace := fs.Bool("trace", false, "write analysis progress to stderr")
 		jsonOut := fs.Bool("json", false, "JSON output")
-		values := map[string]bool{"--config": true, "--model-preset": true, "--case": true, "--repeat": true, "--trace": false, "--json": false}
+		values := map[string]bool{"--config": true, "--model-preset": true, "--language": true, "--case": true, "--repeat": true, "--trace": false, "--json": false}
 		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
 			return err
 		}
@@ -45,6 +46,9 @@ func evalCmd(ctx context.Context, args []string) error {
 		if *repeat > 0 && strings.TrimSpace(*caseID) == "" {
 			return fmt.Errorf("repeat requires --case")
 		}
+		if _, err := tooling.NormalizeEvaluationAnalysisLanguage(*language); err != nil {
+			return err
+		}
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval analyze <evaluation-output-dir> [flags]")
 		}
@@ -52,7 +56,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		if *trace {
 			traceFn = newEvalTrace(os.Stderr, time.Now)
 		}
-		result, err := service.Analyze(ctx, tooling.EvaluationAnalyzeRequest{OutputDir: fs.Arg(0), ConfigPath: *configPath, CaseID: *caseID, Repeat: *repeat, ModelPreset: *modelPreset, Trace: traceFn})
+		result, err := service.Analyze(ctx, tooling.EvaluationAnalyzeRequest{OutputDir: fs.Arg(0), ConfigPath: *configPath, CaseID: *caseID, Repeat: *repeat, ModelPreset: *modelPreset, Language: *language, Trace: traceFn})
 		if err != nil {
 			if result != nil {
 				if printErr := printResult(*jsonOut, result); printErr != nil {

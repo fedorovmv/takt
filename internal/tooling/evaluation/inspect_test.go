@@ -106,6 +106,47 @@ func TestInspectFlowEvaluationFiltersCases(t *testing.T) {
 	}
 }
 
+func TestInspectFlowEvaluationUsesRunningProgressBeforeReportExists(t *testing.T) {
+	dir := t.TempDir()
+	progress := &FlowProgress{
+		ReportVersion: FlowProgressVersion,
+		Status:        "running",
+		Suite:         "/suite.yaml",
+		Workflow:      "code:feature-development",
+		OutputDir:     dir,
+		StartedAt:     time.Unix(10, 0).UTC(),
+		UpdatedAt:     time.Unix(20, 0).UTC(),
+		TotalRuns:     1,
+		Current:       &FlowProgressCurrent{CaseID: "implement-basic", Repeat: 1, Ordinal: 1, Phase: "workflow"},
+		Runtime: FlowRuntimeProgress{
+			RunID: "run-live", Status: "running", TotalNodes: 6, CompletedNodes: 1,
+			RunningNodes: []string{"validate-agent"}, NodeAttempts: 2, ContextTokens: 18090, ContextKnown: true,
+		},
+		Results: FlowProgressResults{},
+	}
+	if err := WriteFlowProgress(dir, progress); err != nil {
+		t.Fatal(err)
+	}
+
+	inspection, err := InspectFlowEvaluation(dir, "implement-basic", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inspection.Cases) != 1 {
+		t.Fatalf("inspection=%+v", inspection)
+	}
+	item := inspection.Cases[0]
+	if item.RunID != "run-live" || item.Status != "running" || item.Cause.Confidence != "UNAVAILABLE" || len(item.Nodes) != 1 || item.Nodes[0].ID != "validate-agent" || item.Nodes[0].Status != "running" {
+		t.Fatalf("live case=%+v", item)
+	}
+	text := inspection.String()
+	for _, want := range []string{"CASE implement-basic#1", "Status  running", "evaluation is still running", "validate-agent  running"} {
+		if !strings.Contains(strings.Join(strings.Fields(text), " "), strings.Join(strings.Fields(want), " ")) {
+			t.Fatalf("inspection misses %q:\n%s", want, text)
+		}
+	}
+}
+
 func TestInspectFlowEvaluationReportsMissingExecutorManifest(t *testing.T) {
 	dir := t.TempDir()
 	report := &SuiteReport{ReportVersion: ReportVersion, Mode: "flow", OutputDir: dir, Runs: []RunRecord{{CaseID: "case", Repeat: 1, RunID: "run", Status: "failed"}}}
@@ -211,6 +252,31 @@ func TestInspectWorkspaceActivityResolvesRelativeToolPaths(t *testing.T) {
 	}
 	if len(observations) != 1 || observations[0].Code != "control_workspace_mutation" {
 		t.Fatalf("observations=%+v", observations)
+	}
+}
+
+func TestInspectWorkspaceActivityIgnoresDurableRunArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	repeatRoot := filepath.Join(dir, "cases", "case", "repeat-001")
+	control := filepath.Join(dir, "control")
+	execution := filepath.Join(control, ".takt", "worktrees", "run-1")
+	if err := os.MkdirAll(repeatRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFlowJSON(filepath.Join(repeatRoot, "run.json"), flowRunEvidence{States: []*store.RunState{{ID: "run-1", Workspace: control, ExecutionWorkspace: execution}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	artifact := filepath.Join(control, ".takt", "runs", "run-1", "artifacts", "implementation.md")
+	activity := flowActivityEvidence{Events: []flowActivityEvent{{Type: "assistant.tool.started", RunID: "run-1", Tool: "write", Input: map[string]any{"path": artifact}}}}
+	if err := writeFlowJSON(filepath.Join(repeatRoot, "activity.json"), activity, nil); err != nil {
+		t.Fatal(err)
+	}
+	observations, err := inspectWorkspaceActivity(dir, repeatRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(observations) != 0 {
+		t.Fatalf("durable artifact write was reported as workspace mutation: %+v", observations)
 	}
 }
 

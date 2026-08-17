@@ -146,6 +146,9 @@ func TestEvalAnalyzeValidatesArguments(t *testing.T) {
 	if err := evalCmd(context.Background(), []string{"analyze", ".takt/evals/run", "--case", "c", "--repeat", "0"}); err == nil || err.Error() != "repeat must be positive" {
 		t.Fatalf("zero repeat error=%v", err)
 	}
+	if err := evalCmd(context.Background(), []string{"analyze", ".takt/evals/run", "--language", "fr"}); err == nil || err.Error() != `unsupported analysis language "fr" (want en or ru)` {
+		t.Fatalf("language error=%v", err)
+	}
 	if err := evalCmd(context.Background(), []string{"analyze"}); err == nil || err.Error() != "usage: takt eval analyze <evaluation-output-dir> [flags]" {
 		t.Fatalf("missing directory error=%v", err)
 	}

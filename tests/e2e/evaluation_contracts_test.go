@@ -324,9 +324,9 @@ gates: {valid_rate: {min: 0}}
 	if err != nil {
 		t.Fatal(err)
 	}
-	analysis := takt(t, nil, "eval", "analyze", output, "--config", config, "--case", "problem", "--trace", "--json").RequireSuccess(t)
+	analysis := takt(t, nil, "eval", "analyze", output, "--config", config, "--case", "problem", "--language", "ru", "--trace", "--json").RequireSuccess(t)
 	report := resultObject(t, analysis.JSON(t))
-	if report["report_version"] != "takt-evaluation-analysis/v1alpha1" || report["status"] != "completed" {
+	if report["report_version"] != "takt-evaluation-analysis/v1alpha1" || report["status"] != "completed" || report["language"] != "ru" {
 		t.Fatalf("analysis report=%#v", report)
 	}
 	analyses := report["analyses"].([]any)
@@ -336,6 +336,9 @@ gates: {valid_rate: {min: 0}}
 	caseAnalysis := analyses[0].(map[string]any)
 	if caseAnalysis["prompt"] == "" || caseAnalysis["prompt_fingerprint"] == "" || caseAnalysis["trace_path"] == "" {
 		t.Fatalf("analysis prompt/session trace metadata missing: %#v", caseAnalysis)
+	}
+	if prompt, ok := caseAnalysis["prompt"].(string); !ok || !strings.Contains(prompt, `"language":"ru"`) {
+		t.Fatalf("analysis language missing from rendered prompt: %q", prompt)
 	}
 	if session, ok := caseAnalysis["session"].(map[string]any); !ok || session["session_evidence"] != "recorded" || session["session_evidence_path"] == "" {
 		t.Fatalf("analysis session evidence metadata missing: %#v", caseAnalysis["session"])
@@ -433,6 +436,20 @@ gates: {valid_rate: {min: 0}}
 	if len(analyses) != 1 || analyses[0].(map[string]any)["analysis_status"] != "protocol" {
 		t.Fatalf("analyses=%#v stderr=%s", analyses, result.Stderr)
 	}
+	caseAnalysis := analyses[0].(map[string]any)
+	rawOutputPath, ok := caseAnalysis["raw_output_path"].(string)
+	if !ok || rawOutputPath == "" {
+		t.Fatalf("protocol output path missing: %#v", caseAnalysis)
+	}
+	entries, err := filepath.Glob(filepath.Join(output, "analyses", "*", "report.json"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("analysis report files=%v err=%v", entries, err)
+	}
+	analysisRoot := filepath.Dir(entries[0])
+	rawOutput, err := os.ReadFile(filepath.Join(analysisRoot, "cases", "problem", "repeat-001", filepath.FromSlash(rawOutputPath)))
+	if err != nil || string(rawOutput) != "{not-json}" {
+		t.Fatalf("raw protocol output err=%v content=%q", err, rawOutput)
+	}
 	if after, err := os.ReadFile(filepath.Join(output, "report.json")); err != nil || string(after) != string(original) {
 		t.Fatalf("source report changed: err=%v", err)
 	}
@@ -492,7 +509,7 @@ func TestProductionFlowEvaluation(t *testing.T) {
 		wantArtifacts           []string
 		wantGH                  string
 	}{
-		{"feature", "code:feature-development", "repository", 0, "# Implement the smoke change\n", []string{"implement", "validate-agent", "validate", "create-pr", "summary"}, []string{"implementation.md", "validation.md", "pr.md", "pr-url.txt", "summary.md"}, "pr create"},
+		{"feature", "code:feature-development", "repository", 0, "# Implement the smoke change\n", []string{"implement", "validate-agent", "validate", "create-pr", "pr-effect-gate", "summary"}, []string{"implementation.md", "validation.md", "pr.md", "pr-url.txt", "summary.md"}, "pr create"},
 		{"comprehensive", "code:comprehensive-pr-review", "pull_request", 17, `{"repository":"example/mini-du","pull_request":17,"fixes_permitted":true,"validation_commands":["go test ./..."]}`, []string{"review", "summary", "review-acceptance-gate"}, nil, "pr view"},
 		{"architect", "code:architect", "pull_request", 27, `{"repository":"example/mini-du","pull_request":27,"fixes_permitted":true}`, []string{"sweep", "plan", "implement", "review", "summary", "scope", "classify"}, []string{"architecture.md", "plan.md", "implementation.md", "summary.md"}, "pr view"},
 	} {
@@ -538,6 +555,29 @@ func TestProductionFlowEvaluation(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestProductionFlowEvaluationPRGateRejectsMissingSCMSideEffect(t *testing.T) {
+	t.Setenv("FAKE_SKIP_PR_CREATE", "1")
+	fake := binary(t, "takt-fake-code-agent")
+	root := t.TempDir()
+	suite := writeProductionFlowSuite(t, root, "code:feature-development", "repository", 0, "# Implement the smoke change\n", fake)
+	output := filepath.Join(t.TempDir(), "output")
+	result := takt(t, []string{"TAKT_PRODUCTION_FLOW_VALIDATOR=1"}, "eval", "flow", suite, "--output", output, "--keep-workspaces", "--json").RequireFailure(t)
+	report := resultObject(t, result.JSON(t))
+	run := report["runs"].([]any)[0].(map[string]any)
+	if run["status"] != "failed" {
+		t.Fatalf("run=%#v", run)
+	}
+	nodes := run["nodes"].(map[string]any)
+	gate, ok := flowNode(nodes, "pr-effect-gate")
+	if !ok || gate["status"] != "failed" {
+		t.Fatalf("pr-effect-gate=%#v", gate)
+	}
+	summary, ok := flowNode(nodes, "summary")
+	if !ok || summary["status"] != "skipped" {
+		t.Fatalf("summary=%#v", summary)
 	}
 }
 
@@ -637,7 +677,7 @@ func requireEvidenceArtifact(t *testing.T, evidence, baseName string) {
 
 func TestFlowInventory(t *testing.T) {
 	paths := map[string][]string{
-		"feature-development.yaml":     {"implement", "validate-agent", "validate", "create-pr", "summary"},
+		"feature-development.yaml":     {"implement", "validate-agent", "validate", "create-pr", "pr-effect-gate", "summary"},
 		"comprehensive-pr-review.yaml": {"review", "summary"},
 		"review-block.yaml":            {"scope", "perspectives", "reviews", "synthesize", "fixes", "validate", "post-review-validation-commands", "review-acceptance-gate"},
 		"review-perspective.yaml":      {"review"},

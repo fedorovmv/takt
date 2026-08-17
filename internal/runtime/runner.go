@@ -257,6 +257,7 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 			BaseRef: info.BaseRef, BaseCommit: info.BaseCommit, Cleanup: worktreeSpec.Cleanup, BaseDirty: info.BaseDirty,
 		}
 	}
+	input = remapExecutionInput(input, r.controlWorkspace, r.workspace)
 	fingerprints, err := definition.Compute(r.workflow, r.config, r.workflowPath, r.configPath, r.commands)
 	if err != nil {
 		r.rollbackPreparedWorktree(worktreeState)
@@ -288,6 +289,37 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 		return nil, err
 	}
 	return r.resume(ctx, state)
+}
+
+func remapExecutionInput(input, controlWorkspace, executionWorkspace string) string {
+	if mapped, ok := remapControlPath(input, controlWorkspace, executionWorkspace); ok {
+		return mapped
+	}
+	const marker = "Source file: `"
+	start := strings.Index(input, marker)
+	if start < 0 {
+		return input
+	}
+	start += len(marker)
+	end := strings.IndexByte(input[start:], '`')
+	if end < 0 {
+		return input
+	}
+	if mapped, ok := remapControlPath(input[start:start+end], controlWorkspace, executionWorkspace); ok {
+		return input[:start] + mapped + input[start+end:]
+	}
+	return input
+}
+
+func remapControlPath(path, controlWorkspace, executionWorkspace string) (string, bool) {
+	if path == "" || controlWorkspace == "" || executionWorkspace == "" || filepath.Clean(controlWorkspace) == filepath.Clean(executionWorkspace) || !filepath.IsAbs(path) {
+		return path, false
+	}
+	rel, err := filepath.Rel(controlWorkspace, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path, false
+	}
+	return filepath.Join(executionWorkspace, rel), true
 }
 
 func runOptionsState(options StartOptions) store.RunOptionsState {

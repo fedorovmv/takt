@@ -40,7 +40,7 @@ binary evidence останавливает запись fail-closed.
 
 ### Control и execution workspace
 
-Control workspace хранит определения, state/events, locks и artifacts. При worktree policy execution workspace указывает на отдельный Git worktree, где выполняются node actions.
+Control workspace хранит определения, state/events, locks и artifacts. При worktree policy execution workspace указывает на отдельный Git worktree, где выполняются node actions. Абсолютный входной путь, указывающий на файл внутри control workspace, включая profile-generated `Source file` header, перед запуском node remap-ится на соответствующий путь execution workspace; это не позволяет assistant использовать служебный control-путь как рабочий.
 
 ### Iteration
 

@@ -35,6 +35,17 @@ func TestApprovalOutputFallsBackToDurableAnswer(t *testing.T) {
 	}
 }
 
+func TestExecutionWorkspaceTemplateReference(t *testing.T) {
+	state := &store.RunState{Workspace: "/control", ExecutionWorkspace: "/execution", Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}
+	value, err := renderTemplate("$TAKT_WORKSPACE", state, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value != "/execution" {
+		t.Fatalf("workspace = %q, want /execution", value)
+	}
+}
+
 func TestLoopPreviousIsImplicitlyEmptyOnFirstIteration(t *testing.T) {
 	state := &store.RunState{Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}
 	value, err := renderTemplate("$LOOP_PREV.review.output", state, nil, "", "")

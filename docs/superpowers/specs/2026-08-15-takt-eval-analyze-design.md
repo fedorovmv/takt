@@ -29,7 +29,7 @@ The stable entry point is a command, backed by an ordinary Takt workflow:
 
 ```text
 takt eval analyze <evaluation-output-dir> [--case ID] [--repeat N]
-    [--config PATH] [--model-preset PRESET] [--trace] [--json]
+    [--config PATH] [--model-preset PRESET] [--language en|ru] [--trace] [--json]
 ```
 
 `--case` selects one case. `--repeat` requires `--case` and selects one
@@ -48,6 +48,10 @@ The alias is an ordinary shared Config model alias and therefore follows the
 current `[a-z][a-z0-9_]*` grammar. The user-facing command and internal flow
 are named `analyze`/`evaluation:analyze`; the alias is deliberately
 `takt_analyze` so it cannot be confused with a workflow role.
+
+`--language` selects `en` or `ru` for human-readable advisory values and
+defaults to `en`. JSON keys and enum values remain stable; the selected
+language is persisted in the analysis report and manifest.
 
 `--trace` reports preparation, selected cases, evidence/session paths,
 adapter/model identity, Run/node transitions and report writes to stderr.
@@ -154,9 +158,12 @@ The assistant must emit one strict JSON object validated by a new
 
 ```yaml
 primary_class: infrastructure | assistant | workflow | candidate | validator | task | unknown
-failure_mode: string
+failure_mode: ^[a-z][a-z0-9_]*$
 confidence: high | medium | low
 root_cause: string
+causal_mechanism: string
+failure_point: assistant_decision | workflow_control | validator | infrastructure | unknown
+prevention: string
 causal_chain:
   - fact: string
     consequence: string
@@ -173,11 +180,14 @@ disagreement:
   explanation: string
 ```
 
-`failure_mode` is advisory text for the first version; `primary_class` is the
-bounded comparable dimension. The schema requires non-empty root cause and
-evidence for `high` confidence. The deterministic cause, validator verdict,
-Run outcome, analysis model identity and analysis status are stored outside
-the model object and cannot be overwritten by model output.
+`failure_mode` is an untranslated lowercase snake_case machine code;
+`primary_class` and `failure_mode` are comparable across analysis languages.
+The schema requires a non-empty root cause,
+causal mechanism and prevention, plus a bounded failure point. At least one
+citation must come from runtime, assistant, artifact, source, diff, or SCM
+evidence rather than only the validator result. The deterministic cause,
+validator verdict, Run outcome, analysis model identity and analysis status are
+stored outside the model object and cannot be overwritten by model output.
 
 ## Persistence and reruns
 
