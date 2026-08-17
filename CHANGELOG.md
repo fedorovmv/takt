@@ -2,12 +2,18 @@
 
 ## Unreleased
 
+## v0.1.58-alpha
+
 - `code:feature-development` now fails its implementation hook when the
   required `implementation.md` artifact is not a non-empty regular file, so the same assistant
   session is retried before review/PR work begins. Mini-du validation separates
   `missing_artifact` from product failures and checks failure diagnostics by
   exit/stdout/stderr contract instead of host-specific wording. Invalid flow
   results no longer expose a misleading per-run `time_to_valid_ms`.
+
+- Версия продукта обновлена до `0.1.58-alpha`, профиль `code` — до `0.18.0`,
+  authoring skill — до `0.40.0`. Корневая и runtime-версия теперь защищены
+  contract test, а release-процесс зафиксирован в `AGENTS.md`.
 
 - Pi-backed flow evaluation and advisory analysis now disable hidden Pi/SDK
   retries in their isolated workspaces, leaving Takt as the single durable
