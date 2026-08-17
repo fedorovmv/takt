@@ -59,7 +59,7 @@ func assertCorpus(t *testing.T, name, workflow string, wantIDs []string, wantPRs
 	if err != nil {
 		t.Fatal(err)
 	}
-	if suite.Workflow != workflow || suite.Config != "../config.yaml" || suite.External.GitHub == nil || suite.External.GitHub.Require != "pull_request" {
+	if suite.Workflow != workflow || suite.Config != "../config.yaml" || suite.Validator.Version != "3" || suite.External.GitHub == nil || suite.External.GitHub.Require != "pull_request" {
 		t.Fatalf("suite=%+v", suite)
 	}
 	cases, err := evaluation.DiscoverFlowCases(suite.SuitePath, suite, "")

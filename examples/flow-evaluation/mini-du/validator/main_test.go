@@ -127,7 +127,7 @@ func main() {
 func TestHardlinkMultipleRejectsPerArgumentInodeTracking(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "candidate")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf '8\\t%s\\n8\\t%s\\n' \"$1\" \"$2\"\n"), 0755); err != nil {
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nfor arg; do du -k \"$arg\"; done\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := compareScenario(bin, "hardlink_multiple"); err == nil {
@@ -138,7 +138,7 @@ func TestHardlinkMultipleRejectsPerArgumentInodeTracking(t *testing.T) {
 func TestDoubleDashDefaultRejectsNoOutput(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "candidate")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nif [ \"$1\" = \"--\" ]; then exit 0; fi\nexec du -k \"$@\"\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := compareScenario(bin, "double_dash_default"); err == nil {
