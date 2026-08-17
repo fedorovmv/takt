@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"takt/internal/assistant"
 	"takt/internal/config"
 	"takt/internal/profile"
 	"takt/internal/runtime"
@@ -69,6 +70,9 @@ func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, rep
 	if err != nil {
 		return nil, err
 	}
+	if err := writeFlowPiSettings(control, effective); err != nil {
+		return nil, err
+	}
 	if err := validateFlowReferences(suite, selector, control, effective); err != nil {
 		return nil, err
 	}
@@ -119,6 +123,52 @@ func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, rep
 		BareRemote:         bareRemote,
 		Repeat:             repeat,
 	}, nil
+}
+
+func writeFlowPiSettings(workspace string, cfg *spec.Config) error {
+	pi, ok := flowPiAssistant(cfg)
+	if !ok {
+		return nil
+	}
+	path := filepath.Join(workspace, ".pi", "settings.json")
+	settings := map[string]any{}
+	if pi.Settings != nil {
+		data, err := json.Marshal(pi.Settings)
+		if err != nil {
+			return fmt.Errorf("encode configured Pi settings: %w", err)
+		}
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return fmt.Errorf("copy configured Pi settings: %w", err)
+		}
+	}
+	retry, ok := settings["retry"].(map[string]any)
+	if !ok {
+		if settings["retry"] != nil {
+			return fmt.Errorf("eval Pi retry settings must be an object")
+		}
+		retry = map[string]any{}
+		settings["retry"] = retry
+	}
+	retry["enabled"] = false
+	provider, ok := retry["provider"].(map[string]any)
+	if !ok {
+		if retry["provider"] != nil {
+			return fmt.Errorf("eval Pi provider retry settings must be an object")
+		}
+		provider = map[string]any{}
+		retry["provider"] = provider
+	}
+	provider["maxRetries"] = 0
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFlowRaw(path, append(data, '\n'), 0o644)
+}
+
+func flowPiAssistant(cfg *spec.Config) (spec.AssistantSpec, bool) {
+	_, configured, ok := assistant.ResolveConfigured("coding-agent", cfg)
+	return configured, ok && configured.Type == "pi"
 }
 
 func modelReferences(models map[string]spec.ModelSpec) map[string]string {

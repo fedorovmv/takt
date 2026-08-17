@@ -277,6 +277,9 @@ assistants:
     args: [--offline]
     session_dir: .takt/pi-sessions
     project_trust: deny
+    settings:
+      httpIdleTimeoutMs: 300000
+      theme: dark
     max_output_bytes: 1048576
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -290,6 +293,9 @@ assistants:
 	if got.Type != "pi" || got.Binary != "/usr/local/bin/pi" || got.ProjectTrust != "deny" || len(got.Args) != 1 {
 		t.Fatalf("unexpected Pi config: %+v", got)
 	}
+	if got.Settings["httpIdleTimeoutMs"] != float64(300000) || got.Settings["theme"] != "dark" {
+		t.Fatalf("unexpected Pi settings: %#v", got.Settings)
+	}
 }
 
 func TestLoadRejectsInvalidPiOptions(t *testing.T) {
@@ -300,6 +306,7 @@ func TestLoadRejectsInvalidPiOptions(t *testing.T) {
 		{name: "invalid trust", body: "type: pi\n    project_trust: sometimes"},
 		{name: "argv", body: "type: pi\n    argv: [pi]"},
 		{name: "Pi fields on process", body: "type: process\n    argv: [echo]\n    binary: pi"},
+		{name: "Pi settings on process", body: "type: process\n    argv: [echo]\n    settings: {httpIdleTimeoutMs: 300000}"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.yaml")

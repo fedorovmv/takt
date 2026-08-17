@@ -504,12 +504,16 @@ type piRPCRecord struct {
 }
 
 type piRPCClient struct {
-	stdin     io.WriteCloser
-	records   <-chan piRPCRecord
-	streamErr <-chan error
-	process   *piProcessWait
-	backlog   []piRPCRecord
-	request   Request
+	stdin       io.WriteCloser
+	records     <-chan piRPCRecord
+	streamErr   <-chan error
+	process     *piProcessWait
+	backlog     []piRPCRecord
+	request     Request
+	modelCall   int
+	streaming   bool
+	turnStart   time.Time
+	streamStart time.Time
 }
 
 type piProcessWait struct {
@@ -683,6 +687,11 @@ func (c *piRPCClient) next(ctx context.Context, match func(piRPCRecord) bool) (p
 					c.request.Activity("tool.running")
 				}
 			}
+			if event, ok := c.piLifecycleEvent(record); ok {
+				event.SessionID = c.request.SessionID
+				event.Provider = c.request.Model.Provider
+				emitEvent(c.request, event)
+			}
 			if event, ok := piProgressEvent(record); ok {
 				event.SessionID = c.request.SessionID
 				event.Provider = c.request.Model.Provider
@@ -697,6 +706,97 @@ func (c *piRPCClient) next(ctx context.Context, match func(piRPCRecord) bool) (p
 			c.backlog = append(c.backlog, record)
 		}
 	}
+}
+
+func (c *piRPCClient) piLifecycleEvent(record piRPCRecord) (core.Event, bool) {
+	now := time.Now().UTC()
+	data := map[string]any{}
+	code := ""
+	message := ""
+	switch record.Type {
+	case "agent_start":
+		code = "pi.agent.started"
+	case "turn_start":
+		c.modelCall++
+		c.streaming = false
+		c.turnStart = now
+		c.streamStart = time.Time{}
+		code = "pi.turn.started"
+	case "message_start":
+		c.streaming = false
+		code = "pi.message.started"
+	case "message_update":
+		if c.streaming {
+			return core.Event{}, false
+		}
+		c.streaming = true
+		c.streamStart = now
+		if !c.turnStart.IsZero() {
+			data["wait_ms"] = now.Sub(c.turnStart).Milliseconds()
+		}
+		code = "pi.stream.started"
+	case "message_end":
+		code = "pi.message.completed"
+		if !c.turnStart.IsZero() {
+			data["total_ms"] = now.Sub(c.turnStart).Milliseconds()
+		}
+		if !c.streamStart.IsZero() {
+			data["stream_ms"] = now.Sub(c.streamStart).Milliseconds()
+		}
+		var value struct {
+			Message struct {
+				StopReason string          `json:"stopReason"`
+				Usage      json.RawMessage `json:"usage"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(record.Raw, &value) == nil {
+			if value.Message.StopReason != "" {
+				data["stop_reason"] = value.Message.StopReason
+			}
+			if usage := decodePiUsage(value.Message.Usage); usage != nil {
+				data["input_tokens"] = usage.InputTokens
+				data["output_tokens"] = usage.OutputTokens
+			}
+		}
+	case "agent_end":
+		code = "pi.agent.completed"
+		var value struct {
+			WillRetry bool `json:"willRetry"`
+		}
+		if json.Unmarshal(record.Raw, &value) == nil {
+			data["will_retry"] = value.WillRetry
+		}
+	case "auto_retry_start":
+		code = "pi.auto_retry.started"
+		var value struct {
+			Attempt      int    `json:"attempt"`
+			MaxAttempts  int    `json:"maxAttempts"`
+			DelayMS      int    `json:"delayMs"`
+			ErrorMessage string `json:"errorMessage"`
+		}
+		if json.Unmarshal(record.Raw, &value) == nil {
+			data["attempt"], data["max_attempts"], data["delay_ms"] = value.Attempt, value.MaxAttempts, value.DelayMS
+			message = value.ErrorMessage
+		}
+	case "auto_retry_end":
+		code = "pi.auto_retry.completed"
+		var value struct {
+			Success    bool   `json:"success"`
+			Attempt    int    `json:"attempt"`
+			FinalError string `json:"finalError"`
+		}
+		if json.Unmarshal(record.Raw, &value) == nil {
+			data["success"], data["attempt"] = value.Success, value.Attempt
+			message = value.FinalError
+		}
+	default:
+		return core.Event{}, false
+	}
+	data["code"] = code
+	if c.modelCall > 0 {
+		data["call"] = c.modelCall
+	}
+	return core.Event{Type: EventDiagnostic, Time: now, Message: message, Data: data}, true
 }
 
 func piProgressEvent(record piRPCRecord) (core.Event, bool) {

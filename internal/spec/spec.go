@@ -335,6 +335,7 @@ type AssistantSpec struct {
 	AutoApprove    bool              `json:"auto_approve,omitempty"`
 	SessionDir     string            `json:"session_dir,omitempty"`
 	ProjectTrust   string            `json:"project_trust,omitempty"`
+	Settings       map[string]any    `json:"settings,omitempty"`
 	Env            map[string]string `json:"env,omitempty"`
 	Capabilities   []string          `json:"capabilities,omitempty"`
 	Protocol       string            `json:"protocol,omitempty"`

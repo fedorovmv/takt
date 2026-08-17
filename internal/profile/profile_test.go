@@ -152,7 +152,7 @@ func TestEvaluationProfileInstallsReadOnlyAnalysisWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	commandText := strings.Join(strings.Fields(string(command)), " ")
-	for _, contract := range []string{"causally sufficient", "exact observed candidate/oracle delta", "unrelated discrepancy"} {
+	for _, contract := range []string{"causally sufficient", "exact observed candidate/oracle delta", "unrelated discrepancy", "Pi lifecycle observations", "must not be described as model thinking"} {
 		if !strings.Contains(commandText, contract) {
 			t.Fatalf("analysis command omits %q", contract)
 		}

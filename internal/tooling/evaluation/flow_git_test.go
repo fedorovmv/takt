@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,6 +36,50 @@ func TestPrepareFlowRepeatCommitsProfileBeforeBaseline(t *testing.T) {
 	if prepared.HostPATHHash != sha256Hex("/host/bin") || prepared.ProfileFingerprint == "" {
 		t.Fatalf("unexpected fingerprints: %+v", prepared)
 	}
+	requireTreeEqualWithoutGit(t, prepared.ControlWorkspace, prepared.BaselineWorkspace)
+}
+
+func TestPrepareFlowRepeatMakesPiRetriesTaktOwned(t *testing.T) {
+	configText := strings.Replace(flowConfig("implementation", "review"), "default_assistant: fake\n", "", 1)
+	configText = strings.Replace(configText, "  fake:\n    type: mock\n", `  pi:
+    type: pi
+    binary: pi
+    settings:
+      httpIdleTimeoutMs: 1234
+      theme: dark
+      retry:
+        enabled: true
+        maxRetries: 9
+        provider:
+          maxRetries: 7
+`, 1)
+	suite, item := prepareFlowFixture(t, "code:feature-development", configText, "# task\n")
+	prepared, err := PrepareFlowRepeat(context.Background(), suite, item, 1, t.TempDir(), "/host/bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(prepared.ControlWorkspace, ".pi", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings struct {
+		HTTPIdleTimeoutMS int    `json:"httpIdleTimeoutMs"`
+		Theme             string `json:"theme"`
+		Retry             struct {
+			Enabled    bool `json:"enabled"`
+			MaxRetries int  `json:"maxRetries"`
+			Provider   struct {
+				MaxRetries int `json:"maxRetries"`
+			} `json:"provider"`
+		} `json:"retry"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings.HTTPIdleTimeoutMS != 1234 || settings.Theme != "dark" || settings.Retry.Enabled || settings.Retry.MaxRetries != 9 || settings.Retry.Provider.MaxRetries != 0 {
+		t.Fatalf("eval Pi settings=%s", data)
+	}
+	requireGitTracked(t, prepared.ControlWorkspace, ".pi/settings.json")
 	requireTreeEqualWithoutGit(t, prepared.ControlWorkspace, prepared.BaselineWorkspace)
 }
 

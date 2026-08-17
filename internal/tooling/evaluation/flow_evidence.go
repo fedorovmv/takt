@@ -145,12 +145,16 @@ func WriteFlowEvidence(root string, item FlowEvidence, redactor *redact.Redactor
 func flowAssistantActivity(events []store.Event) []flowActivityEvent {
 	activity := []flowActivityEvent{}
 	for _, event := range events {
-		if event.Type != "assistant.tool.started" {
+		if event.Type != "assistant.tool.started" && event.Type != "assistant.diagnostic" {
 			continue
 		}
 		input, _ := event.Data["input"].(map[string]any)
 		tool, _ := event.Data["tool"].(string)
-		activity = append(activity, flowActivityEvent{Time: event.Time, Type: event.Type, RunID: event.RunID, NodeID: event.NodeID, Revision: event.Revision, Tool: tool, Input: input})
+		var data map[string]any
+		if event.Type == "assistant.diagnostic" {
+			data = event.Data
+		}
+		activity = append(activity, flowActivityEvent{Time: event.Time, Type: event.Type, RunID: event.RunID, NodeID: event.NodeID, Revision: event.Revision, Tool: tool, Input: input, Data: data})
 	}
 	return activity
 }

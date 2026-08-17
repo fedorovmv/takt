@@ -255,6 +255,17 @@ and cost counters contain only completed executions already persisted by the
 runtime. If the eval process is killed, `status` can remain `running`; inspect
 `Updated`/`updated_at` for staleness.
 
+Для оценки через Pi объект `assistants.<name>.settings` копируется как нативный
+JSON Pi в изолированный `.pi/settings.json`; конфигурация корпуса задаёт
+`httpIdleTimeoutMs: 300000`. Затем контур оценки отключает повторы уровня агента
+Pi и SDK провайдера. Эти ключи имеют приоритет над встроенными настройками,
+поэтому видимым сохраняемым циклом повторов владеет Takt. `eval status`
+добавляет для каждого узла состояние провайдера (`awaiting_response`,
+`streaming` или повтор),
+порядковый номер вызова модели, длительность состояния и последнюю
+отредактированную ошибку провайдера. Обычные настройки Pi вне оценки не
+изменяются.
+
 Model comparisons use shared Config presets: `takt eval flow <suite.yaml>
 --model-preset <name>` or `EVAL_PRESET=mixed make eval-feature`. One-off alias
 overrides use repeated `--model alias=provider/model`; Make passes generic
@@ -281,19 +292,29 @@ Percentages retain their numerator/denominator, missing measurements are not
 printed as percentages, all deltas are `B-A`, and differing benchmark
 fingerprints remain fail-closed.
 
-Failure investigation is deterministic and separate from scoring. `takt eval
-stats <output-dir>` attributes the first authoritative validator/runtime/node
-cause to each failed case. `takt eval inspect <output-dir> [--case ID]
-[--repeat N]` reads only persisted evidence and shows that cause, non-completed
-nodes, diff/source/full-history Git bundle, artifacts, SCM calls and normalized
-tool-start activity. `activity.json` excludes assistant messages and tool output
-and passes through the common redactor. A separate deterministic causal chain
-connects persisted terminal assistant reason/usage and tool-call counts to an
-empty result, failed validation and skipped downstream nodes. Derived observations carry explicit
-`CONFIRMED|INFERRED|UNAVAILABLE` confidence and never replace the validator
-verdict. Neither command starts/resumes a flow or contacts a model; any future
-LLM-assisted analysis must be a separate explicit opt-in command with cited
-evidence and persisted model/session/usage.
+Расследование отказов детерминировано и отделено от оценки качества. Команда
+`takt eval stats <output-dir>` связывает каждый неуспешный сценарий с первой
+авторитетной причиной уровня валидатора, среды выполнения или узла. Команда
+`takt eval inspect <output-dir> [--case ID] [--repeat N]` читает только
+сохранённые свидетельства и показывает эту причину, незавершённые узлы, diff,
+исходники, полный Git bundle, артефакты,
+вызовы SCM и нормализованные события инструментов и жизненного цикла провайдера.
+`activity.json` не включает сообщения
+ассистента, повторяющиеся обновления потока и вывод инструментов, но сохраняет
+ограниченные наблюдения Pi о ходе запроса, первом событии потока, завершении и
+повторах, после чего проходит через общий механизм редактирования. Наблюдаемые
+клиентом `wait_ms`, `stream_ms` и `total_ms` не определяют время очереди
+провайдера или
+вычисления на сервере. Отдельная детерминированная причинная цепочка связывает
+сохранённую конечную причину ассистента, статистику использования и число
+вызовов инструментов с пустым результатом, отказом валидации и пропущенными
+зависимыми узлами.
+Производные наблюдения имеют явную уверенность
+`CONFIRMED|INFERRED|UNAVAILABLE` и не заменяют вердикт валидатора. Ни одна из
+команд не запускает и не возобновляет процесс и не обращается к модели; любой
+будущий LLM-анализ должен быть отдельной явно выбранной командой с цитируемыми
+свидетельствами и сохранёнными данными модели, сессии и статистики
+использования.
 
 Before the first case checkpoint creates `report.json`, `eval inspect` falls
 back to `progress.json` and reports the current case/running nodes with an
@@ -321,6 +342,9 @@ point and give
 one concrete prevention. Validator-only citations are insufficient: at least
 one checked runtime, assistant, artifact, source, diff, or SCM citation is
 required. The original evaluation report remains immutable.
+При наличии свидетельств жизненного цикла Pi рекомендательный анализ обязан
+различать задержку перед повтором, ожидание клиента и передачу потока;
+ненаблюдаемый интервал нельзя называть размышлением модели.
 
 ## 9. Критерий полезности Takt
 

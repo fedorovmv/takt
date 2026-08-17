@@ -64,6 +64,24 @@ func TestLoadFlowProgressRejectsTrailingJSON(t *testing.T) {
 	}
 }
 
+func TestFlowProgressRendersProviderActivity(t *testing.T) {
+	dir := t.TempDir()
+	data := `{"report_version":"takt-flow-evaluation-progress/v1alpha1","status":"running","suite":"suite.yaml","workflow":"flow","output_dir":"out","started_at":"2026-08-17T14:00:00Z","updated_at":"2026-08-17T14:03:11Z","total_runs":1,"completed_runs":0,"runtime":{"total_nodes":1,"completed_nodes":0,"running_nodes":["implement"],"node_attempts":1,"provider_attempts":0,"input_tokens":0,"output_tokens":0,"cost":0,"assistant_activity":[{"run_id":"run-1","node_id":"implement","attempt":1,"state":"retry_backoff","since":"2026-08-17T14:03:10Z","call":2,"retry":1,"max_retries":3,"delay_ms":2000,"last_error":"HTTP 500 unavailable"}]},"results":{"valid":0,"invalid":0,"infrastructure_errors":0,"validation_errors":0}}`
+	if err := os.WriteFile(filepath.Join(dir, FlowProgressFile), []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	progress, err := LoadFlowProgress(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := progress.render(time.Date(2026, 8, 17, 14, 3, 12, 0, time.UTC))
+	for _, want := range []string{"PROVIDER ACTIVITY", "implement#1", "retry_backoff", "for 2s", "call 2", "retry 1/3", "delay 2s", "HTTP 500 unavailable"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("provider activity misses %q:\n%s", want, text)
+		}
+	}
+}
+
 func TestFlowProgressRejectsMissingRequiredFieldsAndNegativeResults(t *testing.T) {
 	now := time.Now().UTC()
 	valid := FlowProgress{ReportVersion: FlowProgressVersion, Status: "running", Suite: "suite.yaml", Workflow: "flow", OutputDir: "out", StartedAt: now, UpdatedAt: now, TotalRuns: 1, Runtime: FlowRuntimeProgress{RunningNodes: []string{}}}

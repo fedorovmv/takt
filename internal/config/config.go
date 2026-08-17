@@ -282,6 +282,9 @@ func validateAssistantShape(name string, assistant spec.AssistantSpec) error {
 	if assistant.Type != "process" && assistant.Protocol != "" {
 		return fmt.Errorf("assistant %q protocol is supported only for type process", name)
 	}
+	if assistant.Type != "pi" && assistant.Settings != nil {
+		return fmt.Errorf("assistant %q settings are supported only for type pi", name)
+	}
 	if assistant.Type != "pi" && assistant.Type != "opencode" && (assistant.Binary != "" || len(assistant.Args) != 0 || assistant.Agent != "" || assistant.AutoApprove || assistant.SessionDir != "" || assistant.ProjectTrust != "") {
 		return fmt.Errorf("assistant %q specialized fields are supported only for type pi or opencode", name)
 	}

@@ -84,6 +84,8 @@ assistants:
     args: [--offline]
     session_dir: .takt/pi-sessions
     project_trust: deny
+    settings:
+      httpIdleTimeoutMs: 300000
     env:
       EXAMPLE: value
     capabilities: [custom_extension]
@@ -94,6 +96,9 @@ assistants:
 - `args` — дополнительные нерезервированные параметры;
 - `session_dir` — каталог сессий;
 - `project_trust` — `default`, `approve` или `deny`;
+- `settings` — нативный JSON-объект Pi, который контур оценки переносит в
+  изолированный `.pi/settings.json`; оценка принудительно отключает вложенные
+  повторы агента и SDK провайдера;
 - `env` — переменные окружения процесса;
 - `max_output_bytes` — общий лимит RPC stdout/stderr.
 

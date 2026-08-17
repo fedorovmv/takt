@@ -23,8 +23,9 @@ func TestFlowEvidenceWritesFilteredRedactedAssistantActivity(t *testing.T) {
 		CaseID: "case", Repeat: 1,
 		Events: []store.Event{
 			{Time: time.Date(2026, 8, 15, 10, 0, 0, 0, time.UTC), Type: "assistant.tool.started", RunID: "run-1", NodeID: "implement", Revision: 3, Data: map[string]any{"tool": "write", "input": map[string]any{"path": "/control/main.go", "content": "known-secret"}}},
-			{Type: "assistant.message", RunID: "run-1", Revision: 4, Data: map[string]any{"message": "known-secret"}},
-			{Type: "assistant.tool.completed", RunID: "run-1", Revision: 5, Data: map[string]any{"tool": "write", "output": "known-secret"}},
+			{Time: time.Date(2026, 8, 15, 10, 0, 1, 0, time.UTC), Type: "assistant.diagnostic", RunID: "run-1", NodeID: "implement", Revision: 4, Data: map[string]any{"code": "pi.auto_retry.started", "attempt": 1, "max_attempts": 3, "delay_ms": 2000, "message": "known-secret"}},
+			{Type: "assistant.message", RunID: "run-1", Revision: 5, Data: map[string]any{"message": "known-secret"}},
+			{Type: "assistant.tool.completed", RunID: "run-1", Revision: 6, Data: map[string]any{"tool": "write", "output": "known-secret"}},
 		},
 	}
 	r := &redact.Redactor{}
@@ -37,7 +38,7 @@ func TestFlowEvidenceWritesFilteredRedactedAssistantActivity(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	for _, want := range []string{`"time": "2026-08-15T10:00:00Z"`, `"type": "assistant.tool.started"`, `"tool": "write"`, `"path": "/control/main.go"`, `"content": "\u003credacted\u003e"`} {
+	for _, want := range []string{`"time": "2026-08-15T10:00:00Z"`, `"type": "assistant.tool.started"`, `"tool": "write"`, `"path": "/control/main.go"`, `"content": "\u003credacted\u003e"`, `"type": "assistant.diagnostic"`, `"code": "pi.auto_retry.started"`, `"delay_ms": 2000`, `"message": "\u003credacted\u003e"`} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("activity misses %q: %s", want, text)
 		}

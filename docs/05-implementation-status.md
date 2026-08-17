@@ -215,26 +215,38 @@ provider stalls therefore end durably as `timed_out`. Deterministic contracts co
 persistence and worktree ordering; live Pi evidence has confirmed fresh/exact
 resume and a completed production `implement` node, while a complete multi-node
 quality result remains separate evidence.
-Each flow eval atomically publishes `progress.json`; `eval status` and
-`make eval-status RUN=...` expose the current case/phase, durable Run/node
-progress and measured persisted usage without launching a model. The completed
-or failed snapshot remains next to the report; `updated_at` makes a stale
-`running` snapshot after process death observable.
+Каждый запуск оценки процесса атомарно публикует `progress.json`; команды
+`eval status` и `make eval-status RUN=...` без запуска модели показывают
+текущий сценарий и фазу,
+сохраняемый прогресс Run и узлов, активную фазу провайдера Pi, сведения о
+повторах и измеренную сохранённую статистику. В изолированных каталогах Pi
+контур оценки отключает внутренние повторы Pi, поэтому единственным владельцем
+сохраняемого цикла повторов остаётся Takt. Остальные настройки изолированного
+проекта Pi задаются
+нативным объектом `assistants.<name>.settings`; корпус mini-du фиксирует
+`httpIdleTimeoutMs` на пяти минутах. Завершённый или неуспешный снимок остаётся
+рядом с отчётом; поле `updated_at` позволяет обнаружить устаревший снимок со
+статусом `running` после завершения процесса.
 `eval stats` provides a compact human/JSON view of one saved suite report,
 separates total node attempts from actual assistant executions and lists each
 assistant step with model, tokens and durable-event wall time. Old reports
 without node timing remain readable and show unavailable duration. A separate
 assistant-session table exposes the full durable Session ID for each execution,
 including attempt/provider-attempt and fresh/resume mode.
-Stats also attributes one primary failure cause per case. `eval inspect` and
-`make eval-inspect RUN=... [CASE=...] [REPEAT=...]` provide deterministic,
-read-only failure investigation from persisted validator/runtime/node state,
-diff/source/Git/artifact/SCM evidence and filtered redacted tool-start activity.
-`CAUSAL CHAIN` отдельно связывает доказанный assistant output limit, фактические
-tool-call counts, пустой completed result, deterministic validation failure и
-skipped downstream nodes вместо повторения одного validator verdict.
-They never contact a model or alter the validator verdict; unavailable evidence
-stays explicit, and heuristic observations are not promoted to reported facts.
+Команда `eval stats` также определяет одну основную причину отказа для каждого
+сценария. Команды `eval inspect` и
+`make eval-inspect RUN=... [CASE=...] [REPEAT=...]` выполняют
+детерминированное расследование только для чтения по сохранённым состояниям
+валидатора, среды выполнения и узлов, diff, исходникам, Git, артефактам и
+свидетельствам SCM, а также
+по отфильтрованным и отредактированным событиям запуска инструментов и
+жизненного цикла Pi, включая наблюдаемое клиентом время ожидания, потока и
+полную длительность. `CAUSAL CHAIN` связывает доказанный лимит вывода ассистента,
+фактическое число вызовов инструментов, пустой завершённый результат,
+детерминированный отказ валидации и пропущенные зависимые узлы, а не повторяет
+один вердикт валидатора. Команды не обращаются к модели и не изменяют вердикт
+валидатора; недоступные свидетельства остаются явными, а эвристические
+наблюдения не выдаются за установленные факты.
 `eval compare` renders an A/B scorecard with an explicit overall,
 correctness/reliability/efficiency and per-metric `BETTER|WORSE|SAME` direction,
 human resource deltas, presets/models and per-case transitions. Missing

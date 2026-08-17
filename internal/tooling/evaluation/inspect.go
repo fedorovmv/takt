@@ -86,6 +86,7 @@ type flowActivityEvent struct {
 	Revision uint64         `json:"revision"`
 	Tool     string         `json:"tool,omitempty"`
 	Input    map[string]any `json:"input,omitempty"`
+	Data     map[string]any `json:"data,omitempty"`
 }
 
 func InspectFlowEvaluation(outputDir, caseID string, repeat int) (*EvaluationInspection, error) {

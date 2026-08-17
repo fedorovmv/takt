@@ -38,6 +38,12 @@ discrepancy merely because another assistant mentioned it. If the evidence does
 not expose the actual delta or the cited mechanism cannot explain it, use low
 confidence and `failure_point: unknown`.
 
+Use Pi lifecycle observations from `activity.json` when they are available.
+Separate retry backoff, client-observed wait to first stream update, and streaming
+duration. A gap without those observations is unknown and must not be described as
+model thinking. Provider queue time and server inference time remain unknown unless
+the evidence contains explicit provider timing.
+
 JSON argument:
 $ARGUMENTS
 

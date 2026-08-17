@@ -17,6 +17,8 @@ assistants:
     type: pi
     binary: pi
     project_trust: approve
+    settings:
+      httpIdleTimeoutMs: 300000
     max_output_bytes: 10485760
     env:
       FAKE_FLOW_EVAL_SMOKE: "1"

@@ -68,7 +68,7 @@ func TestConfigSchemaDefinesPiAssistantContract(t *testing.T) {
 	defs := schema["$defs"].(map[string]any)
 	assistant := defs["assistant"].(map[string]any)
 	properties := assistant["properties"].(map[string]any)
-	for _, field := range []string{"binary", "args", "session_dir", "project_trust"} {
+	for _, field := range []string{"binary", "args", "session_dir", "project_trust", "settings"} {
 		if _, ok := properties[field]; !ok {
 			t.Fatalf("Pi field %q is missing from config schema", field)
 		}

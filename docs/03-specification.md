@@ -209,11 +209,15 @@ side_effect:
 - `args` — дополнительные нерезервированные параметры Pi;
 - `session_dir` — каталог сессий, передаётся как `--session-dir`;
 - `project_trust` — `default`, `approve` или `deny`; последние два соответствуют `--approve` и `--no-approve`;
+- `settings` — нативный JSON-объект Pi без переименования ключей; при создании
+  изолированного рабочего каталога оценки он становится содержимым
+  `.pi/settings.json`;
 - `env` — дополнительные переменные окружения;
 - `max_output_bytes` — общий лимит RPC stdout и stderr; при нуле используется безопасный лимит adapter по умолчанию. Если timeout или cancellation совпали с переполнением, причина context сохраняет классификацию `timed_out` или `cancelled`, а truncation остаётся диагностическим признаком.
 
 Настройки таймаутов самого Pi (`httpIdleTimeoutMs` и
-`retry.provider.timeoutMs`) описаны в [спецификации Pi adapter](10-assistant-adapter-spec.md#9-pi-adapter).
+`retry.provider.timeoutMs`) можно передать в `settings`; они описаны в
+[спецификации адаптера Pi](10-assistant-adapter-spec.md#9-pi-adapter).
 Они не меняют Takt `timeout` (общий deadline попытки) и `idle_timeout`
 (отсутствие нормализованной активности узла): каждый из этих лимитов может
 завершить выполнение независимо.
@@ -941,15 +945,20 @@ Each repeat persists `cases/<case>/repeat-<NNN>/run.json`,
 `report.json` remains the canonical `takt-evaluation/v1alpha1` output. Validator
 stdout alone is decoded as `takt-validation/v1alpha1`; agent text is not proof.
 Gate failure returns non-zero only after report persistence.
-From suite start through finalization, Takt atomically replaces
-`<evaluation-output-dir>/progress.json` using
-`takt-flow-evaluation-progress/v1alpha1`. `takt eval status <dir>` reads this
-snapshot without starting a workflow, contacting an assistant, or connecting to
-Pi. Its phases are exactly `prepare`, `validator_preflight`, `workflow`,
-`validator`, `evidence`, `cleanup`, and `finalized`. Runtime tokens and cost
-include only completed executions already persisted in Run state. A killed eval
-process may leave `status: running`; consumers must use `updated_at` to detect a
-stale snapshot. The final snapshot remains beside `report.json`.
+От запуска набора до финализации Takt атомарно заменяет
+`<evaluation-output-dir>/progress.json` по контракту
+`takt-flow-evaluation-progress/v1alpha1`. Команда `takt eval status <dir>` читает
+этот снимок, не запуская процесс, не вызывая ассистента и не подключаясь к
+Pi. Фазы имеют точные значения `prepare`, `validator_preflight`, `workflow`,
+`validator`, `evidence`, `cleanup` и `finalized`. Токены и стоимость выполнения
+включают только завершённые исполнения, уже сохранённые в состоянии Run.
+Принудительно остановленный процесс оценки может оставить `status: running`;
+устаревший снимок определяется по `updated_at`. Необязательный массив
+`runtime.assistant_activity[]` содержит
+для каждого активного ассистента узел и попытку, наблюдаемое клиентом состояние
+провайдера, время начала состояния, порядковый номер вызова модели, сведения о
+повторе и задержке, а также последнюю отредактированную ошибку провайдера.
+Финальный снимок остаётся рядом с `report.json`.
 `report.json` is first checkpointed after a case reaches validator/evidence; it
 is not a live heartbeat. Before that checkpoint, `takt eval inspect <dir>`
 synthesizes the current case and running nodes from `progress.json` with
@@ -965,16 +974,21 @@ Session ID are announced on session start/resume or the first event that reveals
 a fresh Session ID, then omitted from repeated tool/message lines. Report writes
 are labelled `checkpoint phase=validation`, `checkpoint phase=cleanup`, or
 `finalized` rather than emitted as indistinguishable duplicates.
-Bundled Pi tool start/completion and bounded assistant message previews are
-reported live without persisting transient RPC partials. After 30 seconds with
-no durable transition, `node.active` reports `run`, `node`, `attempt`, elapsed
-`idle`, effective `idle_limit`, last measured model-request context,
-`last_activity` and what the adapter is awaiting. Context is formatted as
-`context=<tokens>t` only when an assistant message exposed per-request input
-tokens; otherwise it is explicitly `context=unknown`. It is neither cumulative
-attempt usage nor the model's maximum context window.
-Pi `message_update` and `tool_execution_update` reset inactivity without being
-printed per token or persisted as durable assistant events.
+Встроенный адаптер Pi в реальном времени показывает начало и завершение
+инструментов, ограниченные превью сообщений ассистента и наблюдения жизненного
+цикла провайдера. Повторяющиеся обновления потока остаются временными, а первое
+событие потока, завершение и повторы сохраняются как отредактированные
+свидетельства.
+Если сохраняемого перехода нет 30 секунд, `node.active` показывает `run`,
+`node`, `attempt`, прошедшее время `idle`, действующий `idle_limit`, последний
+измеренный контекст запроса модели, `last_activity` и ожидаемую адаптером
+границу. Контекст выводится как `context=<tokens>t`, только если сообщение
+ассистента содержит число входных токенов отдельного запроса; иначе явно
+указывается `context=unknown`. Это не накопленная статистика попытки и не
+максимальное окно контекста модели. События Pi `message_update` и
+`tool_execution_update`
+сбрасывают счётчик неактивности, но не печатаются для каждого токена и не
+сохраняются как долговременные события ассистента.
 `--assistant-idle-timeout` defaults to `5m` and supplies an eval-only fallback
 for assistant nodes that omit `idle_timeout`; explicit node values win. Valid
 assistant tool/message events reset the timer, and expiry is persisted as

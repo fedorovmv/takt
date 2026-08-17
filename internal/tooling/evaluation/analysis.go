@@ -339,6 +339,13 @@ func AnalyzeFlow(ctx context.Context, opts AnalysisRunOptions) (*AnalysisRunRepo
 			persistCase(failedAnalysisCase(c, originalRun, modelInfo, "not_run", err))
 			continue
 		}
+		if err := writeFlowPiSettings(workspace, materialized); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			persistCase(failedAnalysisCase(c, originalRun, modelInfo, "persistence_error", err))
+			continue
+		}
 		evidenceRoot := filepath.Join(workspace, "evidence")
 		missingEvidence, err := copyAnalysisEvidenceRoot(repeatRoot, evidenceRoot, redactor)
 		if err != nil {

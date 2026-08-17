@@ -16,7 +16,7 @@
 - `task-source.schema.json` — нормализованный provider-neutral Task с immutable source provenance до Router;
 - `task-source-protocol.schema.json` — process-протокол `takt-task-source/v1alpha1` для внешних Task Source adapters;
 - `workflow-plan.schema.json` — ограниченный `WorkflowPlan` Dynamic Takt;
-- `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `default_assistant`, `mock`, `process`, `pi`, `opencode`, Pi-specific `session_dir/project_trust` и OpenCode-specific `agent/auto_approve`, `max_output_bytes` и условные запреты несовместимых полей;
+- `config.schema.json` — текущий `takt/v1alpha1 Config`, включая `default_assistant`, `mock`, `process`, `pi`, `opencode`, специфичные для Pi `session_dir/project_trust/settings` и специфичные для OpenCode `agent/auto_approve`, `max_output_bytes` и условные запреты несовместимых полей;
 - `task-route.schema.json` — проверяемое решение Task Router: `workflow|template|dynamic`, сигналы и прогрессивные controls;
 - `evidence-manifest.schema.json` — внутренний EvidenceManifest: baseline, fingerprints известных failures, check-to-evidence mapping и verdict, привязанный к candidate SHA-256;
 - `workspace.schema.json` — bounded multi-repo `takt/v1alpha1 Workspace`: repository IDs, relative paths and acyclic `depends_on`;

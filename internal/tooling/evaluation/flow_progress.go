@@ -42,18 +42,32 @@ type FlowProgressCurrent struct {
 }
 
 type FlowRuntimeProgress struct {
-	RunID            string   `json:"run_id,omitempty"`
-	Status           string   `json:"status,omitempty"`
-	TotalNodes       int      `json:"total_nodes"`
-	CompletedNodes   int      `json:"completed_nodes"`
-	RunningNodes     []string `json:"running_nodes"`
-	NodeAttempts     int      `json:"node_attempts"`
-	ProviderAttempts int      `json:"provider_attempts"`
-	InputTokens      int      `json:"input_tokens"`
-	OutputTokens     int      `json:"output_tokens"`
-	Cost             float64  `json:"cost"`
-	ContextTokens    int      `json:"context_tokens,omitempty"`
-	ContextKnown     bool     `json:"context_known,omitempty"`
+	RunID             string                  `json:"run_id,omitempty"`
+	Status            string                  `json:"status,omitempty"`
+	TotalNodes        int                     `json:"total_nodes"`
+	CompletedNodes    int                     `json:"completed_nodes"`
+	RunningNodes      []string                `json:"running_nodes"`
+	NodeAttempts      int                     `json:"node_attempts"`
+	ProviderAttempts  int                     `json:"provider_attempts"`
+	InputTokens       int                     `json:"input_tokens"`
+	OutputTokens      int                     `json:"output_tokens"`
+	Cost              float64                 `json:"cost"`
+	ContextTokens     int                     `json:"context_tokens,omitempty"`
+	ContextKnown      bool                    `json:"context_known,omitempty"`
+	AssistantActivity []FlowAssistantProgress `json:"assistant_activity,omitempty"`
+}
+
+type FlowAssistantProgress struct {
+	RunID      string    `json:"run_id"`
+	NodeID     string    `json:"node_id"`
+	Attempt    int       `json:"attempt"`
+	State      string    `json:"state"`
+	Since      time.Time `json:"since"`
+	Call       int       `json:"call,omitempty"`
+	Retry      int       `json:"retry,omitempty"`
+	MaxRetries int       `json:"max_retries,omitempty"`
+	DelayMS    int       `json:"delay_ms,omitempty"`
+	LastError  string    `json:"last_error,omitempty"`
 }
 
 type FlowProgressResults struct {
@@ -161,6 +175,7 @@ func cloneFlowProgress(value FlowProgress) *FlowProgress {
 		clone.Current = &current
 	}
 	clone.Runtime.RunningNodes = append([]string(nil), value.Runtime.RunningNodes...)
+	clone.Runtime.AssistantActivity = append([]FlowAssistantProgress(nil), value.Runtime.AssistantActivity...)
 	return &clone
 }
 
@@ -225,6 +240,11 @@ func validateFlowProgress(progress *FlowProgress) error {
 	if progress.Runtime.RunningNodes == nil {
 		return fmt.Errorf("flow runtime running_nodes is required")
 	}
+	for _, activity := range progress.Runtime.AssistantActivity {
+		if activity.RunID == "" || activity.NodeID == "" || activity.Attempt < 0 || activity.State == "" || activity.Since.IsZero() || activity.Call < 0 || activity.Retry < 0 || activity.MaxRetries < 0 || activity.DelayMS < 0 {
+			return fmt.Errorf("invalid flow assistant activity")
+		}
+	}
 	if progress.Results.Valid < 0 || progress.Results.Invalid < 0 || progress.Results.InfrastructureErrors < 0 || progress.Results.ValidationErrors < 0 {
 		return fmt.Errorf("invalid flow evaluation result counters")
 	}
@@ -273,6 +293,33 @@ func (p FlowProgress) render(now time.Time) string {
 	}
 	fmt.Fprintf(table, "  Context tokens\t%s\n", contextTokens)
 	fmt.Fprintf(table, "  Cost measured\t%g\n", p.Runtime.Cost)
+	if len(p.Runtime.AssistantActivity) > 0 {
+		fmt.Fprintln(table, "\nPROVIDER ACTIVITY")
+		for _, activity := range p.Runtime.AssistantActivity {
+			age := now.Sub(activity.Since)
+			if age < 0 {
+				age = 0
+			}
+			details := []string{activity.State, "for " + age.Truncate(time.Second).String()}
+			if activity.Call > 0 {
+				details = append(details, fmt.Sprintf("call %d", activity.Call))
+			}
+			if activity.Retry > 0 {
+				if activity.MaxRetries > 0 {
+					details = append(details, fmt.Sprintf("retry %d/%d", activity.Retry, activity.MaxRetries))
+				} else {
+					details = append(details, fmt.Sprintf("retry %d", activity.Retry))
+				}
+			}
+			if activity.DelayMS > 0 {
+				details = append(details, "delay "+(time.Duration(activity.DelayMS)*time.Millisecond).String())
+			}
+			fmt.Fprintf(table, "  %s#%d\t%s\n", activity.NodeID, activity.Attempt, strings.Join(details, " · "))
+			if activity.LastError != "" {
+				fmt.Fprintf(table, "    Error\t%s\n", activity.LastError)
+			}
+		}
+	}
 
 	fmt.Fprintln(table, "\nRESULTS SO FAR")
 	fmt.Fprintf(table, "  Valid\t%s\n", formatNumber(int64(p.Results.Valid)))

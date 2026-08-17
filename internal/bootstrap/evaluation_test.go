@@ -287,6 +287,32 @@ func TestTraceEvaluationAssistantEventShowsSafeProgress(t *testing.T) {
 	}
 }
 
+func TestTraceEvaluationAssistantEventShowsProviderObservations(t *testing.T) {
+	var trace []string
+	write := func(line string) { trace = append(trace, line) }
+	tracker := newFlowActivityTracker()
+	event := assistant.Event{Type: assistant.EventDiagnostic, Time: time.Date(2026, 8, 17, 14, 3, 10, 0, time.UTC), Message: "HTTP 500 unavailable", Data: map[string]any{
+		"code": "pi.auto_retry.started", "attempt": 1, "max_attempts": 3, "delay_ms": 2000, "call": 2,
+	}}
+	tracker.recordEvent("run-1", "implement", event, 15*time.Minute)
+	traceEvaluationAssistantEvent(newFlowTraceContext(), write, "run-1", "implement", 1, event)
+	traceEvaluationAssistantEvent(newFlowTraceContext(), write, "run-1", "implement", 1, assistant.Event{Type: assistant.EventDiagnostic, Data: map[string]any{
+		"code": "pi.message.completed", "call": 2, "wait_ms": 38123, "total_ms": 581000, "stream_ms": 542877,
+	}})
+	record, _ := tracker.get("run-1", "implement")
+	traceFlowActivity(write, record, event.Time.Add(time.Second))
+	joined := strings.Join(trace, "\n")
+	for _, want := range []string{
+		"observation | code=pi.auto_retry.started call=2 retry=1/3 delay=2s error=\"HTTP 500 unavailable\"",
+		"observation | code=pi.message.completed call=2 wait=38.123s total=9m41s stream=9m2.877s",
+		"last=pi.auto_retry.started awaiting=provider_retry_backoff",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("trace misses %q:\n%s", want, joined)
+		}
+	}
+}
+
 func TestTraceEvaluationAssistantFailureShowsIdleTimeout(t *testing.T) {
 	var trace []string
 	traceEvaluationAssistantEvent(newFlowTraceContext(), func(line string) { trace = append(trace, line) }, "run-1", "review", 1, assistant.Event{
@@ -331,6 +357,8 @@ func TestSummarizeFlowRuntimeProgress(t *testing.T) {
 	child := &store.RunState{ID: "child-1", Nodes: map[string]*store.NodeState{"fix": {Status: store.NodeCompleted, Attempts: 2, ProviderAttempts: 2}}}
 	activity := newFlowActivityTracker()
 	activity.recordEvent("child-1", "review", assistant.Event{Type: assistant.EventMessage, Usage: &assistant.ProtocolUsage{InputTokens: 43439}}, 5*time.Minute)
+	activity.recordEvent("run-1", "review", assistant.Event{Type: assistant.EventDiagnostic, Time: time.Date(2026, 8, 17, 13, 59, 59, 0, time.UTC), Message: strings.Repeat("x", 600), Data: map[string]any{"code": "pi.auto_retry.started", "attempt": 1, "max_attempts": 3}}, 5*time.Minute)
+	activity.recordEvent("run-1", "review", assistant.Event{Type: assistant.EventDiagnostic, Time: time.Date(2026, 8, 17, 14, 0, 0, 0, time.UTC), Data: map[string]any{"code": "pi.stream.started", "call": 4}}, 5*time.Minute)
 	got := summarizeFlowRuntimeProgress([]*store.RunState{root, child}, activity)
 	if got.RunID != "run-1" || got.Status != store.RunRunning || got.TotalNodes != 4 || got.CompletedNodes != 2 || got.NodeAttempts != 6 || got.ProviderAttempts != 6 || got.InputTokens != 120 || got.OutputTokens != 30 || got.Cost != 0.25 {
 		t.Fatalf("progress=%+v", got)
@@ -340,6 +368,18 @@ func TestSummarizeFlowRuntimeProgress(t *testing.T) {
 	}
 	if !got.ContextKnown || got.ContextTokens != 43439 {
 		t.Fatalf("context=%d known=%t", got.ContextTokens, got.ContextKnown)
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"assistant_activity"`, `"state":"streaming"`, `"node_id":"review"`, `"call":4`} {
+		if !strings.Contains(string(encoded), want) {
+			t.Fatalf("progress JSON misses %q: %s", want, encoded)
+		}
+	}
+	if len(got.AssistantActivity) != 1 || len(got.AssistantActivity[0].LastError) > 515 {
+		t.Fatalf("progress provider error was not bounded: %+v", got.AssistantActivity)
 	}
 }
 

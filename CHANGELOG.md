@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Pi-backed flow evaluation and advisory analysis now disable hidden Pi/SDK
+  retries in their isolated workspaces, leaving Takt as the single durable
+  provider-retry owner. Existing Pi RPC turn, first-stream, completion and
+  auto-retry lifecycle observations are shown in live status/trace and retained
+  as redacted `activity.json` evidence with client wait/stream/total timing.
+  Pi assistants can supply a native `settings` object for isolated evaluation;
+  mini-du pins `httpIdleTimeoutMs` to five minutes while eval-owned retry keys
+  remain authoritative.
+
 - Clarified the mini-du corpus contract that default numeric output and `-k`
   both match `du -k`. Validator mismatch diagnostics now retain bounded
   normalized candidate/oracle exits and outputs, while production validation

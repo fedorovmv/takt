@@ -10,3 +10,5 @@ assistants:
     type: pi
     binary: pi
     project_trust: deny
+    settings:
+      httpIdleTimeoutMs: 300000

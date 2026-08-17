@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -260,7 +262,10 @@ func TestPiAdapterContract(t *testing.T) {
 
 	t.Run("waits for agent settled across automatic retry", func(t *testing.T) {
 		started := time.Now()
-		result, err := fakePi("retry-before-settled").Run(context.Background(), fakePiRequest(t.TempDir()))
+		req := fakePiRequest(t.TempDir())
+		var events []core.Event
+		req.Emit = func(event core.Event) { events = append(events, event) }
+		result, err := fakePi("retry-before-settled").Run(context.Background(), req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -279,6 +284,44 @@ func TestPiAdapterContract(t *testing.T) {
 		}
 		if structured.LowLevelRuns != 2 || structured.AutomaticRetries != 1 {
 			t.Fatalf("unexpected retry counters: %+v", structured)
+		}
+		var observations []string
+		for _, event := range events {
+			if event.Type == core.EventDiagnostic {
+				observations = append(observations, fmt.Sprint(event.Data["code"]))
+			}
+		}
+		want := []string{"pi.agent.started", "pi.turn.started", "pi.message.started", "pi.message.completed", "pi.agent.completed", "pi.auto_retry.started", "pi.auto_retry.completed", "pi.agent.started", "pi.turn.started", "pi.message.started", "pi.stream.started", "pi.message.completed", "pi.agent.completed"}
+		if !reflect.DeepEqual(observations, want) {
+			t.Fatalf("provider observations=%v want=%v", observations, want)
+		}
+		var retry core.Event
+		for _, event := range events {
+			if event.Data["code"] == "pi.auto_retry.started" {
+				retry = event
+				break
+			}
+		}
+		if retry.Data["attempt"] != 1 || retry.Data["max_attempts"] != 3 || retry.Data["delay_ms"] != 100 || retry.Message != "HTTP 500 unavailable" {
+			t.Fatalf("retry observation=%+v", retry)
+		}
+		var stream, completed core.Event
+		for _, event := range events {
+			switch event.Data["code"] {
+			case "pi.stream.started":
+				stream = event
+			case "pi.message.completed":
+				completed = event
+			}
+		}
+		if _, ok := stream.Data["wait_ms"]; !ok {
+			t.Fatalf("stream observation has no client wait: %+v", stream)
+		}
+		if _, ok := completed.Data["total_ms"]; !ok {
+			t.Fatalf("completed observation has no total duration: %+v", completed)
+		}
+		if _, ok := completed.Data["stream_ms"]; !ok {
+			t.Fatalf("completed observation has no stream duration: %+v", completed)
 		}
 	})
 

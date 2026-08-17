@@ -116,6 +116,13 @@ type flowActivityRecord struct {
 	LastActivityAt              time.Time
 	IdleTimeout                 time.Duration
 	Active                      bool
+	ProviderState               string
+	ProviderStateSince          time.Time
+	ProviderCall                int
+	ProviderRetry               int
+	ProviderMaxRetries          int
+	ProviderDelayMS             int
+	LastProviderError           string
 }
 
 type flowActivityTracker struct {
@@ -142,6 +149,25 @@ func (t *flowActivityTracker) record(record flowActivityRecord) {
 	if !record.ContextKnown && previous.ContextKnown {
 		record.ContextTokens, record.ContextKnown = previous.ContextTokens, true
 	}
+	if record.ProviderState == "" {
+		record.ProviderState = previous.ProviderState
+		record.ProviderStateSince = previous.ProviderStateSince
+	}
+	if record.ProviderCall == 0 {
+		record.ProviderCall = previous.ProviderCall
+	}
+	if record.ProviderRetry == 0 {
+		record.ProviderRetry = previous.ProviderRetry
+	}
+	if record.ProviderMaxRetries == 0 {
+		record.ProviderMaxRetries = previous.ProviderMaxRetries
+	}
+	if record.ProviderDelayMS == 0 {
+		record.ProviderDelayMS = previous.ProviderDelayMS
+	}
+	if record.LastProviderError == "" {
+		record.LastProviderError = previous.LastProviderError
+	}
 	t.records[record.RunID+"\x00"+record.NodeID] = record
 	t.mu.Unlock()
 }
@@ -165,7 +191,48 @@ func (t *flowActivityTracker) recordEvent(runID, nodeID string, event assistant.
 	if event.Type == assistant.EventMessage && event.Usage != nil {
 		record.ContextTokens, record.ContextKnown = event.Usage.InputTokens, true
 	}
+	if event.Type == assistant.EventDiagnostic {
+		record.Attempt = 0
+		record.ProviderState = providerObservationState(fmt.Sprint(event.Data["code"]), event.Data["success"])
+		if record.ProviderState != "" {
+			record.ProviderStateSince = at
+			record.ProviderCall = traceAttempt(event.Data["call"])
+			record.ProviderRetry = traceAttempt(event.Data["attempt"])
+			record.ProviderMaxRetries = traceAttempt(event.Data["max_attempts"])
+			record.ProviderDelayMS = traceAttempt(event.Data["delay_ms"])
+			record.LastProviderError = strings.Join(strings.Fields(event.Message), " ")
+			if runes := []rune(record.LastProviderError); len(runes) > 512 {
+				record.LastProviderError = string(runes[:512]) + "..."
+			}
+		}
+	}
 	t.record(record)
+}
+
+func providerObservationState(code string, success any) string {
+	switch code {
+	case "pi.turn.started":
+		return "awaiting_response"
+	case "pi.message.started":
+		return "response_started"
+	case "pi.stream.started":
+		return "streaming"
+	case "pi.message.completed":
+		return "response_completed"
+	case "pi.auto_retry.started":
+		return "retry_backoff"
+	case "pi.auto_retry.completed":
+		if value, ok := success.(bool); ok && !value {
+			return "retry_failed"
+		}
+		return "retrying"
+	case "pi.agent.started":
+		return "agent_started"
+	case "pi.agent.completed":
+		return "agent_completed"
+	default:
+		return ""
+	}
 }
 
 func (t *flowActivityTracker) get(runID, nodeID string) (flowActivityRecord, bool) {
@@ -234,6 +301,11 @@ func traceActivityName(event assistant.Event) string {
 	if event.Type == assistant.EventToolStarted || event.Type == assistant.EventToolCompleted {
 		return event.Type + "(" + event.Tool + ")"
 	}
+	if event.Type == assistant.EventDiagnostic {
+		if code, ok := event.Data["code"].(string); ok && code != "" {
+			return code
+		}
+	}
 	return event.Type
 }
 
@@ -291,6 +363,35 @@ func traceEvaluationAssistantEvent(context *flowTraceContext, trace func(string)
 		if event.Usage != nil {
 			traceScoped(trace, runID, nodeID, attempt, "usage", fmt.Sprintf("input=%d output=%d cost=%.6g", event.Usage.InputTokens, event.Usage.OutputTokens, event.Usage.Cost), session)
 		}
+	case assistant.EventDiagnostic:
+		code, _ := event.Data["code"].(string)
+		details := []string{"code=" + valueOrDash(code)}
+		if call := traceAttempt(event.Data["call"]); call > 0 {
+			details = append(details, fmt.Sprintf("call=%d", call))
+		}
+		if retry := traceAttempt(event.Data["attempt"]); retry > 0 {
+			maxRetries := traceAttempt(event.Data["max_attempts"])
+			if maxRetries > 0 {
+				details = append(details, fmt.Sprintf("retry=%d/%d", retry, maxRetries))
+			} else {
+				details = append(details, fmt.Sprintf("retry=%d", retry))
+			}
+		}
+		if delay := traceAttempt(event.Data["delay_ms"]); delay > 0 {
+			details = append(details, "delay="+(time.Duration(delay)*time.Millisecond).String())
+		}
+		for _, metric := range []struct{ key, label string }{{"wait_ms", "wait"}, {"total_ms", "total"}, {"stream_ms", "stream"}} {
+			if value := traceAttempt(event.Data[metric.key]); value > 0 {
+				details = append(details, metric.label+"="+(time.Duration(value)*time.Millisecond).String())
+			}
+		}
+		if message := strings.Join(strings.Fields(event.Message), " "); message != "" {
+			if len(message) > 160 {
+				message = message[:160] + "..."
+			}
+			details = append(details, fmt.Sprintf("error=%q", message))
+		}
+		traceScoped(trace, runID, nodeID, attempt, "observation", details...)
 	case assistant.EventCompleted:
 		traceScoped(trace, runID, nodeID, attempt, "assistant completed", session)
 	case assistant.EventFailed:
@@ -468,6 +569,16 @@ func summarizeFlowRuntimeProgress(states []*store.RunState, activity *flowActivi
 	sort.Strings(progress.RunningNodes)
 	if activity != nil {
 		progress.ContextTokens, progress.ContextKnown = activity.currentContext()
+		for _, record := range activity.active() {
+			if record.ProviderState == "" {
+				continue
+			}
+			progress.AssistantActivity = append(progress.AssistantActivity, evaluation.FlowAssistantProgress{
+				RunID: record.RunID, NodeID: record.NodeID, Attempt: record.Attempt, State: record.ProviderState,
+				Since: record.ProviderStateSince, Call: record.ProviderCall, Retry: record.ProviderRetry,
+				MaxRetries: record.ProviderMaxRetries, DelayMS: record.ProviderDelayMS, LastError: record.LastProviderError,
+			})
+		}
 	}
 	return progress
 }
@@ -523,6 +634,12 @@ func traceFlowActivity(trace func(string), record flowActivityRecord, now time.T
 	if strings.HasPrefix(record.LastActivity, "tool.completed") {
 		awaiting = "provider_response"
 	} else if record.LastActivity == "provider.streaming" {
+		awaiting = "provider_stream"
+	} else if record.LastActivity == "pi.auto_retry.started" {
+		awaiting = "provider_retry_backoff"
+	} else if record.LastActivity == "pi.turn.started" {
+		awaiting = "provider_response"
+	} else if record.LastActivity == "pi.stream.started" {
 		awaiting = "provider_stream"
 	}
 	traceScoped(trace, record.RunID, record.NodeID, record.Attempt, "active", fmt.Sprintf("idle=%s/%s context=%s last=%s awaiting=%s", idle, record.IdleTimeout, traceContextSize(record), record.LastActivity, awaiting))

@@ -395,7 +395,7 @@ func TestPersistAnalysisRawOutputRedactsAndBounds(t *testing.T) {
 func TestAnalyzeFlowPersistsCaseTraceBeforeCleanup(t *testing.T) {
 	output := t.TempDir()
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(configPath, []byte("apiVersion: takt/v1alpha1\nkind: Config\nmodels:\n  takt_analyze: {provider: fake, id: model}\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("apiVersion: takt/v1alpha1\nkind: Config\ndefault_assistant: pi\nassistants:\n  pi:\n    type: pi\n    binary: pi\n    settings: {httpIdleTimeoutMs: 1234}\nmodels:\n  takt_analyze: {provider: fake, id: model}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(output, "cases", "case", "repeat-001"), 0o755); err != nil {
@@ -412,10 +412,13 @@ func TestAnalyzeFlowPersistsCaseTraceBeforeCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	cleanupSawTrace := false
+	analysisSawPiSettings := false
 	resultJSON := `{"primary_class":"unknown","failure_mode":"unknown","confidence":"low","root_cause":"unknown","causal_mechanism":"unknown because the run has no states","failure_point":"unknown","prevention":"persist the missing run state","causal_chain":[],"evidence":[{"path":"run.json","pointer":"/states","fact":"empty"}],"contributing_factors":[],"recommended_actions":[],"missing_evidence":[],"disagreement":{"with_deterministic_cause":false,"explanation":"none"}}`
 	_, err = AnalyzeFlow(context.Background(), AnalysisRunOptions{
 		OutputDir: output, ConfigPath: configPath, Now: func() time.Time { return time.Unix(10, 0).UTC() },
 		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			settings, readErr := os.ReadFile(filepath.Join(request.Workspace, ".pi", "settings.json"))
+			analysisSawPiSettings = readErr == nil && strings.Contains(string(settings), `"httpIdleTimeoutMs": 1234`) && strings.Contains(string(settings), `"enabled": false`) && strings.Contains(string(settings), `"maxRetries": 0`)
 			return FlowCaseRunResult{
 				States: []*store.RunState{{Status: store.RunCompleted, CreatedAt: time.Unix(10, 0), UpdatedAt: time.Unix(11, 0), Nodes: map[string]*store.NodeState{
 					"analyze": {Status: store.NodeCompleted, Output: resultJSON},
@@ -433,6 +436,9 @@ func TestAnalyzeFlowPersistsCaseTraceBeforeCleanup(t *testing.T) {
 	}
 	if !cleanupSawTrace {
 		t.Fatal("case trace was not persisted before cleanup")
+	}
+	if !analysisSawPiSettings {
+		t.Fatal("analysis Pi retries were not made Takt-owned")
 	}
 }
 

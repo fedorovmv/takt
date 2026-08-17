@@ -157,7 +157,11 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (result *SuiteReport, res
 				return finishFlowPartial(report, output, opts.Now, nil, cfgErr)
 			}
 			redactor.Merge(redact.NewFromConfig(cfg))
-			traceFlow(opts.Trace, "%s | config loaded | assistant=%s model_preset=%s models=%s", caseScope, cfg.DefaultAssistant, prepared.ModelPreset, flowModelReferenceSummary(prepared.EffectiveModels))
+			retryOwner := ""
+			if _, ok := flowPiAssistant(cfg); ok {
+				retryOwner = " provider_retry_owner=takt pi_internal_retries=disabled"
+			}
+			traceFlow(opts.Trace, "%s | config loaded | assistant=%s model_preset=%s models=%s%s", caseScope, cfg.DefaultAssistant, prepared.ModelPreset, flowModelReferenceSummary(prepared.EffectiveModels), retryOwner)
 			if err := progressTracker.phase("validator_preflight"); err != nil {
 				return finishFlowPartial(report, output, opts.Now, redactor, err)
 			}

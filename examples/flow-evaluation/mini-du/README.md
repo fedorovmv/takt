@@ -15,6 +15,9 @@ diagnostics, checks help/option behavior and the humanized oracle, and checks
 the declared path/artifact/SCM requirements.
 Copy exactly one host-specific config example to `config.yaml` before running
 the suite; the generated file is intentionally ignored by git.
+The Pi example supplies native `settings.httpIdleTimeoutMs`; evaluation copies
+the complete `settings` object into its isolated `.pi/settings.json` and then
+forces Pi/SDK retries off so durable retries remain owned by Takt.
 
 ## Reading `eval stats`
 

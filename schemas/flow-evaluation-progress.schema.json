@@ -47,7 +47,25 @@
         "provider_attempts": {"type": "integer", "minimum": 0},
         "input_tokens": {"type": "integer", "minimum": 0},
         "output_tokens": {"type": "integer", "minimum": 0},
-        "cost": {"type": "number", "minimum": 0}
+        "cost": {"type": "number", "minimum": 0},
+        "assistant_activity": {"type": "array", "items": {"$ref": "#/$defs/assistant_activity"}}
+      }
+    },
+    "assistant_activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "node_id", "attempt", "state", "since"],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "node_id": {"type": "string", "minLength": 1},
+        "attempt": {"type": "integer", "minimum": 0},
+        "state": {"type": "string", "minLength": 1},
+        "since": {"type": "string", "format": "date-time"},
+        "call": {"type": "integer", "minimum": 0},
+        "retry": {"type": "integer", "minimum": 0},
+        "max_retries": {"type": "integer", "minimum": 0},
+        "delay_ms": {"type": "integer", "minimum": 0},
+        "last_error": {"type": "string"}
       }
     },
     "results": {
