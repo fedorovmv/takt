@@ -1,6 +1,6 @@
 # Outcome-gated `feature-development`: дизайн
 
-Статус: **APPROVED DIRECTION; CONDITIONAL design gate; implementation not started**
+Статус: **REVIEWED DIRECTION; CONDITIONAL design gate; implementation not started**
 Дата: 2026-08-17
 
 ## 1. Заключение
@@ -12,9 +12,9 @@ side effects, но не предписывает модели порядок и�
 
 Изменение не требует новых runtime primitives. Оно переиспользует существующие
 `allow_failure`, `after_node`, hook retry с `session: fresh`, durable artifacts
-и SCM gate. Статус `CONDITIONAL` отражает один обратимый выбор:
-fresh retry после неуспешного result gate должен быть подтверждён реальным Pi
-smoke; отрицательный результат возвращает дизайн на пересмотр retry topology.
+и eval-fixture SCM gate. До workflow change обязателен baseline текущего
+неизменённого flow на исправленной Pi model registry. Его результат определяет,
+нужна ли fresh-retry topology вообще либо scope следует сузить или пересмотреть.
 
 ## 2. Проблема и подтверждённые факты
 
@@ -27,6 +27,17 @@ smoke; отрицательный результат возвращает диз
 которая уже дважды продолжила незавершённый длинный ответ. Одновременно assistant
 exit завершает action до `after_node`, поэтому deterministic validation не может
 оценить частичный workspace и решить, достаточен ли фактический результат.
+
+После этого прогона Pi model registry была исправлена: прежние `maxTokens=16384`
+и `contextWindow=128000` не соответствовали фактическим возможностям модели.
+Корректная registry-конфигурация является предусловием интерпретируемого eval, а
+не workflow tuning. Baseline считается пригодным только если сохранённый Pi
+`get_state` подтверждает ожидаемые effective limits.
+
+Все 18 сохранённых прогонов в `.takt/evals/feature-development/` до исправления
+registry относятся к **baseline v0**. Их нельзя включать в один trend или
+агрегированное сравнение с новыми прогонами: requested/resolved model ID совпадает,
+но внешняя Pi registry не входит в текущий strategy/config fingerprint.
 
 Runtime уже поддерживает требуемую семантику:
 
@@ -48,7 +59,7 @@ Flow считается успешным только когда подтвер�
 2. implementation evidence сохранён;
 3. deterministic repository validation проходит;
 4. review/validation evidence сохранён и после review проверки проходят;
-5. PR side effect подтверждён;
+5. в flow evaluation PR side effect подтверждён fixture SCM state;
 6. PR evidence и финальный summary сохранены;
 7. внешний eval validator независимо принимает продукт и process evidence.
 
@@ -60,6 +71,10 @@ Flow считается успешным только когда подтвер�
 - считать текст агента доказательством корректности продукта;
 - повышать Pi `maxTokens`, менять модель или добавлять model-specific prompting;
 - добавлять новый scheduler, retry kind, YAML expression или transport behavior.
+
+При этом корректные `maxTokens`/`contextWindow` являются обязательной
+предпосылкой eval. Их исправление выполняется вне workflow change и меняет
+условия измерения, поэтому требует нового baseline поколения.
 
 ## 4. Роли результатов
 
@@ -75,7 +90,11 @@ Flow считается успешным только когда подтвер�
 Artifacts являются обязательными продуктами стадий. Их наличие подтверждает
 полноту процесса, но не заменяет executable validation, Git state или SCM state.
 
-## 5. Выбранная topology
+## 5. Условная candidate topology
+
+Эта topology реализуется только если baseline из §8.1 подтверждает потребность
+в outcome-gated retries. Сам baseline выполняется на текущем workflow без
+описанных ниже изменений.
 
 ```text
 implement attempt (assistant exit разрешён только до gate)
@@ -94,7 +113,7 @@ final deterministic validate
         ▼
 create-pr attempt (без blind retry)
         ▼
-PR gate: SCM effect + pr.md + pr-url.txt
+eval PR gate: fixture SCM effect + pr.md + pr-url.txt
         ▼
 summary attempt
         ▼
@@ -115,6 +134,12 @@ Node получает:
 - `after_node` gate, который требует non-empty regular `implementation.md` и
   запускает штатный `.takt/profiles/code/tools/validate`;
 - `on_failure: {action: retry, session: fresh}` для result-gate failures.
+
+Текущие `attempts.retry_on: [exit]` и `attempts.retry_session: reuse` удаляются.
+После `allow_failure: true` обычный `exit` перестаёт быть ошибкой до hooks, поэтому
+эта policy стала бы мёртвой и вводила бы автора workflow в заблуждение. Всеми
+result retries владеет только `after_node.on_failure`; provider availability
+retry остаётся отдельной runtime-семантикой.
 
 Если assistant завершился с `exit`, но code, artifact и validation корректны,
 stage принимается. Исходный failed execution остаётся в report. Если результат
@@ -139,13 +164,16 @@ feedback агенту. Он остаётся независимой post-run о�
 
 `create-pr` не получает blind retry: внешний эффект мог произойти до потери
 assistant response. Обычный `exit` может быть разрешён только для перехода к
-`pr-effect-gate`, который проверяет фактический SCM call/state и non-empty
-`pr.md`/`pr-url.txt`.
+`pr-effect-gate`, который в flow evaluation проверяет fixture SCM call/state и
+non-empty `pr.md`/`pr-url.txt`.
 
-Если side effect подтверждён, flow продолжает работу независимо от terminal
-assistant narrative. Если эффект или evidence отсутствует, flow safe-stops.
-Автоматический повтор публикации не добавляется; будущий retry допустим только
-как explicit reconcile operation.
+Существующий `.takt/profiles/code/tools/require-pr` остаётся fixture-only и в
+обычном production workspace является no-op. Настоящий provider-independent
+production receipt/reconciliation не добавляется этим изменением. В eval, если
+fixture side effect подтверждён, flow продолжает работу независимо от terminal
+assistant narrative; если эффект или evidence отсутствует, flow safe-stops.
+Автоматический повтор публикации не добавляется; будущий production retry
+допустим только как explicit reconcile operation.
 
 ### 5.4. Summary
 
@@ -179,28 +207,73 @@ Prompt не должен указывать модели, сколько исс�
 - Eval report должен позволять отличить: assistant exit accepted by gate,
   gate-triggered fresh retry, attempts exhausted, deterministic validation
   failure и missing SCM effect.
+- Experiment notes обязаны фиксировать поколение registry (`v0` до исправления,
+  `v1` после) и observed Pi `contextWindow`/`maxTokens`. До появления этих полей
+  в machine-readable strategy identity сравнение поколений запрещено процедурой.
 
 ## 8. Проверки реализации
 
-Регрессии добавляются до workflow change:
+### 8.1. Baseline до workflow change
 
-1. assistant пишет корректный workspace и artifact, затем возвращает `exit` —
+Сначала выполняется один `implement-basic` на **текущем неизменённом**
+`code:feature-development`, той же модели и исправленной registry. Это не
+сравнение с прямым Pi: проверяется именно production flow, который является
+предметом eval.
+
+```bash
+EVAL_PRESET=qwen38 make eval-feature-smoke
+```
+
+Перед интерпретацией результата evidence должен подтвердить effective
+`contextWindow=262144` или иное точное значение исправленной registry и
+`maxTokens > 16384`. Возможные решения:
+
+- `true_accept`: fresh retry для output-limit не обоснован этим case; scope
+  сужается до enum-валидации hook session, outcome-observability и только тех
+  gates, недостаточность которых показывает baseline;
+- повтор прежнего over-investigation/output-limit pattern при исправленных
+  limits: fresh restart не считается доказанным лечением; основной вариант
+  меняется на explicit repair-role node с теми же result contracts;
+- иная terminal причина: обновляются unknowns и topology до production edits.
+
+Только после разбора baseline выбирается и фиксируется фактический workflow diff.
+
+### 8.2. Regression tests
+
+Регрессии добавляются до выбранного workflow change. Сначала unit contracts:
+
+1. `AllowFailure + after_node` на одном узле: обычный `exit` сохраняется в
+   execution record, hook выполняется и может принять node;
+2. `hook.on_failure.session: fresh` действительно очищает Session ID и следующая
+   assistant request использует fresh mode;
+3. timeout вместе с `allow_failure: true` остаётся `timed_out`, а hooks не
+   превращают его в допустимый exit;
+4. schema и `internal/workflow` отклоняют неизвестное
+   `hook.on_failure.session`; разрешены только `fresh|resume`, причём session
+   допустима только для `action: retry`.
+
+Затем profile/contract/E2E проверки:
+
+5. assistant пишет корректный workspace и artifact, затем возвращает `exit` —
    implementation gate принимает stage и downstream продолжается;
-2. первая попытка возвращает `exit` без результата, fresh retry создаёт корректный
+6. первая попытка возвращает `exit` без результата, fresh retry создаёт корректный
    результат — Session ID не переиспользуется;
-3. все attempts оставляют неполный результат — node failed, downstream skipped;
-4. validate-agent `exit` после корректных fixes/evidence принимается только после
+7. все attempts оставляют неполный результат — node failed, downstream skipped;
+8. validate-agent `exit` после корректных fixes/evidence принимается только после
    deterministic validation;
-5. PR assistant `exit` после подтверждённого create принимается gate;
-6. отсутствующий PR effect safe-stops без повторного create;
-7. missing/empty/directory artifacts отклоняются соответствующим stage gate;
-8. полный fake-agent E2E сохраняет все пять feature artifacts и SCM call;
-9. focused Go suites, `go test ./... -count=1`, race, vet, `make check` и
+9. PR assistant `exit` после подтверждённого fixture create принимается gate;
+10. отсутствующий PR effect safe-stops без повторного create;
+11. missing/empty/directory artifacts отклоняются соответствующим stage gate;
+12. полный fake-agent E2E сохраняет все пять feature artifacts и SCM call;
+13. profile compatibility tests фиксируют новую profile version и materialized
+    workflow/commands;
+14. focused Go suites, `go test ./... -count=1`, race, vet, `make check` и
    `scripts/verify.sh` проходят.
 
-Реальный Pi smoke выполняется отдельно. Критерий smoke: flow либо выдаёт
-validator-accepted результат, либо завершает bounded safe-stop с точной terminal
-причиной; повтор одной output-limit session без новых tool calls недопустим.
+Если baseline обосновал workflow change, реальный Pi smoke изменённого flow
+выполняется отдельно. Критерий smoke: flow либо выдаёт validator-accepted
+результат, либо завершает bounded safe-stop с точной terminal причиной; повтор
+одной output-limit session без новых tool calls недопустим.
 
 ## 9. Реестр неизвестных
 
@@ -208,10 +281,13 @@ validator-accepted результат, либо завершает bounded safe-
 |---|---|---|---|---|
 | U-01 | Являются ли artifacts частью продукта flow | P0 | Да: подтверждено workflow commands, production E2E и пользователем | закрыт |
 | U-02 | Должен ли assistant exit определять качество workspace | P0 | Нет: executable gates авторитетны; non-exit terminal classes остаются fail-closed | закрыт |
-| U-03 | Fresh retry лучше resume после result-gate failure | P1 | Fresh выбран обратимо; workspace и exact feedback сохраняются, live smoke проверяет результат | условно закрыт |
+| U-03 | Нужна ли fresh retry topology после исправления registry | P1 | Сначала unchanged-flow baseline; topology выбирается только по его terminal evidence | открыт с обязательной проверкой |
 | U-04 | Нужно ли семантически парсить Markdown evidence | P1 | Нет в этом срезе: presence означает handoff completeness, качество доказывают code/SCM gates | закрыт с ограничителем |
 | U-05 | Нужно ли передавать hidden oracle feedback внутрь flow | P0 | Нет: это загрязнит benchmark; oracle остаётся post-run | закрыт |
 | U-06 | Нужен ли blind retry PR publication | P0 | Нет: неизвестный side effect требует reconcile, текущий срез safe-stops | закрыт |
+| U-07 | Сравнимы ли прогоны до и после Pi registry fix | P0 | Нет: 18 старых прогонов маркируются baseline v0, новые — v1; cross-generation trend запрещён | закрыт процедурой |
+| U-08 | Проверяет ли текущий SCM gate production side effect | P1 | Нет, только eval fixture; production receipt/reconcile остаётся явно вне scope | закрыт с ограничителем |
+| U-09 | Валидируется ли `hook.on_failure.session` fail-closed | P0 | Пока нет; schema и authoring validation входят в обязательный implementation delta | закрыт дизайном |
 
 ## 10. Слепые зоны и опровержение
 
@@ -221,6 +297,8 @@ validator-accepted результат, либо завершает bounded safe-
   возвращается на пересмотр до изменения production workflow.
 - Если PR fixture gate может принять fabricated artifact без SCM effect, сначала
   исправляется SCM gate; artifacts сами по себе недостаточны.
+- Если unchanged-flow baseline проходит после registry fix, fresh retry не
+  добавляется как страховочная абстракция без второго подтверждённого failure case.
 - Если live smoke показывает повторное exhaustive restart без progress, нельзя
   лечить это model-specific prompt. Следующий вариант — explicit repair-role node
   с теми же outcome contracts.
@@ -233,10 +311,11 @@ workflow/command profile version; persistence schema не меняется.
 
 **Статус: CONDITIONAL. Уверенность: высокая.**
 
-Открытых P0 нет. U-03 является обратимым P1 с bounded live check; он не требует
-нового runtime API и не меняет persistence contract. Реализация разрешена после
-review этой spec. Реальный Pi smoke закрывает условие перед финальным commit
-workflow change либо фиксирует safe rollback.
+Открытых P0 нет. U-03 остаётся P1 с дешёвой обязательной проверкой. До baseline
+текущего flow код, schema и production profile не изменяются. После baseline spec
+обновляется выбранной ветвью, и только затем начинаются regression tests и
+соответствующий production diff. Если workflow change нужен, Pi smoke изменённого
+flow закрывает условие перед финальным commit либо фиксирует safe rollback.
 
 ## 12. Контракт передачи в реализацию
 
@@ -249,3 +328,32 @@ semantics или опровергает U-03, остановить реализ�
 вернуть задачу на `design-unknowns`. Локальные изменения prompts/tests допустимы
 только когда они реализуют описанные output contracts и не предписывают модели
 метод работы.
+
+После baseline фактический implementation delta фиксируется явно:
+
+- workflow schema: `hookDecision.session` получает enum `fresh|resume`;
+- workflow authoring: `internal/workflow/validate.go` отклоняет неизвестную
+  session и session при `action != retry`;
+- schema/authoring contracts: добавляются focused tests для JSON Schema и Go
+  validation, а `docs/03-specification.md` фиксирует допустимые значения;
+- `implement`: при выборе outcome-gating добавляются `allow_failure` и fresh hook
+  retry, удаляются `retry_on: [exit]`/`retry_session: reuse`;
+- `validate-agent`: сейчас не имеет attempts/hooks; при подтверждённой topology
+  получает максимум две попытки, `allow_failure` и validation artifact gate;
+- `validate`: остаётся отдельным финальным deterministic checkpoint;
+- `create-pr`: не получает retry; allowed exit, artifact checks и fixture SCM
+  effect принимаются только отдельным all-done gate;
+- `pr-effect-gate`: расширяется проверками `pr.md`/`pr-url.txt`, но остаётся
+  fixture-only; production receipt не заявляется;
+- `summary`: сейчас не имеет gate; получает максимум две safe attempts и
+  обязательный summary artifact gate;
+- code profile: при фактическом profile change версия повышается с `0.18.0` до
+  `0.19.0`, синхронно обновляются profile README, compatibility/core contract,
+  implementation status и changelog; schema-only change до baseline profile
+  version не повышает;
+- evaluation docs: фиксируются registry generation и запрет сравнения baseline
+  v0/v1; сохранённые evidence не переписываются.
+
+Не реализовывать topology-пункты, которые unchanged-flow baseline сделал
+необоснованными. Если baseline меняет выбранную ветвь, сначала обновить эту spec
+и повторить review gate.
