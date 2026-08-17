@@ -14,13 +14,16 @@ func TestHookDecisionDirectJSONKeepsPresenceAndCompatibility(t *testing.T) {
 	cases := []struct {
 		name        string
 		raw         string
+		wantAction  string
 		wantSession string
 		wantPresent bool
 	}{
-		{name: "omitted", raw: `{"action":"continue"}`},
-		{name: "empty", raw: `{"action":"retry","session":""}`, wantPresent: true},
-		{name: "null", raw: `{"action":"retry","session":null}`, wantPresent: true},
-		{name: "valid with unknown", raw: `{"action":"retry","session":"fresh","future":"ignored"}`, wantSession: "fresh", wantPresent: true},
+		{name: "omitted", raw: `{"action":"continue"}`, wantAction: "continue"},
+		{name: "empty", raw: `{"action":"retry","session":""}`, wantAction: "retry", wantPresent: true},
+		{name: "null", raw: `{"action":"retry","session":null}`, wantAction: "retry", wantPresent: true},
+		{name: "fresh", raw: `{"action":"retry","session":"fresh"}`, wantAction: "retry", wantSession: "fresh", wantPresent: true},
+		{name: "resume", raw: `{"action":"retry","session":"resume"}`, wantAction: "retry", wantSession: "resume", wantPresent: true},
+		{name: "valid with unknown", raw: `{"action":"retry","session":"fresh","future":"ignored"}`, wantAction: "retry", wantSession: "fresh", wantPresent: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -28,9 +31,23 @@ func TestHookDecisionDirectJSONKeepsPresenceAndCompatibility(t *testing.T) {
 			if err := json.Unmarshal([]byte(tc.raw), &decision); err != nil {
 				t.Fatalf("direct JSON decode failed: %v", err)
 			}
-			if decision.Session != tc.wantSession || decision.HasSession() != tc.wantPresent {
-				t.Fatalf("decision=%+v, has_session=%v", decision, decision.HasSession())
+			check := func(label string, got spec.HookDecision) {
+				t.Helper()
+				if got.Action != tc.wantAction || got.Session != tc.wantSession || got.HasSession() != tc.wantPresent {
+					t.Fatalf("%s decision=%+v, has_session=%v", label, got, got.HasSession())
+				}
 			}
+			check("decoded", decision)
+
+			encoded, err := json.Marshal(decision)
+			if err != nil {
+				t.Fatalf("direct JSON encode failed: %v", err)
+			}
+			var roundTrip spec.HookDecision
+			if err := json.Unmarshal(encoded, &roundTrip); err != nil {
+				t.Fatalf("direct JSON round-trip decode failed: %v", err)
+			}
+			check("round-trip", roundTrip)
 		})
 	}
 }
