@@ -1047,6 +1047,8 @@ but cannot replace or modify the deterministic verdict.
 `eval run` выполняет preflight до создания output: нормализованные `case_id` должны быть уникальны, а `workspace-template` и `output` не могут совпадать или быть вложены друг в друга, включая пути через символические ссылки. До запуска вычисляются fingerprints workflow, config, Markdown-команд, упорядоченного набора заданий, копируемого workspace template и указанного валидатора.
 
 `report.json` использует `takt-evaluation/v1alpha1` и сохраняет strategy/benchmark identity, версию Takt и Go-окружение, assistant и его версию, requested model, фактический Pi `responseModel`, attempts, duration, usage, approval answers, statuses, resume, feedback, ошибки узлов и диагностический вывод. В flow evaluation optional `nodes.<id>.duration_ms` измеряется по durable events от первого `node.started` до terminal event. Это wall-clock длительность всего узла, включая tool calls, retry backoff и ожидания, а не чистое provider inference time; старые отчёты без событий сохраняют поле недоступным.
+Per-run `time_to_valid_ms` присутствует только когда внешний flow validator
+вернул `valid: true`; для измеренного `valid: false` поле равно `null`/отсутствует.
 
 `takt eval stats <evaluation-output-dir>` загружает существующий suite report и
 не запускает workflow или model calls. Human-readable output используется по

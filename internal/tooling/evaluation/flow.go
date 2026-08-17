@@ -228,7 +228,7 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (result *SuiteReport, res
 			if paused {
 				record.Cleanup = &FlowCleanupRecord{Status: "skipped"}
 			}
-			if validationResult.Status == "completed" && validationResult.Result != nil {
+			if validationResult.Status == "completed" && validationResult.Result != nil && validationResult.Result.Valid {
 				elapsed := root.UpdatedAt.Sub(root.CreatedAt).Milliseconds() + validationResult.Duration.Milliseconds()
 				if elapsed < 0 {
 					elapsed = 0

@@ -250,7 +250,21 @@ func handleFlowEvaluationSmoke(prompt string) bool {
 		if err := os.WriteFile(filepath.Join(workspace, "smoke.txt"), []byte("flow evaluation smoke\n"), 0o644); err != nil {
 			fail(err)
 		}
-		writeArtifact("implementation.md", "fixture implementation\n")
+		switch os.Getenv("FAKE_IMPLEMENTATION_ARTIFACT_KIND") {
+		case "missing":
+		case "empty":
+			writeArtifact("implementation.md", "")
+		case "directory":
+			path, err := renderedArtifactPath(prompt, "implementation.md")
+			if err != nil {
+				fail(err)
+			}
+			if err := os.MkdirAll(path, 0o755); err != nil {
+				fail(err)
+			}
+		default:
+			writeArtifact("implementation.md", "fixture implementation\n")
+		}
 	case strings.Contains(prompt, "Validate the current implementation"):
 		cmd := exec.Command("go", "test", "./...")
 		cmd.Dir = workspace

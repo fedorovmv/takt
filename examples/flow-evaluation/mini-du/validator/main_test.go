@@ -62,6 +62,22 @@ func TestValidatorRejectsInvalidExpectation(t *testing.T) {
 	}
 }
 
+func TestValidatorClassifiesMissingArtifactSeparately(t *testing.T) {
+	root := t.TempDir()
+	req := testRequest(root)
+	req.Run.Status = "completed"
+	if err := os.WriteFile(req.ExpectedPath, []byte("oracle:\n  allowed_paths: [cmd/mini-du/**]\n  required_artifacts: [implementation.md]\n  scenarios: [empty]\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := validate(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Valid || len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "missing_artifact" {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
 func TestHumanizedSizeContract(t *testing.T) {
 	for _, tc := range []struct {
 		bytes int64
@@ -105,6 +121,56 @@ func main() {
 		if err := compareScenario(bin, scenario); err != nil {
 			t.Fatalf("%s rejected conforming candidate: %v", scenario, err)
 		}
+	}
+}
+
+func TestInvalidOptionAcceptsAnyStderrDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "candidate")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf '%s\\n' 'mini-du: unknown option -z' >&2\nexit 1\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := compareInvalidOption(bin); err != nil {
+		t.Fatalf("contract-compliant diagnostic rejected: %v", err)
+	}
+}
+
+func TestMissingScenarioAcceptsDifferentStderrWording(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "candidate")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf '%s\\n' 'mini-du: path is missing' >&2\nexit 1\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := compareScenario(bin, "missing"); err != nil {
+		t.Fatalf("contract-compliant missing-path diagnostic rejected: %v", err)
+	}
+}
+
+func TestMissingScenarioRejectsWhitespaceStdout(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "candidate")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf '\\n'\nprintf '%s\\n' 'mini-du: path is missing' >&2\nexit 1\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := compareScenario(bin, "missing"); err == nil {
+		t.Fatal("whitespace stdout was accepted")
+	}
+}
+
+func TestValidatorPropagatesArtifactInspectionErrors(t *testing.T) {
+	root := t.TempDir()
+	req := testRequest(root)
+	req.Run.Status = "completed"
+	if err := os.WriteFile(req.ExpectedPath, []byte("oracle:\n  allowed_paths: [cmd/mini-du/**]\n  required_artifacts: [implementation.md]\n  scenarios: [empty]\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	blocked := filepath.Join(root, "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("file\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	req.Run.ArtifactsDir = filepath.Join(blocked, "artifacts")
+	if _, err := validate(req); err == nil {
+		t.Fatal("artifact inspection error was classified as product-invalid")
 	}
 }
 

@@ -255,6 +255,11 @@ measurements are distinguished from non-comparable values. Make wrappers accept
 The mini-du validator v2 requires the explicit per-case CLI surface `-s`, `-k`,
 `-H`, `-h`/`--help`, `--`, `-sk`/`-ks`/`-sH`, and fail-closed unknown options;
 the smoke target runs one case and the full feature target runs all three.
+`code:feature-development` gates its implementation retry on a non-empty regular
+`implementation.md` before starting review. The validator reports a missing
+record as `missing_artifact`, while option and missing-path diagnostics are
+checked by exit/stdout/stderr behavior without requiring host-specific text.
+Invalid flow results do not publish a per-run time-to-valid value.
 
 `eval analyze` executes the fixed read-only `evaluation:analyze` workflow through
 the same application/runFlowCase boundary. It selects non-`true_accept` cases by

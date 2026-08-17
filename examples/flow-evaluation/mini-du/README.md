@@ -12,7 +12,12 @@ humanized units (`0B`, one decimal below 10, rounded integers from 10). The vali
 rejects delegation to host `du`, compares fixed filesystem scenarios against
 host `du -k`, persists bounded normalized candidate/oracle output in mismatch
 diagnostics, checks help/option behavior and the humanized oracle, and checks
-the declared path/artifact/SCM requirements.
+the declared path/artifact/SCM requirements. Exact diagnostic prose is not part
+of the public contract: failure scenarios require the expected exit code,
+clean stdout where specified and a non-empty stderr diagnostic. Missing
+`implementation.md` is reported as `missing_artifact`, and the workflow requires
+that artifact to be a non-empty regular file and retries
+implementation before starting review when that record is absent.
 Copy exactly one host-specific config example to `config.yaml` before running
 the suite; the generated file is intentionally ignored by git.
 The Pi example supplies native `settings.httpIdleTimeoutMs`; evaluation copies

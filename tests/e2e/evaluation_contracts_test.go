@@ -581,6 +581,33 @@ func TestProductionFlowEvaluationPRGateRejectsMissingSCMSideEffect(t *testing.T)
 	}
 }
 
+func TestProductionFlowEvaluationImplementationGateRejectsMissingArtifact(t *testing.T) {
+	for _, kind := range []string{"missing", "empty", "directory"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Setenv("FAKE_IMPLEMENTATION_ARTIFACT_KIND", kind)
+			fake := binary(t, "takt-fake-code-agent")
+			root := t.TempDir()
+			suite := writeProductionFlowSuite(t, root, "code:feature-development", "repository", 0, "# Implement the smoke change\n", fake)
+			output := filepath.Join(t.TempDir(), "output")
+			result := takt(t, []string{"TAKT_PRODUCTION_FLOW_VALIDATOR=1"}, "eval", "flow", suite, "--output", output, "--keep-workspaces", "--json").RequireFailure(t)
+			report := resultObject(t, result.JSON(t))
+			run := report["runs"].([]any)[0].(map[string]any)
+			if run["status"] != "failed" {
+				t.Fatalf("run=%#v", run)
+			}
+			nodes := run["nodes"].(map[string]any)
+			implement, ok := flowNode(nodes, "implement")
+			if !ok || implement["status"] != "failed" || implement["attempts"] != float64(3) {
+				t.Fatalf("implement=%#v", implement)
+			}
+			validateAgent, ok := flowNode(nodes, "validate-agent")
+			if !ok || validateAgent["status"] != "skipped" {
+				t.Fatalf("validate-agent=%#v", validateAgent)
+			}
+		})
+	}
+}
+
 func flowNode(nodes map[string]any, id string) (map[string]any, bool) {
 	for path, raw := range nodes {
 		if strings.HasSuffix(path, "/"+id) {
@@ -737,6 +764,9 @@ func TestFlowInventory(t *testing.T) {
 	}
 	if featureImplement == nil || featureImplement.Attempts.Max != 3 || len(featureImplement.Attempts.RetryOn) != 1 || featureImplement.Attempts.RetryOn[0] != "exit" || featureImplement.Attempts.RetrySession != "reuse" {
 		t.Fatalf("feature implement retry policy=%+v", featureImplement)
+	}
+	if len(featureImplement.Hooks.AfterNode) != 1 || featureImplement.Hooks.AfterNode[0].OnFailure.Action != "retry" || featureImplement.Hooks.AfterNode[0].OnFailure.Session != "resume" {
+		t.Fatalf("feature implementation artifact hook=%+v", featureImplement.Hooks.AfterNode)
 	}
 	command, err := runtime.NewCommandResolver(filepath.Join(repoRoot, "internal", "profile", "builtin", "code", "workflows", "review-block.yaml"), repoRoot, repoRoot).Resolve("review-intake")
 	if err != nil {

@@ -467,6 +467,9 @@ nodes:
       marker="attempt-$ARGUMENTS"
       if [ ! -f "$marker" ]; then
         touch "$marker"
+        while [ ! -f attempt-a ] || [ ! -f attempt-b ]; do
+          sleep 0.01
+        done
         exit 8
       fi
       printf '%s' "$ARGUMENTS"

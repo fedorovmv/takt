@@ -26,6 +26,11 @@ import (
 const validatorProtocol = "takt-evaluation-validator/v1alpha1"
 const validationProtocol = "takt-validation/v1alpha1"
 
+var (
+	errMissingArtifact    = errors.New("missing artifact")
+	errArtifactInspection = errors.New("inspect artifacts")
+)
+
 type validatorRequest struct {
 	ProtocolVersion string         `json:"protocol_version"`
 	Type            string         `json:"type"`
@@ -131,8 +136,15 @@ func validate(req validatorRequest) (validationResult, error) {
 		return result, nil
 	}
 	if err := productCheck(req, oracle); err != nil {
+		if errors.Is(err, errArtifactInspection) {
+			return validationResult{}, err
+		}
 		result.Valid = false
-		result.Diagnostics = []diagnostic{{Code: "mini_du_invalid", Severity: "error", Message: err.Error()}}
+		code := "mini_du_invalid"
+		if errors.Is(err, errMissingArtifact) {
+			code = "missing_artifact"
+		}
+		result.Diagnostics = []diagnostic{{Code: code, Severity: "error", Message: err.Error()}}
 	}
 	return result, nil
 }
@@ -304,7 +316,7 @@ func allowedPath(name string, patterns []string) bool {
 func requireArtifacts(dir string, names []string) error {
 	for _, name := range names {
 		found := false
-		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, e error) error {
+		err := filepath.WalkDir(dir, func(p string, d os.DirEntry, e error) error {
 			if e != nil {
 				return e
 			}
@@ -313,8 +325,14 @@ func requireArtifacts(dir string, names []string) error {
 			}
 			return nil
 		})
+		if err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("%w %s", errMissingArtifact, name)
+			}
+			return fmt.Errorf("%w: %v", errArtifactInspection, err)
+		}
 		if !found {
-			return fmt.Errorf("missing artifact %s", name)
+			return fmt.Errorf("%w %s", errMissingArtifact, name)
 		}
 	}
 	return nil
@@ -515,7 +533,33 @@ func compareScenario(bin, scenario string) error {
 	if err != nil {
 		return err
 	}
+	if scenario == "missing" || scenario == "mixed-missing" {
+		return compareFailureScenario(bin, args, append([]string{"-k"}, args...), "", root, scenario)
+	}
 	return compareCandidateOracle(bin, args, append([]string{"-k"}, args...), "", root, scenario)
+}
+
+func compareFailureScenario(bin string, candidateArgs, oracleArgs []string, dir, normalizeRoot, scenario string) error {
+	var candidateOut, candidateErr, oracleOut, oracleErr bytes.Buffer
+	candidate := exec.CommandContext(context.Background(), bin, candidateArgs...)
+	oracle := exec.CommandContext(context.Background(), "du", oracleArgs...)
+	candidate.Dir, oracle.Dir = dir, dir
+	env := append(os.Environ(), "LC_ALL=C", "LANG=C", "BLOCKSIZE=1024")
+	candidate.Env, oracle.Env = env, env
+	candidate.Stdout, candidate.Stderr = &candidateOut, &candidateErr
+	oracle.Stdout, oracle.Stderr = &oracleOut, &oracleErr
+	candidateRunErr, oracleRunErr := candidate.Run(), oracle.Run()
+	candidateExit, oracleExit := exitCode(candidateRunErr), exitCode(oracleRunErr)
+	candidateOutput := normalizeOutput(candidateOut.String(), normalizeRoot, scenario)
+	oracleOutput := normalizeOutput(oracleOut.String(), normalizeRoot, scenario)
+	stdoutMatches := candidateOutput == oracleOutput
+	if oracleOut.Len() == 0 {
+		stdoutMatches = candidateOut.Len() == 0
+	}
+	if candidateExit != oracleExit || !stdoutMatches || strings.TrimSpace(candidateErr.String()) == "" {
+		return fmt.Errorf("scenario %s differs: candidate_exit=%d oracle_exit=%d candidate_stdout=%q oracle_stdout=%q candidate_stderr=%q", scenario, candidateExit, oracleExit, boundedScenarioOutput(candidateOutput), boundedScenarioOutput(oracleOutput), boundedScenarioOutput(normalizeOutput(candidateErr.String(), normalizeRoot, scenario)))
+	}
+	return nil
 }
 
 func compareCandidateOracle(bin string, candidateArgs, oracleArgs []string, dir, normalizeRoot, scenario string) error {
@@ -562,9 +606,11 @@ func compareHelp(bin string, args []string) error {
 
 func compareInvalidOption(bin string) error {
 	cmd := exec.CommandContext(context.Background(), bin, "-z")
-	out, err := cmd.CombinedOutput()
-	if exitCode(err) != 1 || !strings.Contains(string(out), "invalid option") {
-		return fmt.Errorf("invalid option scenario differs: exit=%d output=%q", exitCode(err), out)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	if exitCode(err) != 1 || stdout.Len() != 0 || strings.TrimSpace(stderr.String()) == "" {
+		return fmt.Errorf("invalid option scenario differs: exit=%d stdout=%q stderr=%q", exitCode(err), stdout.Bytes(), stderr.Bytes())
 	}
 	return nil
 }

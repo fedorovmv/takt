@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -113,6 +114,15 @@ func TestCodeProfileRouterCreatesWorktreeForSelectedMutatingWorkflow(t *testing.
 			mu.Unlock()
 			if req.NodeID == "route" {
 				return assistant.Result{Output: `{"workflow":"feature-development","reason":"implement requested feature"}`, ExitCode: 0}, nil
+			}
+			if req.NodeID == "implement" {
+				artifacts := r.store.ArtifactsDir(req.RunID)
+				if err := os.MkdirAll(artifacts, 0o755); err != nil {
+					return assistant.Result{}, err
+				}
+				if err := os.WriteFile(filepath.Join(artifacts, "implementation.md"), []byte("implemented\n"), 0o644); err != nil {
+					return assistant.Result{}, err
+				}
 			}
 			return assistant.Result{Output: "completed", ExitCode: 0}, nil
 		}), nil

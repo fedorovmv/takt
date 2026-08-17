@@ -48,6 +48,26 @@ func TestRunFlowUsesLexicalCaseRepeatOrderAndPreflightsBeforeCallback(t *testing
 	}
 }
 
+func TestRunFlowLeavesTimeToValidUnavailableForInvalidResult(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "case")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", invalidFlowEnvelope)
+	report, err := RunFlow(context.Background(), FlowRunOptions{
+		SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root, HostPATH: "host-path",
+		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			return FlowCaseRunResult{States: []*store.RunState{{
+				ID: "run", Status: store.RunCompleted, ExecutionWorkspace: request.Workspace,
+				CreatedAt: time.Unix(1, 0), UpdatedAt: time.Unix(2, 0), Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{},
+			}}}, nil
+		},
+	})
+	if _, ok := err.(*FlowGateFailureError); !ok {
+		t.Fatalf("expected invalid-result gate failure, got %v", err)
+	}
+	if got := report.Runs[0].TimeToValidMS; got != nil {
+		t.Fatalf("invalid result has time_to_valid_ms=%d", *got)
+	}
+}
+
 func TestRunFlowPublishesExternalProgressThroughFinalization(t *testing.T) {
 	root, suitePath := writeFlowRunSuite(t, "case")
 	output := filepath.Join(root, "out")

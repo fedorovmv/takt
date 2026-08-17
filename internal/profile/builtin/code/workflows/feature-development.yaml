@@ -13,7 +13,12 @@ nodes:
   hooks:
     after_node:
     - id: validation
-      bash: "./.takt/profiles/code/tools/validate"
+      bash: |
+        if [ ! -f "$ARTIFACTS_DIR/implementation.md" ] || [ ! -s "$ARTIFACTS_DIR/implementation.md" ]; then
+          printf '%s\n' 'missing required artifact: implementation.md' >&2
+          exit 1
+        fi
+        exec ./.takt/profiles/code/tools/validate
       on_failure:
         action: retry
         session: resume

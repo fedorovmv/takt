@@ -229,7 +229,13 @@ The feature corpus contract is explicit in each `input.md`: `-s`, `-k`, `-H`,
 `-h`, `--help`, `--`, `-sk`, `-ks`, `-sH`, and fail-closed unknown options. Every
 feature case includes external validator scenarios for these surfaces;
 `eval-feature-smoke` runs `implement-basic`, while `eval-feature` runs all
-feature cases.
+feature cases. Diagnostics with contractually unspecified wording are checked
+as separate stdout/stderr streams: failure must use the required exit code,
+leave stdout clean where required and write a non-empty stderr diagnostic.
+Missing required workflow evidence uses the distinct `missing_artifact` code.
+The feature implementation hook requires a non-empty regular `implementation.md` and
+retries the same session before downstream review. `time_to_valid_ms` is
+available only for `valid: true` results.
 Use `--trace` for live runs: progress and durable Run/node events are written to
 stderr, while stdout remains the final machine-readable JSON report. Periodic
 heartbeats identify the active root/child Run, idle time, limit, last normalized
