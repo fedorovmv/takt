@@ -314,9 +314,7 @@ func (d *HookDecision) UnmarshalJSON(data []byte) error {
 		Action  string          `json:"action,omitempty"`
 		Session json.RawMessage `json:"session"`
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&value); err != nil {
+	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
 	*d = HookDecision{Action: value.Action}

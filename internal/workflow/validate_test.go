@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,31 @@ import (
 	"takt/internal/spec"
 	"testing"
 )
+
+func TestHookDecisionDirectJSONKeepsPresenceAndCompatibility(t *testing.T) {
+	cases := []struct {
+		name        string
+		raw         string
+		wantSession string
+		wantPresent bool
+	}{
+		{name: "omitted", raw: `{"action":"continue"}`},
+		{name: "empty", raw: `{"action":"retry","session":""}`, wantPresent: true},
+		{name: "null", raw: `{"action":"retry","session":null}`, wantPresent: true},
+		{name: "valid with unknown", raw: `{"action":"retry","session":"fresh","future":"ignored"}`, wantSession: "fresh", wantPresent: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var decision spec.HookDecision
+			if err := json.Unmarshal([]byte(tc.raw), &decision); err != nil {
+				t.Fatalf("direct JSON decode failed: %v", err)
+			}
+			if decision.Session != tc.wantSession || decision.HasSession() != tc.wantPresent {
+				t.Fatalf("decision=%+v, has_session=%v", decision, decision.HasSession())
+			}
+		})
+	}
+}
 
 func TestValidateDetectsCycle(t *testing.T) {
 	wf := &spec.Workflow{Name: "x", Nodes: []spec.Node{{ID: "a", Bash: "true", DependsOn: []string{"b"}}, {ID: "b", Bash: "true", DependsOn: []string{"a"}}}}
