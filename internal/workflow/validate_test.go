@@ -431,6 +431,20 @@ func TestValidateHookFailureSession(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsInvalidWorkflowHookFailureSession(t *testing.T) {
+	wf := &spec.Workflow{
+		Name: "workflow-hook-session",
+		Hooks: spec.HookSet{AfterNode: []spec.HookSpec{{
+			Bash:      "true",
+			OnFailure: spec.HookDecision{Action: "retry", Session: "reuse"},
+		}}},
+		Nodes: []spec.Node{{ID: "run", Bash: "true"}},
+	}
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "must be fresh or resume") {
+		t.Fatalf("invalid workflow hook session was accepted: %v", err)
+	}
+}
+
 func TestLoadRejectsExplicitEmptyHookFailureSession(t *testing.T) {
 	for _, session := range []string{"\"\"", "null"} {
 		t.Run(session, func(t *testing.T) {
