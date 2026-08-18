@@ -41,15 +41,10 @@ nodes:
       printf '%s\n' 'validation verdict artifact missing' >&2
       exit 1
     fi
-    line_count="$(awk 'END { print NR }' "$artifact")" || {
+    line="$(awk '/^verdict:/ { declared++; print } END { if (declared != 1) exit 1 }' "$artifact")" || {
       printf '%s\n' 'invalid validation verdict' >&2
       exit 1
     }
-    line="$(awk '/^verdict:/ { print }' "$artifact")"
-    if [ "$line_count" -ne 1 ]; then
-      printf '%s\n' 'invalid validation verdict' >&2
-      exit 1
-    fi
     case "$line" in
       'verdict: PASS') printf '%s' 'PASS' ;;
       'verdict: REPAIR') printf '%s' 'REPAIR' ;;
@@ -83,15 +78,10 @@ nodes:
       printf '%s\n' 'revalidation verdict artifact missing' >&2
       exit 1
     fi
-    line_count="$(awk 'END { print NR }' "$artifact")" || {
+    line="$(awk '/^verdict:/ { declared++; print } END { if (declared != 1) exit 1 }' "$artifact")" || {
       printf '%s\n' 'invalid revalidation verdict' >&2
       exit 1
     }
-    line="$(awk '/^verdict:/ { print }' "$artifact")"
-    if [ "$line_count" -ne 1 ]; then
-      printf '%s\n' 'invalid revalidation verdict' >&2
-      exit 1
-    fi
     case "$line" in
       'verdict: PASS') printf '%s' 'PASS' ;;
       'verdict: REPAIR') printf '%s' 'REPAIR' ;;
