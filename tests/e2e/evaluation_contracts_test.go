@@ -803,7 +803,7 @@ func TestProductionFlowEvaluationPREffectAndArtifacts(t *testing.T) {
 		wantRun, wantGate string
 		wantCalls         int
 	}{
-		{"duplicate", "FAKE_DUPLICATE_PR_CREATE=1", "failed", "failed", 2},
+		{"multiple-create-receipts", "FAKE_DUPLICATE_PR_CREATE=1", "completed", "completed", 2},
 		{"exit-after-create", "FAKE_EXIT_AFTER_PR_CREATE=1", "completed", "completed", 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

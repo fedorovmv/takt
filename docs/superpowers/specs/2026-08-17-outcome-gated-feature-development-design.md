@@ -4,6 +4,13 @@
 Дата: 2026-08-17
 Обновлено: 2026-08-18
 
+> **Current implementation note (v0.1.61):** evaluation SCM fixtures require
+> at least one successful `pr create` receipt. The fake `gh` supports stateful
+> `pr list --head/--state` queries; duplicate receipts are retained as evidence
+> and accepted by the fixture gate. The exact-once statements in this design
+> record the original v0.1.59 proposal and are superseded for the current
+> fixture behavior.
+
 ## 1. Заключение
 
 `code:feature-development` должен оставаться полным delivery flow: реализация,

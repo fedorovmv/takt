@@ -24,6 +24,45 @@ valid_view_args() {
   [ "$#" -eq 0 ] || { [ "$#" -eq 2 ] && [ "$1" = "--json" ] && [ -n "$2" ]; }
 }
 
+parse_pr_list_args() {
+  list_head=""
+  list_state=""
+  list_json=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --head|--state|--json)
+        [ "$#" -ge 2 ] || return 1
+        case "$1" in
+          --head) list_head="$2" ;;
+          --state) list_state="$2" ;;
+          --json) list_json="$2" ;;
+        esac
+        shift 2
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+  done
+}
+
+list_created_prs() {
+  records_file="$state_dir/pr-records"
+  found=0
+  if [ -f "$records_file" ]; then
+    while IFS="$(printf '\t')" read -r number head state; do
+      [ -n "$number" ] || continue
+      [ -z "$list_head" ] || [ "$head" = "$list_head" ] || continue
+      [ -z "$list_state" ] || [ "$(printf '%s' "$state" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$list_state" | tr '[:upper:]' '[:lower:]')" ] || continue
+      printf '%s\t%s\t%s\n' "$number" "$state" "$head"
+      found=1
+    done < "$records_file"
+  fi
+  if [ "$found" -eq 0 ] && [ "$(tr -d '[:space:]' < "$fixture_dir/pr-list.json")" != "[]" ]; then
+    cat "$fixture_dir/pr-list.json"
+  fi
+}
+
 valid_create_args() {
   draft=0
   if [ "${1:-}" = "--draft" ]; then draft=1; shift; fi
@@ -50,8 +89,12 @@ case "${1:-} ${2:-}" in
     ;;
   "pr list")
     require_file pr-list.json
-    valid_view_args "${@:3}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
-    cat "$fixture_dir/pr-list.json"
+    parse_pr_list_args "${@:3}" || { printf 'unsupported fake gh argv\n' >&2; exit 2; }
+    if [ -n "$list_json" ]; then
+      cat "$fixture_dir/pr-list.json"
+    else
+      list_created_prs
+    fi
     ;;
   "pr create")
     require_file pr-url-prefix
@@ -66,6 +109,8 @@ case "${1:-} ${2:-}" in
     fi
     count=$((count + 1))
     printf '%s' "$count" > "$count_file"
+    head_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || printf '%s' "")"
+    printf '%s\t%s\tOPEN\n' "$count" "$head_branch" >> "$state_dir/pr-records"
     printf '%s%s\n' "$(cat "$fixture_dir/pr-url-prefix")" "$count"
     ;;
   *)

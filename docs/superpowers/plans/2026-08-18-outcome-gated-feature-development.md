@@ -10,6 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-17-outcome-gated-feature-development-design.md`
 
+> **Post-implementation adjustment (2026-08-18, v0.1.61):** the evaluation
+> SCM fixture now requires at least one successful `pr create`, not exactly one.
+> The fake `gh` also supports a stateful `pr list --head/--state` check, so
+> duplicate receipts from one assistant execution are retained as evidence and
+> no longer fail the PR effect gate. The exact-once wording below describes the
+> original design and is superseded by this adjustment.
+
 **Implementation status (2026-08-18):** Tasks 1–4 are implemented and the
 focused/full verification gates pass. The live Pi smoke in Task 4 Step 5 was
 not run because this checkout has no generated `mini-du/config.yaml` or

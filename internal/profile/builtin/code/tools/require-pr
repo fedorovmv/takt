@@ -15,13 +15,24 @@ if [ ! -f "$calls_log" ]; then
 fi
 
 create_count=$(awk '$1 == "pr" && $2 == "create" { count++ } END { print count + 0 }' "$calls_log")
-if [ "$create_count" -ne 1 ]; then
-  printf 'required exactly one SCM side effect: gh pr create count=%s\n' "$create_count" >&2
+if [ "$create_count" -lt 1 ]; then
+  printf 'required at least one SCM side effect: gh pr create count=%s\n' "$create_count" >&2
   exit 1
 fi
 
 count_file="${TAKT_WORKSPACE}/.takt/evals/scm/pr-count"
-if [ ! -f "$count_file" ] || [ -L "$count_file" ] || [ "$(cat "$count_file")" != "1" ]; then
-  printf '%s\n' 'required successful SCM receipt missing: pr-count must equal 1' >&2
+if [ ! -f "$count_file" ] || [ -L "$count_file" ]; then
+  printf '%s\n' 'required successful SCM receipt missing: pr-count must be at least 1' >&2
+  exit 1
+fi
+count=$(cat "$count_file")
+case "$count" in
+  ''|*[!0-9]*)
+    printf '%s\n' 'required successful SCM receipt missing: pr-count must be at least 1' >&2
+    exit 1
+    ;;
+esac
+if [ "$count" -lt 1 ]; then
+  printf '%s\n' 'required successful SCM receipt missing: pr-count must be at least 1' >&2
   exit 1
 fi

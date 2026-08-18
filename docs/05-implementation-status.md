@@ -1,6 +1,6 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.60-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.61-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
 ## Evaluation progress timings — реализовано в v0.1.60
 
@@ -63,13 +63,13 @@
 
 ## Outcome-gated Development Flow Acceptance — реализовано в v0.1.59
 
-- профиль `code` 0.19.0 требует user-owned `allowed_paths` для `plan-to-pr`;
+- профиль `code` 0.19.1 требует user-owned `allowed_paths` для `plan-to-pr`;
 - native Git pathspec scope gate проверяет actual tracked/untracked state до draft PR и после review fixes;
 - PR, review и summary domain results закрыты workflow-level gates без новой runtime-абстракции;
 - `code:feature-development` принимает только строгий `validation.md` verdict: `PASS` продолжает flow, `REPAIR` разрешает ровно одну repair и независимую revalidation, `BLOCKED` делает safe stop;
 - initial/revalidation parsers fail-closed на missing, duplicate, malformed и binary-tainted control lines; producer assistant обязан быть `completed`;
 - acceptance gate сохраняет initial review evidence, требует review-fixes/revalidation artifacts после repair и не маскирует failure downstream узлов;
-- evaluation SCM fixture требует ровно один успешный `pr create` receipt (`calls.log` + `pr-count`); production SCM runs не изменены;
+- evaluation SCM fixture требует хотя бы один успешный `pr create` receipt (`calls.log` + `pr-count`); `fake-gh` поддерживает проверку открытых PR через `pr list --head/--state` и сохраняет созданные записи; production SCM runs не изменены;
 - authoring/schema contract fail-closed проверяет `hook.on_failure.session`: только `fresh|resume` и только при `action: retry`;
 - Go E2E классифицирует happy path как `safe_success`, а missing artifact, false validation, blocked implementation, scope drift, blocked PR, unresolved review и incomplete summary — как `safe_stop`;
 - remote PR receipt/reconcile по-прежнему не заявляется: E2E сверяет assistant evidence с fake SCM.
@@ -325,7 +325,7 @@ zero denominators are shown as `n/a`.
 
 ## Предметные поставки
 
-- профиль `code` 0.19.0: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
+- профиль `code` 0.19.1: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
 - Route DSL examples/eval corpus;
 - authoring skill;
 - multi-repo/reference fake adapters.

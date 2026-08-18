@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Evaluation SCM fixtures now support stateful `gh pr list --head/--state`
+  checks, and the feature-flow PR receipt gate accepts at least one successful
+  `gh pr create` instead of rejecting duplicate receipts from one assistant
+  execution. Product version is `0.1.61-alpha`; the bundled `code` profile is
+  `0.19.1`.
+
 ## v0.1.60-alpha
 
 - `progress.json` and `eval-status` now expose accumulated evaluation phase

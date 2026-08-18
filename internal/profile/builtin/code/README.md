@@ -1,4 +1,4 @@
-# Takt code profile 0.19.0
+# Takt code profile 0.19.1
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -80,9 +80,10 @@ repair is impossible. A `REPAIR` verdict enables exactly one repair node and an
 independent revalidation; only `REPAIR` followed by a `verdict: PASS` from
 revalidation may
 continue. The flow then requires non-empty review, PR, URL, and summary
-artifacts. Evaluation fixtures additionally require exactly one successful
-`gh pr create` receipt; ordinary production SCM runs keep their provider-native
-side effects.
+artifacts. Evaluation fixtures additionally require at least one successful
+`gh pr create` receipt; the fake `gh` supports stateful open-PR listing for the
+current branch. Ordinary production SCM runs keep their provider-native side
+effects.
 
 ## Configuration
 

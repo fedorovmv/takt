@@ -41,7 +41,7 @@ func TestFakeGHFixtureContract(t *testing.T) {
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
-	for _, call := range [][]string{{"repo", "view", "--json", "nameWithOwner"}, {"issue", "view", "9", "--json", "number"}, {"pr", "view", "7", "--json", "number"}, {"pr", "list", "--json", "number"}} {
+	for _, call := range [][]string{{"repo", "view", "--json", "nameWithOwner"}, {"issue", "view", "9", "--json", "number"}, {"pr", "view", "7", "--json", "number"}, {"pr", "list", "--json", "number"}, {"pr", "list", "--head", "feature/x", "--state", "open"}} {
 		got, err := run(call...)
 		if err != nil || !strings.Contains(got, "other/repo") && call[0] != "pr" {
 			t.Fatalf("gh %v = %q, %v", call, got, err)
@@ -74,6 +74,49 @@ func TestFakeGHFixtureContract(t *testing.T) {
 	}
 }
 
+func TestFakeGHFixtureListsCreatedPR(t *testing.T) {
+	root := t.TempDir()
+	bin, fixture, state, repo := filepath.Join(root, "bin"), filepath.Join(root, "fixture"), filepath.Join(root, "state"), filepath.Join(root, "repo")
+	for _, dir := range []string{bin, fixture, repo} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(bin, "gh"), FakeGHFixture(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"repo-view.json": "{}\n",
+		"pr-list.json":   "[]\n",
+		"pr-url-prefix":  "https://example.test/acme/repo/pull/\n",
+	} {
+		if err := os.WriteFile(filepath.Join(fixture, name), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if output, err := exec.Command("git", "-C", repo, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo, "checkout", "-q", "-b", "feature/x").CombinedOutput(); err != nil {
+		t.Fatalf("git checkout: %v: %s", err, output)
+	}
+	env := append(os.Environ(), "FAKE_GH_FIXTURE_DIR="+fixture, "FAKE_GH_STATE_DIR="+state)
+	run := func(args ...string) (string, error) {
+		cmd := exec.Command(filepath.Join(bin, "gh"), args...)
+		cmd.Dir = repo
+		cmd.Env = env
+		output, err := cmd.CombinedOutput()
+		return string(output), err
+	}
+	if got, err := run("pr", "create", "--title", "created title", "--body", "created body"); err != nil || got != "https://example.test/acme/repo/pull/1\n" {
+		t.Fatalf("create = %q, %v", got, err)
+	}
+	got, err := run("pr", "list", "--head", "feature/x", "--state", "open")
+	if err != nil || !strings.Contains(got, "feature/x") || !strings.Contains(got, "1") {
+		t.Fatalf("list created PR = %q, %v", got, err)
+	}
+}
+
 func TestFakeGHFixtureRejectsUnsupportedArgv(t *testing.T) {
 	root := t.TempDir()
 	bin, fixture, state := filepath.Join(root, "bin"), filepath.Join(root, "fixture"), filepath.Join(root, "state")
@@ -97,7 +140,7 @@ func TestFakeGHFixtureRejectsUnsupportedArgv(t *testing.T) {
 		{"issue", "view", "1", "--repo", "acme/repo"},
 		{"repo", "view", "--json"},
 		{"pr", "view", "1", "--json", "number", "--extra"},
-		{"pr", "list", "--state", "open"},
+		{"pr", "list", "--head"},
 		{"pr", "create", "--title", "x"},
 		{"pr", "create", "--title", "x", "--body", "y", "--repo", "acme/repo"},
 	} {
