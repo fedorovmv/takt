@@ -13,6 +13,7 @@ import (
 )
 
 func TestPackageDistributionBoundary(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	project := filepath.Join(tmp, "project")
 	pkg := filepath.Join(tmp, "pkg")
@@ -119,6 +120,7 @@ assistants:
 }
 
 func TestReferenceAdaptersBoundary(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	qwenWork := filepath.Join(tmp, "qwen-work")
 	scmWork := filepath.Join(tmp, "scm-work")
@@ -252,6 +254,7 @@ nodes:
 }
 
 func TestHostControlBoundary(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	project := filepath.Join(tmp, "project")
 	fakeAgent := binary(t, "takt-fake-code-agent")
@@ -323,6 +326,7 @@ assistants:
 }
 
 func TestDeepCodeWorkflowBoundary(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	project, remote := filepath.Join(tmp, "project"), filepath.Join(tmp, "remote.git")
 	fakeBin, ghState := filepath.Join(tmp, "bin"), filepath.Join(tmp, "gh-state")
@@ -411,6 +415,7 @@ assistants:
 }
 
 func TestPlanToPRAcceptance(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name       string
 		env        []string
@@ -430,6 +435,7 @@ func TestPlanToPRAcceptance(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			fixture := newPlanToPRFixture(t, tc.validation)
 			env := append(fixture.env, tc.env...)
 			result := takt(t, env, "run", "code:plan-to-pr", "--workspace", fixture.project, "--input", fixture.input, "--json")
@@ -642,6 +648,7 @@ func mustJSON(t *testing.T, value any) string {
 }
 
 func TestHostIntegrationSourceContract(t *testing.T) {
+	t.Parallel()
 	piPath := filepath.Join(repoRoot, "integrations", "coding-agent-host-control", "pi", "index.ts")
 	opencodePath := filepath.Join(repoRoot, "integrations", "coding-agent-host-control", "opencode", "index.ts")
 	piBytes, err := os.ReadFile(piPath)

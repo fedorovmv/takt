@@ -7,6 +7,7 @@ import (
 )
 
 func TestFlowEvaluationInitContract(t *testing.T) {
+	t.Parallel()
 	output := filepath.Join(t.TempDir(), "flow")
 	resultObject(t, takt(t, nil, "eval", "flow", "init", "code:feature-development", "--output", output, "--json").RequireSuccess(t).JSON(t))
 	for _, path := range []string{"suite.yaml", "cases/example/input.md", "cases/example/expected.yaml", "cases/example/workspace/README.md"} {

@@ -24,6 +24,7 @@ func newUserJourneyProject(t *testing.T) string {
 }
 
 func TestUserJourneyValidateRunInspectArtifacts(t *testing.T) {
+	t.Parallel()
 	project := newUserJourneyProject(t)
 	workflow := writeFile(t, project, "workflow.yaml", `name: first-run
 nodes:
@@ -64,6 +65,7 @@ nodes:
 }
 
 func TestUserJourneyApprovalAnswerContinue(t *testing.T) {
+	t.Parallel()
 	project := newUserJourneyProject(t)
 	workflow := writeFile(t, project, "approval.yaml", `name: approval
 nodes:
@@ -94,6 +96,7 @@ nodes:
 }
 
 func TestUserJourneyFailureRetry(t *testing.T) {
+	t.Parallel()
 	project := newUserJourneyProject(t)
 	workflow := writeFile(t, project, "retry.yaml", `name: retry
 nodes:
@@ -127,6 +130,7 @@ nodes:
 }
 
 func TestUserJourneyReusableSubworkflow(t *testing.T) {
+	t.Parallel()
 	project := newUserJourneyProject(t)
 	writeFile(t, project, "workflows/write.yaml", `name: reusable-write
 nodes:

@@ -90,6 +90,9 @@ make e2e          # полный black-box Go E2E
 make e2e-race     # E2E под -race
 ```
 
+E2E-контракты используют `GO_TEST_PARALLEL_P=16` независимых test workers по
+умолчанию; на слабой машине значение можно уменьшить.
+
 `tests/e2e` запускает настоящий `takt` и проверяет CLI/daemon/MCP/evaluation через общий Go harness. Shell не используется как второй assertion framework.
 
 Отдельно остаётся один внешний shell smoke test:

@@ -12,6 +12,7 @@ import (
 )
 
 func TestAuthoringContract(t *testing.T) {
+	t.Parallel()
 	work := t.TempDir()
 	cfg := writeFile(t, work, ".takt/config.yaml", `apiVersion: takt/v1alpha1
 kind: Config
@@ -131,6 +132,7 @@ nodes:
 }
 
 func TestMCPContract(t *testing.T) {
+	t.Parallel()
 	work := t.TempDir()
 	cfg := writeFile(t, work, "config.yaml", "apiVersion: takt/v1alpha1\nkind: Config\n")
 	wf := writeFile(t, work, "workflow.yaml", `name: mcp-contract
@@ -191,6 +193,7 @@ nodes:
 }
 
 func TestDaemonContract(t *testing.T) {
+	t.Parallel()
 	work := t.TempDir()
 	cfg := writeFile(t, work, ".takt/config.yaml", "apiVersion: takt/v1alpha1\nkind: Config\n")
 	wf := writeFile(t, work, "workflow.yaml", `name: daemon-contract
@@ -244,6 +247,7 @@ nodes:
 }
 
 func TestTaskSourcesContract(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	fakebin := filepath.Join(tmp, "fakebin")
 	if err := os.MkdirAll(fakebin, 0o755); err != nil {

@@ -14,6 +14,10 @@
 - Feature-flow artifact and verdict checks now use shared profile tools. Their
   complete missing/empty/directory and parser-failure matrices run as cheap Go
   profile contracts; full-flow E2E keeps representative branch/failure cases.
+- Independent E2E contracts now run in parallel, and the route benchmark keeps
+  one representative case/repeat while unit contracts retain full matrix
+  aggregation and gate-failure coverage. `make e2e` uses 16 test workers by
+  default.
 
 ## v0.1.60-alpha
 

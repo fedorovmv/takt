@@ -1,4 +1,5 @@
 GO_TEST_P ?= 8
+GO_TEST_PARALLEL_P ?= 16
 GO_ALL_PACKAGES := $(shell go list ./...)
 GO_CORE_PACKAGES := $(filter-out %/tests/e2e,$(GO_ALL_PACKAGES))
 GO_FAST_PACKAGES := ./internal/architecture ./internal/profile ./internal/whenexpr ./internal/yamlcodec
@@ -18,21 +19,21 @@ test: test-core
 
 test-fast:
 	go test -p $(GO_TEST_P) $(GO_ALL_PACKAGES) -run '^$$' -count=1
-	go test -p $(GO_TEST_P) $(GO_FAST_PACKAGES) -count=1
+	go test -p $(GO_TEST_P) $(GO_FAST_PACKAGES) -parallel $(GO_TEST_PARALLEL_P) -count=1
 
 test-core:
-	go test -p $(GO_TEST_P) $(GO_CORE_PACKAGES) -count=1
+	go test -p $(GO_TEST_P) $(GO_CORE_PACKAGES) -parallel $(GO_TEST_PARALLEL_P) -count=1
 
 test-all:
-	go test -p $(GO_TEST_P) $(GO_ALL_PACKAGES) -count=1
+	go test -p $(GO_TEST_P) $(GO_ALL_PACKAGES) -parallel $(GO_TEST_PARALLEL_P) -count=1
 
 race: race-core
 
 race-core:
-	go test -race -p $(GO_TEST_P) $(GO_CORE_PACKAGES) -count=1
+	go test -race -p $(GO_TEST_P) $(GO_CORE_PACKAGES) -parallel $(GO_TEST_PARALLEL_P) -count=1
 
 race-all:
-	go test -race -p $(GO_TEST_P) $(GO_ALL_PACKAGES) -count=1
+	go test -race -p $(GO_TEST_P) $(GO_ALL_PACKAGES) -parallel $(GO_TEST_PARALLEL_P) -count=1
 
 vet:
 	go vet ./...
@@ -201,15 +202,15 @@ host-integration-typescript:
 	./scripts/test-host-integrations-typescript.sh
 
 e2e:
-	go test ./tests/e2e -count=1
+	go test ./tests/e2e -parallel $(GO_TEST_PARALLEL_P) -count=1
 
 e2e-race:
-	go test -race ./tests/e2e -count=1
+	go test -race ./tests/e2e -parallel $(GO_TEST_PARALLEL_P) -count=1
 
 # Stable user-facing journeys are an explicit release gate, separate from
 # internal contract coverage.
 journeys:
-	go test ./tests/e2e -run '^TestUserJourney' -count=1
+	go test ./tests/e2e -run '^TestUserJourney' -parallel $(GO_TEST_PARALLEL_P) -count=1
 
 smoke: host-integration-typescript
 

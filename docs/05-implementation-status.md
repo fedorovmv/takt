@@ -11,6 +11,10 @@
   ежедневный шлюз;
 - `make check-full` и `scripts/verify.sh` сохраняют полный обычный/race
   release contour, а `make journeys` остаётся отдельным user-facing gate;
+- независимые E2E-контракты и table-driven cases запускаются параллельно через
+  `GO_TEST_PARALLEL_P` (по умолчанию 16); дорогой benchmark E2E оставляет один
+  representative case/repeat, а полная агрегация и gate-failure semantics
+  проверяются unit-контрактами;
 - live `eval-*` цели не входят в автоматические проверки.
 
 ## Feature-flow gate matrix tiering — реализовано в v0.1.61

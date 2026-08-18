@@ -8,6 +8,7 @@ import (
 )
 
 func TestArchonCurrentDocumentationInventory(t *testing.T) {
+	t.Parallel()
 	paths := []string{filepath.Join(repoRoot, "README.md")}
 	for _, root := range []string{filepath.Join(repoRoot, "examples"), filepath.Join(repoRoot, "skills", "takt")} {
 		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {

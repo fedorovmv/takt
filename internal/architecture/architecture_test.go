@@ -528,6 +528,9 @@ func TestMakefileFastCheckExcludesProcessHeavySuites(t *testing.T) {
 	if !strings.Contains(source, "test-fast:") {
 		t.Fatal("Makefile must expose the fast test target")
 	}
+	if !strings.Contains(source, "GO_TEST_PARALLEL_P ?= 16") {
+		t.Fatal("Makefile must expose the configurable E2E parallelism")
+	}
 	var checkLine string
 	for _, line := range strings.Split(source, "\n") {
 		if strings.HasPrefix(line, "check:") {
@@ -540,5 +543,8 @@ func TestMakefileFastCheckExcludesProcessHeavySuites(t *testing.T) {
 	}
 	if strings.Contains(checkLine, "e2e") || strings.Contains(source, "test-fast:\n\tgo test ./tests/e2e") {
 		t.Fatal("make check must not run process-heavy E2E suites")
+	}
+	if !strings.Contains(source, "e2e:\n\tgo test ./tests/e2e -parallel $(GO_TEST_PARALLEL_P)") {
+		t.Fatal("make e2e must use the configured test parallelism")
 	}
 }

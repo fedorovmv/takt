@@ -12,14 +12,15 @@ Measured on the same working tree:
 
 | Target | Wall time |
 |---|---:|
-| `make check` (compile-all + focused contracts + vet/build/smoke) | 27.90s |
+| `make check` (compile-all + focused contracts + vet/build/smoke) | 17.44s |
 | `make test` (core packages, reference) | 82.51s |
-| `make e2e` (ordinary full suite, reference) | 182.723s |
+| `make e2e` (parallelized full suite, `-parallel 16`) | 61.115s |
 | `make check-full` (before matrix split) | 676.98s |
 
-The previous `make check` composition measured about 267s after the earlier
-tiering. The new fast gate removes all process-heavy E2E from the persistent
-path; `make check-full` retains the complete release contour.
+The previous ordinary E2E pass measured `182.723s`; parallel independent
+contracts and the representative benchmark matrix reduce it to about one
+minute. The fast gate remains separate for local edits, while `make check-full`
+retains the complete release contour.
 
 ## Feature-flow gate matrix tiering — 2026-08-18
 

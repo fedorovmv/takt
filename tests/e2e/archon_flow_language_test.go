@@ -11,6 +11,7 @@ import (
 )
 
 func TestArchonFlowLanguageInventory(t *testing.T) {
+	t.Parallel()
 	roots := []string{
 		filepath.Join(repoRoot, "internal", "profile", "builtin"),
 		filepath.Join(repoRoot, "internal", "workflow", "testdata"),

@@ -40,6 +40,7 @@ assistants:
 }
 
 func TestDynamicTaktContract(t *testing.T) {
+	t.Parallel()
 	project, cfg := newCodeFixture(t)
 	candidates := []string{
 		"workflows/dynamic-plan.yaml", "workflows/dynamic-replan.yaml", "workflows/blocks/dynamic-discover.yaml", "workflows/blocks/dynamic-investigate.yaml", "workflows/blocks/dynamic-implement.yaml", "workflows/blocks/dynamic-validate.yaml", "workflows/blocks/dynamic-review.yaml", "workflows/blocks/dynamic-adversarial-verify.yaml", "workflows/blocks/dynamic-synthesize.yaml", "workflows/blocks/dynamic-repository-change.yaml", "workflows/blocks/dynamic-integration-verify.yaml",
@@ -97,6 +98,7 @@ func TestDynamicTaktContract(t *testing.T) {
 }
 
 func TestSimpleReliableRouterContract(t *testing.T) {
+	t.Parallel()
 	project, cfg := newCodeFixture(t)
 	git(t, project, "init", "-q")
 	git(t, project, "config", "user.email", "fixture@example.com")

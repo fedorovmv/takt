@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompatibilityContract(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	takt(t, nil, "compatibility", "matrix", "--json").RequireSuccess(t).Contains(t, "takt-compatibility/v1")
 	takt(t, nil, "compatibility", "fields", "--json").RequireSuccess(t).Contains(t, `"field": "output_format"`).Contains(t, `"field": "native_hooks"`).Contains(t, `"decision": "defer"`)
@@ -35,6 +36,7 @@ assistants:
 }
 
 func TestCompositionContract(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	copyTree(t, filepath.Join(repoRoot, "examples", "composition"), dir)
 	takt(t, nil, "validate", filepath.Join(dir, "workflow.yaml"), "--config", filepath.Join(dir, "config.yaml"), "--workspace", dir, "--json").RequireSuccess(t)
@@ -53,6 +55,7 @@ func TestCompositionContract(t *testing.T) {
 }
 
 func TestWorktreeContract(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	git(t, repo, "init", "-q")
 	git(t, repo, "config", "user.email", "takt@example.invalid")
@@ -92,6 +95,7 @@ nodes:
 }
 
 func TestBlockPackageContract(t *testing.T) {
+	t.Parallel()
 	project := filepath.Join(t.TempDir(), "project")
 	if err := os.MkdirAll(project, 0o755); err != nil {
 		t.Fatal(err)
@@ -135,6 +139,7 @@ func TestBlockPackageContract(t *testing.T) {
 }
 
 func TestTaktSkillContract(t *testing.T) {
+	t.Parallel()
 	skill := filepath.Join(repoRoot, "skills", "takt", "SKILL.md")
 	requireFileContains(t, skill, "name: takt", "takt validate", "references/patterns.md", "opencode")
 	skillVersionBytes, _ := os.ReadFile(filepath.Join(repoRoot, "skills", "takt", "VERSION"))
@@ -147,6 +152,7 @@ func TestTaktSkillContract(t *testing.T) {
 }
 
 func TestCodeProfileCatalogContract(t *testing.T) {
+	t.Parallel()
 	project := filepath.Join(t.TempDir(), "project")
 	if err := os.MkdirAll(project, 0o755); err != nil {
 		t.Fatal(err)
@@ -193,6 +199,7 @@ func TestCodeProfileCatalogContract(t *testing.T) {
 }
 
 func TestLearningLoopContract(t *testing.T) {
+	t.Parallel()
 	work := filepath.Join(t.TempDir(), "work")
 	for _, id := range []string{"run-learning-a", "run-learning-b"} {
 		state := map[string]any{"id": id, "status": "failed", "workflow_path": "workflow.yaml", "config_path": "config.yaml", "workspace": work, "nodes": map[string]any{"validate": map[string]any{"status": "failed", "diagnostic": map[string]any{"code": "VALIDATION", "kind": "quality", "message": "same durable validation failure", "fingerprint": "sha256:learning-repeat"}}}, "approvals": map[string]any{}, "revision": 0}
@@ -222,6 +229,7 @@ func TestLearningLoopContract(t *testing.T) {
 }
 
 func TestAdapterPlatformContract(t *testing.T) {
+	t.Parallel()
 	tmp := t.TempDir()
 	work := filepath.Join(tmp, "work")
 	if err := os.MkdirAll(work, 0o755); err != nil {
