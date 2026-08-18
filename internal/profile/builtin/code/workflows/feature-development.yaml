@@ -32,6 +32,10 @@ nodes:
   - validate-agent
   trigger_rule: all_done
   bash: |
+    if [ $validate-agent.status? != "completed" ]; then
+      printf '%s\n' 'validation producer did not complete' >&2
+      exit 1
+    fi
     artifact="$ARTIFACTS_DIR/validation.md"
     if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
       printf '%s\n' 'validation verdict artifact missing' >&2
@@ -70,6 +74,10 @@ nodes:
   trigger_rule: all_done
   when: $repair.status == "completed"
   bash: |
+    if [ $revalidate-agent.status? != "completed" ]; then
+      printf '%s\n' 'revalidation producer did not complete' >&2
+      exit 1
+    fi
     artifact="$ARTIFACTS_DIR/revalidation.md"
     if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
       printf '%s\n' 'revalidation verdict artifact missing' >&2
@@ -118,6 +126,10 @@ nodes:
   - create-pr
   trigger_rule: all_done
   bash: |
+    if [ $create-pr.status? != "completed" ]; then
+      printf '%s\n' 'PR producer did not complete' >&2
+      exit 1
+    fi
     for artifact in "$ARTIFACTS_DIR/pr.md" "$ARTIFACTS_DIR/pr-url.txt"; do
       if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
         printf 'missing required PR artifact: %s\n' "$artifact" >&2

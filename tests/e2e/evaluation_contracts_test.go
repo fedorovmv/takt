@@ -742,6 +742,33 @@ func TestProductionFlowEvaluationFeatureValidationPhaseFailure(t *testing.T) {
 	}
 }
 
+func TestProductionFlowEvaluationFeatureProducerFailsAfterArtifact(t *testing.T) {
+	fake := binary(t, "takt-fake-code-agent")
+	for _, tc := range []struct {
+		name, verdict, phase string
+		want                 map[string]string
+	}{
+		{"validation", "PASS", "feature-validation", map[string]string{"initial-verdict": "failed", "repair": "skipped", "revalidate-agent": "skipped", "revalidation-verdict": "skipped", "review-acceptance-gate": "failed", "create-pr": "skipped"}},
+		{"revalidation", "REPAIR+PASS", "feature-revalidation", map[string]string{"initial-verdict": "completed", "repair": "completed", "revalidate-agent": "failed", "revalidation-verdict": "failed", "review-acceptance-gate": "failed", "create-pr": "skipped"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			suite := writeProductionFlowSuite(t, root, "code:feature-development", "repository", 0, "# Implement the smoke change\n", fake, map[string]string{"FAKE_FEATURE_VERDICT_KIND": tc.verdict, "FAKE_FAIL_AFTER_ARTIFACT_PHASE": tc.phase})
+			output := filepath.Join(t.TempDir(), "output")
+			result := takt(t, []string{"TAKT_PRODUCTION_FLOW_VALIDATOR=1"}, "eval", "flow", suite, "--output", output, "--keep-workspaces", "--json").RequireFailure(t)
+			run := resultObject(t, result.JSON(t))["runs"].([]any)[0].(map[string]any)
+			nodes := run["nodes"].(map[string]any)
+			for id, want := range tc.want {
+				node, ok := flowNode(nodes, id)
+				if !ok || node["status"] != want {
+					t.Fatalf("node %q=%#v want=%s", id, node, want)
+				}
+			}
+		})
+	}
+}
+
 func TestProductionFlowEvaluationPREffectAndArtifacts(t *testing.T) {
 	fake := binary(t, "takt-fake-code-agent")
 	for _, tc := range []struct {
@@ -1056,6 +1083,9 @@ func TestFlowInventory(t *testing.T) {
 	}
 	if featurePREffect.TriggerRule != "all_done" {
 		t.Fatalf("feature pr-effect-gate trigger_rule=%q", featurePREffect.TriggerRule)
+	}
+	if !strings.Contains(featurePREffect.Bash, "$create-pr.status?") {
+		t.Fatalf("feature pr-effect-gate does not require create-pr completion: %q", featurePREffect.Bash)
 	}
 	command, err := runtime.NewCommandResolver(filepath.Join(repoRoot, "internal", "profile", "builtin", "code", "workflows", "review-block.yaml"), repoRoot, repoRoot).Resolve("review-intake")
 	if err != nil {

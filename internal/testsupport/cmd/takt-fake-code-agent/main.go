@@ -43,6 +43,7 @@ func main() {
 	evidence := []string{"fixture:" + phase}
 	artifactWritten := false
 	failPhase := os.Getenv("FAKE_FAIL_PHASE") == phase
+	failAfterArtifact := os.Getenv("FAKE_FAIL_AFTER_ARTIFACT_PHASE") == phase
 	if blocked := os.Getenv("FAKE_BLOCK_PHASE"); blocked != "" && blocked == phase {
 		status, code, summary = "blocked", blockedCodeFor(phase), "fixture requested a blocked checkpoint"
 	}
@@ -136,6 +137,9 @@ func main() {
 	}
 	if failPhase {
 		fail(fmt.Errorf("fixture requested phase failure: %s", phase))
+	}
+	if failAfterArtifact {
+		fail(fmt.Errorf("fixture requested phase failure after artifact: %s", phase))
 	}
 	cp := checkpoint{Status: status, Code: code, Summary: summary, Evidence: evidence, ArtifactPath: artifactPath}
 	if phase == "review-perspective" {
