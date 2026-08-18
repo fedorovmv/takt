@@ -965,9 +965,11 @@ Pi. Фазы имеют точные значения `prepare`, `validator_pref
 накопленные миллисекунды фаз `prepare`, `validator_preflight`, `workflow`,
 `validator`, `evidence`, `cleanup`, а также наблюдаемые Pi `wait_ms`,
 `stream_ms`, `total_ms` и длительность завершённых assistant tool calls.
-`total_ms` включает ожидание и потоковую выдачу и потому пересекается с ними;
-фазовые и assistant-тайминги могут пересекаться при параллельных узлах. Старые
-снимки без `timings` остаются читаемыми и показывают метрику как недоступную.
+Pi `total_ms` и `stream_ms` являются cumulative-значениями одного model call и
+учитываются один раз по его `call`; `total_ms` включает ожидание и потоковую
+выдачу и потому пересекается с ними. Фазовые и assistant-тайминги могут
+пересекаться при параллельных узлах. Старые снимки без `timings` остаются
+читаемыми и показывают метрику как недоступную.
 Финальный снимок остаётся рядом с `report.json`.
 `report.json` is first checkpointed after a case reaches validator/evidence; it
 is not a live heartbeat. Before that checkpoint, `takt eval inspect <dir>`

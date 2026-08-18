@@ -7,6 +7,8 @@
 - `progress.json` and `eval-status` now expose accumulated evaluation phase
   timings plus observed assistant wait/stream/total and tool-call durations;
   old progress snapshots remain readable with unavailable timing data.
+- Cumulative Pi message timing diagnostics are now counted once per model call,
+  so `LLM total` and `LLM stream` no longer double-count repeated completions.
 
 ## v0.1.59-alpha
 

@@ -126,14 +126,22 @@ type flowActivityRecord struct {
 }
 
 type flowActivityTracker struct {
-	mu               sync.RWMutex
-	records          map[string]flowActivityRecord
-	assistantTimings evaluation.FlowAssistantTimings
-	toolStarted      map[string]time.Time
+	mu                   sync.RWMutex
+	records              map[string]flowActivityRecord
+	assistantTimings     evaluation.FlowAssistantTimings
+	assistantCallTimings map[string]flowAssistantCallTiming
+	assistantInvocations map[string]int
+	toolStarted          map[string]time.Time
 }
 
 func newFlowActivityTracker() *flowActivityTracker {
-	return &flowActivityTracker{records: map[string]flowActivityRecord{}, toolStarted: map[string]time.Time{}}
+	return &flowActivityTracker{records: map[string]flowActivityRecord{}, assistantCallTimings: map[string]flowAssistantCallTiming{}, assistantInvocations: map[string]int{}, toolStarted: map[string]time.Time{}}
+}
+
+type flowAssistantCallTiming struct {
+	WaitMS   int64
+	StreamMS int64
+	TotalMS  int64
 }
 
 func (t *flowActivityTracker) record(record flowActivityRecord) {
@@ -219,8 +227,16 @@ func (t *flowActivityTracker) recordAssistantTiming(runID, nodeID string, event 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	switch event.Type {
+	case assistant.EventSessionStarted, assistant.EventSessionResumed:
+		t.assistantInvocations[flowAssistantInvocationKey(runID, nodeID)]++
 	case assistant.EventDiagnostic:
 		code, _ := event.Data["code"].(string)
+		call := traceAttempt(event.Data["call"])
+		if call > 0 && (code == "pi.stream.started" || code == "pi.message.completed") {
+			generation := t.assistantInvocations[flowAssistantInvocationKey(runID, nodeID)]
+			t.recordCumulativeAssistantTiming(runID, nodeID, event.SessionID, generation, call, code, event.Data)
+			return
+		}
 		switch code {
 		case "pi.stream.started":
 			t.assistantTimings.WaitMS += timingMilliseconds(event.Data["wait_ms"])
@@ -246,6 +262,38 @@ func (t *flowActivityTracker) recordAssistantTiming(runID, nodeID string, event 
 		}
 		delete(t.toolStarted, key)
 	}
+}
+
+func (t *flowActivityTracker) recordCumulativeAssistantTiming(runID, nodeID, sessionID string, generation, call int, code string, data map[string]any) {
+	key := flowAssistantTimingKey(runID, nodeID, sessionID, generation, call)
+	previous := t.assistantCallTimings[key]
+	current := previous
+	switch code {
+	case "pi.stream.started":
+		current.WaitMS = maxTimingMilliseconds(current.WaitMS, timingMilliseconds(data["wait_ms"]))
+	case "pi.message.completed":
+		current.StreamMS = maxTimingMilliseconds(current.StreamMS, timingMilliseconds(data["stream_ms"]))
+		current.TotalMS = maxTimingMilliseconds(current.TotalMS, timingMilliseconds(data["total_ms"]))
+	}
+	t.assistantCallTimings[key] = current
+	t.assistantTimings.WaitMS += current.WaitMS - previous.WaitMS
+	t.assistantTimings.StreamMS += current.StreamMS - previous.StreamMS
+	t.assistantTimings.TotalMS += current.TotalMS - previous.TotalMS
+}
+
+func flowAssistantInvocationKey(runID, nodeID string) string {
+	return runID + "\x00" + nodeID
+}
+
+func flowAssistantTimingKey(runID, nodeID, sessionID string, generation, call int) string {
+	return runID + "\x00" + nodeID + "\x00" + strconv.Itoa(generation) + "\x00" + sessionID + "\x00" + strconv.Itoa(call)
+}
+
+func maxTimingMilliseconds(previous, current int64) int64 {
+	if current > previous {
+		return current
+	}
+	return previous
 }
 
 func flowToolTimingKey(runID, nodeID, callID string) string {

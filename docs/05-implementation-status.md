@@ -9,6 +9,8 @@
 - live assistant timing сохраняет наблюдаемые Pi wait/stream/total и
   завершённые tool intervals; `eval status` показывает их без обращения к
   модели;
+- повторяющиеся cumulative Pi completion events одного model call не
+  удваивают `LLM total`/`LLM stream`;
 - старые snapshots без timing object остаются читаемыми и явно показывают
   недоступность, а измеренный ноль сохраняется как `0`.
 

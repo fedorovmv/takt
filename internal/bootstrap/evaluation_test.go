@@ -512,6 +512,41 @@ func TestSummarizeFlowRuntimeProgressAggregatesAssistantTimings(t *testing.T) {
 	}
 }
 
+func TestFlowActivityTrackerDeduplicatesCumulativeAssistantTimingsPerCall(t *testing.T) {
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	activity := newFlowActivityTracker()
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.stream.started", "call": 1, "wait_ms": 120}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.message.completed", "call": 1, "stream_ms": 100, "total_ms": 1000}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.message.completed", "call": 1, "stream_ms": 300, "total_ms": 1300}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.stream.started", "call": 2, "wait_ms": 200}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.message.completed", "call": 2, "stream_ms": 80, "total_ms": 500}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.message.completed", "call": 2, "stream_ms": 200, "total_ms": 700}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-2", Time: now, Data: map[string]any{"code": "pi.stream.started", "call": 1, "wait_ms": 50}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-2", Time: now, Data: map[string]any{"code": "pi.message.completed", "call": 1, "stream_ms": 40, "total_ms": 400}}, 5*time.Minute)
+
+	want := evaluation.FlowAssistantTimings{WaitMS: 370, StreamMS: 540, TotalMS: 2400}
+	if got := activity.assistantTimingSnapshot(); got != want {
+		t.Fatalf("assistant timings=%+v want %+v", got, want)
+	}
+}
+
+func TestFlowActivityTrackerSeparatesResumedCumulativeTimings(t *testing.T) {
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	activity := newFlowActivityTracker()
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventSessionStarted, SessionID: "session-1", Time: now}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.stream.started", "call": 1, "wait_ms": 100}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.message.completed", "call": 1, "stream_ms": 80, "total_ms": 1000}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.message.completed", "call": 1, "stream_ms": 120, "total_ms": 1200}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventSessionResumed, SessionID: "session-1", Time: now}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.stream.started", "call": 1, "wait_ms": 200}}, 5*time.Minute)
+	activity.recordEvent("run-1", "implement", assistant.Event{Type: assistant.EventDiagnostic, SessionID: "session-1", Time: now, Data: map[string]any{"code": "pi.message.completed", "call": 1, "stream_ms": 50, "total_ms": 500}}, 5*time.Minute)
+
+	want := evaluation.FlowAssistantTimings{WaitMS: 300, StreamMS: 170, TotalMS: 1700}
+	if got := activity.assistantTimingSnapshot(); got != want {
+		t.Fatalf("assistant timings=%+v want %+v", got, want)
+	}
+}
+
 func TestFlowEvaluationPublishesProgressWithoutTrace(t *testing.T) {
 	workspace := t.TempDir()
 	config := filepath.Join(workspace, "config.yaml")
