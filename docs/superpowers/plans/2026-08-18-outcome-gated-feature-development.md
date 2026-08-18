@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-17-outcome-gated-feature-development-design.md`
 
+**Implementation status (2026-08-18):** Tasks 1–4 are implemented and the
+focused/full verification gates pass. The live Pi smoke in Task 4 Step 5 was
+not run because this checkout has no generated `mini-du/config.yaml` or
+evaluation credentials; the deterministic fixtures and saved-baseline bundle
+checks remain green.
+
 ## Global Constraints
 
 - No new runtime primitive, YAML field, expression operator, dependency, or generic plugin abstraction.
