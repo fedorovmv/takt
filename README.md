@@ -6,13 +6,13 @@
 
 ## Область применения текущей версии
 
-`v0.1.59-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.60-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Локальный `takt daemon` поддерживает фоновые Run и несколько клиентов одного пользователя через Unix socket. Сетевой и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и distributed locking. Эти режимы не поддерживаются.
 
 ## Текущая точка развития
 
-К `v0.1.59-alpha` Takt завершил архитектурный feature freeze и перешёл от накопления возможностей к стабилизации пользовательского контура. Stable core отделён от extensions, experimental и tooling; Dynamic Flow остаётся доступным, но больше не определяет стабильность основного Run/runtime API. Ближайшая цель — **проверять основные пользовательские сценарии на реальных задачах, исправлять найденные дефекты и постепенно продвигать доказанные experimental contracts в stable surface**.
+К `v0.1.60-alpha` Takt завершил архитектурный feature freeze и перешёл от накопления возможностей к стабилизации пользовательского контура. Stable core отделён от extensions, experimental и tooling; Dynamic Flow остаётся доступным, но больше не определяет стабильность основного Run/runtime API. Ближайшая цель — **проверять основные пользовательские сценарии на реальных задачах, исправлять найденные дефекты и постепенно продвигать доказанные experimental contracts в stable surface**.
 
 Приоритеты:
 
@@ -84,7 +84,7 @@
 - `takt eval task-benchmark` для полного `Task Router → template/dynamic → checkpoint → replan → result`: route accuracy, plan revisions, replanner runs, pairwise outcomes и task-level gates;
 - `takt eval flow` для изолированных production-shaped cases с durable repeat evidence и читаемым `SCOPE | EVENT | DETAILS` trace в stderr; heartbeat показывает последний измеренный model-request context или `unknown`; `takt eval flow init code:feature-development --output evals/feature` создаёт только suite/example skeleton, после чего добавь config, validator и initial workspace;
 - `make eval-smoke|eval-feature-smoke|eval-feature|eval-review|eval-architect` запускает готовые live Pi-проверки без ручного набора аргументов; `eval-feature-smoke` проверяет `implement-basic`, а `eval-feature` — все feature cases; progress и путь `report.json` видны в trace, требуется локальный `examples/flow-evaluation/mini-du/config.yaml`;
-- `make eval-status RUN=<eval-dir>` читает атомарный `progress.json` работающего или завершённого flow eval и показывает elapsed time, процент завершённых cases/nodes, quality valid rate, input/output/total tokens и текущий измеренный model context; `make eval-stats RUN=<eval-dir>` печатает итоговую статистику и причины неуспешных cases; `make eval-inspect RUN=<eval-dir> [CASE=...] [REPEAT=...]` во время работы читает live progress, а после checkpoint показывает validator/runtime cause, незавершённые узлы и доступные evidence; `make eval-compare A=<eval-dir> B=<eval-dir>` выдаёт A/B scorecard с явными `BETTER|WORSE|SAME`, correctness/reliability/efficiency, моделями, ресурсами и переходами cases; ни одна из этих команд не запускает workflow или модели;
+- `make eval-status RUN=<eval-dir>` читает атомарный `progress.json` работающего или завершённого flow eval и показывает elapsed time, фазовые тайминги, наблюдаемые LLM wait/stream/total/tool durations, процент завершённых cases/nodes, quality valid rate, input/output/total tokens и текущий измеренный model context; `make eval-stats RUN=<eval-dir>` печатает итоговую статистику, а до первого report checkpoint — partial live stats из `progress.json` с `complete=false`; `make eval-inspect RUN=<eval-dir> [CASE=...] [REPEAT=...]` во время работы читает live progress, а после checkpoint показывает validator/runtime cause, незавершённые узлы и доступные evidence; `make eval-compare A=<eval-dir> B=<eval-dir>` выдаёт A/B scorecard с явными `BETTER|WORSE|SAME`, correctness/reliability/efficiency, моделями, ресурсами и переходами cases; ни одна из этих команд не запускает workflow или модели;
 - `takt eval analyze <saved-evaluation-dir> [--language en|ru]` запускает read-only advisory расследование сохранённого прогона через dedicated `takt_analyze`; timestamped redacted analysis reports добавляют к immutable deterministic verdict причинный механизм, failure point и prevention с проверяемыми citations, сохраняют язык, session evidence и bounded raw output для protocol errors; `make eval-analyze RUN=... EVAL_ANALYSIS_LANGUAGE=ru` — короткий запуск этой команды на русском;
 - `eval-feature|eval-review|eval-architect` fail-closed после 5 минут без assistant progress; для калибровки используйте `EVAL_IDLE_TIMEOUT=10m make eval-feature`;
 - атрибуция tokens/cost по execution identity; смена assistant, его версии или resolved model между retry помечается как mixed;
@@ -94,9 +94,9 @@
 - строгий контракт результата валидатора `takt-validation/v1alpha1`;
 - commodity parsing/validation делегированы поддерживаемым Go-библиотекам: `go.yaml.in/yaml/v3` и `github.com/santhosh-tekuri/jsonschema/v6`; Takt сохраняет только собственные strict/subset contracts.
 
-## Outcome-gated Production Flow Evaluation v0.1.59
+## Outcome-gated Production Flow Evaluation v0.1.60
 
-`v0.1.59-alpha` сохраняет воспроизводимые production-flow suites, внешний
+`v0.1.60-alpha` сохраняет воспроизводимые production-flow suites, внешний
 статус и трассировку активного flow, сохранение исходников и Git evidence,
 человекоочитаемые stats/compare/inspect и отдельный read-only LLM-анализ причин.
 `code:feature-development` теперь принимает только строгий review verdict:

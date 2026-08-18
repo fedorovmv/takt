@@ -265,8 +265,12 @@ workflow and never contacts Pi/models. The snapshot advances through
 finalized`, updates on durable Run revisions and periodically while waiting,
 and retains the final completed/failed state beside `report.json`. Live token
 and cost counters contain only completed executions already persisted by the
-runtime. If the eval process is killed, `status` can remain `running`; inspect
-`Updated`/`updated_at` for staleness.
+runtime. `runtime.timings` additionally persists phase milliseconds and
+observable assistant wait/stream/total/tool durations; provider total includes
+wait and stream, and parallel assistant intervals may overlap. If the eval
+process is killed, `status` can remain `running`; inspect `Updated`/`updated_at`
+for staleness. Old snapshots without timing data remain readable and report
+those values as unavailable.
 
 Для оценки через Pi объект `assistants.<name>.settings` копируется как нативный
 JSON Pi в изолированный `.pi/settings.json`; конфигурация корпуса задаёт
@@ -276,8 +280,9 @@ Pi и SDK провайдера. Эти ключи имеют приоритет 
 добавляет для каждого узла состояние провайдера (`awaiting_response`,
 `streaming` или повтор),
 порядковый номер вызова модели, длительность состояния и последнюю
-отредактированную ошибку провайдера. Обычные настройки Pi вне оценки не
-изменяются.
+отредактированную ошибку провайдера. Накопленные фазовые и assistant timings
+доступны в `eval status` в секции `TIMINGS`. Обычные настройки Pi вне оценки
+не изменяются.
 
 Model comparisons use shared Config presets: `takt eval flow <suite.yaml>
 --model-preset <name>` or `EVAL_PRESET=mixed make eval-feature`. One-off alias
@@ -285,8 +290,10 @@ overrides use repeated `--model alias=provider/model`; Make passes generic
 `MODEL_<ALIAS>` environment variables. Reports record the selected preset and effective model
 references in `strategy`; the benchmark fingerprint remains model-independent.
 Inspect one saved suite report with `takt eval stats <output-dir>` (human text by
-default, `--json` for structured output). It includes identity, outcomes,
-node attempts, assistant executions, attempts/retries/resumes, tokens, duration,
+default, `--json` for structured output). Before the first report checkpoint the
+same command returns a partial `complete=false` snapshot from `progress.json`;
+it contains live counters/timings but no per-case execution details. A completed
+report includes identity, outcomes, node attempts, assistant executions, attempts/retries/resumes, tokens, duration,
 time-to-valid, cost, diagnostics, per-execution identity usage and case rows.
 For new flow reports the assistant-step table shows wall time measured from the
 first durable `node.started` to the terminal node event. This includes tools,

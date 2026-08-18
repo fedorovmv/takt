@@ -1,6 +1,16 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.59-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.60-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+
+## Evaluation progress timings — реализовано в v0.1.60
+
+- `progress.json` сохраняет фазовые тайминги `prepare`, `validator_preflight`,
+  `workflow`, `validator`, `evidence` и `cleanup`;
+- live assistant timing сохраняет наблюдаемые Pi wait/stream/total и
+  завершённые tool intervals; `eval status` показывает их без обращения к
+  модели;
+- старые snapshots без timing object остаются читаемыми и явно показывают
+  недоступность, а измеренный ноль сохраняется как `0`.
 
 ## Provider availability recovery — реализовано
 
@@ -232,9 +242,12 @@ quality result remains separate evidence.
 `httpIdleTimeoutMs` на пяти минутах. Завершённый или неуспешный снимок остаётся
 рядом с отчётом; поле `updated_at` позволяет обнаружить устаревший снимок со
 статусом `running` после завершения процесса.
-`eval stats` provides a compact human/JSON view of one saved suite report,
-separates total node attempts from actual assistant executions and lists each
-assistant step with model, tokens and durable-event wall time. Old reports
+`eval stats` provides a compact human/JSON view of one saved suite report and
+falls back to a `status=running`, `complete=false` partial snapshot from
+`progress.json` before the first report checkpoint. The partial view contains
+live counters and timings but no unavailable per-case/per-execution details.
+Completed reports separate total node attempts from actual assistant executions
+and list each assistant step with model, tokens and durable-event wall time. Old reports
 without node timing remain readable and show unavailable duration. A separate
 assistant-session table exposes the full durable Session ID for each execution,
 including attempt/provider-attempt and fresh/resume mode.
@@ -300,9 +313,10 @@ detached `run.start` has returned an accepted Run ID. It waits for the first
 durable state while preserving fail-fast handling for launch and Store errors.
 
 `eval-status` renders elapsed duration, completed case/node percentages, input,
-output and total durable tokens, the current measured model context when an
-assistant has emitted it, and a separate valid-rate percentage over already
-validated cases; zero denominators are shown as `n/a`.
+output and total durable tokens, phase timings, observed assistant wait/stream/
+total/tool timings, the current measured model context when an assistant has
+emitted it, and a separate valid-rate percentage over already validated cases;
+zero denominators are shown as `n/a`.
 
 ## Предметные поставки
 

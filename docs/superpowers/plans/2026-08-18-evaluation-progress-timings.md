@@ -17,12 +17,12 @@
 - Test: `internal/tooling/evaluation/flow_progress_test.go`
 - Modify: `schemas/flow-evaluation-progress.schema.json`
 
-- [ ] Add tests that a progress snapshot renders phase and assistant timing rows, round-trips timing fields, and rejects negative timing values.
-- [ ] Add a test that refreshing runtime counters preserves the tracker-owned phase timing object.
-- [ ] Run `go test ./internal/tooling/evaluation -run 'FlowProgress' -count=1`; it must fail because timing fields and rendering are absent.
-- [ ] Add `FlowRuntimeTimings`, `FlowPhaseTimings`, and `FlowAssistantTimings` with optional `runtime.timings`, plus `current.phase_started_at`; validate non-negative durations and clone timing state.
-- [ ] Extend the progress schema with additive timing definitions and the phase start timestamp.
-- [ ] Re-run the focused tests and keep the failure limited to accumulation/aggregation behavior.
+- [x] Add tests that a progress snapshot renders phase and assistant timing rows, round-trips timing fields, and rejects negative timing values.
+- [x] Add a test that refreshing runtime counters preserves the tracker-owned phase timing object.
+- [x] Run `go test ./internal/tooling/evaluation -run 'FlowProgress' -count=1`; it failed because timing fields and rendering were absent.
+- [x] Add `FlowRuntimeTimings`, `FlowPhaseTimings`, and `FlowAssistantTimings` with optional `runtime.timings`, plus `current.phase_started_at`; validate non-negative durations and clone timing state.
+- [x] Extend the progress schema with additive timing definitions and the phase start timestamp.
+- [x] Re-run the focused tests and keep the failure limited to accumulation/aggregation behavior.
 
 ### Task 2: Accumulate evaluation phase durations
 
@@ -30,11 +30,11 @@
 - Modify: `internal/tooling/evaluation/flow_progress.go`
 - Test: `internal/tooling/evaluation/flow_progress_test.go`
 
-- [ ] Add a fake-clock test that advances `prepare → validator_preflight → workflow` and asserts exact millisecond totals.
-- [ ] Run the test to verify it fails before tracker accumulation exists.
-- [ ] Make `flowProgressTracker` initialize timings per case, persist `phase_started_at`, and add elapsed time to the old phase before every atomic write and phase transition.
-- [ ] Keep terminal/failure writes accumulating the active phase and ensure a runtime refresh cannot reset timings.
-- [ ] Run `go test ./internal/tooling/evaluation -run 'FlowProgress' -count=1` and verify it passes.
+- [x] Add a fake-clock test that advances `prepare → validator_preflight → workflow` and asserts exact millisecond totals.
+- [x] Run the test to verify it fails before tracker accumulation exists.
+- [x] Make `flowProgressTracker` initialize timings per case, persist `phase_started_at`, and add elapsed time to the old phase before every atomic write and phase transition.
+- [x] Keep terminal/failure writes accumulating the active phase and ensure a runtime refresh cannot reset timings.
+- [x] Run `go test ./internal/tooling/evaluation -run 'FlowProgress' -count=1` and verify it passes.
 
 ### Task 3: Aggregate provider and tool timings
 
@@ -42,16 +42,20 @@
 - Modify: `internal/bootstrap/evaluation.go`
 - Test: `internal/bootstrap/evaluation_test.go`
 
-- [ ] Add a test feeding `pi.stream.started`, `pi.message.completed`, `tool.started`, and `tool.completed` events and assert wait/stream/total/tool milliseconds in the summarized runtime progress.
-- [ ] Run the focused bootstrap test and verify it fails before aggregation exists.
-- [ ] Add locked timing totals and tool start timestamps to `flowActivityTracker`; consume provider `wait_ms`, `stream_ms`, and `total_ms` only from their corresponding lifecycle diagnostics and close tool intervals by `CallID`.
-- [ ] Merge assistant totals into the next progress snapshot while retaining tracker-owned phase totals.
-- [ ] Run `go test ./internal/bootstrap -run 'Flow.*Timing|SummarizeFlowRuntimeProgress' -count=1` and verify it passes.
+- [x] Add a test feeding `pi.stream.started`, `pi.message.completed`, `tool.started`, and `tool.completed` events and assert wait/stream/total/tool milliseconds in the summarized runtime progress.
+- [x] Run the focused bootstrap test and verify it failed before aggregation existed.
+- [x] Add locked timing totals and tool start timestamps to `flowActivityTracker`; consume provider `wait_ms`, `stream_ms`, and `total_ms` only from their corresponding lifecycle diagnostics and close tool intervals by `CallID`.
+- [x] Merge assistant totals into the next progress snapshot while retaining tracker-owned phase totals.
+- [x] Run `go test ./internal/bootstrap -run 'Flow.*Timing|SummarizeFlowRuntimeProgress' -count=1` and verify it passes.
 
 ### Task 4: Render and document the live contract
 
 **Files:**
 - Modify: `internal/tooling/evaluation/flow_progress.go`
+- Modify: `internal/tooling/evaluation/stats.go`
+- Test: `internal/tooling/evaluation/flow_report_test.go`
+- Modify: `internal/bootstrap/evaluation.go`
+- Test: `internal/bootstrap/evaluation_test.go`
 - Modify: `docs/03-specification.md`
 - Modify: `docs/05-implementation-status.md`
 - Modify: `README.md`
@@ -59,15 +63,16 @@
 - Modify: `VERSION`
 - Modify: `internal/version/version.go`
 
-- [ ] Extend human status output with a `TIMINGS` section showing phase durations and assistant wait/stream/total/tool durations; old snapshots show `n/a` when timing data is unavailable.
-- [ ] Update the progress contract documentation and schema references with additive timing semantics, overlap/parallelism rules, and zero-vs-unavailable behavior.
-- [ ] Reserve product version `0.1.60-alpha` consistently in the root version, runtime version, README, specification, implementation status, and changelog.
-- [ ] Run `gofmt -w internal/bootstrap/evaluation.go internal/bootstrap/evaluation_test.go internal/tooling/evaluation/flow_progress.go internal/tooling/evaluation/flow_progress_test.go` and the focused tests.
+- [x] Extend human status output with a `TIMINGS` section showing phase durations and assistant wait/stream/total/tool durations; old snapshots show `n/a` when timing data is unavailable.
+- [x] Make `eval stats` fall back to an explicit `complete=false`, `status=running` partial `EvaluationStats` built from `progress.json` when `report.json` is not present; leave per-case/per-execution arrays empty rather than inventing attribution.
+- [x] Update the progress contract documentation and schema references with additive timing semantics, overlap/parallelism rules, and zero-vs-unavailable behavior.
+- [x] Reserve product version `0.1.60-alpha` consistently in the root version, runtime version, README, specification, implementation status, and changelog.
+- [x] Run `gofmt -w internal/bootstrap/evaluation.go internal/bootstrap/evaluation_test.go internal/tooling/evaluation/flow_progress.go internal/tooling/evaluation/flow_progress_test.go` and the focused tests.
 
 ### Task 5: Full verification
 
-- [ ] Run `go test ./... -count=1`.
+- [x] Run `go test ./... -count=1` (initial run exposed a stale skill compatibility string; E2E passed after updating it).
 - [ ] Run `go test -race ./... -count=1`.
-- [ ] Run `go vet ./...`.
-- [ ] Run `go test ./internal/schemacontract -count=1` and verify the progress schema fixture remains valid.
-- [ ] Report any pre-existing `make check` e2e timeout separately from feature tests.
+- [x] Run `go vet ./...`.
+- [x] Run `go test ./internal/schemacontract -count=1` and verify the progress schema fixture remains valid.
+- [x] Report the pre-existing `make check` E2E timeout separately from feature tests.

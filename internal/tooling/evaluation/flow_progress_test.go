@@ -13,11 +13,15 @@ func TestFlowProgressRendersExternalLiveStatus(t *testing.T) {
 	progress := FlowProgress{
 		ReportVersion: FlowProgressVersion, Status: "running", Workflow: "code:feature-development", OutputDir: ".takt/evals/run-a",
 		StartedAt: now.Add(-10 * time.Minute), UpdatedAt: now.Add(-8 * time.Second), TotalRuns: 3, CompletedRuns: 0,
-		Current: &FlowProgressCurrent{CaseID: "implement-basic", Repeat: 1, Ordinal: 1, Phase: "workflow"},
-		Runtime: FlowRuntimeProgress{RunID: "run-8d0636ca857eefbc068a767d", Status: "running", TotalNodes: 5, CompletedNodes: 0, RunningNodes: []string{"implement"}, NodeAttempts: 1, ProviderAttempts: 1, InputTokens: 1200, OutputTokens: 300, ContextTokens: 43439, ContextKnown: true},
+		Current: &FlowProgressCurrent{CaseID: "implement-basic", Repeat: 1, Ordinal: 1, Phase: "workflow", PhaseStartedAt: now.Add(-4 * time.Second)},
+		Runtime: FlowRuntimeProgress{RunID: "run-8d0636ca857eefbc068a767d", Status: "running", TotalNodes: 5, CompletedNodes: 0, RunningNodes: []string{"implement"}, NodeAttempts: 1, ProviderAttempts: 1, InputTokens: 1200, OutputTokens: 300, ContextTokens: 43439, ContextKnown: true, Timings: &FlowRuntimeTimings{
+			Phases:    FlowPhaseTimings{PrepareMS: 1250, WorkflowMS: 4200},
+			Assistant: FlowAssistantTimings{WaitMS: 8000, StreamMS: 3200, TotalMS: 11200, ToolMS: 900},
+		}, AssistantActivity: []FlowAssistantProgress{{RunID: "run-8d0636ca857eefbc068a767d", NodeID: "implement", Attempt: 1, State: "awaiting_response", Since: now.Add(-2 * time.Second)}},
+		},
 	}
 	text := progress.render(now)
-	for _, want := range []string{"EVALUATION", "Status", "running", "Updated", "8s ago", "Elapsed", "10m0s", "Progress", "0 / 3 runs (0.0%)", "implement-basic#1", "workflow", "FLOW", "run-8d0636ca857eefbc068a767d", "implement", "0 / 5 completed (0.0%)", "Node attempts", "Provider attempts", "Context tokens", "43 439", "Tokens input", "1 200", "Tokens output", "300", "Tokens total", "1 500", "RESULTS SO FAR", "Quality valid", "0 / 0 completed (n/a)"} {
+	for _, want := range []string{"EVALUATION", "Status", "running", "Updated", "8s ago", "Elapsed", "10m0s", "Progress", "0 / 3 runs (0.0%)", "implement-basic#1", "workflow", "FLOW", "run-8d0636ca857eefbc068a767d", "implement", "0 / 5 completed (0.0%)", "Node attempts", "Provider attempts", "Context tokens", "43 439", "Tokens input", "1 200", "Tokens output", "300", "Tokens total", "1 500", "TIMINGS", "Prepare", "1.25s", "Workflow", "8.2s", "LLM wait", "10s", "LLM stream", "3.2s", "LLM total", "11.2s", "Assistant tools", "900ms", "RESULTS SO FAR", "Quality valid", "0 / 0 completed (n/a)"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("progress text misses %q:\n%s", want, text)
 		}
@@ -28,7 +32,7 @@ func TestFlowProgressUsesFixedElapsedForFinishedEvaluation(t *testing.T) {
 	started := time.Date(2026, 8, 14, 15, 0, 0, 0, time.UTC)
 	updated := started.Add(2*time.Minute + 3*time.Second)
 	text := (FlowProgress{ReportVersion: FlowProgressVersion, Status: "completed", Suite: "suite.yaml", Workflow: "flow", OutputDir: "out", StartedAt: started, UpdatedAt: updated, TotalRuns: 2, CompletedRuns: 2, Runtime: FlowRuntimeProgress{TotalNodes: 4, CompletedNodes: 4, RunningNodes: []string{}}, Results: FlowProgressResults{Valid: 1, Invalid: 1}}).render(updated.Add(10 * time.Minute))
-	for _, want := range []string{"Elapsed", "2m3s", "Progress", "2 / 2 runs (100.0%)", "Nodes", "4 / 4 completed (100.0%)", "Quality valid", "1 / 2 completed (50.0%)"} {
+	for _, want := range []string{"Elapsed", "2m3s", "Progress", "2 / 2 runs (100.0%)", "Nodes", "4 / 4 completed (100.0%)", "TIMINGS", "Measured", "unavailable", "Quality valid", "1 / 2 completed (50.0%)"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("finished progress text misses %q:\n%s", want, text)
 		}
@@ -37,7 +41,8 @@ func TestFlowProgressUsesFixedElapsedForFinishedEvaluation(t *testing.T) {
 
 func TestFlowProgressIsPublishedAtomicallyAndReloaded(t *testing.T) {
 	dir := t.TempDir()
-	want := &FlowProgress{ReportVersion: FlowProgressVersion, Status: "running", Suite: "suite.yaml", Workflow: "flow", OutputDir: dir, StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(), TotalRuns: 1, Runtime: FlowRuntimeProgress{RunningNodes: []string{}}, Results: FlowProgressResults{}}
+	started := time.Now().UTC()
+	want := &FlowProgress{ReportVersion: FlowProgressVersion, Status: "running", Suite: "suite.yaml", Workflow: "flow", OutputDir: dir, StartedAt: started, UpdatedAt: started, TotalRuns: 1, Current: &FlowProgressCurrent{CaseID: "case", Repeat: 1, Ordinal: 1, Phase: "workflow", PhaseStartedAt: started}, Runtime: FlowRuntimeProgress{RunningNodes: []string{}, Timings: &FlowRuntimeTimings{Phases: FlowPhaseTimings{WorkflowMS: 7}, Assistant: FlowAssistantTimings{WaitMS: 11}}}, Results: FlowProgressResults{}}
 	if err := WriteFlowProgress(dir, want); err != nil {
 		t.Fatal(err)
 	}
@@ -45,11 +50,41 @@ func TestFlowProgressIsPublishedAtomicallyAndReloaded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ReportVersion != FlowProgressVersion || got.Status != "running" || got.TotalRuns != 1 {
+	if got.ReportVersion != FlowProgressVersion || got.Status != "running" || got.TotalRuns != 1 || got.Current == nil || got.Current.PhaseStartedAt.IsZero() || got.Runtime.Timings == nil || got.Runtime.Timings.Phases.WorkflowMS != 7 || got.Runtime.Timings.Assistant.WaitMS != 11 {
 		t.Fatalf("progress=%+v", got)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "progress.json.tmp")); !os.IsNotExist(err) {
 		t.Fatalf("temporary progress file remains: %v", err)
+	}
+}
+
+func TestFlowProgressAccumulatesPhaseTimings(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	tracker, err := newFlowProgressTracker(dir, FlowProgress{ReportVersion: FlowProgressVersion, Status: "running", Suite: "suite.yaml", Workflow: "flow", OutputDir: dir, StartedAt: now, TotalRuns: 1, Runtime: FlowRuntimeProgress{RunningNodes: []string{}}, Results: FlowProgressResults{}}, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tracker.begin("case", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(1500 * time.Millisecond)
+	if err := tracker.phase("validator_preflight"); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2500 * time.Millisecond)
+	if _, err := tracker.runtime(FlowRuntimeProgress{RunID: "run-1", Status: "running", RunningNodes: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	progress, err := LoadFlowProgress(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.Runtime.Timings == nil || progress.Runtime.Timings.Phases.PrepareMS != 1500 || progress.Runtime.Timings.Phases.ValidatorPreflightMS != 2500 {
+		t.Fatalf("timings=%+v", progress.Runtime.Timings)
+	}
+	if progress.Current == nil || !progress.Current.PhaseStartedAt.Equal(now) {
+		t.Fatalf("current=%+v", progress.Current)
 	}
 }
 
@@ -96,6 +131,12 @@ func TestFlowProgressRejectsMissingRequiredFieldsAndNegativeResults(t *testing.T
 		{name: "updated", mutate: func(progress *FlowProgress) { progress.UpdatedAt = time.Time{} }},
 		{name: "running nodes", mutate: func(progress *FlowProgress) { progress.Runtime.RunningNodes = nil }},
 		{name: "result", mutate: func(progress *FlowProgress) { progress.Results.Valid = -1 }},
+		{name: "phase timing", mutate: func(progress *FlowProgress) {
+			progress.Runtime.Timings = &FlowRuntimeTimings{Phases: FlowPhaseTimings{WorkflowMS: -1}}
+		}},
+		{name: "assistant timing", mutate: func(progress *FlowProgress) {
+			progress.Runtime.Timings = &FlowRuntimeTimings{Assistant: FlowAssistantTimings{WaitMS: -1}}
+		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			progress := valid

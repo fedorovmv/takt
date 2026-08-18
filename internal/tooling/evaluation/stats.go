@@ -13,6 +13,8 @@ const StatsReportVersion = "takt-evaluation-stats/v1alpha1"
 
 type EvaluationStats struct {
 	ReportVersion            string                    `json:"report_version"`
+	Status                   string                    `json:"status,omitempty"`
+	Complete                 bool                      `json:"complete"`
 	Mode                     string                    `json:"mode"`
 	Workflow                 string                    `json:"workflow"`
 	OutputDir                string                    `json:"output_dir"`
@@ -41,6 +43,10 @@ type EvaluationStats struct {
 	Cases                    []StatsCase               `json:"cases"`
 	AssistantSteps           []StatsAssistantStep      `json:"assistant_steps"`
 	AssistantSessions        []StatsAssistantSession   `json:"assistant_sessions"`
+	TotalRuns                int                       `json:"total_runs,omitempty"`
+	CompletedRuns            int                       `json:"completed_runs,omitempty"`
+	Current                  *FlowProgressCurrent      `json:"current,omitempty"`
+	Timings                  *FlowRuntimeTimings       `json:"timings,omitempty"`
 }
 
 type StatsCase struct {
@@ -83,7 +89,7 @@ func BuildStats(report *SuiteReport) *EvaluationStats {
 		return nil
 	}
 	stats := &EvaluationStats{
-		ReportVersion: StatsReportVersion, Mode: report.Mode, Workflow: report.Workflow, OutputDir: report.OutputDir,
+		ReportVersion: StatsReportVersion, Status: "completed", Complete: true, Mode: report.Mode, Workflow: report.Workflow, OutputDir: report.OutputDir,
 		StartedAt: report.StartedAt, FinishedAt: report.FinishedAt, Strategy: report.Strategy, Benchmark: report.Benchmark,
 		Total: report.Summary.Total, Valid: report.Summary.Valid, Invalid: report.Summary.Invalid,
 		Attempts: report.Summary.Attempts, InputTokens: report.Summary.InputTokens, OutputTokens: report.Summary.OutputTokens,
@@ -133,6 +139,75 @@ func BuildStats(report *SuiteReport) *EvaluationStats {
 	return stats
 }
 
+func BuildProgressStats(progress FlowProgress, now time.Time) *EvaluationStats {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	stats := &EvaluationStats{
+		ReportVersion: StatsReportVersion, Status: progress.Status, Mode: "flow", Workflow: progress.Workflow, OutputDir: progress.OutputDir,
+		StartedAt: progress.StartedAt, FinishedAt: now, Total: progress.TotalRuns, Valid: progress.Results.Valid, Invalid: progress.Results.Invalid,
+		Attempts: progress.Runtime.NodeAttempts, InfrastructureErrors: progress.Results.InfrastructureErrors,
+		InputTokens: progress.Runtime.InputTokens, OutputTokens: progress.Runtime.OutputTokens,
+		TotalTokens: progress.Runtime.InputTokens + progress.Runtime.OutputTokens, Cost: progress.Runtime.Cost,
+		UsageByExecutionIdentity: map[string]UsageBreakdown{}, Outcomes: map[string]int{}, Diagnostics: map[string]int{},
+		Cases: []StatsCase{}, AssistantSteps: []StatsAssistantStep{}, AssistantSessions: []StatsAssistantSession{},
+		TotalRuns: progress.TotalRuns, CompletedRuns: progress.CompletedRuns, Timings: cloneFlowRuntimeTimings(progress.Runtime.Timings),
+	}
+	ApplyLiveProgressStats(stats, progress, now)
+	if stats.Valid > 0 {
+		stats.Outcomes["valid"] = stats.Valid
+	}
+	if stats.Invalid > 0 {
+		stats.Outcomes["invalid"] = stats.Invalid
+	}
+	if stats.InfrastructureErrors > 0 {
+		stats.Outcomes["infrastructure_error"] = stats.InfrastructureErrors
+	}
+	return stats
+}
+
+func ApplyLiveProgressStats(stats *EvaluationStats, progress FlowProgress, now time.Time) {
+	if stats == nil {
+		return
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	end := now
+	if progress.Status != "running" {
+		end = progress.UpdatedAt
+	}
+	duration := end.Sub(progress.StartedAt).Milliseconds()
+	if duration < 0 {
+		duration = 0
+	}
+	stats.Status = progress.Status
+	stats.Complete = false
+	stats.StartedAt = progress.StartedAt
+	stats.FinishedAt = end
+	stats.DurationMS = duration
+	stats.Total = progress.TotalRuns
+	stats.Valid = progress.Results.Valid
+	stats.Invalid = progress.Results.Invalid
+	stats.InfrastructureErrors = progress.Results.InfrastructureErrors
+	stats.TotalRuns = progress.TotalRuns
+	stats.CompletedRuns = progress.CompletedRuns
+	stats.Current = nil
+	if progress.Current != nil {
+		current := *progress.Current
+		stats.Current = &current
+	}
+	stats.Timings = cloneFlowRuntimeTimings(progress.Runtime.Timings)
+}
+
+func cloneFlowRuntimeTimings(value *FlowRuntimeTimings) *FlowRuntimeTimings {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
 func (s EvaluationStats) String() string {
 	var output strings.Builder
 	table := tabwriter.NewWriter(&output, 0, 2, 2, ' ', 0)
@@ -142,6 +217,18 @@ func (s EvaluationStats) String() string {
 	fmt.Fprintf(table, "  Benchmark\t%s\t%s\n", s.Benchmark.ID, shortFingerprint(s.Benchmark.Fingerprint))
 	fmt.Fprintf(table, "  Validator\t%s@%s\t%s\n", s.Benchmark.Validator.ID, s.Benchmark.Validator.Version, shortFingerprint(s.Benchmark.Validator.Fingerprint))
 	fmt.Fprintf(table, "  Preset\t%s\n", valueOrDash(s.Strategy.ModelPreset))
+	if s.Status != "" || !s.Complete {
+		fmt.Fprintln(table, "\nSTATUS")
+		fmt.Fprintf(table, "  Status\t%s\n", valueOrDash(s.Status))
+		fmt.Fprintf(table, "  Complete\t%s\n", yesNo(s.Complete))
+		if s.TotalRuns > 0 {
+			fmt.Fprintf(table, "  Progress\t%s / %s runs (%s)\n", formatNumber(int64(s.CompletedRuns)), formatNumber(int64(s.TotalRuns)), progressPercent(s.CompletedRuns, s.TotalRuns))
+		}
+		if s.Current != nil {
+			fmt.Fprintf(table, "  Current\t%s#%d\n", s.Current.CaseID, s.Current.Repeat)
+			fmt.Fprintf(table, "  Phase\t%s\n", s.Current.Phase)
+		}
+	}
 
 	fmt.Fprintln(table, "\nRESULT")
 	fmt.Fprintf(table, "  Cases\t%s\n", formatNumber(int64(s.Total)))
@@ -183,6 +270,19 @@ func (s EvaluationStats) String() string {
 	fmt.Fprintf(table, "  Input tokens\t%s\n", formatNumber(int64(s.InputTokens)))
 	fmt.Fprintf(table, "  Output tokens\t%s\n", formatNumber(int64(s.OutputTokens)))
 	fmt.Fprintf(table, "  Cost\t%g\n", s.Cost)
+	if s.Timings != nil {
+		fmt.Fprintln(table, "\nTIMINGS")
+		fmt.Fprintf(table, "  Prepare\t%s\n", formatDurationMS(s.Timings.Phases.PrepareMS))
+		fmt.Fprintf(table, "  Validator preflight\t%s\n", formatDurationMS(s.Timings.Phases.ValidatorPreflightMS))
+		fmt.Fprintf(table, "  Workflow\t%s\n", formatDurationMS(s.Timings.Phases.WorkflowMS))
+		fmt.Fprintf(table, "  Validator\t%s\n", formatDurationMS(s.Timings.Phases.ValidatorMS))
+		fmt.Fprintf(table, "  Evidence\t%s\n", formatDurationMS(s.Timings.Phases.EvidenceMS))
+		fmt.Fprintf(table, "  Cleanup\t%s\n", formatDurationMS(s.Timings.Phases.CleanupMS))
+		fmt.Fprintf(table, "  LLM wait\t%s\n", formatDurationMS(s.Timings.Assistant.WaitMS))
+		fmt.Fprintf(table, "  LLM stream\t%s\n", formatDurationMS(s.Timings.Assistant.StreamMS))
+		fmt.Fprintf(table, "  LLM total\t%s\n", formatDurationMS(s.Timings.Assistant.TotalMS))
+		fmt.Fprintf(table, "  Assistant tools\t%s\n", formatDurationMS(s.Timings.Assistant.ToolMS))
+	}
 
 	fmt.Fprintln(table, "\nMODELS")
 	fmt.Fprintln(table, "  Alias\tModel")
@@ -343,6 +443,13 @@ func valueOrDash(value string) string {
 		return "-"
 	}
 	return value
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
 }
 
 func formatNumber(value int64) string {

@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.59-alpha` с единым
+Статус: текущий реализованный внешний контракт `v0.1.60-alpha` с единым
 Archon-first языком Workflow A0 и bounded repair/runtime semantics A1.
 Config, Profile, Run и assistant protocol сохраняют собственные versioned
 контракты. Машиночитаемые схемы находятся в `schemas/`.
@@ -961,6 +961,13 @@ Pi. Фазы имеют точные значения `prepare`, `validator_pref
 для каждого активного ассистента узел и попытку, наблюдаемое клиентом состояние
 провайдера, время начала состояния, порядковый номер вызова модели, сведения о
 повторе и задержке, а также последнюю отредактированную ошибку провайдера.
+Поле `current.phase_started_at` и объект `runtime.timings` добавляют
+накопленные миллисекунды фаз `prepare`, `validator_preflight`, `workflow`,
+`validator`, `evidence`, `cleanup`, а также наблюдаемые Pi `wait_ms`,
+`stream_ms`, `total_ms` и длительность завершённых assistant tool calls.
+`total_ms` включает ожидание и потоковую выдачу и потому пересекается с ними;
+фазовые и assistant-тайминги могут пересекаться при параллельных узлах. Старые
+снимки без `timings` остаются читаемыми и показывают метрику как недоступную.
 Финальный снимок остаётся рядом с `report.json`.
 `report.json` is first checkpointed after a case reaches validator/evidence; it
 is not a live heartbeat. Before that checkpoint, `takt eval inspect <dir>`
@@ -1053,8 +1060,11 @@ but cannot replace or modify the deterministic verdict.
 Per-run `time_to_valid_ms` присутствует только когда внешний flow validator
 вернул `valid: true`; для измеренного `valid: false` поле равно `null`/отсутствует.
 
-`takt eval stats <evaluation-output-dir>` загружает существующий suite report и
-не запускает workflow или model calls. Human-readable output используется по
+`takt eval stats <evaluation-output-dir>` загружает существующий suite report,
+а до первого report checkpoint строит неполную сводку из `progress.json`; она
+помечена `status: running` и `complete: false` и не содержит недоступных
+per-case/per-execution деталей. Команда не запускает workflow или model calls.
+Human-readable output используется по
 умолчанию; `--json` возвращает `takt-evaluation-stats/v1alpha1` согласно
 `schemas/evaluation-stats.schema.json`: identity, outcomes, node attempts,
 assistant executions, attempts/retries, tokens, duration/time-to-valid, cost,

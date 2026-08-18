@@ -126,12 +126,14 @@ type flowActivityRecord struct {
 }
 
 type flowActivityTracker struct {
-	mu      sync.RWMutex
-	records map[string]flowActivityRecord
+	mu               sync.RWMutex
+	records          map[string]flowActivityRecord
+	assistantTimings evaluation.FlowAssistantTimings
+	toolStarted      map[string]time.Time
 }
 
 func newFlowActivityTracker() *flowActivityTracker {
-	return &flowActivityTracker{records: map[string]flowActivityRecord{}}
+	return &flowActivityTracker{records: map[string]flowActivityRecord{}, toolStarted: map[string]time.Time{}}
 }
 
 func (t *flowActivityTracker) record(record flowActivityRecord) {
@@ -186,6 +188,7 @@ func (t *flowActivityTracker) recordEvent(runID, nodeID string, event assistant.
 	if at.IsZero() {
 		at = time.Now()
 	}
+	t.recordAssistantTiming(runID, nodeID, event, at)
 	active := event.Type != assistant.EventCompleted && event.Type != assistant.EventFailed
 	record := flowActivityRecord{RunID: runID, NodeID: nodeID, Attempt: traceAttempt(event.Data["attempt"]), LastActivity: traceActivityName(event), LastActivityAt: at, IdleTimeout: idle, Active: active}
 	if event.Type == assistant.EventMessage && event.Usage != nil {
@@ -207,6 +210,68 @@ func (t *flowActivityTracker) recordEvent(runID, nodeID string, event assistant.
 		}
 	}
 	t.record(record)
+}
+
+func (t *flowActivityTracker) recordAssistantTiming(runID, nodeID string, event assistant.Event, at time.Time) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	switch event.Type {
+	case assistant.EventDiagnostic:
+		code, _ := event.Data["code"].(string)
+		switch code {
+		case "pi.stream.started":
+			t.assistantTimings.WaitMS += timingMilliseconds(event.Data["wait_ms"])
+		case "pi.message.completed":
+			t.assistantTimings.StreamMS += timingMilliseconds(event.Data["stream_ms"])
+			t.assistantTimings.TotalMS += timingMilliseconds(event.Data["total_ms"])
+		}
+	case assistant.EventToolStarted:
+		if event.CallID != "" {
+			t.toolStarted[flowToolTimingKey(runID, nodeID, event.CallID)] = at
+		}
+	case assistant.EventToolCompleted:
+		if event.CallID == "" {
+			return
+		}
+		key := flowToolTimingKey(runID, nodeID, event.CallID)
+		started, ok := t.toolStarted[key]
+		if !ok {
+			return
+		}
+		if duration := at.Sub(started).Milliseconds(); duration > 0 {
+			t.assistantTimings.ToolMS += duration
+		}
+		delete(t.toolStarted, key)
+	}
+}
+
+func flowToolTimingKey(runID, nodeID, callID string) string {
+	return runID + "\x00" + nodeID + "\x00" + callID
+}
+
+func timingMilliseconds(value any) int64 {
+	switch value := value.(type) {
+	case int:
+		if value > 0 {
+			return int64(value)
+		}
+	case int64:
+		if value > 0 {
+			return value
+		}
+	case float64:
+		if value > 0 {
+			return int64(value)
+		}
+	case json.Number:
+		if parsed, err := value.Int64(); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return 0
 }
 
 func providerObservationState(code string, success any) string {
@@ -284,6 +349,16 @@ func (t *flowActivityTracker) currentContext() (int, bool) {
 		}
 	}
 	return maxTokens, known
+}
+
+func (t *flowActivityTracker) assistantTimingSnapshot() evaluation.FlowAssistantTimings {
+	if t == nil {
+		return evaluation.FlowAssistantTimings{}
+	}
+	t.mu.RLock()
+	timings := t.assistantTimings
+	t.mu.RUnlock()
+	return timings
 }
 
 func traceAttempt(value any) int {
@@ -535,7 +610,7 @@ func shouldPublishFlowProgress(published bool, lastRevision, revision uint64, la
 }
 
 func summarizeFlowRuntimeProgress(states []*store.RunState, activity *flowActivityTracker) evaluation.FlowRuntimeProgress {
-	progress := evaluation.FlowRuntimeProgress{RunningNodes: []string{}}
+	progress := evaluation.FlowRuntimeProgress{RunningNodes: []string{}, Timings: &evaluation.FlowRuntimeTimings{}}
 	if len(states) == 0 || states[0] == nil {
 		return progress
 	}
@@ -569,6 +644,7 @@ func summarizeFlowRuntimeProgress(states []*store.RunState, activity *flowActivi
 	sort.Strings(progress.RunningNodes)
 	if activity != nil {
 		progress.ContextTokens, progress.ContextKnown = activity.currentContext()
+		progress.Timings.Assistant = activity.assistantTimingSnapshot()
 		for _, record := range activity.active() {
 			if record.ProviderState == "" {
 				continue
@@ -881,10 +957,22 @@ func (evaluationEngine) Report(_ context.Context, outputDir string) (any, error)
 
 func (evaluationEngine) Stats(_ context.Context, outputDir string) (any, error) {
 	report, err := evaluation.LoadReport(outputDir)
-	if err != nil {
-		return nil, err
+	progress, progressErr := evaluation.LoadFlowProgress(outputDir)
+	if progressErr == nil && (err != nil || progress.Status == "running") {
+		now := time.Now().UTC()
+		if err == nil {
+			stats := evaluation.BuildStats(report)
+			// Keep checkpointed case details, but mark the suite incomplete and
+			// overlay the current live phase/timing snapshot.
+			evaluation.ApplyLiveProgressStats(stats, *progress, now)
+			return stats, nil
+		}
+		return evaluation.BuildProgressStats(*progress, now), nil
 	}
-	return evaluation.BuildStats(report), nil
+	if err == nil {
+		return evaluation.BuildStats(report), nil
+	}
+	return nil, err
 }
 
 func (evaluationEngine) Status(_ context.Context, outputDir string) (any, error) {

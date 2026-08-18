@@ -458,6 +458,35 @@ func TestBuildStatsSummarizesReport(t *testing.T) {
 	}
 }
 
+func TestBuildProgressStatsShowsPartialLiveEvaluation(t *testing.T) {
+	started := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	now := started.Add(12*time.Second + 500*time.Millisecond)
+	progress := FlowProgress{
+		ReportVersion: FlowProgressVersion, Status: "running", Suite: "suite.yaml", Workflow: "flow", OutputDir: "out",
+		StartedAt: started, UpdatedAt: now.Add(-2 * time.Second), TotalRuns: 3, CompletedRuns: 1,
+		Current: &FlowProgressCurrent{CaseID: "case-b", Repeat: 1, Ordinal: 2, Phase: "workflow", PhaseStartedAt: now.Add(-3 * time.Second)},
+		Runtime: FlowRuntimeProgress{
+			Status: "running", TotalNodes: 4, CompletedNodes: 1, RunningNodes: []string{"implement"}, NodeAttempts: 2,
+			InputTokens: 100, OutputTokens: 20, Cost: 0.25, Timings: &FlowRuntimeTimings{Phases: FlowPhaseTimings{WorkflowMS: 8000}, Assistant: FlowAssistantTimings{WaitMS: 7000}},
+		},
+		Results: FlowProgressResults{Valid: 1, Invalid: 0},
+	}
+	stats := BuildProgressStats(progress, now)
+	if stats == nil || stats.Status != "running" || stats.Complete || stats.Total != 3 || stats.Valid != 1 || stats.Attempts != 2 || stats.InputTokens != 100 || stats.OutputTokens != 20 || stats.DurationMS != 12500 || stats.CompletedRuns != 1 || stats.TotalRuns != 3 {
+		t.Fatalf("stats=%+v", stats)
+	}
+	if stats.Current == nil || stats.Current.CaseID != "case-b" || stats.Timings == nil || stats.Timings.Assistant.WaitMS != 7000 {
+		t.Fatalf("live stats details=%+v", stats)
+	}
+	encoded, err := json.Marshal(stats)
+	if err != nil || !strings.Contains(string(encoded), `"complete":false`) {
+		t.Fatalf("live stats must expose incomplete state: %s (%v)", encoded, err)
+	}
+	if text := strings.Join(strings.Fields(stats.String()), " "); !strings.Contains(text, "Status running") || !strings.Contains(text, "Complete no") || !strings.Contains(text, "case-b#1") || !strings.Contains(text, "LLM wait") {
+		t.Fatalf("live stats text misses progress details:\n%s", text)
+	}
+}
+
 func TestStatsShowsPerCaseFailureCause(t *testing.T) {
 	report := &SuiteReport{Mode: "flow", Summary: Summary{Total: 1, Invalid: 1}, Runs: []RunRecord{{
 		CaseID: "implement-basic", Repeat: 1, Status: store.RunCompleted, Outcome: "false_accept",

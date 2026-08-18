@@ -50,6 +50,28 @@ func TestFlowProviderUnavailableRecoversWithSamePiSession(t *testing.T) {
 	t.Fatalf("executions=%+v", report.Runs[0].Nodes)
 }
 
+func TestEvaluationStatsReadsRunningProgress(t *testing.T) {
+	dir := t.TempDir()
+	started := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	progress := &evaluation.FlowProgress{
+		ReportVersion: evaluation.FlowProgressVersion, Status: "running", Suite: "suite.yaml", Workflow: "flow", OutputDir: dir,
+		StartedAt: started, UpdatedAt: started.Add(5 * time.Second), TotalRuns: 2,
+		Runtime: evaluation.FlowRuntimeProgress{RunningNodes: []string{}, InputTokens: 9, OutputTokens: 3, Timings: &evaluation.FlowRuntimeTimings{Assistant: evaluation.FlowAssistantTimings{WaitMS: 4000}}},
+		Results: evaluation.FlowProgressResults{},
+	}
+	if err := evaluation.WriteFlowProgress(dir, progress); err != nil {
+		t.Fatal(err)
+	}
+	value, err := (evaluationEngine{}).Stats(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats, ok := value.(*evaluation.EvaluationStats)
+	if !ok || stats.Status != "running" || stats.Complete || stats.InputTokens != 9 || stats.Timings == nil || stats.Timings.Assistant.WaitMS != 4000 {
+		t.Fatalf("stats=%#v", value)
+	}
+}
+
 func TestEvaluationAnalyzeRequiresExistingConfigBeforeRun(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "evaluation")
 	result, err := (evaluationEngine{}).Analyze(context.Background(), tooling.EvaluationAnalyzeRequest{OutputDir: output, ConfigPath: filepath.Join(output, "missing.yaml")})
@@ -380,6 +402,24 @@ func TestSummarizeFlowRuntimeProgress(t *testing.T) {
 	}
 	if len(got.AssistantActivity) != 1 || len(got.AssistantActivity[0].LastError) > 515 {
 		t.Fatalf("progress provider error was not bounded: %+v", got.AssistantActivity)
+	}
+}
+
+func TestSummarizeFlowRuntimeProgressAggregatesAssistantTimings(t *testing.T) {
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	activity := newFlowActivityTracker()
+	activity.recordEvent("run-1", "review", assistant.Event{Type: assistant.EventDiagnostic, Time: now, Data: map[string]any{"code": "pi.stream.started", "wait_ms": 1200}}, 5*time.Minute)
+	activity.recordEvent("run-1", "review", assistant.Event{Type: assistant.EventDiagnostic, Time: now.Add(4 * time.Second), Data: map[string]any{"code": "pi.message.completed", "total_ms": 5000, "stream_ms": 3800}}, 5*time.Minute)
+	activity.recordEvent("run-1", "review", assistant.Event{Type: assistant.EventToolStarted, Tool: "read", CallID: "call-1", Time: now.Add(5 * time.Second)}, 5*time.Minute)
+	activity.recordEvent("run-1", "review", assistant.Event{Type: assistant.EventToolCompleted, Tool: "read", CallID: "call-1", Time: now.Add(5700 * time.Millisecond)}, 5*time.Minute)
+
+	progress := summarizeFlowRuntimeProgress([]*store.RunState{{ID: "run-1", Status: store.RunRunning, Nodes: map[string]*store.NodeState{"review": {Status: store.NodeRunning}}}}, activity)
+	if progress.Timings == nil {
+		t.Fatal("assistant timings are missing")
+	}
+	want := (evaluation.FlowAssistantTimings{WaitMS: 1200, StreamMS: 3800, TotalMS: 5000, ToolMS: 700})
+	if got := progress.Timings.Assistant; got != want {
+		t.Fatalf("assistant timings=%+v want=%+v", got, want)
 	}
 }
 

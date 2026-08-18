@@ -32,7 +32,9 @@ and on phase transitions. The bootstrap flow activity tracker consumes Pi
 diagnostic timing fields and tool start/complete timestamps, then merges those
 assistant totals into the next runtime progress snapshot. `eval status` renders
 the persisted timing values and the active phase/provider age without starting
-any workflow or model.
+any workflow or model. `eval stats` uses the saved report when available and
+falls back to an explicit `complete: false` partial stats snapshot from the
+same progress file before the first report checkpoint.
 
 ## Compatibility and failure handling
 

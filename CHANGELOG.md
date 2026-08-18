@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.60-alpha
+
+- `progress.json` and `eval-status` now expose accumulated evaluation phase
+  timings plus observed assistant wait/stream/total and tool-call durations;
+  old progress snapshots remain readable with unavailable timing data.
+
 ## v0.1.59-alpha
 
 - `code:feature-development` is now outcome-gated: a strict validation verdict

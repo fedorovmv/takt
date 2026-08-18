@@ -35,10 +35,11 @@ type FlowProgress struct {
 }
 
 type FlowProgressCurrent struct {
-	CaseID  string `json:"case_id"`
-	Repeat  int    `json:"repeat"`
-	Ordinal int    `json:"ordinal"`
-	Phase   string `json:"phase"`
+	CaseID         string    `json:"case_id"`
+	Repeat         int       `json:"repeat"`
+	Ordinal        int       `json:"ordinal"`
+	Phase          string    `json:"phase"`
+	PhaseStartedAt time.Time `json:"phase_started_at,omitempty"`
 }
 
 type FlowRuntimeProgress struct {
@@ -54,7 +55,29 @@ type FlowRuntimeProgress struct {
 	Cost              float64                 `json:"cost"`
 	ContextTokens     int                     `json:"context_tokens,omitempty"`
 	ContextKnown      bool                    `json:"context_known,omitempty"`
+	Timings           *FlowRuntimeTimings     `json:"timings,omitempty"`
 	AssistantActivity []FlowAssistantProgress `json:"assistant_activity,omitempty"`
+}
+
+type FlowRuntimeTimings struct {
+	Phases    FlowPhaseTimings     `json:"phases"`
+	Assistant FlowAssistantTimings `json:"assistant"`
+}
+
+type FlowPhaseTimings struct {
+	PrepareMS            int64 `json:"prepare_ms"`
+	ValidatorPreflightMS int64 `json:"validator_preflight_ms"`
+	WorkflowMS           int64 `json:"workflow_ms"`
+	ValidatorMS          int64 `json:"validator_ms"`
+	EvidenceMS           int64 `json:"evidence_ms"`
+	CleanupMS            int64 `json:"cleanup_ms"`
+}
+
+type FlowAssistantTimings struct {
+	WaitMS   int64 `json:"wait_ms"`
+	StreamMS int64 `json:"stream_ms"`
+	TotalMS  int64 `json:"total_ms"`
+	ToolMS   int64 `json:"tool_ms"`
 }
 
 type FlowAssistantProgress struct {
@@ -89,6 +112,9 @@ func newFlowProgressTracker(output string, progress FlowProgress, now func() tim
 		now = time.Now
 	}
 	progress.Runtime.RunningNodes = []string{}
+	if progress.Runtime.Timings == nil {
+		progress.Runtime.Timings = &FlowRuntimeTimings{}
+	}
 	tracker := &flowProgressTracker{output: output, now: now, progress: progress}
 	tracker.progress.UpdatedAt = now().UTC()
 	if err := WriteFlowProgress(output, &tracker.progress); err != nil {
@@ -100,8 +126,9 @@ func newFlowProgressTracker(output string, progress FlowProgress, now func() tim
 func (t *flowProgressTracker) begin(caseID string, repeat, ordinal int) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.progress.Current = &FlowProgressCurrent{CaseID: caseID, Repeat: repeat, Ordinal: ordinal, Phase: "prepare"}
-	t.progress.Runtime = FlowRuntimeProgress{RunningNodes: []string{}}
+	now := t.now().UTC()
+	t.progress.Current = &FlowProgressCurrent{CaseID: caseID, Repeat: repeat, Ordinal: ordinal, Phase: "prepare", PhaseStartedAt: now}
+	t.progress.Runtime = FlowRuntimeProgress{RunningNodes: []string{}, Timings: &FlowRuntimeTimings{}}
 	return t.writeLocked()
 }
 
@@ -111,13 +138,23 @@ func (t *flowProgressTracker) phase(phase string) error {
 	if t.progress.Current == nil {
 		return fmt.Errorf("flow evaluation progress has no current run")
 	}
+	now := t.now().UTC()
+	t.accumulatePhaseLocked(now)
 	t.progress.Current.Phase = phase
+	t.progress.Current.PhaseStartedAt = now
 	return t.writeLocked()
 }
 
 func (t *flowProgressTracker) runtime(value FlowRuntimeProgress) (*FlowProgress, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.progress.Runtime.Timings != nil {
+		if value.Timings == nil {
+			value.Timings = t.progress.Runtime.Timings
+		} else {
+			value.Timings.Phases = t.progress.Runtime.Timings.Phases
+		}
+	}
 	if value.RunningNodes == nil {
 		value.RunningNodes = []string{}
 	}
@@ -144,12 +181,16 @@ func (t *flowProgressTracker) results(completed int, summary Summary) error {
 func (t *flowProgressTracker) complete(reportPath string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	now := t.now().UTC()
+	if t.progress.Current != nil {
+		t.accumulatePhaseLocked(now)
+		t.progress.Current.Phase = "finalized"
+		t.progress.Current.PhaseStartedAt = now
+	}
 	t.progress.Status = "completed"
 	t.progress.ReportPath = reportPath
-	if t.progress.Current != nil {
-		t.progress.Current.Phase = "finalized"
-	}
-	return t.writeLocked()
+	t.progress.UpdatedAt = now
+	return WriteFlowProgress(t.output, &t.progress)
 }
 
 func (t *flowProgressTracker) fail(runErr error) error {
@@ -164,8 +205,49 @@ func (t *flowProgressTracker) fail(runErr error) error {
 }
 
 func (t *flowProgressTracker) writeLocked() error {
-	t.progress.UpdatedAt = t.now().UTC()
+	now := t.now().UTC()
+	t.accumulatePhaseLocked(now)
+	t.progress.UpdatedAt = now
 	return WriteFlowProgress(t.output, &t.progress)
+}
+
+func (t *flowProgressTracker) accumulatePhaseLocked(now time.Time) {
+	if t.progress.Current == nil {
+		return
+	}
+	if t.progress.Runtime.Timings == nil {
+		t.progress.Runtime.Timings = &FlowRuntimeTimings{}
+	}
+	started := t.progress.Current.PhaseStartedAt
+	if started.IsZero() {
+		t.progress.Current.PhaseStartedAt = now
+		return
+	}
+	duration := now.Sub(started).Milliseconds()
+	if duration > 0 {
+		addFlowPhaseTiming(&t.progress.Runtime.Timings.Phases, t.progress.Current.Phase, duration)
+	}
+	t.progress.Current.PhaseStartedAt = now
+}
+
+func addFlowPhaseTiming(timings *FlowPhaseTimings, phase string, duration int64) {
+	if timings == nil || duration <= 0 {
+		return
+	}
+	switch phase {
+	case "prepare":
+		timings.PrepareMS += duration
+	case "validator_preflight":
+		timings.ValidatorPreflightMS += duration
+	case "workflow":
+		timings.WorkflowMS += duration
+	case "validator":
+		timings.ValidatorMS += duration
+	case "evidence":
+		timings.EvidenceMS += duration
+	case "cleanup":
+		timings.CleanupMS += duration
+	}
 }
 
 func cloneFlowProgress(value FlowProgress) *FlowProgress {
@@ -176,6 +258,10 @@ func cloneFlowProgress(value FlowProgress) *FlowProgress {
 	}
 	clone.Runtime.RunningNodes = append([]string(nil), value.Runtime.RunningNodes...)
 	clone.Runtime.AssistantActivity = append([]FlowAssistantProgress(nil), value.Runtime.AssistantActivity...)
+	if value.Runtime.Timings != nil {
+		timings := *value.Runtime.Timings
+		clone.Runtime.Timings = &timings
+	}
 	return &clone
 }
 
@@ -240,6 +326,11 @@ func validateFlowProgress(progress *FlowProgress) error {
 	if progress.Runtime.RunningNodes == nil {
 		return fmt.Errorf("flow runtime running_nodes is required")
 	}
+	if timings := progress.Runtime.Timings; timings != nil {
+		if timings.Phases.PrepareMS < 0 || timings.Phases.ValidatorPreflightMS < 0 || timings.Phases.WorkflowMS < 0 || timings.Phases.ValidatorMS < 0 || timings.Phases.EvidenceMS < 0 || timings.Phases.CleanupMS < 0 || timings.Assistant.WaitMS < 0 || timings.Assistant.StreamMS < 0 || timings.Assistant.TotalMS < 0 || timings.Assistant.ToolMS < 0 {
+			return fmt.Errorf("invalid flow runtime timings")
+		}
+	}
 	for _, activity := range progress.Runtime.AssistantActivity {
 		if activity.RunID == "" || activity.NodeID == "" || activity.Attempt < 0 || activity.State == "" || activity.Since.IsZero() || activity.Call < 0 || activity.Retry < 0 || activity.MaxRetries < 0 || activity.DelayMS < 0 {
 			return fmt.Errorf("invalid flow assistant activity")
@@ -293,6 +384,40 @@ func (p FlowProgress) render(now time.Time) string {
 	}
 	fmt.Fprintf(table, "  Context tokens\t%s\n", contextTokens)
 	fmt.Fprintf(table, "  Cost measured\t%g\n", p.Runtime.Cost)
+	fmt.Fprintln(table, "\nTIMINGS")
+	if p.Runtime.Timings == nil {
+		fmt.Fprintln(table, "  Measured\tunavailable")
+	} else {
+		phases := p.Runtime.Timings.Phases
+		if p.Status == "running" && p.Current != nil && !p.Current.PhaseStartedAt.IsZero() {
+			activeMS := now.Sub(p.Current.PhaseStartedAt).Milliseconds()
+			if activeMS > 0 {
+				addFlowPhaseTiming(&phases, p.Current.Phase, activeMS)
+			}
+		}
+		fmt.Fprintf(table, "  Prepare\t%s\n", formatDurationMS(phases.PrepareMS))
+		fmt.Fprintf(table, "  Validator preflight\t%s\n", formatDurationMS(phases.ValidatorPreflightMS))
+		fmt.Fprintf(table, "  Workflow\t%s\n", formatDurationMS(phases.WorkflowMS))
+		fmt.Fprintf(table, "  Validator\t%s\n", formatDurationMS(phases.ValidatorMS))
+		fmt.Fprintf(table, "  Evidence\t%s\n", formatDurationMS(phases.EvidenceMS))
+		fmt.Fprintf(table, "  Cleanup\t%s\n", formatDurationMS(phases.CleanupMS))
+		assistant := p.Runtime.Timings.Assistant
+		if p.Status == "running" {
+			for _, activity := range p.Runtime.AssistantActivity {
+				if activity.State != "awaiting_response" {
+					continue
+				}
+				activeMS := now.Sub(activity.Since).Milliseconds()
+				if activeMS > 0 {
+					assistant.WaitMS += activeMS
+				}
+			}
+		}
+		fmt.Fprintf(table, "  LLM wait\t%s\n", formatDurationMS(assistant.WaitMS))
+		fmt.Fprintf(table, "  LLM stream\t%s\n", formatDurationMS(assistant.StreamMS))
+		fmt.Fprintf(table, "  LLM total\t%s\n", formatDurationMS(assistant.TotalMS))
+		fmt.Fprintf(table, "  Assistant tools\t%s\n", formatDurationMS(assistant.ToolMS))
+	}
 	if len(p.Runtime.AssistantActivity) > 0 {
 		fmt.Fprintln(table, "\nPROVIDER ACTIVITY")
 		for _, activity := range p.Runtime.AssistantActivity {
