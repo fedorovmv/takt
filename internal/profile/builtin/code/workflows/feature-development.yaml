@@ -37,10 +37,15 @@ nodes:
       printf '%s\n' 'validation verdict artifact missing' >&2
       exit 1
     fi
-    line="$(awk '/^verdict:/ { declared++; print } END { if (declared != 1) exit 1 }' "$artifact")" || {
+    line_count="$(awk 'END { print NR }' "$artifact")" || {
       printf '%s\n' 'invalid validation verdict' >&2
       exit 1
     }
+    line="$(awk '/^verdict:/ { print }' "$artifact")"
+    if [ "$line_count" -ne 1 ]; then
+      printf '%s\n' 'invalid validation verdict' >&2
+      exit 1
+    fi
     case "$line" in
       'verdict: PASS') printf '%s' 'PASS' ;;
       'verdict: REPAIR') printf '%s' 'REPAIR' ;;
@@ -70,15 +75,20 @@ nodes:
       printf '%s\n' 'revalidation verdict artifact missing' >&2
       exit 1
     fi
-    line="$(awk '/^verdict:/ { declared++; print } END { if (declared != 1) exit 1 }' "$artifact")" || {
-      printf '%s\n' 'invalid validation verdict' >&2
+    line_count="$(awk 'END { print NR }' "$artifact")" || {
+      printf '%s\n' 'invalid revalidation verdict' >&2
       exit 1
     }
+    line="$(awk '/^verdict:/ { print }' "$artifact")"
+    if [ "$line_count" -ne 1 ]; then
+      printf '%s\n' 'invalid revalidation verdict' >&2
+      exit 1
+    fi
     case "$line" in
       'verdict: PASS') printf '%s' 'PASS' ;;
       'verdict: REPAIR') printf '%s' 'REPAIR' ;;
       'verdict: BLOCKED') printf '%s' 'BLOCKED' ;;
-      *) printf '%s\n' 'invalid validation verdict' >&2; exit 1 ;;
+      *) printf '%s\n' 'invalid revalidation verdict' >&2; exit 1 ;;
     esac
 - id: review-acceptance-gate
   depends_on:
@@ -106,6 +116,7 @@ nodes:
 - id: pr-effect-gate
   depends_on:
   - create-pr
+  trigger_rule: all_done
   bash: |
     for artifact in "$ARTIFACTS_DIR/pr.md" "$ARTIFACTS_DIR/pr-url.txt"; do
       if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then

@@ -638,7 +638,7 @@ func TestProductionFlowEvaluationFeatureVerdictBranches(t *testing.T) {
 func TestProductionFlowEvaluationFeatureRevalidationVerdictFailures(t *testing.T) {
 	fake := binary(t, "takt-fake-code-agent")
 	slots := make(chan struct{}, 2)
-	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate"} {
+	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate", "extra"} {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
 			slots <- struct{}{}
@@ -704,7 +704,7 @@ func TestProductionFlowEvaluationFeatureReviewFixArtifactGates(t *testing.T) {
 
 func TestProductionFlowEvaluationFeatureVerdictParserFailures(t *testing.T) {
 	fake := binary(t, "takt-fake-code-agent")
-	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate"} {
+	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate", "extra"} {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
@@ -1042,6 +1042,20 @@ func TestFlowInventory(t *testing.T) {
 	}
 	if len(featureImplement.Hooks.AfterNode) != 1 || featureImplement.Hooks.AfterNode[0].OnFailure.Action != "retry" || featureImplement.Hooks.AfterNode[0].OnFailure.Session != "resume" {
 		t.Fatalf("feature implementation artifact hook=%+v", featureImplement.Hooks.AfterNode)
+	}
+	var featurePREffect *spec.Node
+	for index := range loaded["feature-development.yaml"].Nodes {
+		node := &loaded["feature-development.yaml"].Nodes[index]
+		if node.ID == "pr-effect-gate" {
+			featurePREffect = node
+			break
+		}
+	}
+	if featurePREffect == nil {
+		t.Fatal("feature pr-effect-gate missing")
+	}
+	if featurePREffect.TriggerRule != "all_done" {
+		t.Fatalf("feature pr-effect-gate trigger_rule=%q", featurePREffect.TriggerRule)
 	}
 	command, err := runtime.NewCommandResolver(filepath.Join(repoRoot, "internal", "profile", "builtin", "code", "workflows", "review-block.yaml"), repoRoot, repoRoot).Resolve("review-intake")
 	if err != nil {

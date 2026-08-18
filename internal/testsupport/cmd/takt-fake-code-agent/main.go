@@ -391,6 +391,9 @@ func writeFeatureArtifact(phase, path string) error {
 	if kind == "duplicate" {
 		return os.WriteFile(path, []byte("verdict: PASS\nverdict: PASS\n"), 0o644)
 	}
+	if kind == "extra" {
+		return os.WriteFile(path, []byte("verdict: PASS\nnote\n"), 0o644)
+	}
 	parts := strings.FieldsFunc(kind, func(r rune) bool { return r == '+' || r == ',' })
 	if len(parts) == 0 {
 		parts = []string{"pass"}
@@ -409,6 +412,8 @@ func writeFeatureArtifact(phase, path string) error {
 			return os.WriteFile(path, []byte("verdict: PASS extra\n"), 0o644)
 		case "duplicate":
 			return os.WriteFile(path, []byte("verdict: PASS\nverdict: PASS\n"), 0o644)
+		case "extra":
+			return os.WriteFile(path, []byte("verdict: PASS\nnote\n"), 0o644)
 		}
 		index = 1
 	}
