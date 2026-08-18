@@ -638,7 +638,7 @@ func TestProductionFlowEvaluationFeatureVerdictBranches(t *testing.T) {
 func TestProductionFlowEvaluationFeatureRevalidationVerdictFailures(t *testing.T) {
 	fake := binary(t, "takt-fake-code-agent")
 	slots := make(chan struct{}, 2)
-	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate", "nul"} {
+	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate", "nul", "typo"} {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
 			slots <- struct{}{}
@@ -731,7 +731,7 @@ func TestProductionFlowEvaluationFeatureReviewFixArtifactGates(t *testing.T) {
 
 func TestProductionFlowEvaluationFeatureVerdictParserFailures(t *testing.T) {
 	fake := binary(t, "takt-fake-code-agent")
-	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate", "nul"} {
+	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate", "nul", "typo"} {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
