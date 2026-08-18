@@ -115,12 +115,38 @@ func TestCodeProfileRouterCreatesWorktreeForSelectedMutatingWorkflow(t *testing.
 			if req.NodeID == "route" {
 				return assistant.Result{Output: `{"workflow":"feature-development","reason":"implement requested feature"}`, ExitCode: 0}, nil
 			}
+			artifacts := r.store.ArtifactsDir(req.RunID)
 			if req.NodeID == "implement" {
-				artifacts := r.store.ArtifactsDir(req.RunID)
 				if err := os.MkdirAll(artifacts, 0o755); err != nil {
 					return assistant.Result{}, err
 				}
 				if err := os.WriteFile(filepath.Join(artifacts, "implementation.md"), []byte("implemented\n"), 0o644); err != nil {
+					return assistant.Result{}, err
+				}
+			}
+			if req.NodeID == "validate-agent" {
+				if err := os.MkdirAll(artifacts, 0o755); err != nil {
+					return assistant.Result{}, err
+				}
+				if err := os.WriteFile(filepath.Join(artifacts, "validation.md"), []byte("verdict: PASS\n"), 0o644); err != nil {
+					return assistant.Result{}, err
+				}
+			}
+			if req.NodeID == "create-pr" {
+				if err := os.MkdirAll(artifacts, 0o755); err != nil {
+					return assistant.Result{}, err
+				}
+				for name, body := range map[string]string{"pr.md": "fixture pull request\n", "pr-url.txt": "https://example.test/pull/1\n"} {
+					if err := os.WriteFile(filepath.Join(artifacts, name), []byte(body), 0o644); err != nil {
+						return assistant.Result{}, err
+					}
+				}
+			}
+			if req.NodeID == "summary" {
+				if err := os.MkdirAll(artifacts, 0o755); err != nil {
+					return assistant.Result{}, err
+				}
+				if err := os.WriteFile(filepath.Join(artifacts, "summary.md"), []byte("fixture summary\n"), 0o644); err != nil {
 					return assistant.Result{}, err
 				}
 			}
