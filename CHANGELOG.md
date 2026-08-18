@@ -7,6 +7,9 @@
   `gh pr create` instead of rejecting duplicate receipts from one assistant
   execution. Product version is `0.1.61-alpha`; the bundled `code` profile is
   `0.19.1`.
+- Test gates are tiered: `make check` runs core tests, one ordinary E2E, build,
+  and TypeScript smoke; `make check-full`/`scripts/verify.sh` retain the full
+  ordinary/race package suite and user journeys.
 
 ## v0.1.60-alpha
 

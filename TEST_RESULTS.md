@@ -1,5 +1,30 @@
 # Takt v0.1.57-alpha — TEST RESULTS
 
+## Test suite tiering — 2026-08-18
+
+The developer gate is now intentionally smaller: `make check` runs core Go
+packages, one ordinary `tests/e2e` pass, build, and the TypeScript smoke. The
+complete ordinary/race package suite and the separate user-journey gate remain
+available through `make check-full` or `./scripts/verify.sh`. Live `eval-*`
+targets remain opt-in.
+
+Measured on the same working tree:
+
+| Target | Wall time |
+|---|---:|
+| `make test` (core packages) | 90.37s |
+| `make e2e` (ordinary full suite) | 290.661s |
+| `make check` (including vet/build/smoke) | 391.40s |
+| `make check-full` | 676.98s |
+
+Within the full gate, ordinary E2E took `290.711s`, user journeys `3.345s`,
+and race E2E `316.322s`.
+
+The previous `make check` composition (ordinary packages, journeys, race
+packages, and repeated E2E) measured about 11m16s. The new fast gate removes
+the duplicated journeys/race work; `make check-full` retains that complete
+contour.
+
 ## REQUEST CHANGES follow-up — 2026-08-12
 
 Focused regressions cover shell comments/heredoc/nested substitutions, loop-child

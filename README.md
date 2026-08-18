@@ -231,7 +231,9 @@ nodes:
 ./bin/takt artifacts <run-id> --workspace ./takt-demo --json
 ```
 
-Approval/retry/subworkflow проходят теми же Run APIs и входят в обязательный `make journeys` release gate. Для разработки самого Takt полный gate запускается `make check`.
+Approval/retry/subworkflow проходят теми же Run APIs и входят в отдельный
+`make journeys` gate. Для ежедневной проверки Takt используется быстрый
+`make check`; полный обычный/race прогон запускается через `make check-full`.
 
 Experimental Dynamic Flow и tooling evaluation остаются доступными, но не являются обязательной частью этого stable quick start.
 
@@ -448,7 +450,7 @@ Dynamic Takt сохраняет fingerprint каталога при preview. И�
 
 ## С чего продолжать разработку
 
-Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в `make check`.
+Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется обычным E2E внутри `make check`; race/full release coverage доступно через `make check-full`.
 
 ### Переносимые пакеты
 

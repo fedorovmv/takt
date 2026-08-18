@@ -75,13 +75,19 @@ make route-benchmark
 
 ## Тесты
 
-Основной контур — стандартный Go toolchain:
+Основной контур — стандартный Go toolchain. Быстрый developer check не
+запускает чёрный ящик второй раз под `-race`; полный release/diagnostic прогон
+остаётся отдельной командой:
 
 ```bash
-go test ./... -count=1
-go test -race ./... -count=1
-go vet ./...
-make e2e
+make check        # core tests + полный обычный E2E + build + TypeScript smoke
+make check-full   # полный обычный и race-пакетный прогон + journeys
+make test         # core Go packages, без tests/e2e
+make test-all     # все Go packages, включая tests/e2e
+make race         # core Go packages под -race
+make race-all     # все Go packages под -race
+make e2e          # полный black-box Go E2E
+make e2e-race     # E2E под -race
 ```
 
 `tests/e2e` запускает настоящий `takt` и проверяет CLI/daemon/MCP/evaluation через общий Go harness. Shell не используется как второй assertion framework.
@@ -94,7 +100,7 @@ make smoke
 # release targets default to GO_TEST_P=8; override if the host has a different safe capacity
 ```
 
-Он проверяет TypeScript host integration через реальную TypeScript toolchain. Process/package/host/deep-workflow boundaries находятся в bounded Go E2E. Allowlist закреплён в `internal/architecture`; новый shell test требует отдельного архитектурного обоснования. Полный release gate: `make check` или `./scripts/verify.sh`.
+Он проверяет TypeScript host integration через реальную TypeScript toolchain. Process/package/host/deep-workflow boundaries находятся в bounded Go E2E. Allowlist закреплён в `internal/architecture`; новый shell test требует отдельного архитектурного обоснования. Быстрый gate — `make check`, полный release gate — `make check-full` или `./scripts/verify.sh`.
 
 Реальные live Pi/OpenCode/credentials smoke и production quality benchmark выполняются отдельно и не подменяются deterministic release fixtures.
 

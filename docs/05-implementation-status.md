@@ -2,6 +2,16 @@
 
 Статус после `v0.1.61-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
+## Test suite tiers — реализовано в v0.1.61
+
+- `make test`/`make race` проверяют core Go packages без `tests/e2e`;
+- `make test-all`/`make race-all` явно запускают весь package suite;
+- `make check` выполняет один обычный E2E, build и TypeScript smoke без
+  повторного `journeys` и race-прогона;
+- `make check-full` и `scripts/verify.sh` сохраняют полный обычный/race
+  release contour, а `make journeys` остаётся отдельным user-facing gate;
+- live `eval-*` цели не входят в автоматические проверки.
+
 ## Evaluation progress timings — реализовано в v0.1.60
 
 - `progress.json` сохраняет фазовые тайминги `prepare`, `validator_preflight`,

@@ -1,4 +1,6 @@
 GO_TEST_P ?= 8
+GO_ALL_PACKAGES := $(shell go list ./...)
+GO_CORE_PACKAGES := $(filter-out %/tests/e2e,$(GO_ALL_PACKAGES))
 PI_SMOKE_PROVIDER ?= aihub
 PI_SMOKE_MODEL ?= Qwen/Qwen3.6-27B
 EVAL_IDLE_TIMEOUT ?= 5m
@@ -6,15 +8,26 @@ EVAL_PRESET ?=
 EVAL_MODEL_FLAGS ?=
 
 .PHONY: build test race vet fmt contracts adapter-platform-contract package-distribution-contract multi-repo-contract runtime-reliability-contract iteration-history-contract compatibility-contract reference-adapters-contract task-source-contract learning-loop-contract architecture-contract schema-contract agent-adapter-conformance pi-contracts opencode-contracts route-e2e route-eval route-benchmark route-strategy-benchmark-contract task-evaluation-contract composition skill profile worktree-contract child-run-contract policy-contract fanout-contract script-artifact-contract mcp-contract external-executor-contract deep-workflow-contract authoring-contract daemon-contract autonomous-run-contract host-control-contract host-integration-typescript simple-reliable-contract evidence-routing-contract e2e journeys smoke check demo eval-smoke eval-feature-smoke eval-feature eval-review eval-architect eval-stats eval-status eval-inspect eval-compare eval-analyze
+.PHONY: test-core test-all race-core race-all e2e-race check-full
 
 build:
 	go build -o bin/takt ./cmd/takt
 
-test:
-	go test -p $(GO_TEST_P) ./... -count=1
+test: test-core
 
-race:
-	go test -race -p $(GO_TEST_P) ./... -count=1
+test-core:
+	go test -p $(GO_TEST_P) $(GO_CORE_PACKAGES) -count=1
+
+test-all:
+	go test -p $(GO_TEST_P) $(GO_ALL_PACKAGES) -count=1
+
+race: race-core
+
+race-core:
+	go test -race -p $(GO_TEST_P) $(GO_CORE_PACKAGES) -count=1
+
+race-all:
+	go test -race -p $(GO_TEST_P) $(GO_ALL_PACKAGES) -count=1
 
 vet:
 	go vet ./...
@@ -185,6 +198,9 @@ host-integration-typescript:
 e2e:
 	go test ./tests/e2e -count=1
 
+e2e-race:
+	go test -race ./tests/e2e -count=1
+
 # Stable user-facing journeys are an explicit release gate, separate from
 # internal contract coverage.
 journeys:
@@ -192,7 +208,9 @@ journeys:
 
 smoke: host-integration-typescript
 
-check: fmt vet test journeys race build smoke
+check: fmt vet test e2e build smoke
+
+check-full: fmt vet test-all journeys race-all build smoke
 
 demo: build
 	./bin/takt validate examples/route-dsl/workflow.yaml --config examples/route-dsl/config.yaml
