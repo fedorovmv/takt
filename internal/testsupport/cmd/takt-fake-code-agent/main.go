@@ -41,6 +41,8 @@ func main() {
 	artifactPath := os.ExpandEnv(strings.TrimSpace(match(artifactRE, prompt)))
 	status, code, summary := "ready", codeFor(phase), phase+" complete"
 	evidence := []string{"fixture:" + phase}
+	artifactWritten := false
+	failPhase := os.Getenv("FAKE_FAIL_PHASE") == phase
 	if blocked := os.Getenv("FAKE_BLOCK_PHASE"); blocked != "" && blocked == phase {
 		status, code, summary = "blocked", blockedCodeFor(phase), "fixture requested a blocked checkpoint"
 	}
@@ -100,6 +102,13 @@ func main() {
 					evidence = []string{strings.TrimSpace(string(out))}
 				}
 			}
+		case "feature-validation", "feature-repair", "feature-revalidation":
+			if !failPhase {
+				if err := writeFeatureArtifact(phase, artifactPath); err != nil {
+					fail(err)
+				}
+			}
+			artifactWritten = true
 		}
 		if phase == "review-synthesis" && os.Getenv("FAKE_REVIEW_CHANGES_REQUIRED") == "1" {
 			code, summary = "REVIEW_CHANGES_REQUIRED", "fixture requested review fixes"
@@ -120,10 +129,13 @@ func main() {
 		artifactContent, _ = json.MarshalIndent(map[string]any{"phase": phase, "status": status, "code": code, "evidence": evidence}, "", "  ")
 		artifactContent = append(artifactContent, '\n')
 	}
-	if os.Getenv("FAKE_OMIT_ARTIFACT_PHASE") != phase {
+	if !artifactWritten && os.Getenv("FAKE_OMIT_ARTIFACT_PHASE") != phase {
 		if err := os.WriteFile(artifactPath, artifactContent, 0o644); err != nil {
 			fail(err)
 		}
+	}
+	if failPhase {
+		fail(fmt.Errorf("fixture requested phase failure: %s", phase))
 	}
 	cp := checkpoint{Status: status, Code: code, Summary: summary, Evidence: evidence, ArtifactPath: artifactPath}
 	if phase == "review-perspective" {
@@ -238,6 +250,20 @@ func handleFlowEvaluationSmoke(prompt string) bool {
 		if err != nil {
 			fail(err)
 		}
+		modeName, modeKind, _ := strings.Cut(strings.TrimSpace(os.Getenv("FAKE_FLOW_ARTIFACT_KIND")), ":")
+		if modeName == name {
+			switch modeKind {
+			case "missing":
+				return
+			case "directory":
+				if err := os.MkdirAll(path, 0o755); err != nil {
+					fail(err)
+				}
+				return
+			case "empty":
+				body = ""
+			}
+		}
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			fail(err)
 		}
@@ -304,9 +330,17 @@ func handleFlowEvaluationSmoke(prompt string) bool {
 			if err != nil {
 				fail(fmt.Errorf("gh pr create: %s", strings.TrimSpace(string(url))))
 			}
+			if os.Getenv("FAKE_DUPLICATE_PR_CREATE") == "1" {
+				if duplicate, duplicateErr := exec.Command("gh", "pr", "create", "--draft", "--title", "fixture PR duplicate", "--body", "fixture body").CombinedOutput(); duplicateErr != nil {
+					fail(fmt.Errorf("duplicate gh pr create: %s", strings.TrimSpace(string(duplicate))))
+				}
+			}
 		}
 		writeArtifact("pr.md", "fixture pull request\n")
 		writeArtifact("pr-url.txt", string(url))
+		if os.Getenv("FAKE_EXIT_AFTER_PR_CREATE") == "1" {
+			fail(fmt.Errorf("fixture requested exit after PR create"))
+		}
 	case strings.Contains(prompt, "Summarize the completed workflow"):
 		writeArtifact("summary.md", "fixture summary\n")
 	case strings.Contains(prompt, "Perform an architectural sweep"):
@@ -318,6 +352,50 @@ func handleFlowEvaluationSmoke(prompt string) bool {
 	}
 	fmt.Print("fixture flow evaluation smoke")
 	return true
+}
+
+func writeFeatureArtifact(phase, path string) error {
+	if path == "" {
+		return fmt.Errorf("missing feature artifact path for %s", phase)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if phase == "feature-repair" {
+		return os.WriteFile(path, []byte("fixture review fixes\n"), 0o644)
+	}
+	kind := strings.ToLower(strings.TrimSpace(os.Getenv("FAKE_FEATURE_VERDICT_KIND")))
+	if kind == "" {
+		kind = "pass"
+	}
+	if kind == "missing" {
+		return nil
+	}
+	if kind == "unknown" {
+		return os.WriteFile(path, []byte("verdict: MAYBE\n"), 0o644)
+	}
+	if kind == "malformed" {
+		return os.WriteFile(path, []byte("verdict: PASS extra\n"), 0o644)
+	}
+	if kind == "duplicate" {
+		return os.WriteFile(path, []byte("verdict: PASS\nverdict: PASS\n"), 0o644)
+	}
+	parts := strings.FieldsFunc(kind, func(r rune) bool { return r == '+' || r == ',' })
+	if len(parts) == 0 {
+		parts = []string{"pass"}
+	}
+	index := 0
+	if phase == "feature-revalidation" && len(parts) == 1 {
+		return os.WriteFile(path, []byte("verdict: PASS\n"), 0o644)
+	}
+	if phase == "feature-revalidation" && len(parts) > 1 {
+		index = 1
+	}
+	verdict := strings.ToUpper(strings.TrimSpace(parts[index]))
+	if verdict != "PASS" && verdict != "REPAIR" && verdict != "BLOCKED" {
+		verdict = "PASS"
+	}
+	return os.WriteFile(path, []byte("verdict: "+verdict+"\n"), 0o644)
 }
 
 func renderedArtifactPath(prompt, baseName string) (string, error) {
@@ -345,6 +423,7 @@ func codeFor(phase string) string {
 		"idea-research": "IDEA_RESEARCH_READY", "idea-plan": "IDEA_PLAN_READY", "plan-intake": "PLAN_CONFIRMED",
 		"plan-implementation": "PLAN_IMPLEMENTED", "change-validation": "VALIDATION_PASSED", "workflow-recovery": "RECOVERY_APPLIED",
 		"pr-finalize": "PR_READY", "workflow-final-summary": "WORKFLOW_COMPLETE", "review-intake": "REVIEW_READY",
+		"feature-validation": "FEATURE_VALIDATION_READY", "feature-repair": "FEATURE_REPAIR_READY", "feature-revalidation": "FEATURE_REVALIDATION_READY",
 		"review-perspective": "PERSPECTIVE_REVIEW_COMPLETE", "review-synthesis": "REVIEW_APPROVED", "review-fix": "REVIEW_NO_FIXES_REQUIRED",
 		"piv-exploration": "EXPLORATION_READY_FOR_PLAN", "piv-plan": "PIV_PLAN_READY", "piv-implementation": "PIV_IMPLEMENTED",
 		"ralph-prepare": "RALPH_BACKLOG_READY", "ralph-story": "RALPH_ALL_DONE", "ralph-summary": "RALPH_COMPLETE",

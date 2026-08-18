@@ -25,25 +25,109 @@ nodes:
 - id: validate-agent
   depends_on:
   - implement
-  command: validate-change
+  command: feature-validation
   model: review
-- id: validate
+- id: initial-verdict
   depends_on:
   - validate-agent
+  trigger_rule: all_done
+  bash: |
+    artifact="$ARTIFACTS_DIR/validation.md"
+    if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
+      printf '%s\n' 'validation verdict artifact missing' >&2
+      exit 1
+    fi
+    line="$(awk '/^verdict:/ { declared++; print } END { if (declared != 1) exit 1 }' "$artifact")" || {
+      printf '%s\n' 'invalid validation verdict' >&2
+      exit 1
+    }
+    case "$line" in
+      'verdict: PASS') printf '%s' 'PASS' ;;
+      'verdict: REPAIR') printf '%s' 'REPAIR' ;;
+      'verdict: BLOCKED') printf '%s' 'BLOCKED' ;;
+      *) printf '%s\n' 'invalid validation verdict' >&2; exit 1 ;;
+    esac
+- id: repair
+  depends_on:
+  - initial-verdict
+  when: $initial-verdict.output == "REPAIR"
+  command: feature-repair
+  model: implementation
+- id: revalidate-agent
+  depends_on:
+  - repair
+  when: $repair.status == "completed"
+  command: feature-revalidation
+  model: review
+- id: revalidation-verdict
+  depends_on:
+  - revalidate-agent
+  trigger_rule: all_done
+  when: $repair.status == "completed"
+  bash: |
+    artifact="$ARTIFACTS_DIR/revalidation.md"
+    if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
+      printf '%s\n' 'revalidation verdict artifact missing' >&2
+      exit 1
+    fi
+    line="$(awk '/^verdict:/ { declared++; print } END { if (declared != 1) exit 1 }' "$artifact")" || {
+      printf '%s\n' 'invalid validation verdict' >&2
+      exit 1
+    }
+    case "$line" in
+      'verdict: PASS') printf '%s' 'PASS' ;;
+      'verdict: REPAIR') printf '%s' 'REPAIR' ;;
+      'verdict: BLOCKED') printf '%s' 'BLOCKED' ;;
+      *) printf '%s\n' 'invalid validation verdict' >&2; exit 1 ;;
+    esac
+- id: review-acceptance-gate
+  depends_on:
+  - initial-verdict
+  - repair
+  - revalidation-verdict
+  trigger_rule: all_done
+  bash: |
+    if [ $initial-verdict.output? = "PASS" ] || \
+      { [ $initial-verdict.output? = "REPAIR" ] && [ $revalidation-verdict.output? = "PASS" ] && [ -s "$ARTIFACTS_DIR/review-fixes.md" ] && [ -s "$ARTIFACTS_DIR/revalidation.md" ]; }; then
+      printf '%s' 'REVIEW_ACCEPTED'
+      exit 0
+    fi
+    printf '%s\n' 'REVIEW_REJECTED' >&2
+    exit 1
+- id: validate
+  depends_on:
+  - review-acceptance-gate
   bash: "./.takt/profiles/code/tools/validate"
 - id: create-pr
   depends_on:
   - validate
   command: create-pr
+  allow_failure: true
 - id: pr-effect-gate
   depends_on:
   - create-pr
-  bash: "./.takt/profiles/code/tools/require-pr"
+  bash: |
+    for artifact in "$ARTIFACTS_DIR/pr.md" "$ARTIFACTS_DIR/pr-url.txt"; do
+      if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
+        printf 'missing required PR artifact: %s\n' "$artifact" >&2
+        exit 1
+      fi
+    done
+    exec ./.takt/profiles/code/tools/require-pr
 - id: summary
   depends_on:
   - pr-effect-gate
   command: summary
   model: review
+  hooks:
+    after_node:
+    - id: summary-artifact
+      bash: |
+        artifact="$ARTIFACTS_DIR/summary.md"
+        if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
+          printf '%s\n' 'missing required artifact: summary.md' >&2
+          exit 1
+        fi
 name: feature-development
 description: Implement a feature from an existing plan, validate it deterministically,
   and create a pull request.

@@ -9,7 +9,13 @@ if [ ! -d "$fixture_dir" ]; then
 fi
 
 calls_log="${TAKT_WORKSPACE}/.takt/evals/scm/calls.log"
-if [ ! -f "$calls_log" ] || ! grep -Fq 'pr create' "$calls_log"; then
+if [ ! -f "$calls_log" ]; then
   printf '%s\n' 'required SCM side effect missing: gh pr create was not recorded' >&2
+  exit 1
+fi
+
+create_count=$(awk '$1 == "pr" && $2 == "create" { count++ } END { print count + 0 }' "$calls_log")
+if [ "$create_count" -ne 1 ]; then
+  printf 'required exactly one SCM side effect: gh pr create count=%s\n' "$create_count" >&2
   exit 1
 fi
