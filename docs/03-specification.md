@@ -1073,6 +1073,10 @@ diagnostics, usage identities, case rows и wall-clock таблицу assistant 
 execution полный Session ID, workflow/provider attempt и признак resume; human
 output показывает их в секции `ASSISTANT SESSIONS`. Takt не строит URL: adapter
 contract предоставляет только opaque Session ID.
+Если рядом с checkpointed `report.json` сохранён terminal `progress.json`, его
+`status` остаётся authoritative: mid-suite failure выдаётся как `failed` и
+`complete: false`, а gate failure после всех запланированных runs — как
+`failed` и `complete: true`.
 
 Для неуспешных cases stats показывает приоритетную причину с явным источником:
 flow validator, ошибка запуска validator, quality diagnostic, root runtime или

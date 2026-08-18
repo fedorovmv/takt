@@ -70,6 +70,95 @@ func TestEvaluationStatsReadsRunningProgress(t *testing.T) {
 	if !ok || stats.Status != "running" || stats.Complete || stats.InputTokens != 9 || stats.Timings == nil || stats.Timings.Assistant.WaitMS != 4000 {
 		t.Fatalf("stats=%#v", value)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "report.json"), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (evaluationEngine{}).Stats(context.Background(), dir); err == nil {
+		t.Fatal("malformed checkpoint report was hidden by progress fallback")
+	}
+}
+
+func TestEvaluationStatsOverlaysFailedProgressOnCheckpointedReport(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		completedRuns int
+		totalRuns     int
+		wantComplete  bool
+	}{
+		{name: "failure before all runs", completedRuns: 1, totalRuns: 2, wantComplete: false},
+		{name: "gate failure after all runs", completedRuns: 2, totalRuns: 2, wantComplete: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			started := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+			report := evaluation.SuiteReport{ReportVersion: evaluation.ReportVersion, Mode: "flow", Workflow: "flow", OutputDir: dir, StartedAt: started, FinishedAt: started.Add(time.Second), Summary: evaluation.Summary{Total: test.totalRuns, Valid: test.completedRuns}}
+			data, err := json.Marshal(report)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "report.json"), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			progress := &evaluation.FlowProgress{ReportVersion: evaluation.FlowProgressVersion, Status: "failed", Suite: "suite.yaml", Workflow: "flow", OutputDir: dir, StartedAt: started, UpdatedAt: started.Add(2 * time.Second), TotalRuns: test.totalRuns, CompletedRuns: test.completedRuns, Runtime: evaluation.FlowRuntimeProgress{RunningNodes: []string{}}, Results: evaluation.FlowProgressResults{Valid: test.completedRuns}}
+			if err := evaluation.WriteFlowProgress(dir, progress); err != nil {
+				t.Fatal(err)
+			}
+			value, err := (evaluationEngine{}).Stats(context.Background(), dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stats, ok := value.(*evaluation.EvaluationStats)
+			if !ok || stats.Status != "failed" || stats.Complete != test.wantComplete {
+				t.Fatalf("stats=%#v want status=failed complete=%t", value, test.wantComplete)
+			}
+		})
+	}
+}
+
+func TestEvaluationStatsRejectsMalformedProgressWithCheckpointedReport(t *testing.T) {
+	dir := t.TempDir()
+	started := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	report, err := json.Marshal(evaluation.SuiteReport{ReportVersion: evaluation.ReportVersion, Mode: "flow", Workflow: "flow", OutputDir: dir, StartedAt: started, FinishedAt: started.Add(time.Second)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "report.json"), report, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, evaluation.FlowProgressFile), []byte(`{"report_version":"takt-flow-evaluation-progress/v1alpha1","status":"running","suite":"suite.yaml","workflow":"flow","output_dir":"out","started_at":"2026-08-18T12:00:00Z","updated_at":"2026-08-18T12:00:01Z","total_runs":1,"completed_runs":0,"runtime":{"running_nodes":[],"timings":{}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (evaluationEngine{}).Stats(context.Background(), dir); err == nil {
+		t.Fatal("malformed progress was hidden by checkpointed report")
+	}
+}
+
+func TestEvaluationStatsIncludesActivePhaseForCheckpointedReport(t *testing.T) {
+	dir := t.TempDir()
+	started := time.Now().UTC().Add(-10 * time.Second)
+	report, err := json.Marshal(evaluation.SuiteReport{ReportVersion: evaluation.ReportVersion, Mode: "flow", Workflow: "flow", OutputDir: dir, StartedAt: started, FinishedAt: started.Add(time.Second)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "report.json"), report, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	progress := &evaluation.FlowProgress{
+		ReportVersion: evaluation.FlowProgressVersion, Status: "running", Suite: "suite.yaml", Workflow: "flow", OutputDir: dir,
+		StartedAt: started, UpdatedAt: time.Now().UTC(), TotalRuns: 1, Current: &evaluation.FlowProgressCurrent{CaseID: "case", Repeat: 1, Ordinal: 1, Phase: "workflow", PhaseStartedAt: time.Now().UTC().Add(-2 * time.Second)},
+		Runtime: evaluation.FlowRuntimeProgress{RunningNodes: []string{}, Timings: &evaluation.FlowRuntimeTimings{Phases: evaluation.FlowPhaseTimings{WorkflowMS: 1000}}},
+	}
+	if err := evaluation.WriteFlowProgress(dir, progress); err != nil {
+		t.Fatal(err)
+	}
+	value, err := (evaluationEngine{}).Stats(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats, ok := value.(*evaluation.EvaluationStats)
+	if !ok || stats.Timings == nil || stats.Timings.Phases.WorkflowMS <= 1000 {
+		t.Fatalf("stats=%#v", value)
+	}
 }
 
 func TestEvaluationAnalyzeRequiresExistingConfigBeforeRun(t *testing.T) {

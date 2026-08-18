@@ -468,6 +468,7 @@ func TestBuildProgressStatsShowsPartialLiveEvaluation(t *testing.T) {
 		Runtime: FlowRuntimeProgress{
 			Status: "running", TotalNodes: 4, CompletedNodes: 1, RunningNodes: []string{"implement"}, NodeAttempts: 2,
 			InputTokens: 100, OutputTokens: 20, Cost: 0.25, Timings: &FlowRuntimeTimings{Phases: FlowPhaseTimings{WorkflowMS: 8000}, Assistant: FlowAssistantTimings{WaitMS: 7000}},
+			AssistantActivity: []FlowAssistantProgress{{RunID: "run", NodeID: "implement", Attempt: 1, State: "awaiting_response", Since: now.Add(-2 * time.Second)}},
 		},
 		Results: FlowProgressResults{Valid: 1, Invalid: 0},
 	}
@@ -475,7 +476,7 @@ func TestBuildProgressStatsShowsPartialLiveEvaluation(t *testing.T) {
 	if stats == nil || stats.Status != "running" || stats.Complete || stats.Total != 3 || stats.Valid != 1 || stats.Attempts != 2 || stats.InputTokens != 100 || stats.OutputTokens != 20 || stats.DurationMS != 12500 || stats.CompletedRuns != 1 || stats.TotalRuns != 3 {
 		t.Fatalf("stats=%+v", stats)
 	}
-	if stats.Current == nil || stats.Current.CaseID != "case-b" || stats.Timings == nil || stats.Timings.Assistant.WaitMS != 7000 {
+	if stats.Current == nil || stats.Current.CaseID != "case-b" || stats.Timings == nil || stats.Timings.Phases.WorkflowMS != 11000 || stats.Timings.Assistant.WaitMS != 9000 {
 		t.Fatalf("live stats details=%+v", stats)
 	}
 	encoded, err := json.Marshal(stats)

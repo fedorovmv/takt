@@ -69,10 +69,17 @@
 - [x] Reserve product version `0.1.60-alpha` consistently in the root version, runtime version, README, specification, implementation status, and changelog.
 - [x] Run `gofmt -w internal/bootstrap/evaluation.go internal/bootstrap/evaluation_test.go internal/tooling/evaluation/flow_progress.go internal/tooling/evaluation/flow_progress_test.go` and the focused tests.
 
+### Review hardening
+
+- [x] Preserve phase and assistant timing totals across multiple cases/repeats and close the previous case phase before `begin`.
+- [x] Reject partial, missing-key, and `null` timing objects while keeping snapshots that omit the whole timing property readable.
+- [x] Overlay terminal progress status on checkpointed stats, derive `complete` from final run coverage, and surface malformed progress instead of hiding it behind a readable report.
+- [x] Include the currently active phase duration in live stats, matching `eval status`.
+
 ### Task 5: Full verification
 
 - [x] Run `go test ./... -count=1` (initial run exposed a stale skill compatibility string; E2E passed after updating it).
-- [ ] Run `go test -race ./... -count=1`.
+- [x] Run `go test -race ./... -count=1`.
 - [x] Run `go vet ./...`.
 - [x] Run `go test ./internal/schemacontract -count=1` and verify the progress schema fixture remains valid.
 - [x] Report the pre-existing `make check` E2E timeout separately from feature tests.

@@ -958,16 +958,27 @@ func (evaluationEngine) Report(_ context.Context, outputDir string) (any, error)
 func (evaluationEngine) Stats(_ context.Context, outputDir string) (any, error) {
 	report, err := evaluation.LoadReport(outputDir)
 	progress, progressErr := evaluation.LoadFlowProgress(outputDir)
-	if progressErr == nil && (err != nil || progress.Status == "running") {
-		now := time.Now().UTC()
+	if progressErr == nil {
 		if err == nil {
 			stats := evaluation.BuildStats(report)
-			// Keep checkpointed case details, but mark the suite incomplete and
-			// overlay the current live phase/timing snapshot.
-			evaluation.ApplyLiveProgressStats(stats, *progress, now)
+			if progress.Status == "running" {
+				// Keep checkpointed case details, but mark the suite incomplete and
+				// overlay the current live phase/timing snapshot.
+				evaluation.ApplyLiveProgressStats(stats, *progress, time.Now().UTC())
+			} else {
+				evaluation.ApplyProgressStatus(stats, *progress)
+			}
 			return stats, nil
 		}
-		return evaluation.BuildProgressStats(*progress, now), nil
+		if progress.Status == "running" {
+			if !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+			return evaluation.BuildProgressStats(*progress, time.Now().UTC()), nil
+		}
+	}
+	if progressErr != nil && !errors.Is(progressErr, os.ErrNotExist) {
+		return nil, progressErr
 	}
 	if err == nil {
 		return evaluation.BuildStats(report), nil

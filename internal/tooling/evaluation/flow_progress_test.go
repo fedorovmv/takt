@@ -1,6 +1,7 @@
 package evaluation
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,6 +89,54 @@ func TestFlowProgressAccumulatesPhaseTimings(t *testing.T) {
 	}
 }
 
+func TestFlowProgressAccumulatesTimingsAcrossCases(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	tracker, err := newFlowProgressTracker(dir, FlowProgress{ReportVersion: FlowProgressVersion, Status: "running", Suite: "suite.yaml", Workflow: "flow", OutputDir: dir, StartedAt: now, TotalRuns: 2, Runtime: FlowRuntimeProgress{RunningNodes: []string{}}, Results: FlowProgressResults{}}, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tracker.begin("case-a", 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	if err := tracker.phase("workflow"); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Second)
+	if _, err := tracker.runtime(FlowRuntimeProgress{RunID: "run-a", Status: "completed", RunningNodes: []string{}, Timings: &FlowRuntimeTimings{Assistant: FlowAssistantTimings{WaitMS: 100}}}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	if err := tracker.begin("case-b", 1, 2); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Second)
+	if _, err := tracker.runtime(FlowRuntimeProgress{RunID: "run-b", Status: "completed", RunningNodes: []string{}, Timings: &FlowRuntimeTimings{Assistant: FlowAssistantTimings{WaitMS: 50}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tracker.complete(filepath.Join(dir, "report.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	progress, err := LoadFlowProgress(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress.Runtime.Timings == nil {
+		t.Fatal("timings are missing")
+	}
+	if got := progress.Runtime.Timings.Phases.PrepareMS; got != 3000 {
+		t.Fatalf("prepare_ms=%d want 3000", got)
+	}
+	if got := progress.Runtime.Timings.Phases.WorkflowMS; got != 3000 {
+		t.Fatalf("workflow_ms=%d want 3000", got)
+	}
+	if got := progress.Runtime.Timings.Assistant.WaitMS; got != 150 {
+		t.Fatalf("assistant wait_ms=%d want 150", got)
+	}
+}
+
 func TestLoadFlowProgressRejectsTrailingJSON(t *testing.T) {
 	dir := t.TempDir()
 	data := `{"report_version":"takt-flow-evaluation-progress/v1alpha1","status":"running","suite":"suite.yaml","workflow":"flow","output_dir":"out","started_at":"2026-08-14T12:00:00Z","updated_at":"2026-08-14T12:00:01Z","total_runs":1,"completed_runs":0,"runtime":{"total_nodes":0,"completed_nodes":0,"running_nodes":[],"node_attempts":0,"provider_attempts":0,"input_tokens":0,"output_tokens":0,"cost":0},"results":{"valid":0,"invalid":0,"infrastructure_errors":0,"validation_errors":0}} {}`
@@ -96,6 +145,32 @@ func TestLoadFlowProgressRejectsTrailingJSON(t *testing.T) {
 	}
 	if _, err := LoadFlowProgress(dir); err == nil {
 		t.Fatal("trailing JSON was accepted")
+	}
+}
+
+func TestLoadFlowProgressRejectsPartialRuntimeTimings(t *testing.T) {
+	dir := t.TempDir()
+	prefix := `{"report_version":"takt-flow-evaluation-progress/v1alpha1","status":"running","suite":"suite.yaml","workflow":"flow","output_dir":"out","started_at":"2026-08-14T12:00:00Z","updated_at":"2026-08-14T12:00:01Z","total_runs":1,"completed_runs":0,"runtime":{"total_nodes":0,"completed_nodes":0,"running_nodes":[],"node_attempts":0,"provider_attempts":0,"input_tokens":0,"output_tokens":0,"cost":0,"timings":%s},"results":{"valid":0,"invalid":0,"infrastructure_errors":0,"validation_errors":0}}`
+	validPhases := `{"prepare_ms":0,"validator_preflight_ms":0,"workflow_ms":0,"validator_ms":0,"evidence_ms":0,"cleanup_ms":0}`
+	validAssistant := `{"wait_ms":0,"stream_ms":0,"total_ms":0,"tool_ms":0}`
+	for _, test := range []struct {
+		name    string
+		timings string
+	}{
+		{name: "empty object", timings: `{}`},
+		{name: "missing phase key", timings: `{"phases":{"prepare_ms":0,"validator_preflight_ms":0,"workflow_ms":0,"validator_ms":0,"evidence_ms":0},"assistant":` + validAssistant + `}`},
+		{name: "null phase object", timings: `{"phases":null,"assistant":` + validAssistant + `}`},
+		{name: "null assistant key", timings: `{"phases":` + validPhases + `,"assistant":{"wait_ms":null,"stream_ms":0,"total_ms":0,"tool_ms":0}}`},
+		{name: "null timings", timings: `null`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := os.WriteFile(filepath.Join(dir, FlowProgressFile), []byte(fmt.Sprintf(prefix, test.timings)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadFlowProgress(dir); err == nil {
+				t.Fatalf("partial timings accepted: %s", test.timings)
+			}
+		})
 	}
 }
 

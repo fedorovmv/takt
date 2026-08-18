@@ -93,6 +93,80 @@ type FlowAssistantProgress struct {
 	LastError  string    `json:"last_error,omitempty"`
 }
 
+func (timings *FlowRuntimeTimings) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return fmt.Errorf("flow runtime timings must be an object: %w", err)
+	}
+	if err := requireTimingObject(fields, "phases", []string{"prepare_ms", "validator_preflight_ms", "workflow_ms", "validator_ms", "evidence_ms", "cleanup_ms"}); err != nil {
+		return err
+	}
+	if err := requireTimingObject(fields, "assistant", []string{"wait_ms", "stream_ms", "total_ms", "tool_ms"}); err != nil {
+		return err
+	}
+	var decoded flowRuntimeTimingsAlias
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return fmt.Errorf("decode flow runtime timings: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("decode flow runtime timings: trailing JSON value")
+		}
+		return fmt.Errorf("decode flow runtime timings trailing data: %w", err)
+	}
+	*timings = FlowRuntimeTimings(decoded)
+	return nil
+}
+
+func (progress *FlowRuntimeProgress) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return fmt.Errorf("flow runtime progress must be an object: %w", err)
+	}
+	if raw, ok := fields["timings"]; ok && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return fmt.Errorf("flow runtime progress timings must be an object when present")
+	}
+	var decoded flowRuntimeProgressAlias
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return fmt.Errorf("decode flow runtime progress: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("decode flow runtime progress: trailing JSON value")
+		}
+		return fmt.Errorf("decode flow runtime progress trailing data: %w", err)
+	}
+	*progress = FlowRuntimeProgress(decoded)
+	return nil
+}
+
+type flowRuntimeTimingsAlias FlowRuntimeTimings
+type flowRuntimeProgressAlias FlowRuntimeProgress
+
+func requireTimingObject(fields map[string]json.RawMessage, name string, keys []string) error {
+	raw, ok := fields[name]
+	if !ok || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return fmt.Errorf("flow runtime timings.%s is required", name)
+	}
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return fmt.Errorf("flow runtime timings.%s must be an object: %w", name, err)
+	}
+	for _, key := range keys {
+		value, ok := values[key]
+		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return fmt.Errorf("flow runtime timings.%s.%s is required", name, key)
+		}
+	}
+	return nil
+}
+
 type FlowProgressResults struct {
 	Valid                int `json:"valid"`
 	Invalid              int `json:"invalid"`
@@ -101,10 +175,13 @@ type FlowProgressResults struct {
 }
 
 type flowProgressTracker struct {
-	mu       sync.Mutex
-	output   string
-	now      func() time.Time
-	progress FlowProgress
+	mu                   sync.Mutex
+	output               string
+	now                  func() time.Time
+	progress             FlowProgress
+	phaseTimings         FlowPhaseTimings
+	assistantTimings     FlowAssistantTimings
+	caseAssistantTimings FlowAssistantTimings
 }
 
 func newFlowProgressTracker(output string, progress FlowProgress, now func() time.Time) (*flowProgressTracker, error) {
@@ -116,6 +193,11 @@ func newFlowProgressTracker(output string, progress FlowProgress, now func() tim
 		progress.Runtime.Timings = &FlowRuntimeTimings{}
 	}
 	tracker := &flowProgressTracker{output: output, now: now, progress: progress}
+	if progress.Runtime.Timings != nil {
+		tracker.phaseTimings = progress.Runtime.Timings.Phases
+		tracker.assistantTimings = progress.Runtime.Timings.Assistant
+	}
+	tracker.syncTimingsLocked()
 	tracker.progress.UpdatedAt = now().UTC()
 	if err := WriteFlowProgress(output, &tracker.progress); err != nil {
 		return nil, err
@@ -127,8 +209,10 @@ func (t *flowProgressTracker) begin(caseID string, repeat, ordinal int) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := t.now().UTC()
+	t.accumulatePhaseLocked(now)
 	t.progress.Current = &FlowProgressCurrent{CaseID: caseID, Repeat: repeat, Ordinal: ordinal, Phase: "prepare", PhaseStartedAt: now}
-	t.progress.Runtime = FlowRuntimeProgress{RunningNodes: []string{}, Timings: &FlowRuntimeTimings{}}
+	t.caseAssistantTimings = FlowAssistantTimings{}
+	t.progress.Runtime = FlowRuntimeProgress{RunningNodes: []string{}, Timings: &FlowRuntimeTimings{Phases: t.phaseTimings, Assistant: t.assistantTimings}}
 	return t.writeLocked()
 }
 
@@ -148,13 +232,13 @@ func (t *flowProgressTracker) phase(phase string) error {
 func (t *flowProgressTracker) runtime(value FlowRuntimeProgress) (*FlowProgress, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.progress.Runtime.Timings != nil {
-		if value.Timings == nil {
-			value.Timings = t.progress.Runtime.Timings
-		} else {
-			value.Timings.Phases = t.progress.Runtime.Timings.Phases
+	if value.Timings != nil {
+		assistant := value.Timings.Assistant
+		if assistantTimingsNonNegative(assistant) {
+			t.addAssistantTimingDeltaLocked(assistant)
 		}
 	}
+	value.Timings = &FlowRuntimeTimings{Phases: t.phaseTimings, Assistant: t.assistantTimings}
 	if value.RunningNodes == nil {
 		value.RunningNodes = []string{}
 	}
@@ -190,6 +274,7 @@ func (t *flowProgressTracker) complete(reportPath string) error {
 	t.progress.Status = "completed"
 	t.progress.ReportPath = reportPath
 	t.progress.UpdatedAt = now
+	t.syncTimingsLocked()
 	return WriteFlowProgress(t.output, &t.progress)
 }
 
@@ -207,6 +292,7 @@ func (t *flowProgressTracker) fail(runErr error) error {
 func (t *flowProgressTracker) writeLocked() error {
 	now := t.now().UTC()
 	t.accumulatePhaseLocked(now)
+	t.syncTimingsLocked()
 	t.progress.UpdatedAt = now
 	return WriteFlowProgress(t.output, &t.progress)
 }
@@ -225,9 +311,39 @@ func (t *flowProgressTracker) accumulatePhaseLocked(now time.Time) {
 	}
 	duration := now.Sub(started).Milliseconds()
 	if duration > 0 {
-		addFlowPhaseTiming(&t.progress.Runtime.Timings.Phases, t.progress.Current.Phase, duration)
+		addFlowPhaseTiming(&t.phaseTimings, t.progress.Current.Phase, duration)
 	}
+	t.syncTimingsLocked()
 	t.progress.Current.PhaseStartedAt = now
+}
+
+func (t *flowProgressTracker) syncTimingsLocked() {
+	if t.progress.Runtime.Timings == nil {
+		t.progress.Runtime.Timings = &FlowRuntimeTimings{}
+	}
+	t.progress.Runtime.Timings.Phases = t.phaseTimings
+	t.progress.Runtime.Timings.Assistant = t.assistantTimings
+}
+
+func (t *flowProgressTracker) addAssistantTimingDeltaLocked(current FlowAssistantTimings) {
+	previous := t.caseAssistantTimings
+	if current.WaitMS >= previous.WaitMS {
+		t.assistantTimings.WaitMS += current.WaitMS - previous.WaitMS
+	}
+	if current.StreamMS >= previous.StreamMS {
+		t.assistantTimings.StreamMS += current.StreamMS - previous.StreamMS
+	}
+	if current.TotalMS >= previous.TotalMS {
+		t.assistantTimings.TotalMS += current.TotalMS - previous.TotalMS
+	}
+	if current.ToolMS >= previous.ToolMS {
+		t.assistantTimings.ToolMS += current.ToolMS - previous.ToolMS
+	}
+	t.caseAssistantTimings = current
+}
+
+func assistantTimingsNonNegative(value FlowAssistantTimings) bool {
+	return value.WaitMS >= 0 && value.StreamMS >= 0 && value.TotalMS >= 0 && value.ToolMS >= 0
 }
 
 func addFlowPhaseTiming(timings *FlowPhaseTimings, phase string, duration int64) {

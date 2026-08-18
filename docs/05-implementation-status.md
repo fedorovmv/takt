@@ -251,6 +251,9 @@ and list each assistant step with model, tokens and durable-event wall time. Old
 without node timing remain readable and show unavailable duration. A separate
 assistant-session table exposes the full durable Session ID for each execution,
 including attempt/provider-attempt and fresh/resume mode.
+When a checkpointed report is followed by a terminal progress failure, stats keeps
+the report details, preserves `status=failed`, and sets `complete` from whether
+all planned runs reached final results.
 Команда `eval stats` также определяет одну основную причину отказа для каждого
 сценария. Команды `eval inspect` и
 `make eval-inspect RUN=... [CASE=...] [REPEAT=...]` выполняют

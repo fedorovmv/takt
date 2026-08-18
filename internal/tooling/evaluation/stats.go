@@ -198,6 +198,37 @@ func ApplyLiveProgressStats(stats *EvaluationStats, progress FlowProgress, now t
 		stats.Current = &current
 	}
 	stats.Timings = cloneFlowRuntimeTimings(progress.Runtime.Timings)
+	if stats.Timings != nil && progress.Status == "running" {
+		if progress.Current != nil && !progress.Current.PhaseStartedAt.IsZero() {
+			if activeMS := now.Sub(progress.Current.PhaseStartedAt).Milliseconds(); activeMS > 0 {
+				addFlowPhaseTiming(&stats.Timings.Phases, progress.Current.Phase, activeMS)
+			}
+		}
+		for _, activity := range progress.Runtime.AssistantActivity {
+			if activity.State != "awaiting_response" {
+				continue
+			}
+			if activeMS := now.Sub(activity.Since).Milliseconds(); activeMS > 0 {
+				stats.Timings.Assistant.WaitMS += activeMS
+			}
+		}
+	}
+}
+
+func ApplyProgressStatus(stats *EvaluationStats, progress FlowProgress) {
+	if stats == nil {
+		return
+	}
+	stats.Status = progress.Status
+	stats.Complete = progress.Status != "running" && progress.CompletedRuns >= progress.TotalRuns
+	stats.TotalRuns = progress.TotalRuns
+	stats.CompletedRuns = progress.CompletedRuns
+	stats.Current = nil
+	if progress.Current != nil {
+		current := *progress.Current
+		stats.Current = &current
+	}
+	stats.Timings = cloneFlowRuntimeTimings(progress.Runtime.Timings)
 }
 
 func cloneFlowRuntimeTimings(value *FlowRuntimeTimings) *FlowRuntimeTimings {
