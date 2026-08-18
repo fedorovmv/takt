@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## v0.1.59-alpha
+
+- `code:feature-development` is now outcome-gated: a strict validation verdict
+  (`PASS`, `REPAIR`, or `BLOCKED`) controls delivery, with at most one repair,
+  independent revalidation, durable review evidence, fail-closed PR/summary
+  artifacts, and exactly one successful PR receipt in evaluation fixtures.
+- Mini-du validator 3 adds `hardlink_multiple` and `double_dash_default`.
+  Validator-3 evaluations are generation v2 and must not be compared with
+  registry-old generation v0 or validator-2 generation v1. Hook retry session
+  authoring now accepts only `fresh`/`resume` with `action: retry`.
+- Product version is `0.1.59-alpha`; the bundled `code` profile is `0.19.0`.
+
 ## v0.1.58-alpha
 
 - `code:feature-development` now fails its implementation hook when the

@@ -1,6 +1,6 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.58-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.59-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
 ## Provider availability recovery — реализовано
 
@@ -49,11 +49,16 @@
   итерации `N > 1`, а retry session определяется `attempts.retry_session`; case
   patterns и expanded loop paths не дублируют parent namespace.
 
-## Deterministic Development Flow Acceptance — реализовано после v0.1.57
+## Outcome-gated Development Flow Acceptance — реализовано в v0.1.59
 
-- профиль `code` 0.18.0 требует user-owned `allowed_paths` для `plan-to-pr`;
+- профиль `code` 0.19.0 требует user-owned `allowed_paths` для `plan-to-pr`;
 - native Git pathspec scope gate проверяет actual tracked/untracked state до draft PR и после review fixes;
 - PR, review и summary domain results закрыты workflow-level gates без новой runtime-абстракции;
+- `code:feature-development` принимает только строгий `validation.md` verdict: `PASS` продолжает flow, `REPAIR` разрешает ровно одну repair и независимую revalidation, `BLOCKED` делает safe stop;
+- initial/revalidation parsers fail-closed на missing, duplicate, malformed и binary-tainted control lines; producer assistant обязан быть `completed`;
+- acceptance gate сохраняет initial review evidence, требует review-fixes/revalidation artifacts после repair и не маскирует failure downstream узлов;
+- evaluation SCM fixture требует ровно один успешный `pr create` receipt (`calls.log` + `pr-count`); production SCM runs не изменены;
+- authoring/schema contract fail-closed проверяет `hook.on_failure.session`: только `fresh|resume` и только при `action: retry`;
 - Go E2E классифицирует happy path как `safe_success`, а missing artifact, false validation, blocked implementation, scope drift, blocked PR, unresolved review и incomplete summary — как `safe_stop`;
 - remote PR receipt/reconcile по-прежнему не заявляется: E2E сверяет assistant evidence с fake SCM.
 
@@ -252,10 +257,13 @@ correctness/reliability/efficiency and per-metric `BETTER|WORSE|SAME` direction,
 human resource deltas, presets/models and per-case transitions. Missing
 measurements are distinguished from non-comparable values. Make wrappers accept
 `RUN` and short `A`/`B` paths and never launch model runs implicitly.
-The mini-du validator v2 requires the explicit per-case CLI surface `-s`, `-k`,
+The mini-du validator v3 adds `hardlink_multiple` and `double_dash_default` to
+the oracle and requires the explicit per-case CLI surface `-s`, `-k`,
 `-H`, `-h`/`--help`, `--`, `-sk`/`-ks`/`-sH`, and fail-closed unknown options;
 the smoke target runs one case and the full feature target runs all three.
-`code:feature-development` gates its implementation retry on a non-empty regular
+Validator-3 runs are measurement generation v2; registry-old runs are v0 and
+the corrected-registry/validator-2 baseline is v1. Cross-generation trend
+comparisons are forbidden. `code:feature-development` gates its implementation retry on a non-empty regular
 `implementation.md` before starting review. The validator reports a missing
 record as `missing_artifact`, while option and missing-path diagnostics are
 checked by exit/stdout/stderr behavior without requiring host-specific text.
@@ -298,7 +306,7 @@ validated cases; zero denominators are shown as `n/a`.
 
 ## Предметные поставки
 
-- профиль `code` 0.18.0: 19 workflow, deterministic `plan-to-pr` acceptance и trusted block catalog;
+- профиль `code` 0.19.0: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
 - Route DSL examples/eval corpus;
 - authoring skill;
 - multi-repo/reference fake adapters.

@@ -1,4 +1,4 @@
-# Takt code profile 0.18.0
+# Takt code profile 0.19.0
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -69,6 +69,20 @@ the exact output `WORKFLOW_ACCEPTED` only when all required evidence is present.
 This proves the local workflow gates and persisted artifacts. The current
 assistant-driven `gh` phase does not provide provider-independent remote receipt
 or reconciliation; the E2E suite cross-checks it against fake SCM state.
+
+## Outcome-gated feature delivery
+
+`code:feature-development` accepts a completed implementation only after an
+independent validation command writes `validation.md` with exactly one control
+line: `verdict: PASS`, `REPAIR`, or `BLOCKED`. `PASS` means no actionable
+findings, `REPAIR` means fixable in-scope findings, and `BLOCKED` means a safe
+repair is impossible. A `REPAIR` verdict enables exactly one repair node and an
+independent revalidation; only `REPAIR` followed by a `verdict: PASS` from
+revalidation may
+continue. The flow then requires non-empty review, PR, URL, and summary
+artifacts. Evaluation fixtures additionally require exactly one successful
+`gh pr create` receipt; ordinary production SCM runs keep their provider-native
+side effects.
 
 ## Configuration
 

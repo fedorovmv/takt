@@ -159,7 +159,7 @@ func TestCodeProfileCatalogContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(version)) != "0.18.0" {
+	if strings.TrimSpace(string(version)) != "0.19.0" {
 		t.Fatalf("profile version=%q", version)
 	}
 	requireFileContains(t, filepath.Join(base, "profile.yaml"), "router:", "block_packages:", "format: markdown", "preserve_path: true")
@@ -167,6 +167,21 @@ func TestCodeProfileCatalogContract(t *testing.T) {
 	requireFileContains(t, filepath.Join(base, "workflows", "plan-to-pr.yaml"), "allowed_paths:", "scope-check", "PR_RESULT_ACCEPTED", "WORKFLOW_ACCEPTED")
 	requireFileContains(t, filepath.Join(base, "commands", "route-workflow.md"), "Never infer `allowed_paths`", "otherwise select `assist`")
 	requireFileContains(t, filepath.Join(base, "README.md"), "`allowed_paths`", "WORKFLOW_ACCEPTED")
+	featureWorkflowPath := filepath.Join(base, "workflows", "feature-development.yaml")
+	requireFileContains(t, featureWorkflowPath,
+		"- id: initial-verdict", "- id: repair", "- id: revalidate-agent",
+		"- id: revalidation-verdict", "when: $initial-verdict.output == \"REPAIR\"",
+		"verdict: PASS", "verdict: REPAIR", "verdict: BLOCKED",
+		"- id: pr-effect-gate", "require-pr", "allow_failure: true")
+	featureWorkflow, err := os.ReadFile(featureWorkflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"repair", "revalidate-agent", "revalidation-verdict", "pr-effect-gate"} {
+		if got := strings.Count(string(featureWorkflow), "- id: "+id); got != 1 {
+			t.Fatalf("feature workflow node %s count=%d", id, got)
+		}
+	}
 	workflows := []string{"assist", "fix-github-issue", "create-issue", "issue-review-full", "piv-loop", "idea-to-pr", "plan-to-pr", "feature-development", "adversarial-dev", "smart-pr-review", "comprehensive-pr-review", "validate-pr", "architect", "refactor-safely", "interactive-prd", "ralph-dag", "workflow-builder", "remotion-generate", "resolve-conflicts"}
 	for _, name := range workflows {
 		takt(t, nil, "validate", "code:"+name, "--workspace", project, "--json").RequireSuccess(t)
