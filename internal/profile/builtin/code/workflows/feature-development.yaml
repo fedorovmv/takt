@@ -41,7 +41,11 @@ nodes:
       printf '%s\n' 'validation verdict artifact missing' >&2
       exit 1
     fi
-    exec awk '
+    if ! LC_ALL=C tr -d '\\000' < "$artifact" | cmp -s - "$artifact"; then
+      printf '%s\n' 'invalid validation verdict: binary data' >&2
+      exit 1
+    fi
+    verdict=$(awk '
       /^verdict:/ {
         declared++
         if ($0 == "verdict: PASS") verdict = "PASS"
@@ -50,10 +54,14 @@ nodes:
         else invalid = 1
       }
       END {
-        if (declared != 1 || invalid) exit 1
+        if (declared != 1 || invalid || verdict == "") exit 1
         printf "%s", verdict
       }
-    ' "$artifact"
+    ' "$artifact") || {
+      printf '%s\n' 'invalid validation verdict' >&2
+      exit 1
+    }
+    printf '%s' "$verdict"
 - id: repair
   depends_on:
   - initial-verdict
@@ -81,7 +89,11 @@ nodes:
       printf '%s\n' 'revalidation verdict artifact missing' >&2
       exit 1
     fi
-    exec awk '
+    if ! LC_ALL=C tr -d '\\000' < "$artifact" | cmp -s - "$artifact"; then
+      printf '%s\n' 'invalid revalidation verdict: binary data' >&2
+      exit 1
+    fi
+    verdict=$(awk '
       /^verdict:/ {
         declared++
         if ($0 == "verdict: PASS") verdict = "PASS"
@@ -90,10 +102,14 @@ nodes:
         else invalid = 1
       }
       END {
-        if (declared != 1 || invalid) exit 1
+        if (declared != 1 || invalid || verdict == "") exit 1
         printf "%s", verdict
       }
-    ' "$artifact"
+    ' "$artifact") || {
+      printf '%s\n' 'invalid revalidation verdict' >&2
+      exit 1
+    }
+    printf '%s' "$verdict"
 - id: review-acceptance-gate
   depends_on:
   - initial-verdict
