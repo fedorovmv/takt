@@ -14,10 +14,7 @@ nodes:
     after_node:
     - id: validation
       bash: |
-        if [ ! -f "$ARTIFACTS_DIR/implementation.md" ] || [ ! -s "$ARTIFACTS_DIR/implementation.md" ]; then
-          printf '%s\n' 'missing required artifact: implementation.md' >&2
-          exit 1
-        fi
+        ./.takt/profiles/code/tools/require-artifacts "$ARTIFACTS_DIR/implementation.md"
         exec ./.takt/profiles/code/tools/validate
       on_failure:
         action: retry
@@ -36,32 +33,7 @@ nodes:
       printf '%s\n' 'validation producer did not complete' >&2
       exit 1
     fi
-    artifact="$ARTIFACTS_DIR/validation.md"
-    if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
-      printf '%s\n' 'validation verdict artifact missing' >&2
-      exit 1
-    fi
-    if ! LC_ALL=C tr -d '\000' < "$artifact" | cmp -s - "$artifact"; then
-      printf '%s\n' 'invalid validation verdict: binary data' >&2
-      exit 1
-    fi
-    verdict=$(awk '
-      /^verdict:/ {
-        declared++
-        if ($0 == "verdict: PASS") verdict = "PASS"
-        else if ($0 == "verdict: REPAIR") verdict = "REPAIR"
-        else if ($0 == "verdict: BLOCKED") verdict = "BLOCKED"
-        else invalid = 1
-      }
-      END {
-        if (declared != 1 || invalid || verdict == "") exit 1
-        printf "%s", verdict
-      }
-    ' "$artifact") || {
-      printf '%s\n' 'invalid validation verdict' >&2
-      exit 1
-    }
-    printf '%s' "$verdict"
+    exec ./.takt/profiles/code/tools/require-verdict "$ARTIFACTS_DIR/validation.md" validation
 - id: repair
   depends_on:
   - initial-verdict
@@ -84,32 +56,7 @@ nodes:
       printf '%s\n' 'revalidation producer did not complete' >&2
       exit 1
     fi
-    artifact="$ARTIFACTS_DIR/revalidation.md"
-    if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
-      printf '%s\n' 'revalidation verdict artifact missing' >&2
-      exit 1
-    fi
-    if ! LC_ALL=C tr -d '\000' < "$artifact" | cmp -s - "$artifact"; then
-      printf '%s\n' 'invalid revalidation verdict: binary data' >&2
-      exit 1
-    fi
-    verdict=$(awk '
-      /^verdict:/ {
-        declared++
-        if ($0 == "verdict: PASS") verdict = "PASS"
-        else if ($0 == "verdict: REPAIR") verdict = "REPAIR"
-        else if ($0 == "verdict: BLOCKED") verdict = "BLOCKED"
-        else invalid = 1
-      }
-      END {
-        if (declared != 1 || invalid || verdict == "") exit 1
-        printf "%s", verdict
-      }
-    ' "$artifact") || {
-      printf '%s\n' 'invalid revalidation verdict' >&2
-      exit 1
-    }
-    printf '%s' "$verdict"
+    exec ./.takt/profiles/code/tools/require-verdict "$ARTIFACTS_DIR/revalidation.md" revalidation
 - id: review-acceptance-gate
   depends_on:
   - initial-verdict
@@ -117,12 +64,9 @@ nodes:
   - revalidation-verdict
   trigger_rule: all_done
   bash: |
-    if [ ! -f "$ARTIFACTS_DIR/validation.md" ] || [ -L "$ARTIFACTS_DIR/validation.md" ] || [ ! -s "$ARTIFACTS_DIR/validation.md" ]; then
-      printf '%s\n' 'validation artifact missing' >&2
-      exit 1
-    fi
+    ./.takt/profiles/code/tools/require-artifacts "$ARTIFACTS_DIR/validation.md"
     if [ $initial-verdict.output? = "PASS" ] || \
-      { [ $initial-verdict.output? = "REPAIR" ] && [ $revalidation-verdict.output? = "PASS" ] && [ -f "$ARTIFACTS_DIR/review-fixes.md" ] && [ ! -L "$ARTIFACTS_DIR/review-fixes.md" ] && [ -s "$ARTIFACTS_DIR/review-fixes.md" ] && [ -f "$ARTIFACTS_DIR/revalidation.md" ] && [ ! -L "$ARTIFACTS_DIR/revalidation.md" ] && [ -s "$ARTIFACTS_DIR/revalidation.md" ]; }; then
+      { [ $initial-verdict.output? = "REPAIR" ] && [ $revalidation-verdict.output? = "PASS" ] && ./.takt/profiles/code/tools/require-artifacts "$ARTIFACTS_DIR/review-fixes.md" "$ARTIFACTS_DIR/revalidation.md"; }; then
       printf '%s' 'REVIEW_ACCEPTED'
       exit 0
     fi
@@ -146,12 +90,7 @@ nodes:
       printf '%s\n' 'PR producer did not complete' >&2
       exit 1
     fi
-    for artifact in "$ARTIFACTS_DIR/pr.md" "$ARTIFACTS_DIR/pr-url.txt"; do
-      if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
-        printf 'missing required PR artifact: %s\n' "$artifact" >&2
-        exit 1
-      fi
-    done
+    ./.takt/profiles/code/tools/require-artifacts "$ARTIFACTS_DIR/pr.md" "$ARTIFACTS_DIR/pr-url.txt"
     exec ./.takt/profiles/code/tools/require-pr
 - id: summary
   depends_on:
@@ -162,11 +101,7 @@ nodes:
     after_node:
     - id: summary-artifact
       bash: |
-        artifact="$ARTIFACTS_DIR/summary.md"
-        if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
-          printf '%s\n' 'missing required artifact: summary.md' >&2
-          exit 1
-        fi
+        ./.takt/profiles/code/tools/require-artifacts "$ARTIFACTS_DIR/summary.md"
 name: feature-development
 description: Implement a feature from an existing plan, validate it deterministically,
   and create a pull request.

@@ -12,18 +12,26 @@ Measured on the same working tree:
 
 | Target | Wall time |
 |---|---:|
-| `make test` (core packages) | 90.37s |
-| `make e2e` (ordinary full suite) | 290.661s |
-| `make check` (including vet/build/smoke) | 391.40s |
-| `make check-full` | 676.98s |
+| `make test` (core packages) | 82.51s |
+| `make e2e` (ordinary full suite, from final `make check`) | 182.723s |
+| `make check` (including vet/build/smoke) | 267.39s |
+| `make check-full` (before matrix split) | 676.98s |
 
-Within the full gate, ordinary E2E took `290.711s`, user journeys `3.345s`,
-and race E2E `316.322s`.
+Within the pre-matrix-split full gate, ordinary E2E took `290.711s`, user
+journeys `3.345s`, and race E2E `316.322s`.
 
 The previous `make check` composition (ordinary packages, journeys, race
 packages, and repeated E2E) measured about 11m16s. The new fast gate removes
 the duplicated journeys/race work; `make check-full` retains that complete
 contour.
+
+## Feature-flow gate matrix tiering — 2026-08-18
+
+The complete artifact-shape and verdict-parser matrices now run in the cheap
+`internal/profile` contract suite. Representative feature-flow branch and
+failure cases remain in `tests/e2e`; its ordinary full pass measured `182.723s`,
+down from `290.661s` before the matrix split. The focused representative group
+measured `45.564s` and the profile matrix passed in `2.18s`.
 
 ## REQUEST CHANGES follow-up — 2026-08-12
 

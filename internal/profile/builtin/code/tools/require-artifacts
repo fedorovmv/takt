@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+set -eu
+
+if [ "$#" -eq 0 ]; then
+  printf '%s\n' 'at least one artifact path is required' >&2
+  exit 2
+fi
+
+for artifact in "$@"; do
+  if [ ! -f "$artifact" ] || [ -L "$artifact" ] || [ ! -s "$artifact" ]; then
+    printf 'required non-empty regular artifact missing: %s\n' "$artifact" >&2
+    exit 1
+  fi
+done

@@ -6,10 +6,13 @@
   checks, and the feature-flow PR receipt gate accepts at least one successful
   `gh pr create` instead of rejecting duplicate receipts from one assistant
   execution. Product version is `0.1.61-alpha`; the bundled `code` profile is
-  `0.19.1`.
+  `0.19.2`.
 - Test gates are tiered: `make check` runs core tests, one ordinary E2E, build,
   and TypeScript smoke; `make check-full`/`scripts/verify.sh` retain the full
   ordinary/race package suite and user journeys.
+- Feature-flow artifact and verdict checks now use shared profile tools. Their
+  complete missing/empty/directory and parser-failure matrices run as cheap Go
+  profile contracts; full-flow E2E keeps representative branch/failure cases.
 
 ## v0.1.60-alpha
 

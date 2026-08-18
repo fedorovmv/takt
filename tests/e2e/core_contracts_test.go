@@ -159,7 +159,7 @@ func TestCodeProfileCatalogContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(version)) != "0.19.1" {
+	if strings.TrimSpace(string(version)) != "0.19.2" {
 		t.Fatalf("profile version=%q", version)
 	}
 	requireFileContains(t, filepath.Join(base, "profile.yaml"), "router:", "block_packages:", "format: markdown", "preserve_path: true")
@@ -171,8 +171,7 @@ func TestCodeProfileCatalogContract(t *testing.T) {
 	requireFileContains(t, featureWorkflowPath,
 		"- id: initial-verdict", "- id: repair", "- id: revalidate-agent",
 		"- id: revalidation-verdict", "when: $initial-verdict.output == \"REPAIR\"",
-		"verdict: PASS", "verdict: REPAIR", "verdict: BLOCKED",
-		"- id: pr-effect-gate", "require-pr", "allow_failure: true")
+		"require-verdict", "require-artifacts", "- id: pr-effect-gate", "require-pr", "allow_failure: true")
 	featureWorkflow, err := os.ReadFile(featureWorkflowPath)
 	if err != nil {
 		t.Fatal(err)

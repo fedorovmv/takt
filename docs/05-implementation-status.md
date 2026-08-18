@@ -12,6 +12,18 @@
   release contour, а `make journeys` остаётся отдельным user-facing gate;
 - live `eval-*` цели не входят в автоматические проверки.
 
+## Feature-flow gate matrix tiering — реализовано в v0.1.61
+
+- `require-artifacts` и `require-verdict` являются общими executable tools
+  профиля `code`; `feature-development` сохраняет прежние node/branch
+  semantics и вызывает их из YAML;
+- полные формы artifact и strict verdict parser cases проверяются в
+  `internal/profile`, а full-flow E2E оставляет representative scheduler и
+  downstream-gate сценарии;
+- обычный `tests/e2e` после переноса матриц сократился с `290.661s` до
+  `182.723s` внутри финального `make check`, а весь быстрый gate — до
+  `267.39s`.
+
 ## Evaluation progress timings — реализовано в v0.1.60
 
 - `progress.json` сохраняет фазовые тайминги `prepare`, `validator_preflight`,
@@ -73,7 +85,7 @@
 
 ## Outcome-gated Development Flow Acceptance — реализовано в v0.1.59
 
-- профиль `code` 0.19.1 требует user-owned `allowed_paths` для `plan-to-pr`;
+- профиль `code` 0.19.2 требует user-owned `allowed_paths` для `plan-to-pr`;
 - native Git pathspec scope gate проверяет actual tracked/untracked state до draft PR и после review fixes;
 - PR, review и summary domain results закрыты workflow-level gates без новой runtime-абстракции;
 - `code:feature-development` принимает только строгий `validation.md` verdict: `PASS` продолжает flow, `REPAIR` разрешает ровно одну repair и независимую revalidation, `BLOCKED` делает safe stop;
@@ -335,7 +347,7 @@ zero denominators are shown as `n/a`.
 
 ## Предметные поставки
 
-- профиль `code` 0.19.1: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
+- профиль `code` 0.19.2: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
 - Route DSL examples/eval corpus;
 - authoring skill;
 - multi-repo/reference fake adapters.
