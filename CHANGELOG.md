@@ -7,9 +7,10 @@
   `gh pr create` instead of rejecting duplicate receipts from one assistant
   execution. Product version is `0.1.61-alpha`; the bundled `code` profile is
   `0.19.2`.
-- Test gates are tiered: `make check` runs core tests, one ordinary E2E, build,
-  and TypeScript smoke; `make check-full`/`scripts/verify.sh` retain the full
-  ordinary/race package suite and user journeys.
+- Test gates are tiered: `make check` compiles all Go packages, runs focused
+  architecture/profile/parser contracts, build, and TypeScript smoke; the
+  ordinary E2E and full ordinary/race package suite remain in
+  `make check-full`/`scripts/verify.sh`.
 - Feature-flow artifact and verdict checks now use shared profile tools. Their
   complete missing/empty/directory and parser-failure matrices run as cheap Go
   profile contracts; full-flow E2E keeps representative branch/failure cases.

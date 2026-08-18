@@ -84,11 +84,11 @@ make race-all    # все Go packages под -race
 make e2e         # black-box Go E2E
 make e2e-race    # E2E под -race
 make smoke       # TypeScript host compiler smoke
-make check       # быстрый fmt + vet + core + E2E + build + smoke
+make check       # быстрый fmt + vet + compile-all + focused contracts + build + smoke
 make check-full  # полный обычный/race suite + journeys
 ```
 
-`go test ./...` является источником истины для product correctness. Smoke слой не должен повторно реализовывать business semantics, которые доступны через Go API/test harness. `make check` запускает обычный E2E один раз; `make check-full` и `scripts/verify.sh` добавляют полный package/race прогон и отдельный user-journey gate.
+`go test ./...` является источником истины для product correctness. Smoke слой не должен повторно реализовывать business semantics, которые доступны через Go API/test harness. Быстрый `make check` компилирует весь граф и запускает только короткие контракты; `make check-full` и `scripts/verify.sh` добавляют полный package/race прогон, E2E и отдельный user-journey gate.
 
 `make test`, `make test-all`, `make race`, `make race-all` и `scripts/verify.sh` ограничивают package parallelism значением `8` по умолчанию (`GO_TEST_P` можно переопределить), потому что process-heavy E2E и adapter suites при неограниченной конкуренции создавали нестабильное время release gate. Это ограничение orchestration, а не отдельная тестовая семантика.
 

@@ -80,7 +80,7 @@ make route-benchmark
 остаётся отдельной командой:
 
 ```bash
-make check        # core tests + полный обычный E2E + build + TypeScript smoke
+make check        # compile all Go packages + focused contracts + build + TypeScript smoke (<1m)
 make check-full   # полный обычный и race-пакетный прогон + journeys
 make test         # core Go packages, без tests/e2e
 make test-all     # все Go packages, включая tests/e2e
@@ -100,7 +100,7 @@ make smoke
 # release targets default to GO_TEST_P=8; override if the host has a different safe capacity
 ```
 
-Он проверяет TypeScript host integration через реальную TypeScript toolchain. Process/package/host/deep-workflow boundaries находятся в bounded Go E2E. Allowlist закреплён в `internal/architecture`; новый shell test требует отдельного архитектурного обоснования. Быстрый gate — `make check`, полный release gate — `make check-full` или `./scripts/verify.sh`.
+Он проверяет TypeScript host integration через реальную TypeScript toolchain. Process/package/host/deep-workflow boundaries находятся в bounded Go E2E. Allowlist закреплён в `internal/architecture`; новый shell test требует отдельного архитектурного обоснования. Быстрый gate — `make check` (без process-heavy E2E, обычно менее минуты), полный release gate — `make check-full` или `./scripts/verify.sh`.
 
 Реальные live Pi/OpenCode/credentials smoke и production quality benchmark выполняются отдельно и не подменяются deterministic release fixtures.
 

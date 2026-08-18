@@ -1,29 +1,25 @@
 # Takt v0.1.57-alpha — TEST RESULTS
 
-## Test suite tiering — 2026-08-18
+## Fast developer gate — 2026-08-18
 
-The developer gate is now intentionally smaller: `make check` runs core Go
-packages, one ordinary `tests/e2e` pass, build, and the TypeScript smoke. The
-complete ordinary/race package suite and the separate user-journey gate remain
-available through `make check-full` or `./scripts/verify.sh`. Live `eval-*`
-targets remain opt-in.
+The persistent developer gate is now bounded to one minute: `make check`
+compiles every Go package, runs focused architecture/profile/parser contracts,
+builds the CLI, and runs the TypeScript smoke. Process-heavy E2E and the
+complete ordinary/race package suite remain available through `make check-full`
+or `./scripts/verify.sh`. Live `eval-*` targets remain opt-in.
 
 Measured on the same working tree:
 
 | Target | Wall time |
 |---|---:|
-| `make test` (core packages) | 82.51s |
-| `make e2e` (ordinary full suite, from final `make check`) | 182.723s |
-| `make check` (including vet/build/smoke) | 267.39s |
+| `make check` (compile-all + focused contracts + vet/build/smoke) | 27.90s |
+| `make test` (core packages, reference) | 82.51s |
+| `make e2e` (ordinary full suite, reference) | 182.723s |
 | `make check-full` (before matrix split) | 676.98s |
 
-Within the pre-matrix-split full gate, ordinary E2E took `290.711s`, user
-journeys `3.345s`, and race E2E `316.322s`.
-
-The previous `make check` composition (ordinary packages, journeys, race
-packages, and repeated E2E) measured about 11m16s. The new fast gate removes
-the duplicated journeys/race work; `make check-full` retains that complete
-contour.
+The previous `make check` composition measured about 267s after the earlier
+tiering. The new fast gate removes all process-heavy E2E from the persistent
+path; `make check-full` retains the complete release contour.
 
 ## Feature-flow gate matrix tiering — 2026-08-18
 

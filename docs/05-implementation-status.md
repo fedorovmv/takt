@@ -6,8 +6,9 @@
 
 - `make test`/`make race` проверяют core Go packages без `tests/e2e`;
 - `make test-all`/`make race-all` явно запускают весь package suite;
-- `make check` выполняет один обычный E2E, build и TypeScript smoke без
-  повторного `journeys` и race-прогона;
+- `make check` компилирует все Go-пакеты, запускает короткие architecture/profile/parser
+  contracts, build и TypeScript smoke; process-heavy E2E не входит в этот
+  ежедневный шлюз;
 - `make check-full` и `scripts/verify.sh` сохраняют полный обычный/race
   release contour, а `make journeys` остаётся отдельным user-facing gate;
 - live `eval-*` цели не входят в автоматические проверки.

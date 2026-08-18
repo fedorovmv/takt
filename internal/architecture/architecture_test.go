@@ -518,3 +518,27 @@ func TestMakefileExposesLiveFlowEvaluationTargets(t *testing.T) {
 		}
 	}
 }
+
+func TestMakefileFastCheckExcludesProcessHeavySuites(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	if !strings.Contains(source, "test-fast:") {
+		t.Fatal("Makefile must expose the fast test target")
+	}
+	var checkLine string
+	for _, line := range strings.Split(source, "\n") {
+		if strings.HasPrefix(line, "check:") {
+			checkLine = line
+			break
+		}
+	}
+	if !strings.Contains(checkLine, "test-fast") {
+		t.Fatal("make check must use the fast test target")
+	}
+	if strings.Contains(checkLine, "e2e") || strings.Contains(source, "test-fast:\n\tgo test ./tests/e2e") {
+		t.Fatal("make check must not run process-heavy E2E suites")
+	}
+}

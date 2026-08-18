@@ -233,7 +233,8 @@ nodes:
 
 Approval/retry/subworkflow проходят теми же Run APIs и входят в отдельный
 `make journeys` gate. Для ежедневной проверки Takt используется быстрый
-`make check`; полный обычный/race прогон запускается через `make check-full`.
+`make check` (компиляция всех Go-пакетов и короткие контракты, обычно менее
+минуты); полный обычный/race прогон запускается через `make check-full`.
 
 Experimental Dynamic Flow и tooling evaluation остаются доступными, но не являются обязательной частью этого stable quick start.
 
@@ -450,7 +451,7 @@ Dynamic Takt сохраняет fingerprint каталога при preview. И�
 
 ## С чего продолжать разработку
 
-Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется обычным E2E внутри `make check`; race/full release coverage доступно через `make check-full`.
+Семантика runtime, process-протокол и специализированный Pi RPC adapter стабилизированы контрактными тестами. Воспроизводимый Route DSL end-to-end добавлен в `examples/route-dsl-e2e` и проверяется в полном контуре `make check-full`; быстрый `make check` оставляет E2E за пределами ежедневного шлюза.
 
 ### Переносимые пакеты
 
