@@ -127,7 +127,7 @@ func main() {
 func TestHardlinkMultipleRejectsPerArgumentInodeTracking(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "candidate")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\nfor arg; do du -k \"$arg\"; done\n"), 0755); err != nil {
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nif [ \"$#\" -eq 1 ]; then exec du -k \"$@\"; fi\nfor arg; do du -k \"$arg\"; done\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := compareScenario(bin, "hardlink_multiple"); err == nil {
