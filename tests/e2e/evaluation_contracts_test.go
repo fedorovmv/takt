@@ -576,16 +576,16 @@ func TestProductionFlowEvaluation(t *testing.T) {
 func TestProductionFlowEvaluationFeatureVerdictBranches(t *testing.T) {
 	fake := binary(t, "takt-fake-code-agent")
 	for _, tc := range []struct {
-		name, verdict string
-		wantRun       string
-		wantRepair    string
-		wantReval     string
+		name, verdict          string
+		wantRun, wantRepair    string
+		wantReval, wantVerdict string
+		wantGate, wantPR       string
 	}{
-		{"pass", "PASS", "completed", "skipped", "skipped"},
-		{"blocked", "BLOCKED", "failed", "skipped", "skipped"},
-		{"repair-pass", "REPAIR+PASS", "completed", "completed", "completed"},
-		{"repair-repair", "REPAIR+REPAIR", "failed", "completed", "completed"},
-		{"repair-blocked", "REPAIR+BLOCKED", "failed", "completed", "completed"},
+		{"pass", "PASS", "completed", "skipped", "skipped", "skipped", "completed", "completed"},
+		{"blocked", "BLOCKED", "failed", "skipped", "skipped", "skipped", "failed", "skipped"},
+		{"repair-pass", "REPAIR+PASS", "completed", "completed", "completed", "completed", "completed", "completed"},
+		{"repair-repair", "REPAIR+REPAIR", "failed", "completed", "completed", "completed", "failed", "skipped"},
+		{"repair-blocked", "REPAIR+BLOCKED", "failed", "completed", "completed", "completed", "failed", "skipped"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -604,18 +604,99 @@ func TestProductionFlowEvaluationFeatureVerdictBranches(t *testing.T) {
 				t.Fatalf("run status=%v report=%#v", run["status"], run)
 			}
 			nodes := run["nodes"].(map[string]any)
-			for id, want := range map[string]string{"repair": tc.wantRepair, "revalidate-agent": tc.wantReval} {
+			validateWant := "skipped"
+			if tc.wantRun == "completed" {
+				validateWant = "completed"
+			}
+			for id, want := range map[string]string{"repair": tc.wantRepair, "revalidate-agent": tc.wantReval, "revalidation-verdict": tc.wantVerdict, "review-acceptance-gate": tc.wantGate, "validate": validateWant, "create-pr": tc.wantPR} {
 				node, ok := flowNode(nodes, id)
 				if !ok || node["status"] != want {
 					t.Fatalf("node %q=%#v want=%s", id, node, want)
 				}
 			}
-			createPR, ok := flowNode(nodes, "create-pr")
-			if !ok {
-				t.Fatal("create-pr node missing")
+			repair, _ := flowNode(nodes, "repair")
+			revalidate, _ := flowNode(nodes, "revalidate-agent")
+			wantAttempts := float64(0)
+			if tc.wantRepair == "completed" {
+				wantAttempts = 1
 			}
-			if tc.wantRun == "failed" && createPR["status"] != "skipped" {
-				t.Fatalf("create-pr=%#v", createPR)
+			if repair["attempts"] != wantAttempts || revalidate["attempts"] != wantAttempts {
+				t.Fatalf("repair attempts=%v revalidate attempts=%v want=%v", repair["attempts"], revalidate["attempts"], wantAttempts)
+			}
+			evidence := filepath.Join(output, "cases", "smoke", "repeat-001")
+			for _, artifact := range []string{"review-fixes.md", "revalidation.md"} {
+				got := evidenceArtifactPresent(t, evidence, artifact)
+				want := tc.wantRepair == "completed"
+				if got != want {
+					t.Fatalf("artifact %s present=%v want=%v", artifact, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestProductionFlowEvaluationFeatureRevalidationVerdictFailures(t *testing.T) {
+	fake := binary(t, "takt-fake-code-agent")
+	slots := make(chan struct{}, 2)
+	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			root := t.TempDir()
+			suite := writeProductionFlowSuite(t, root, "code:feature-development", "repository", 0, "# Implement the smoke change\n", fake, map[string]string{"FAKE_FEATURE_VERDICT_KIND": "REPAIR+" + kind})
+			output := filepath.Join(t.TempDir(), "output")
+			result := takt(t, []string{"TAKT_PRODUCTION_FLOW_VALIDATOR=1"}, "eval", "flow", suite, "--output", output, "--keep-workspaces", "--json").RequireFailure(t)
+			run := resultObject(t, result.JSON(t))["runs"].([]any)[0].(map[string]any)
+			if run["status"] != "failed" {
+				t.Fatalf("run=%#v", run)
+			}
+			nodes := run["nodes"].(map[string]any)
+			for id, want := range map[string]string{"initial-verdict": "completed", "repair": "completed", "revalidate-agent": "completed", "revalidation-verdict": "failed", "review-acceptance-gate": "failed", "create-pr": "skipped"} {
+				node, ok := flowNode(nodes, id)
+				if !ok || node["status"] != want {
+					t.Fatalf("node %q=%#v want=%s", id, node, want)
+				}
+			}
+		})
+	}
+}
+
+func TestProductionFlowEvaluationFeatureRepairPhaseFailure(t *testing.T) {
+	fake := binary(t, "takt-fake-code-agent")
+	root := t.TempDir()
+	suite := writeProductionFlowSuite(t, root, "code:feature-development", "repository", 0, "# Implement the smoke change\n", fake, map[string]string{"FAKE_FEATURE_VERDICT_KIND": "REPAIR+PASS", "FAKE_FAIL_PHASE": "feature-repair"})
+	output := filepath.Join(t.TempDir(), "output")
+	result := takt(t, []string{"TAKT_PRODUCTION_FLOW_VALIDATOR=1"}, "eval", "flow", suite, "--output", output, "--keep-workspaces", "--json").RequireFailure(t)
+	run := resultObject(t, result.JSON(t))["runs"].([]any)[0].(map[string]any)
+	nodes := run["nodes"].(map[string]any)
+	for id, want := range map[string]string{"repair": "failed", "revalidate-agent": "skipped", "revalidation-verdict": "skipped", "review-acceptance-gate": "failed", "create-pr": "skipped"} {
+		node, ok := flowNode(nodes, id)
+		if !ok || node["status"] != want {
+			t.Fatalf("node %q=%#v want=%s", id, node, want)
+		}
+	}
+}
+
+func TestProductionFlowEvaluationFeatureReviewFixArtifactGates(t *testing.T) {
+	fake := binary(t, "takt-fake-code-agent")
+	slots := make(chan struct{}, 2)
+	for _, kind := range []string{"missing", "empty", "directory"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			root := t.TempDir()
+			suite := writeProductionFlowSuite(t, root, "code:feature-development", "repository", 0, "# Implement the smoke change\n", fake, map[string]string{"FAKE_FEATURE_VERDICT_KIND": "REPAIR+PASS", "FAKE_FLOW_ARTIFACT_KIND": "review-fixes.md:" + kind})
+			output := filepath.Join(t.TempDir(), "output")
+			result := takt(t, []string{"TAKT_PRODUCTION_FLOW_VALIDATOR=1"}, "eval", "flow", suite, "--output", output, "--keep-workspaces", "--json").RequireFailure(t)
+			run := resultObject(t, result.JSON(t))["runs"].([]any)[0].(map[string]any)
+			nodes := run["nodes"].(map[string]any)
+			for id, want := range map[string]string{"repair": "completed", "revalidate-agent": "completed", "revalidation-verdict": "completed", "review-acceptance-gate": "failed", "create-pr": "skipped"} {
+				node, ok := flowNode(nodes, id)
+				if !ok || node["status"] != want {
+					t.Fatalf("node %q=%#v want=%s", id, node, want)
+				}
 			}
 		})
 	}
@@ -879,14 +960,21 @@ func unquoteGHCall(t *testing.T, line string) []string {
 
 func requireEvidenceArtifact(t *testing.T, evidence, baseName string) {
 	t.Helper()
+	if !evidenceArtifactPresent(t, evidence, baseName) {
+		t.Fatalf("artifact %q absent from evidence", baseName)
+	}
+}
+
+func evidenceArtifactPresent(t *testing.T, evidence, baseName string) bool {
+	t.Helper()
 	manifest := decodeJSONFile(t, filepath.Join(evidence, "artifacts", "manifest.json"))
 	for _, raw := range manifest["artifacts"].([]any) {
 		artifact := raw.(map[string]any)
 		if strings.HasSuffix(artifact["source_path"].(string), "/"+baseName) {
-			return
+			return true
 		}
 	}
-	t.Fatalf("artifact %q absent from %#v", baseName, manifest)
+	return false
 }
 
 func TestFlowInventory(t *testing.T) {

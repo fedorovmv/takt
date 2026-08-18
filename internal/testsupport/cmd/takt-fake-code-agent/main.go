@@ -362,6 +362,17 @@ func writeFeatureArtifact(phase, path string) error {
 		return err
 	}
 	if phase == "feature-repair" {
+		modeName, modeKind, _ := strings.Cut(strings.TrimSpace(os.Getenv("FAKE_FLOW_ARTIFACT_KIND")), ":")
+		if modeName == "review-fixes.md" {
+			switch modeKind {
+			case "missing":
+				return nil
+			case "empty":
+				return os.WriteFile(path, nil, 0o644)
+			case "directory":
+				return os.MkdirAll(path, 0o755)
+			}
+		}
 		return os.WriteFile(path, []byte("fixture review fixes\n"), 0o644)
 	}
 	kind := strings.ToLower(strings.TrimSpace(os.Getenv("FAKE_FEATURE_VERDICT_KIND")))
@@ -389,6 +400,16 @@ func writeFeatureArtifact(phase, path string) error {
 		return os.WriteFile(path, []byte("verdict: PASS\n"), 0o644)
 	}
 	if phase == "feature-revalidation" && len(parts) > 1 {
+		switch strings.ToLower(strings.TrimSpace(parts[1])) {
+		case "missing":
+			return nil
+		case "unknown":
+			return os.WriteFile(path, []byte("verdict: MAYBE\n"), 0o644)
+		case "malformed":
+			return os.WriteFile(path, []byte("verdict: PASS extra\n"), 0o644)
+		case "duplicate":
+			return os.WriteFile(path, []byte("verdict: PASS\nverdict: PASS\n"), 0o644)
+		}
 		index = 1
 	}
 	verdict := strings.ToUpper(strings.TrimSpace(parts[index]))

@@ -88,7 +88,7 @@ nodes:
   trigger_rule: all_done
   bash: |
     if [ $initial-verdict.output? = "PASS" ] || \
-      { [ $initial-verdict.output? = "REPAIR" ] && [ $revalidation-verdict.output? = "PASS" ] && [ -s "$ARTIFACTS_DIR/review-fixes.md" ] && [ -s "$ARTIFACTS_DIR/revalidation.md" ]; }; then
+      { [ $initial-verdict.output? = "REPAIR" ] && [ $revalidation-verdict.output? = "PASS" ] && [ -f "$ARTIFACTS_DIR/review-fixes.md" ] && [ ! -L "$ARTIFACTS_DIR/review-fixes.md" ] && [ -s "$ARTIFACTS_DIR/review-fixes.md" ] && [ -f "$ARTIFACTS_DIR/revalidation.md" ] && [ ! -L "$ARTIFACTS_DIR/revalidation.md" ] && [ -s "$ARTIFACTS_DIR/revalidation.md" ]; }; then
       printf '%s' 'REVIEW_ACCEPTED'
       exit 0
     fi
