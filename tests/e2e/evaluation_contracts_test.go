@@ -638,7 +638,7 @@ func TestProductionFlowEvaluationFeatureVerdictBranches(t *testing.T) {
 func TestProductionFlowEvaluationFeatureRevalidationVerdictFailures(t *testing.T) {
 	fake := binary(t, "takt-fake-code-agent")
 	slots := make(chan struct{}, 2)
-	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate"} {
+	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate", "nul"} {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
 			slots <- struct{}{}
@@ -731,7 +731,7 @@ func TestProductionFlowEvaluationFeatureReviewFixArtifactGates(t *testing.T) {
 
 func TestProductionFlowEvaluationFeatureVerdictParserFailures(t *testing.T) {
 	fake := binary(t, "takt-fake-code-agent")
-	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate"} {
+	for _, kind := range []string{"missing", "unknown", "malformed", "duplicate", "nul"} {
 		t.Run(kind, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
@@ -1117,6 +1117,17 @@ func TestFlowInventory(t *testing.T) {
 	}
 	if !strings.Contains(featurePREffect.Bash, "$create-pr.status?") {
 		t.Fatalf("feature pr-effect-gate does not require create-pr completion: %q", featurePREffect.Bash)
+	}
+	var featureReviewGate *spec.Node
+	for index := range loaded["feature-development.yaml"].Nodes {
+		node := &loaded["feature-development.yaml"].Nodes[index]
+		if node.ID == "review-acceptance-gate" {
+			featureReviewGate = node
+			break
+		}
+	}
+	if featureReviewGate == nil || !strings.Contains(featureReviewGate.Bash, "$ARTIFACTS_DIR/validation.md") {
+		t.Fatalf("feature review gate does not re-check validation.md: %+v", featureReviewGate)
 	}
 	command, err := runtime.NewCommandResolver(filepath.Join(repoRoot, "internal", "profile", "builtin", "code", "workflows", "review-block.yaml"), repoRoot, repoRoot).Resolve("review-intake")
 	if err != nil {

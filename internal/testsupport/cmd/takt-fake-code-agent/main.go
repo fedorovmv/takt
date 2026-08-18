@@ -389,6 +389,9 @@ func writeFeatureArtifact(phase, path string) error {
 	if kind == "unknown" {
 		return os.WriteFile(path, []byte("verdict: MAYBE\n"), 0o644)
 	}
+	if kind == "nul" {
+		return os.WriteFile(path, []byte("verdict: PASS\x00\n"), 0o644)
+	}
 	if kind == "malformed" {
 		return os.WriteFile(path, []byte("verdict: PASS extra\n"), 0o644)
 	}
@@ -404,6 +407,10 @@ func writeFeatureArtifact(phase, path string) error {
 	}
 	index := 0
 	if phase == "feature-revalidation" && len(parts) == 1 {
+		verdict := strings.ToUpper(strings.TrimSpace(parts[0]))
+		if verdict != "PASS" && verdict != "REPAIR" && verdict != "BLOCKED" {
+			return os.WriteFile(path, []byte("verdict: MAYBE\n"), 0o644)
+		}
 		return os.WriteFile(path, []byte("verdict: PASS\n"), 0o644)
 	}
 	if phase == "feature-revalidation" && len(parts) > 1 {
@@ -416,6 +423,8 @@ func writeFeatureArtifact(phase, path string) error {
 			return os.WriteFile(path, []byte("verdict: PASS extra\n"), 0o644)
 		case "duplicate":
 			return os.WriteFile(path, []byte("verdict: PASS\nverdict: PASS\n"), 0o644)
+		case "nul":
+			return os.WriteFile(path, []byte("verdict: PASS\x00\n"), 0o644)
 		case "extra":
 			return os.WriteFile(path, []byte("# Revalidation evidence\nnote\nverdict: PASS\n"), 0o644)
 		}
@@ -423,7 +432,7 @@ func writeFeatureArtifact(phase, path string) error {
 	}
 	verdict := strings.ToUpper(strings.TrimSpace(parts[index]))
 	if verdict != "PASS" && verdict != "REPAIR" && verdict != "BLOCKED" {
-		verdict = "PASS"
+		verdict = "MAYBE"
 	}
 	return os.WriteFile(path, []byte("verdict: "+verdict+"\n"), 0o644)
 }

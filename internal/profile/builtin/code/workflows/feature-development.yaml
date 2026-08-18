@@ -41,16 +41,19 @@ nodes:
       printf '%s\n' 'validation verdict artifact missing' >&2
       exit 1
     fi
-    line="$(awk '/^verdict:/ { declared++; print } END { if (declared != 1) exit 1 }' "$artifact")" || {
-      printf '%s\n' 'invalid validation verdict' >&2
-      exit 1
-    }
-    case "$line" in
-      'verdict: PASS') printf '%s' 'PASS' ;;
-      'verdict: REPAIR') printf '%s' 'REPAIR' ;;
-      'verdict: BLOCKED') printf '%s' 'BLOCKED' ;;
-      *) printf '%s\n' 'invalid validation verdict' >&2; exit 1 ;;
-    esac
+    exec awk '
+      /^verdict:/ {
+        declared++
+        if ($0 == "verdict: PASS") verdict = "PASS"
+        else if ($0 == "verdict: REPAIR") verdict = "REPAIR"
+        else if ($0 == "verdict: BLOCKED") verdict = "BLOCKED"
+        else invalid = 1
+      }
+      END {
+        if (declared != 1 || invalid) exit 1
+        printf "%s", verdict
+      }
+    ' "$artifact"
 - id: repair
   depends_on:
   - initial-verdict
@@ -78,16 +81,19 @@ nodes:
       printf '%s\n' 'revalidation verdict artifact missing' >&2
       exit 1
     fi
-    line="$(awk '/^verdict:/ { declared++; print } END { if (declared != 1) exit 1 }' "$artifact")" || {
-      printf '%s\n' 'invalid revalidation verdict' >&2
-      exit 1
-    }
-    case "$line" in
-      'verdict: PASS') printf '%s' 'PASS' ;;
-      'verdict: REPAIR') printf '%s' 'REPAIR' ;;
-      'verdict: BLOCKED') printf '%s' 'BLOCKED' ;;
-      *) printf '%s\n' 'invalid revalidation verdict' >&2; exit 1 ;;
-    esac
+    exec awk '
+      /^verdict:/ {
+        declared++
+        if ($0 == "verdict: PASS") verdict = "PASS"
+        else if ($0 == "verdict: REPAIR") verdict = "REPAIR"
+        else if ($0 == "verdict: BLOCKED") verdict = "BLOCKED"
+        else invalid = 1
+      }
+      END {
+        if (declared != 1 || invalid) exit 1
+        printf "%s", verdict
+      }
+    ' "$artifact"
 - id: review-acceptance-gate
   depends_on:
   - initial-verdict
@@ -95,6 +101,10 @@ nodes:
   - revalidation-verdict
   trigger_rule: all_done
   bash: |
+    if [ ! -f "$ARTIFACTS_DIR/validation.md" ] || [ -L "$ARTIFACTS_DIR/validation.md" ] || [ ! -s "$ARTIFACTS_DIR/validation.md" ]; then
+      printf '%s\n' 'validation artifact missing' >&2
+      exit 1
+    fi
     if [ $initial-verdict.output? = "PASS" ] || \
       { [ $initial-verdict.output? = "REPAIR" ] && [ $revalidation-verdict.output? = "PASS" ] && [ -f "$ARTIFACTS_DIR/review-fixes.md" ] && [ ! -L "$ARTIFACTS_DIR/review-fixes.md" ] && [ -s "$ARTIFACTS_DIR/review-fixes.md" ] && [ -f "$ARTIFACTS_DIR/revalidation.md" ] && [ ! -L "$ARTIFACTS_DIR/revalidation.md" ] && [ -s "$ARTIFACTS_DIR/revalidation.md" ]; }; then
       printf '%s' 'REVIEW_ACCEPTED'
