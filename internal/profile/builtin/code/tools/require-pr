@@ -19,3 +19,9 @@ if [ "$create_count" -ne 1 ]; then
   printf 'required exactly one SCM side effect: gh pr create count=%s\n' "$create_count" >&2
   exit 1
 fi
+
+count_file="${TAKT_WORKSPACE}/.takt/evals/scm/pr-count"
+if [ ! -f "$count_file" ] || [ -L "$count_file" ] || [ "$(cat "$count_file")" != "1" ]; then
+  printf '%s\n' 'required successful SCM receipt missing: pr-count must equal 1' >&2
+  exit 1
+fi

@@ -809,6 +809,10 @@ func TestProductionFlowEvaluationPREffectAndArtifacts(t *testing.T) {
 			if got := strings.Count(string(calls), "pr create"); got != tc.wantCalls {
 				t.Fatalf("pr create calls=%d want=%d log=%q", got, tc.wantCalls, calls)
 			}
+			count, err := os.ReadFile(filepath.Join(external["scm_dir"].(string), "pr-count"))
+			if err != nil || strings.TrimSpace(string(count)) != fmt.Sprint(tc.wantCalls) {
+				t.Fatalf("pr-count=%q err=%v want=%d", count, err, tc.wantCalls)
+			}
 		})
 	}
 }
