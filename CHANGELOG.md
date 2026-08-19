@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Feature validation now accepts one case-insensitive `PASS|REPAIR|BLOCKED`
+  control line, optionally formatted as an ATX Markdown heading, while still
+  rejecting duplicates and malformed tails. Exact-reference tasks require a
+  direct candidate/reference probe. Mini-du validator 4 reports product
+  mismatches before missing delivery artifacts; artifact inspection remains
+  fail-closed. The bundled `code` profile is `0.19.4`.
 - Pi now classifies its canonical `Unknown provider` startup failure as a
   non-retryable `configuration` error with requested provider/model and a
   `pi --list-models` hint. Flow evaluation records the failure as
@@ -11,7 +17,7 @@
 - Evaluation SCM fixtures now support stateful `gh pr list --head/--state`
   checks, and the feature-flow PR receipt gate accepts at least one successful
   `gh pr create` instead of rejecting duplicate receipts from one assistant
-  execution. The bundled `code` profile is `0.19.3`.
+  execution.
 - Flow evaluation now publishes product-source evidence atomically. A symlink
   or other non-regular source entry records `source-unavailable.txt` without
   replacing the measured validator outcome with an infrastructure error;
@@ -20,7 +26,7 @@
   executor evidence.
 - The `code` profile validation and revalidation commands keep scratch probes
   outside the execution workspace, bound optional exploration, and require the
-  verdict artifact promptly. The profile version is `0.19.3`.
+  verdict artifact promptly.
 - Test gates are tiered: `make check` compiles all Go packages, runs focused
   architecture/profile/parser contracts, build, and TypeScript smoke; the
   ordinary E2E and full ordinary/race package suite remain in

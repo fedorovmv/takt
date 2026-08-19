@@ -24,11 +24,14 @@ The Pi example supplies native `settings.httpIdleTimeoutMs`; evaluation copies
 the complete `settings` object into its isolated `.pi/settings.json` and then
 forces Pi/SDK retries off so durable retries remain owned by Takt.
 
-Validator version 3 adds `hardlink_multiple` (cross-argument inode de-duplication)
+Validator version 3 added `hardlink_multiple` (cross-argument inode de-duplication)
 and `double_dash_default` (bare `--` selects the default path) to the corpus.
+Version 4 checks product behavior before missing delivery artifacts, while
+artifact inspection failures remain infrastructure errors.
 Evaluation generations are not interchangeable: registry-old runs are generation
 v0, the corrected-registry/validator-2 baseline is generation v1, and validator-3
-runs are generation v2. Do not compare trends across generations.
+runs are generation v2. Validator-4 runs are generation v3. Do not compare trends
+across generations.
 
 ## Reading `eval stats`
 

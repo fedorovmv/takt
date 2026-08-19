@@ -69,11 +69,52 @@ func TestValidatorClassifiesMissingArtifactSeparately(t *testing.T) {
 	if err := os.WriteFile(req.ExpectedPath, []byte("oracle:\n  allowed_paths: [cmd/mini-du/**]\n  required_artifacts: [implementation.md]\n  scenarios: [empty]\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	for _, workspace := range []string{req.Baseline, req.Workspace} {
+		if err := os.WriteFile(filepath.Join(workspace, "go.mod"), []byte("module example.test/candidate\ngo 1.23\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	product := filepath.Join(req.Workspace, "cmd", "mini-du")
+	if err := os.MkdirAll(product, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(product, "main.go"), []byte("package main\nimport (\"fmt\"; \"os\")\nfunc main() { fmt.Printf(\"0\\t%s\\n\", os.Args[len(os.Args)-1]) }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	result, err := validate(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if result.Valid || len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "missing_artifact" {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestValidatorReportsProductMismatchBeforeMissingDeliveryArtifact(t *testing.T) {
+	root := t.TempDir()
+	req := testRequest(root)
+	req.Run.Status = "failed"
+	if err := os.WriteFile(req.ExpectedPath, []byte("oracle:\n  allowed_paths: [cmd/mini-du/**]\n  required_artifacts: [pr.md]\n  scenarios: [empty]\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, workspace := range []string{req.Baseline, req.Workspace} {
+		if err := os.WriteFile(filepath.Join(workspace, "go.mod"), []byte("module example.test/candidate\ngo 1.23\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	product := filepath.Join(req.Workspace, "cmd", "mini-du")
+	if err := os.MkdirAll(product, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(product, "main.go"), []byte("package main\nimport (\"fmt\"; \"os\")\nfunc main() { fmt.Printf(\"999\\t%s\\n\", os.Args[len(os.Args)-1]) }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := validate(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Valid || len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "mini_du_invalid" || !strings.Contains(result.Diagnostics[0].Message, "scenario empty differs") {
 		t.Fatalf("result=%+v", result)
 	}
 }

@@ -193,10 +193,13 @@ outputs in the validator diagnostic. Advisory analysis must explain that exact
 delta; an unrelated discrepancy mentioned by a validation assistant is not a
 causally sufficient root cause.
 
-The mini-du validator version 3 adds the `hardlink_multiple` and
-`double_dash_default` scenarios. Its evaluation generations are deliberately
+The mini-du validator version 3 added the `hardlink_multiple` and
+`double_dash_default` scenarios. Version 4 checks product behavior before
+missing delivery artifacts, while artifact inspection failures remain
+infrastructure errors. Its evaluation generations are deliberately
 non-comparable: registry-old runs are generation v0, the corrected-registry /
-validator-2 baseline is generation v1, and validator-3 runs are generation v2.
+validator-2 baseline is generation v1, validator-3 runs are generation v2, and
+validator-4 runs are generation v3.
 Cross-generation trend comparison is forbidden; compare quality only within one
 validator/oracle generation.
 

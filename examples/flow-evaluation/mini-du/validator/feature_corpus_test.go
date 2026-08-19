@@ -18,7 +18,7 @@ func TestFeatureCorpusManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if suite.Workflow != "code:feature-development" || suite.Config != "../config.yaml" || suite.Validator.Version != "3" || suite.External.GitHub == nil || suite.External.GitHub.Require != "repository" {
+	if suite.Workflow != "code:feature-development" || suite.Config != "../config.yaml" || suite.Validator.Version != "4" || suite.External.GitHub == nil || suite.External.GitHub.Require != "repository" {
 		t.Fatalf("suite=%+v", suite)
 	}
 	if _, err := os.Stat(suite.Validator.ResolvedPath); err != nil {

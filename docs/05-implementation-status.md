@@ -34,15 +34,19 @@
   инфраструктурной ошибкой;
 - binary secret и ошибки persistence по-прежнему fail-closed;
 - relative Pi session evidence безопасно разрешается внутри execution workspace;
-- профиль `code` 0.19.3 ограничивает validation/revalidation probes, выносит
-  scratch data из execution workspace и требует своевременный verdict artifact.
+- профиль `code` 0.19.4 ограничивает validation/revalidation probes, требует
+  прямого сравнения с заявленным внешним эталоном, выносит scratch data из
+  execution workspace и принимает единственный case-insensitive verdict как
+  обычную строку или Markdown-заголовок;
+- mini-du validator 4 проверяет продукт до отсутствующих delivery artifacts,
+  не понижая fail-closed приоритет ошибок artifact inspection.
 
 ## Feature-flow gate matrix tiering — реализовано в v0.1.61
 
 - `require-artifacts` и `require-verdict` являются общими executable tools
   профиля `code`; `feature-development` сохраняет прежние node/branch
   semantics и вызывает их из YAML;
-- полные формы artifact и strict verdict parser cases проверяются в
+- полные формы artifact и verdict parser cases проверяются в
   `internal/profile`, а full-flow E2E оставляет representative scheduler и
   downstream-gate сценарии;
 - обычный `tests/e2e` после переноса матриц сократился с `290.661s` до
@@ -110,10 +114,10 @@
 
 ## Outcome-gated Development Flow Acceptance — реализовано в v0.1.59
 
-- профиль `code` 0.19.3 требует user-owned `allowed_paths` для `plan-to-pr`;
+- профиль `code` 0.19.4 требует user-owned `allowed_paths` для `plan-to-pr`;
 - native Git pathspec scope gate проверяет actual tracked/untracked state до draft PR и после review fixes;
 - PR, review и summary domain results закрыты workflow-level gates без новой runtime-абстракции;
-- `code:feature-development` принимает только строгий `validation.md` verdict: `PASS` продолжает flow, `REPAIR` разрешает ровно одну repair и независимую revalidation, `BLOCKED` делает safe stop;
+- `code:feature-development` принимает единственный нормализуемый `validation.md` verdict: keyword/value case-insensitive, необязательный ATX Markdown heading; `PASS` продолжает flow, `REPAIR` разрешает ровно одну repair и независимую revalidation, `BLOCKED` делает safe stop;
 - initial/revalidation parsers fail-closed на missing, duplicate, malformed и binary-tainted control lines; producer assistant обязан быть `completed`;
 - acceptance gate сохраняет initial review evidence, требует review-fixes/revalidation artifacts после repair и не маскирует failure downstream узлов;
 - evaluation SCM fixture требует хотя бы один успешный `pr create` receipt (`calls.log` + `pr-count`); `fake-gh` поддерживает проверку открытых PR через `pr list --head/--state` и сохраняет созданные записи; production SCM runs не изменены;
@@ -326,8 +330,8 @@ The mini-du validator v3 adds `hardlink_multiple` and `double_dash_default` to
 the oracle and requires the explicit per-case CLI surface `-s`, `-k`,
 `-H`, `-h`/`--help`, `--`, `-sk`/`-ks`/`-sH`, and fail-closed unknown options;
 the smoke target runs one case and the full feature target runs all three.
-Validator-3 runs are measurement generation v2; registry-old runs are v0 and
-the corrected-registry/validator-2 baseline is v1. Cross-generation trend
+Validator-3 runs are measurement generation v2, validator-4 runs are v3;
+registry-old runs are v0 and the corrected-registry/validator-2 baseline is v1. Cross-generation trend
 comparisons are forbidden. `code:feature-development` gates its implementation retry on a non-empty regular
 `implementation.md` before starting review. The validator reports a missing
 record as `missing_artifact`, while option and missing-path diagnostics are
@@ -372,7 +376,7 @@ zero denominators are shown as `n/a`.
 
 ## Предметные поставки
 
-- профиль `code` 0.19.3: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
+- профиль `code` 0.19.4: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
 - Route DSL examples/eval corpus;
 - authoring skill;
 - multi-repo/reference fake adapters.

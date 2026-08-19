@@ -16,12 +16,28 @@ if ! LC_ALL=C tr -d '\000' < "$artifact" | cmp -s - "$artifact"; then
   exit 1
 fi
 
-verdict=$(awk '
-  /^verdict:/ {
+verdict=$(LC_ALL=C awk '
+  {
+    line = $0
+    if (match(line, /^#+[ \t]+/)) {
+      heading = substr(line, 1, RLENGTH)
+      gsub(/[ \t]/, "", heading)
+      line = substr(line, RLENGTH + 1)
+      if (length(heading) > 6) {
+        if (tolower(line) ~ /^verdict:/) {
+          declared++
+          invalid = 1
+        }
+        next
+      }
+    }
+    line = tolower(line)
+  }
+  line ~ /^verdict:/ {
     declared++
-    if ($0 == "verdict: PASS") verdict = "PASS"
-    else if ($0 == "verdict: REPAIR") verdict = "REPAIR"
-    else if ($0 == "verdict: BLOCKED") verdict = "BLOCKED"
+    if (line == "verdict: pass") verdict = "PASS"
+    else if (line == "verdict: repair") verdict = "REPAIR"
+    else if (line == "verdict: blocked") verdict = "BLOCKED"
     else invalid = 1
   }
   END {

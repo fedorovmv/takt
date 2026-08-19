@@ -1,4 +1,4 @@
-# Takt code profile 0.19.3
+# Takt code profile 0.19.4
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -74,7 +74,8 @@ or reconciliation; the E2E suite cross-checks it against fake SCM state.
 
 `code:feature-development` accepts a completed implementation only after an
 independent validation command writes `validation.md` with exactly one control
-line: `verdict: PASS`, `REPAIR`, or `BLOCKED`. `PASS` means no actionable
+line: `verdict: PASS`, `REPAIR`, or `BLOCKED`. The keyword and value are
+case-insensitive, and the line may be an ATX Markdown heading. `PASS` means no actionable
 findings, `REPAIR` means fixable in-scope findings, and `BLOCKED` means a safe
 repair is impossible. A `REPAIR` verdict enables exactly one repair node and an
 independent revalidation; only `REPAIR` followed by a `verdict: PASS` from
@@ -85,7 +86,9 @@ artifacts. Evaluation fixtures additionally require at least one successful
 current branch. Ordinary production SCM runs keep their provider-native side
 effects. Validation and revalidation keep scratch data outside the execution
 workspace, fail closed when changing directory, and persist their verdict
-artifact before optional exploration.
+artifact before optional exploration. A request for exact reference parity
+requires a direct candidate/reference probe; candidate-authored tests alone do
+not prove parity.
 
 ## Configuration
 
@@ -102,7 +105,7 @@ Every bundled workflow uses the logical assistant `coding-agent`. Select the con
 The validation hook uses `TAKT_VALIDATE_COMMAND` when set, then `scripts/verify.sh`, `make check`, Go tests, or npm tests. Set a project-specific command when automatic detection is insufficient.
 
 The feature workflow uses `tools/require-artifacts` for non-empty regular
-artifact files and `tools/require-verdict` for the strict `PASS|REPAIR|BLOCKED`
+artifact files and `tools/require-verdict` for the normalized `PASS|REPAIR|BLOCKED`
 control line. Their shape/parser matrix is covered by the profile contract
 tests; the flow E2E keeps branch and downstream scheduler coverage.
 

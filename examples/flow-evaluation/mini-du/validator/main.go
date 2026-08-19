@@ -230,14 +230,9 @@ func productCheck(req validatorRequest, oracle miniDUOracle) error {
 	if err := compareTrees(req.Baseline, req.Workspace, oracle.AllowedPaths); err != nil {
 		return err
 	}
-	if err := requireArtifacts(req.Run.ArtifactsDir, oracle.RequiredArtifacts); err != nil {
-		return err
-	}
-	if oracle.RequirePR && !hasPR(req.ExternalState) {
-		return errors.New("missing pull request effect")
-	}
-	if oracle.RequirePush && !hasPush(req.Workspace) {
-		return errors.New("missing push effect")
+	artifactErr := requireArtifacts(req.Run.ArtifactsDir, oracle.RequiredArtifacts)
+	if errors.Is(artifactErr, errArtifactInspection) {
+		return artifactErr
 	}
 	if err := rejectDelegation(req.Workspace); err != nil {
 		return err
@@ -253,6 +248,15 @@ func productCheck(req validatorRequest, oracle miniDUOracle) error {
 		if err := compareScenario(bin, scenario); err != nil {
 			return err
 		}
+	}
+	if artifactErr != nil {
+		return artifactErr
+	}
+	if oracle.RequirePR && !hasPR(req.ExternalState) {
+		return errors.New("missing pull request effect")
+	}
+	if oracle.RequirePush && !hasPush(req.Workspace) {
+		return errors.New("missing push effect")
 	}
 	return nil
 }
