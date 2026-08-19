@@ -137,6 +137,7 @@
 | Route DSL end-to-end | `25-route-dsl-e2e-v0.1.11.md`, `../examples/route-dsl-e2e/` | контрактный срез реализован |
 | Evaluation runner и метрики | `60-task-level-dynamic-evaluation-v0.1.46.md`, `59-route-dsl-evaluation-strategy-benchmark-v0.1.45.md`, `26-evaluation-runner-v0.1.12.md`, `27-evaluation-isolation-report-v0.1.13.md`, `28-benchmark-identity-quality-v0.1.14.md`, `29-benchmark-metric-semantics-v0.1.15.md`, `30-quality-envelope-semantics-v0.1.16.md`, `31-quality-stdout-separation-v0.1.17.md`, `../examples/route-dsl-eval/`, `../examples/route-dsl-benchmark/` | workflow matrix/compare/gates и task-level Router/Dynamic/replan benchmark реализованы; production evidence требует реальных corpus/models/validators |
 | Production flow evaluation | `superpowers/specs/2026-08-12-production-flow-evaluation-design.md`, `13-evaluation-plan.md`, `../examples/flow-evaluation/` | flow suite, evidence и init реализованы; live provider evidence отдельно |
+| Единый Run/assessment/evaluation contract | `superpowers/specs/2026-08-20-unified-run-evaluation-design.md` | READY FOR REVIEW; целевой контракт, не текущее поведение |
 | Восстановление документации релиза | `19-document-recovery-v0.1.5.md` | фактический |
 | Граница безопасности | `../SECURITY.md` | действующий |
 | Ближайшее целевое состояние | `08-target-v0.2.md` | целевой |

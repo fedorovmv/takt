@@ -20,13 +20,15 @@
 
 Текущая repo-owned последовательность после gap audit 2026-08-20:
 
-1. привести target/spec/plan status к фактическому состоянию;
-2. реализовать read-only `takt run inspect` как Slice B существующей Archon spec;
-3. принять результаты user-owned production workflow и `eval-feature`, не
+1. реализовать единый Run/assessment/evaluation contract по
+   `superpowers/specs/2026-08-20-unified-run-evaluation-design.md`; общий
+   `run inspect|stats|assessment` входит в этот срез, а не является отдельной
+   конкурирующей задачей;
+2. принять результаты user-owned production workflow и `eval-feature`, не
    обращаясь к внешнему workspace и не запуская параллельный live eval;
-4. повторить host conformance на выбранных pinned versions после завершения
+3. повторить host conformance на выбранных pinned versions после завершения
    текущего eval;
-5. формировать финальную v1beta1 migration только после production evidence.
+4. формировать финальную v1beta1 migration только после production evidence.
 
 Порядок:
 

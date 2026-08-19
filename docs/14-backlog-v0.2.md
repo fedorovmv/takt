@@ -4,14 +4,19 @@
 
 ## Текущая граница работ — 2026-08-20
 
+Активный repo-owned срез описан одним источником:
+`superpowers/specs/2026-08-20-unified-run-evaluation-design.md`. Он объединяет
+самодостаточный Run, immutable assessments, evaluation как обычный parent Run и
+общие `run status|stats|inspect|assessment`. Детали и gap registry здесь не
+дублируются.
+
 - настройка production workflow на внешнем реальном проекте выполняется
   пользователем отдельно; Takt repository не читает, не изменяет и не запускает
   этот workspace до отдельного запроса;
 - live `eval-feature` с preset `qwen38` и assistant idle timeout `15m` также
   выполняется пользователем; параллельный live eval из этой работы запрещён;
-- repo-owned следующий срез — документационная конвергенция и read-only
-  `takt run inspect`; production evidence обновляется только после передачи
-  результатов внешнего workflow/eval;
+- production evidence обновляется только после передачи результатов внешнего
+  workflow/eval;
 - hard token/tool budgets и parallel mutating merge остаются условными и не
   начинаются без capability/use-case evidence.
 
