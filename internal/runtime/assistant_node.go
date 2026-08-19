@@ -389,7 +389,7 @@ func (r *Runner) executeExternalNode(state *store.RunState, node spec.Node, reso
 		if external.Status == "failed" || result.ExitCode != 0 || result.Error != "" {
 			kind := execution.KindExit
 			switch execution.Kind(result.ErrorCode) {
-			case execution.KindStart, execution.KindProtocol, execution.KindInternal, execution.KindTimedOut, execution.KindCancelled, execution.KindProviderUnavailable:
+			case execution.KindStart, execution.KindProtocol, execution.KindConfiguration, execution.KindInternal, execution.KindTimedOut, execution.KindCancelled, execution.KindProviderUnavailable:
 				kind = execution.Kind(result.ErrorCode)
 			}
 			message := result.Error

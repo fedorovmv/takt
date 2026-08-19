@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"takt/internal/config"
+	"takt/internal/execution"
 	"takt/internal/redact"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -212,6 +213,8 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (result *SuiteReport, res
 			switch {
 			case result.ContextCancelled || ctx.Err() != nil:
 				validationResult = flowValidationError("validator_cancelled", context.Canceled)
+			case isConfigurationFailureRecord(record):
+				validationResult = flowValidationError("assistant_configuration", errors.New(flowConfigurationError(record)))
 			case paused:
 				validationResult = flowValidationError("run_paused", errors.New("run paused"))
 			case root.ExecutionWorkspace == "":
@@ -307,6 +310,9 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (result *SuiteReport, res
 				return report, err
 			}
 			traceFlow(opts.Trace, "REPORT | checkpoint | phase=cleanup path=%s", filepath.Join(output, "report.json"))
+			if isConfigurationFailureRecord(record) {
+				return finishFlowPartial(report, output, opts.Now, redactor, fmt.Errorf("assistant configuration error: %s", flowConfigurationError(record)))
+			}
 			if callbackErr != nil {
 				return finishFlowPartial(report, output, opts.Now, redactor, callbackErr)
 			}
@@ -330,6 +336,27 @@ func RunFlow(ctx context.Context, opts FlowRunOptions) (result *SuiteReport, res
 		return report, err
 	}
 	return report, nil
+}
+
+func flowConfigurationError(record RunRecord) string {
+	if record.ErrorCode == string(execution.KindConfiguration) && strings.TrimSpace(record.Error) != "" {
+		return record.Error
+	}
+	ids := make([]string, 0, len(record.Nodes))
+	for id := range record.Nodes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		node := record.Nodes[id]
+		if !nodeProviderFailureStatus(node.Status) {
+			continue
+		}
+		if failureCode(node.ErrorCode, node.Diagnostic, string(execution.KindConfiguration)) && strings.TrimSpace(node.Error) != "" {
+			return node.Error
+		}
+	}
+	return "assistant configuration is invalid"
 }
 
 func flowModelSummary(cfg *spec.Config) string {

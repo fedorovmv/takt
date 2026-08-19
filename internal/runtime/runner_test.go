@@ -47,6 +47,30 @@ type providerRetryCaptureStore struct {
 	events []store.Event
 }
 
+func TestConfigurationFailureDoesNotUseExitRetry(t *testing.T) {
+	dir := t.TempDir()
+	calls := 0
+	adapter := adapterFunc(func(_ context.Context, _ assistant.Request) (assistant.Result, error) {
+		calls++
+		return assistant.Result{ExitCode: 1, Stderr: `Error: Unknown provider "aihub".`}, &execution.Error{Kind: execution.KindConfiguration, Op: "pi configuration", Err: errors.New(`unknown provider "aihub"`)}
+	})
+	wf := &spec.Workflow{Name: "configuration", Nodes: []spec.Node{{ID: "work", Prompt: "work", Provider: "demo", Model: "m", Attempts: spec.AttemptsSpec{Max: 3, RetryOn: []string{"exit"}}}}}
+	cfg := &spec.Config{Models: map[string]spec.ModelSpec{"m": {Provider: "aihub", ID: "model"}}, Assistants: map[string]spec.AssistantSpec{"demo": {Type: "mock"}}}
+	r := NewWithDependencies(Definition{Workflow: wf, Config: cfg, WorkflowPath: "wf", ConfigPath: "cfg", ControlWorkspace: dir}, Dependencies{Commands: NewCommandResolver("wf", dir, dir), Store: store.FS{Workspace: dir}, Assistants: resolverFunc(func(string) (assistant.Adapter, error) { return adapter, nil }), Redactor: redact.NewFromConfig(cfg)})
+
+	state, err := r.Start(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected configuration failure")
+	}
+	node := state.Nodes["work"]
+	if calls != 1 || node.Attempts != 1 || len(node.Executions) != 1 {
+		t.Fatalf("configuration failure was retried: calls=%d node=%+v", calls, node)
+	}
+	if node.Status != store.NodeErrored || node.ErrorCode != "configuration" || node.Diagnostic == nil || node.Diagnostic.Retryable {
+		t.Fatalf("configuration diagnostic=%+v node=%+v", node.Diagnostic, node)
+	}
+}
+
 func (s *providerRetryCaptureStore) Commit(state *store.RunState, event store.Event) error {
 	encoded, err := json.Marshal(state)
 	if err != nil {

@@ -64,6 +64,8 @@ type flowArtifactEvidence struct {
 	Redacted       bool   `json:"redacted"`
 }
 
+var errUnsupportedFlowEvidenceEntry = errors.New("unsupported flow evidence entry")
+
 // WriteFlowEvidence persists only eval-owned evidence. JSON and text are
 // redacted before atomic publication; binary bytes with a known secret stop the
 // evaluation instead of leaving a partial secret-bearing artifact behind.
@@ -115,7 +117,12 @@ func WriteFlowEvidence(root string, item FlowEvidence, redactor *redact.Redactor
 	if item.Request.Workspace != "" {
 		if _, err := os.Stat(item.Request.Workspace); err == nil {
 			if err := copyFlowEvidenceTree(item.Request.Workspace, filepath.Join(repeatRoot, "source"), redactor, ".git", ".takt"); err != nil {
-				return fmt.Errorf("copy source evidence: %w", err)
+				if !errors.Is(err, errUnsupportedFlowEvidenceEntry) {
+					return fmt.Errorf("copy source evidence: %w", err)
+				}
+				if err := writeFlowBytes(filepath.Join(repeatRoot, "source-unavailable.txt"), []byte(err.Error()+"\n"), redactor); err != nil {
+					return fmt.Errorf("write source evidence diagnostic: %w", err)
+				}
 			}
 		} else if !os.IsNotExist(err) {
 			return fmt.Errorf("stat source evidence: %w", err)
@@ -181,12 +188,17 @@ func writeFlowJSON(path string, value any, redactor *redact.Redactor) error {
 }
 
 func copyFlowEvidenceTree(source, destination string, redactor *redact.Redactor, excludedDirs ...string) error {
-	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+	staging, err := os.MkdirTemp(filepath.Dir(destination), "."+filepath.Base(destination)+"-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	if err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlink forbidden: %s", path)
+			return fmt.Errorf("%w: symlink forbidden: %s", errUnsupportedFlowEvidenceEntry, path)
 		}
 		if path != source {
 			for _, name := range excludedDirs {
@@ -202,7 +214,7 @@ func copyFlowEvidenceTree(source, destination string, redactor *redact.Redactor,
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(destination, rel)
+		target := filepath.Join(staging, rel)
 		if entry.IsDir() {
 			return os.MkdirAll(target, 0755)
 		}
@@ -211,7 +223,7 @@ func copyFlowEvidenceTree(source, destination string, redactor *redact.Redactor,
 			return err
 		}
 		if !info.Mode().IsRegular() {
-			return fmt.Errorf("non-regular file forbidden: %s", path)
+			return fmt.Errorf("%w: non-regular file forbidden: %s", errUnsupportedFlowEvidenceEntry, path)
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -228,7 +240,10 @@ func copyFlowEvidenceTree(source, destination string, redactor *redact.Redactor,
 			}
 		}
 		return writeFlowRaw(target, data, info.Mode())
-	})
+	}); err != nil {
+		return err
+	}
+	return os.Rename(staging, destination)
 }
 
 func flowWorkspaceDiff(workspace, baseCommit string) ([]byte, error) {

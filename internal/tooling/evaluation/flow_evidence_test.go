@@ -140,6 +140,28 @@ func TestWriteFlowEvidenceCopiesRedactedPiSession(t *testing.T) {
 	}
 }
 
+func TestWriteFlowEvidenceResolvesRelativePiSessionInsideExecutionWorkspace(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	sessionPath := filepath.Join(".takt", "pi-sessions", "session.jsonl")
+	if err := os.MkdirAll(filepath.Join(workspace, filepath.Dir(sessionPath)), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, sessionPath), []byte("{}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := &store.RunState{ID: "run", ExecutionWorkspace: workspace, Nodes: map[string]*store.NodeState{
+		"validate-agent": {Executions: []store.ExecutionState{{Attempt: 1, ProviderAttempt: 1, Adapter: "pi", SessionPath: filepath.ToSlash(sessionPath)}}},
+	}}
+	if err := WriteFlowEvidence(root, FlowEvidence{CaseID: "case", Repeat: 1, States: []*store.RunState{state}}, &redact.Redactor{}); err != nil {
+		t.Fatal(err)
+	}
+	repeatRoot := filepath.Join(root, "cases", "case", "repeat-001")
+	entry := readFlowTestJSON(t, filepath.Join(repeatRoot, "executor-manifest.json"))["executions"].([]any)[0].(map[string]any)
+	if entry["session_evidence"] != "recorded" || entry["session_evidence_path"] != "sessions/validate-agent/attempt-001-provider-001.jsonl" {
+		t.Fatalf("relative session was not recorded: %#v", entry)
+	}
+}
+
 func TestWriteFlowEvidenceRecordsUnavailableExecutorSessions(t *testing.T) {
 	root, dir := t.TempDir(), t.TempDir()
 	missing := filepath.Join(dir, "missing.jsonl")
@@ -392,16 +414,35 @@ func TestFlowEvidencePreservesRedactedProductSourceOnly(t *testing.T) {
 	}
 }
 
+func TestFlowEvidenceRecordsUnavailableSourceWithoutPublishingPartialTree(t *testing.T) {
+	root, workspace := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "main.go"), []byte("package main\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("missing", filepath.Join(workspace, "broken")); err != nil {
+		t.Skip(err)
+	}
+	if err := WriteFlowEvidence(root, FlowEvidence{CaseID: "case", Repeat: 1, Request: FlowValidationRequest{Workspace: workspace}}, &redact.Redactor{}); err != nil {
+		t.Fatal(err)
+	}
+	repeatRoot := filepath.Join(root, "cases", "case", "repeat-001")
+	if _, err := os.Stat(filepath.Join(repeatRoot, "source")); !os.IsNotExist(err) {
+		t.Fatalf("partial source evidence was published: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(repeatRoot, "source-unavailable.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "symlink forbidden") || !strings.Contains(string(data), "broken") {
+		t.Fatalf("source diagnostic=%q", data)
+	}
+}
+
 func TestFlowEvidenceRejectsUnsafeProductSource(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		setup func(t *testing.T, workspace string)
 	}{
-		{"symlink", func(t *testing.T, workspace string) {
-			if err := os.Symlink(t.TempDir(), filepath.Join(workspace, "link")); err != nil {
-				t.Skip(err)
-			}
-		}},
 		{"binary secret", func(t *testing.T, workspace string) {
 			if err := os.WriteFile(filepath.Join(workspace, "secret.bin"), append([]byte{0}, []byte("known-secret")...), 0600); err != nil {
 				t.Fatal(err)

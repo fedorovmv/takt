@@ -221,8 +221,14 @@ func inspectFlowCase(output string, run RunRecord) (InspectionCase, error) {
 	}
 	if info, err := os.Stat(sourcePath); err == nil && info.IsDir() {
 		item.Evidence.Source, item.Evidence.SourcePresent = relativeEvidencePath(output, sourcePath), true
-	} else if err != nil && !os.IsNotExist(err) {
-		return item, err
+	} else if err != nil {
+		if !os.IsNotExist(err) {
+			return item, err
+		}
+		item.Evidence.Source, err = existingEvidencePath(output, filepath.Join(repeatRoot, "source-unavailable.txt"))
+		if err != nil {
+			return item, err
+		}
 	}
 	item.Evidence.RepositoryBundle, err = existingEvidencePath(output, filepath.Join(repeatRoot, "repository.bundle"))
 	if err != nil {

@@ -44,8 +44,8 @@ type FlowExecutorExecution struct {
 }
 
 type flowExecutorRecord struct {
-	runID, nodeID string
-	execution     store.ExecutionState
+	runID, nodeID, workspace string
+	execution                store.ExecutionState
 }
 
 func writeFlowExecutorManifest(repeatRoot string, item FlowEvidence, redactor *redact.Redactor) error {
@@ -72,12 +72,17 @@ func writeFlowExecutorManifest(repeatRoot string, item FlowEvidence, redactor *r
 			manifest.Executions = append(manifest.Executions, entry)
 			continue
 		}
-		if !filepath.IsAbs(exec.SessionPath) {
-			entry.SessionEvidenceReason = "path_not_absolute"
+		workspace := record.workspace
+		if workspace == "" {
+			workspace = item.Request.Workspace
+		}
+		sourcePath, pathReason := resolveWorkspaceEvidencePath(workspace, exec.SessionPath)
+		if pathReason != "" {
+			entry.SessionEvidenceReason = pathReason
 			manifest.Executions = append(manifest.Executions, entry)
 			continue
 		}
-		info, err := os.Lstat(exec.SessionPath)
+		info, err := os.Lstat(sourcePath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				entry.SessionEvidenceReason = "path_missing"
@@ -102,7 +107,7 @@ func writeFlowExecutorManifest(repeatRoot string, item FlowEvidence, redactor *r
 			manifest.Executions = append(manifest.Executions, entry)
 			continue
 		}
-		data, err := os.ReadFile(exec.SessionPath)
+		data, err := os.ReadFile(sourcePath)
 		if err != nil {
 			entry.SessionEvidenceReason = "path_unreadable"
 			manifest.Executions = append(manifest.Executions, entry)
@@ -118,7 +123,7 @@ func writeFlowExecutorManifest(repeatRoot string, item FlowEvidence, redactor *r
 			persisted, matched = redactor.Bytes(data)
 		}
 		if matched && !isTextEvidence(data) {
-			return fmt.Errorf("session file contains known secret in non-UTF-8 data: %s", exec.SessionPath)
+			return fmt.Errorf("session file contains known secret in non-UTF-8 data: %s", sourcePath)
 		}
 		if len(persisted) > maxSessionEvidenceBytes {
 			entry.SessionEvidenceReason = "path_too_large"
@@ -154,6 +159,47 @@ func writeFlowExecutorManifest(repeatRoot string, item FlowEvidence, redactor *r
 	return writeFlowJSON(filepath.Join(repeatRoot, "executor-manifest.json"), manifest, redactor)
 }
 
+func resolveWorkspaceEvidencePath(workspace, path string) (string, string) {
+	if filepath.IsAbs(path) {
+		return path, ""
+	}
+	if workspace == "" {
+		return "", "path_not_absolute"
+	}
+	root, err := filepath.Abs(workspace)
+	if err != nil {
+		return "", "path_unreadable"
+	}
+	source := filepath.Join(root, filepath.FromSlash(path))
+	rel, err := filepath.Rel(root, source)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", "path_outside_workspace"
+	}
+	info, err := os.Lstat(source)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", "path_missing"
+		}
+		return "", "path_unreadable"
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", "path_symlink_forbidden"
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", "path_unreadable"
+	}
+	resolvedSource, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		return "", "path_unreadable"
+	}
+	resolvedRel, err := filepath.Rel(resolvedRoot, resolvedSource)
+	if err != nil || resolvedRel != rel || resolvedRel == ".." || strings.HasPrefix(resolvedRel, ".."+string(filepath.Separator)) {
+		return "", "path_symlink_forbidden"
+	}
+	return source, ""
+}
+
 func collectFlowExecutorRecords(states []*store.RunState) []flowExecutorRecord {
 	var records []flowExecutorRecord
 	var visit func(string, string, *store.NodeState)
@@ -179,8 +225,12 @@ func collectFlowExecutorRecords(states []*store.RunState) []flowExecutorRecord {
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
+		before := len(records)
 		for _, id := range ids {
 			visit(state.ID, id, state.Nodes[id])
+		}
+		for index := before; index < len(records); index++ {
+			records[index].workspace = state.ExecutionWorkspace
 		}
 	}
 	sort.SliceStable(records, func(i, j int) bool {

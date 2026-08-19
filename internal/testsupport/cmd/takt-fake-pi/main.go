@@ -53,6 +53,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "fake Pi requires --mode rpc")
 		os.Exit(2)
 	}
+	if opts.caseName == "unknown-provider" {
+		fmt.Fprintf(os.Stderr, "Error: Unknown provider %q. Use --list-models to see available providers/models.\n", opts.provider)
+		os.Exit(1)
+	}
 	if opts.caseName == "exit" {
 		os.Exit(7)
 	}
@@ -302,6 +306,9 @@ func handlePrompt(opts options, writer *safeWriter, state *fakeState) {
 			}
 		}()
 		wg.Wait()
+		emitSuccess(writer, state, opts)
+	case "success-with-unknown-provider-stderr":
+		fmt.Fprintf(os.Stderr, "Error: Unknown provider %q. Use --list-models to see available providers/models.\n", opts.provider)
 		emitSuccess(writer, state, opts)
 	default:
 		emitSuccess(writer, state, opts)

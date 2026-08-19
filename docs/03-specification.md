@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.61-alpha` с единым
+Статус: текущий реализованный внешний контракт `v0.1.62-alpha` с единым
 Archon-first языком Workflow A0 и bounded repair/runtime semantics A1.
 Config, Profile, Run и assistant protocol сохраняют собственные versioned
 контракты. Машиночитаемые схемы находятся в `schemas/`.
@@ -147,7 +147,7 @@ adapters:
 
 Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`/`maxItems`, `uniqueItems`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `minProperties`/`maxProperties`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
 
-Это используется шестью основными процессами профиля `code` 0.19.2: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+Это используется шестью основными процессами профиля `code` 0.19.3: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
 
 ### Детерминированный контракт `code:plan-to-pr`
 
@@ -224,7 +224,7 @@ side_effect:
 
 Takt сам задаёт `--mode rpc`, `--provider`, `--model`, `--thinking`, `--session` и параметры trust/session directory. Эти флаги запрещены в `args`, чтобы исключить расхождение структурированного Request и фактического запуска.
 
-`model.provider` и `model.id` должны соответствовать каталогу моделей Pi. Параметры `thinking` или `reasoning_effort` переводятся в `--thinking`; остальные model params доступны расширениям через `TAKT_MODEL_PARAMS_JSON`, но не интерпретируются adapter.
+`model.provider` и `model.id` должны соответствовать каталогу моделей Pi. Параметры `thinking` или `reasoning_effort` переводятся в `--thinking`; остальные model params доступны расширениям через `TAKT_MODEL_PARAMS_JSON`, но не интерпретируются adapter. Если Pi до создания RPC session отклоняет provider как неизвестный, adapter возвращает terminal `configuration` вместо обычного `exit`. Такая ошибка сохраняет stderr, не повторяется по `attempts.retry_on: [exit]` и указывает provider/model вместе с `pi --list-models`.
 
 При `session: resume` adapter передаёт `--session <id>` и проверяет через `get_state`, что Pi действительно открыл тот же Session ID. Тихий переход на fresh запрещён. В режиме `fresh` сохранённый ID не передаётся.
 
@@ -359,6 +359,12 @@ Root Workflow принимает `name`, `description`, `labels`, `provider`, `m
 `attempts.retry_on` задаёт execution kinds, для которых разрешён автоматический повтор (`exit|start|protocol|internal|timed_out`). Cancellation и неизвестный внешний side effect не являются обычным retry. `attempts.backoff` требует `attempts.max >= 2`: `initial` и `max` — положительные Go duration, `multiplier` по умолчанию 2 и не меньше 1, `jitter` выбирает задержку в диапазоне 50–100% от расчётной. Runtime сохраняет выбранный `not_before` в `NodeState.retry`, поэтому restart/resume не пересчитывает уже принятое ожидание.
 
 Классы execution error также включают внутренний adapter kind `provider_unavailable`; он не является значением `attempts.retry_on` и обрабатывается отдельным provider retry scope ниже.
+
+`configuration` — внутренний terminal kind для доказанной некорректной
+настройки adapter. Он не является значением `attempts.retry_on`, не допускает
+автоматический retry и не принимается через `allow_failure`. Pi возвращает его,
+если RPC startup сообщает неизвестный provider; diagnostic содержит
+запрошенные provider/model и команду `pi --list-models`.
 
 `provider_unavailable` — внутренний failure kind assistant adapter, а не новое
 YAML-поле и не значение `attempts.retry_on`. Явное сообщение провайдера
@@ -948,6 +954,15 @@ Each repeat persists `cases/<case>/repeat-<NNN>/run.json`,
 `report.json` remains the canonical `takt-evaluation/v1alpha1` output. Validator
 stdout alone is decoded as `takt-validation/v1alpha1`; agent text is not proof.
 Gate failure returns non-zero only after report persistence.
+The redacted product snapshot is published atomically as `source/`. If the
+evaluated workspace contains a symlink or another non-regular source entry,
+Takt does not follow or partially copy it: `source-unavailable.txt` records the
+redacted diagnostic while `diff.patch`, `repository.bundle`, validator outcome
+and the rest of the repeat evidence remain authoritative. A known secret in
+binary source and ordinary evidence persistence failures remain fail-closed.
+Relative assistant `session_path` values are resolved only inside the execution
+workspace, with symlink and escape rejection, before executor evidence is
+copied.
 От запуска набора до финализации Takt атомарно заменяет
 `<evaluation-output-dir>/progress.json` по контракту
 `takt-flow-evaluation-progress/v1alpha1`. Команда `takt eval status <dir>` читает

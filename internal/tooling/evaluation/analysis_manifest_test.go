@@ -18,12 +18,15 @@ func TestBuildAnalysisEvidenceManifestUsesRepeatRelativePaths(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repeat, "run.json"), []byte(`{"states":[]}`), 0644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(repeat, "source-unavailable.txt"), []byte("symlink forbidden\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	item := &InspectionCase{CaseID: "x", Repeat: 1, Evidence: InspectionEvidence{Root: "cases/x/repeat-001", Run: "cases/x/repeat-001/run.json"}}
 	m, err := buildAnalysisEvidenceManifest(root, repeat, item, RunRecord{CaseID: "x", Repeat: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m.Files) != 1 || m.Files[0].Path != "run.json" || m.Files[0].SHA256 == "" {
+	if len(m.Files) != 2 || m.Files[0].Path != "run.json" || m.Files[0].SHA256 == "" || m.Files[1].Path != "source-unavailable.txt" || m.Files[1].SHA256 == "" {
 		t.Fatalf("manifest=%+v", m)
 	}
 }

@@ -2,11 +2,25 @@
 
 ## Unreleased
 
+- Pi now classifies its canonical `Unknown provider` startup failure as a
+  non-retryable `configuration` error with requested provider/model and a
+  `pi --list-models` hint. Flow evaluation records the failure as
+  infrastructure, skips the misleading product validator, preserves evidence
+  and cleanup, and stops the remaining suite cases. Product version is
+  `0.1.62-alpha`.
 - Evaluation SCM fixtures now support stateful `gh pr list --head/--state`
   checks, and the feature-flow PR receipt gate accepts at least one successful
   `gh pr create` instead of rejecting duplicate receipts from one assistant
-  execution. Product version is `0.1.61-alpha`; the bundled `code` profile is
-  `0.19.2`.
+  execution. The bundled `code` profile is `0.19.3`.
+- Flow evaluation now publishes product-source evidence atomically. A symlink
+  or other non-regular source entry records `source-unavailable.txt` without
+  replacing the measured validator outcome with an infrastructure error;
+  binary secrets and persistence failures remain fail-closed. Relative Pi
+  session paths are resolved inside their execution workspace and retained in
+  executor evidence.
+- The `code` profile validation and revalidation commands keep scratch probes
+  outside the execution workspace, bound optional exploration, and require the
+  verdict artifact promptly. The profile version is `0.19.3`.
 - Test gates are tiered: `make check` compiles all Go packages, runs focused
   architecture/profile/parser contracts, build, and TypeScript smoke; the
   ordinary E2E and full ordinary/race package suite remain in

@@ -165,7 +165,7 @@ func TestCodeProfileCatalogContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(version)) != "0.19.2" {
+	if strings.TrimSpace(string(version)) != "0.19.3" {
 		t.Fatalf("profile version=%q", version)
 	}
 	requireFileContains(t, filepath.Join(base, "profile.yaml"), "router:", "block_packages:", "format: markdown", "preserve_path: true")

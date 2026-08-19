@@ -166,6 +166,35 @@ func TestPiProviderFailures(t *testing.T) {
 	}
 }
 
+func TestPiUnknownProviderIsConfigurationFailure(t *testing.T) {
+	result, err := fakePi("unknown-provider").Run(context.Background(), fakePiRequest(t.TempDir()))
+	if execution.KindOf(err) != execution.KindConfiguration {
+		t.Fatalf("unexpected kind: %s (%v)", execution.KindOf(err), err)
+	}
+	for _, want := range []string{`unknown provider "openai"`, `model "gpt-test"`, "--list-models"} {
+		if !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(want)) {
+			t.Fatalf("configuration error missing %q: %v", want, err)
+		}
+	}
+	if !strings.Contains(result.Stderr, `Unknown provider "openai"`) {
+		t.Fatalf("Pi stderr was lost: %+v", result)
+	}
+	var executionErr *execution.Error
+	if !errors.As(err, &executionErr) || result.ExitCode != 1 || executionErr.ExitCode != 1 {
+		t.Fatalf("Pi exit code was lost: result=%+v err=%+v", result, executionErr)
+	}
+}
+
+func TestPiDoesNotReclassifyEstablishedSessionFromStderrText(t *testing.T) {
+	result, err := fakePi("success-with-unknown-provider-stderr").Run(context.Background(), fakePiRequest(t.TempDir()))
+	if err != nil {
+		t.Fatalf("established session was reclassified: %v", err)
+	}
+	if result.SessionID == "" || !strings.Contains(result.Stderr, `Unknown provider "openai"`) {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
 func TestPiAdapterContract(t *testing.T) {
 	t.Run("emits compact live tool and message events", func(t *testing.T) {
 		req := fakePiRequest(t.TempDir())

@@ -155,7 +155,7 @@ func buildAnalysisEvidenceManifest(output, repeatRoot string, inspection *Inspec
 		m.EvidenceRoot = filepath.ToSlash(rel)
 	}
 	paths := []string{"run.json"}
-	for _, p := range []string{"validation-request.json", "validation-result.json", "validator.stderr", "diff.patch", "activity.json", "executor-manifest.json", "repository.bundle", "source", "sessions", "scm", "artifacts"} {
+	for _, p := range []string{"validation-request.json", "validation-result.json", "validator.stderr", "diff.patch", "activity.json", "executor-manifest.json", "repository.bundle", "source", "source-unavailable.txt", "sessions", "scm", "artifacts"} {
 		if _, err := os.Stat(filepath.Join(repeatRoot, p)); err == nil {
 			paths = append(paths, p)
 		}

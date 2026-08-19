@@ -317,6 +317,12 @@ pi --mode rpc --provider <provider> --model <id> [--thinking ...] [--session ...
 8. usage вычисляется как дельта накопленной статистики до/после попытки; уменьшение значений и исчезновение ранее присутствовавшего usage являются protocol error;
 9. закрытие stdin штатно завершает RPC-процесс.
 
+Если RPC-процесс завершается до начального `get_state` со штатной диагностикой
+Pi `Unknown provider`, adapter возвращает terminal execution kind
+`configuration`, сохраняет stderr и формирует сообщение с запрошенными
+provider/model и подсказкой `pi --list-models`. Это не transient provider
+failure и не обычный agent `exit`: workflow retry и provider retry запрещены.
+
 Последний assistant message со `stopReason: length` означает исчерпание
 provider/model output limit и классифицируется как execution `exit`, даже если
 Pi затем публикует `agent_settled` и RPC-процесс завершается с кодом 0. Session

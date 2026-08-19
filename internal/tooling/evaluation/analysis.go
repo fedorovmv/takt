@@ -884,28 +884,9 @@ func captureAnalysisSessionEvidence(caseOutputDir, executionWorkspace string, se
 	}
 	sourcePath := session.SessionPath
 	if !filepath.IsAbs(sourcePath) {
-		if executionWorkspace == "" {
-			return nil
-		}
-		workspace, err := filepath.Abs(executionWorkspace)
-		if err != nil {
-			return nil
-		}
-		sourcePath = filepath.Join(workspace, filepath.FromSlash(sourcePath))
-		rel, err := filepath.Rel(workspace, sourcePath)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return nil
-		}
-		resolvedWorkspace, err := filepath.EvalSymlinks(workspace)
-		if err != nil {
-			return nil
-		}
-		resolvedSource, err := filepath.EvalSymlinks(sourcePath)
-		if err != nil {
-			return nil
-		}
-		resolvedRel, err := filepath.Rel(resolvedWorkspace, resolvedSource)
-		if err != nil || resolvedRel != rel || resolvedRel == ".." || strings.HasPrefix(resolvedRel, ".."+string(filepath.Separator)) {
+		var reason string
+		sourcePath, reason = resolveWorkspaceEvidencePath(executionWorkspace, sourcePath)
+		if reason != "" {
 			return nil
 		}
 	}

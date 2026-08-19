@@ -14,6 +14,7 @@ const (
 	KindCancelled           Kind = "cancelled"
 	KindTimedOut            Kind = "timed_out"
 	KindProtocol            Kind = "protocol"
+	KindConfiguration       Kind = "configuration"
 	KindProviderUnavailable Kind = "provider_unavailable"
 	KindInternal            Kind = "internal"
 	KindExternalUnknown     Kind = "external_state_unknown"

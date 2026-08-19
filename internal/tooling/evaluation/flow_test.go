@@ -303,6 +303,60 @@ func TestRunFlowProviderUnavailableSuiteContinuesAndUsesQualityDenominator(t *te
 	}
 }
 
+func TestRunFlowStopsSuiteOnAssistantConfigurationFailure(t *testing.T) {
+	root, suitePath := writeFlowRunSuite(t, "a-bad-config", "b-not-started")
+	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)
+	validatorRequest := filepath.Join(root, "validator-request.json")
+	t.Setenv("TAKT_FLOW_VALIDATOR_REQUEST", validatorRequest)
+	var calls []string
+	cleanupCalls := 0
+	report, err := RunFlow(context.Background(), FlowRunOptions{
+		SuitePath: suitePath, OutputDir: filepath.Join(root, "out"), InvocationWorkspace: root,
+		CaseRunner: func(_ context.Context, request FlowCaseRunRequest) (FlowCaseRunResult, error) {
+			caseID := filepath.Base(filepath.Dir(filepath.Dir(request.Workspace)))
+			calls = append(calls, caseID)
+			message := `pi configuration failed (configuration): unknown provider "aihub" for model "Qwen/Qwen3.6-27B"; run pi --list-models`
+			return FlowCaseRunResult{States: []*store.RunState{{
+				ID: "run", Status: store.RunFailed, ErrorCode: "configuration", Error: message, ExecutionWorkspace: request.Workspace,
+				Nodes: map[string]*store.NodeState{"implement": {Status: store.NodeErrored, ErrorCode: "configuration", Error: message}}, Approvals: map[string]string{},
+			}}, Cleanup: func(context.Context) (*store.RunState, error) {
+				cleanupCalls++
+				return nil, nil
+			}}, nil
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), `unknown provider "aihub"`) {
+		t.Fatalf("err=%v", err)
+	}
+	if !reflect.DeepEqual(calls, []string{"a-bad-config"}) {
+		t.Fatalf("configuration failure did not stop suite: calls=%v", calls)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("cleanup calls=%d", cleanupCalls)
+	}
+	if len(report.Runs) != 1 {
+		t.Fatalf("runs=%+v", report.Runs)
+	}
+	record := report.Runs[0]
+	if record.Outcome != "infrastructure_error" || record.RunPassed != nil || record.Validation == nil || record.Validation.ErrorCode != "assistant_configuration" {
+		t.Fatalf("record=%+v", record)
+	}
+	if report.Summary.InfrastructureErrors != 1 || report.Summary.Flow == nil || report.Summary.Flow.InfrastructureErrors != 1 || report.Summary.Flow.ValidationErrors != 0 {
+		t.Fatalf("summary=%+v", report.Summary)
+	}
+	if record.Cleanup == nil || record.Cleanup.Status != "completed" {
+		t.Fatalf("cleanup=%+v", record.Cleanup)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "out", "cases", "a-bad-config", "repeat-001", "run.json")); statErr != nil {
+		t.Fatalf("run evidence missing: %v", statErr)
+	}
+	var observed FlowValidationRequest
+	data, readErr := os.ReadFile(validatorRequest)
+	if readErr != nil || json.Unmarshal(data, &observed) != nil || observed.Run.ID != "preflight" {
+		t.Fatalf("product validator unexpectedly ran: request=%+v read_err=%v data=%s", observed, readErr, data)
+	}
+}
+
 func TestRunFlowDefaultsAssistantIdleTimeout(t *testing.T) {
 	root, suitePath := writeFlowRunSuite(t, "case")
 	t.Setenv("TAKT_FLOW_VALIDATOR_MODE", validFlowEnvelope)

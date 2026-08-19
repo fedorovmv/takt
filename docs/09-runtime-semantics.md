@@ -213,9 +213,13 @@ provider resume нормализуется обратно в pending с тем �
 - `timed_out`;
 - `cancelled`;
 - `protocol`;
+- `configuration`;
 - `internal`.
 
-`allow_failure: true` разрешает только `exit`. Он не скрывает `start`, timeout, cancellation, protocol или internal error.
+`allow_failure: true` разрешает только `exit`. Он не скрывает `start`, timeout,
+cancellation, protocol, configuration или internal error. `configuration`
+обозначает доказанную некорректную настройку adapter и не является допустимым
+значением `attempts.retry_on`.
 
 Output, exit code, session ID и признак truncation сохраняются даже при неуспешном результате, если они доступны. Для `bash` stdout и stderr сохраняются раздельно; совместимое поле `output` остаётся объединённым представлением для шаблонов, feedback и диагностики. Структурные протоколы поверх bash, включая `takt-validation/v1alpha1`, декодируются только из stdout. Для агентного узла также сохраняются assistant, версия assistant, requested model и resolved model. Pi adapter использует `responseModel` последнего assistant message и только при его отсутствии берёт модель из `get_state`.
 

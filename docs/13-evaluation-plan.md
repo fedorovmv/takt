@@ -120,6 +120,12 @@ denominators (`quality_runs`, valid/invalid, scores, stability, time-to-valid)
 и не получает true/false accept/reject. Suite продолжает следующий case;
 `flow_completion_rate` по-прежнему использует все scheduled cases.
 
+Durable adapter kind `configuration` также является
+`outcome: infrastructure_error`, но считается общей ошибкой запуска suite:
+предметный validator для такого Run не запускается, evidence и cleanup
+завершаются, после чего оставшиеся cases не стартуют. Итоговая ошибка содержит
+исходную adapter diagnostic вместо производного `missing_artifact`.
+
 Измеренный ноль сериализуется как `0`; недоступный показатель — как `null`.
 
 ## 7. Правила сравнения
@@ -165,8 +171,13 @@ control workspace and produces `cases/<case>/repeat-<NNN>/` evidence containing
 the durable run snapshot, validator request/result, artifact manifest, a
 portable full-history `repository.bundle`, a baseline-to-final `diff.patch` and
 the final product tree in `source/`. Source evidence excludes `.git/` and
-`.takt/`, rejects symlinks, preserves file modes
-and applies the common secret redactor before cleanup. The mini-du delegation
+`.takt/`, preserves file modes and applies the common secret redactor before
+cleanup. The tree is published atomically. A symlink or another non-regular
+source entry is never followed or partially copied: the repeat records
+`source-unavailable.txt` and retains the measured validator outcome, Git bundle
+and diff. Binary secrets and persistence errors remain fail-closed. Relative
+assistant session paths are resolved inside their execution workspace with
+escape/symlink rejection. The mini-du delegation
 oracle permits `os/exec` only in `_test.go` files so behavioral tests may invoke
 the system oracle; production sources remain fail-closed. The report
 distinguishes `true_accept`, `false_accept`, `true_reject` and

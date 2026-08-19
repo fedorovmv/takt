@@ -42,7 +42,7 @@ func ClassifyFlowRecord(record *RunRecord) {
 	if record == nil {
 		return
 	}
-	if isProviderUnavailableRecord(*record) {
+	if isInfrastructureFailureRecord(*record) {
 		record.Outcome, record.RunPassed = "infrastructure_error", nil
 		record.QualityExpected, record.Quality = false, nil
 		return
@@ -66,7 +66,19 @@ func ClassifyFlowRecord(record *RunRecord) {
 }
 
 func isProviderUnavailableRecord(record RunRecord) bool {
-	if record.Status == store.RunFailed && providerUnavailable(record.ErrorCode, nil) {
+	return recordHasFailureCode(record, "provider_unavailable")
+}
+
+func isConfigurationFailureRecord(record RunRecord) bool {
+	return recordHasFailureCode(record, "configuration")
+}
+
+func isInfrastructureFailureRecord(record RunRecord) bool {
+	return isProviderUnavailableRecord(record) || isConfigurationFailureRecord(record)
+}
+
+func recordHasFailureCode(record RunRecord, code string) bool {
+	if record.Status == store.RunFailed && failureCode(record.ErrorCode, nil, code) {
 		return true
 	}
 	for _, node := range record.Nodes {
@@ -76,12 +88,12 @@ func isProviderUnavailableRecord(record RunRecord) bool {
 		if !nodeProviderFailureStatus(node.Status) {
 			continue
 		}
-		if providerUnavailable(node.ErrorCode, node.Diagnostic) {
+		if failureCode(node.ErrorCode, node.Diagnostic, code) {
 			return true
 		}
 		if len(node.Executions) > 0 {
 			execution := node.Executions[len(node.Executions)-1]
-			if nodeProviderFailureStatus(execution.Status) && providerUnavailable(execution.ErrorCode, execution.Diagnostic) {
+			if nodeProviderFailureStatus(execution.Status) && failureCode(execution.ErrorCode, execution.Diagnostic, code) {
 				return true
 			}
 		}
@@ -99,10 +111,14 @@ func nodeProviderFailureStatus(status string) bool {
 }
 
 func providerUnavailable(errorCode string, diagnostic *store.DiagnosticState) bool {
-	if errorCode == "provider_unavailable" {
+	return failureCode(errorCode, diagnostic, "provider_unavailable")
+}
+
+func failureCode(errorCode string, diagnostic *store.DiagnosticState, code string) bool {
+	if errorCode == code {
 		return true
 	}
-	return diagnostic != nil && (diagnostic.Code == "provider_unavailable" || diagnostic.Kind == "provider_unavailable")
+	return diagnostic != nil && (diagnostic.Code == code || diagnostic.Kind == code)
 }
 
 func ApplyFlowGates(gates FlowGates, summary Summary) []GateResult {

@@ -126,11 +126,21 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 		result.Stdout = stdout.String()
 		result.Stderr = stderr.String()
 		result.Truncated = stdout.Truncated() || stderr.Truncated()
+		if result.ExitCode < 0 {
+			if exitCode, ok := piExitCode(runErr, waitErr); ok {
+				result.ExitCode = exitCode
+			}
+		}
 		// The caller context is authoritative. A deadline or cancellation that
 		// coincides with output overflow must retain timed_out/cancelled semantics
 		// instead of being reclassified as a protocol failure.
 		if priorityErr := piPriorityError(ctx, result.Truncated); priorityErr != nil {
 			return result, priorityErr
+		}
+		if sessionPath == "" && result.ExitCode != 0 {
+			if configurationErr := piConfigurationError(result.Stderr, req.Model, result.ExitCode); configurationErr != nil {
+				return result, configurationErr
+			}
 		}
 		if runErr != nil {
 			return result, runErr
@@ -611,6 +621,32 @@ func (c *piRPCClient) waitAgentSettled(ctx context.Context) (piSettledResult, er
 		}
 	}
 	return result, nil
+}
+
+func piConfigurationError(stderr string, model spec.ModelSpec, exitCode int) error {
+	if !strings.Contains(stderr, `Error: Unknown provider "`) || !strings.Contains(stderr, "--list-models") {
+		return nil
+	}
+	return &execution.Error{
+		Kind:     execution.KindConfiguration,
+		ExitCode: exitCode,
+		Op:       "pi configuration",
+		Err:      fmt.Errorf("unknown provider %q for model %q; run `pi --list-models` and check Pi configuration", model.Provider, model.ID),
+	}
+}
+
+func piExitCode(errs ...error) (int, bool) {
+	for _, err := range errs {
+		var executionErr *execution.Error
+		if errors.As(err, &executionErr) && executionErr.ExitCode >= 0 {
+			return executionErr.ExitCode, true
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode(), true
+		}
+	}
+	return 0, false
 }
 
 func (c *piRPCClient) next(ctx context.Context, match func(piRPCRecord) bool) (piRPCRecord, error) {

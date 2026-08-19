@@ -1,4 +1,4 @@
-# Takt code profile 0.19.2
+# Takt code profile 0.19.3
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -83,7 +83,9 @@ continue. The flow then requires non-empty review, PR, URL, and summary
 artifacts. Evaluation fixtures additionally require at least one successful
 `gh pr create` receipt; the fake `gh` supports stateful open-PR listing for the
 current branch. Ordinary production SCM runs keep their provider-native side
-effects.
+effects. Validation and revalidation keep scratch data outside the execution
+workspace, fail closed when changing directory, and persist their verdict
+artifact before optional exploration.
 
 ## Configuration
 

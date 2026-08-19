@@ -7,7 +7,7 @@ TAKT_PHASE: feature-revalidation
 ARTIFACT_PATH: $ARTIFACTS_DIR/revalidation.md
 CURRENT_WORKSPACE: $TAKT_WORKSPACE
 
-Revalidate the repaired implementation independently inside the current workspace boundary `$TAKT_WORKSPACE`. Read `$ARTIFACTS_DIR/validation.md` and `$ARTIFACTS_DIR/review-fixes.md`, verify the original request and focused tests, and run available and relevant deterministic checks. Do not trust the repair narrative: independently verify the current workspace and do not edit files. Record findings and evidence as Markdown in `$ARTIFACTS_DIR/revalidation.md`, with exactly one anchored control line and no other line beginning `verdict:`:
+Revalidate the repaired implementation independently inside the current workspace boundary `$TAKT_WORKSPACE`. Read `$ARTIFACTS_DIR/validation.md` and `$ARTIFACTS_DIR/review-fixes.md`, verify the original request and focused tests, and keep checks bounded to the repository validation command plus at most one focused probe for a concrete finding. Do not perform exhaustive ad-hoc experiments or create large fixtures. Put every scratch file in a directory created by `mktemp -d` outside `$TAKT_WORKSPACE`, and make every shell `cd` fail closed before creating files. Do not trust the repair narrative: independently verify the current workspace, do not edit product files, and leave no scratch files in it. Record findings and evidence promptly as Markdown in `$ARTIFACTS_DIR/revalidation.md`; do not postpone the artifact for optional exploration. The artifact must contain exactly one anchored control line and no other line beginning `verdict:`:
 
 `verdict: PASS` or `verdict: REPAIR` or `verdict: BLOCKED`
 

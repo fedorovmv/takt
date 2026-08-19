@@ -816,7 +816,7 @@ func addSummary(summary *Summary, record RunRecord) {
 	if record.Mode == "flow" {
 		addFlowSummary(summary, record)
 	}
-	if isProviderUnavailableRecord(record) {
+	if isInfrastructureFailureRecord(record) {
 		summary.InfrastructureErrors++
 		addValidationDiagnostics(summary, record)
 		return
@@ -879,7 +879,7 @@ func finishReport(report *SuiteReport) {
 	var attemptsToValid, scored int
 	var scoreTotal float64
 	for _, record := range report.Runs {
-		if isProviderUnavailableRecord(record) {
+		if isInfrastructureFailureRecord(record) {
 			continue
 		}
 		if record.Quality == nil {
@@ -908,7 +908,7 @@ func finishReport(report *SuiteReport) {
 	var timeTotal int64
 	caseOutcomes := map[string]map[bool]bool{}
 	for _, record := range report.Runs {
-		if isProviderUnavailableRecord(record) {
+		if isInfrastructureFailureRecord(record) {
 			continue
 		}
 		if qualitySucceeded(record) && record.TimeToValidMS != nil {
@@ -947,7 +947,7 @@ func addFlowSummary(summary *Summary, record RunRecord) {
 	if record.Status == store.RunCompleted {
 		flow.FlowCompleted++
 	}
-	if isProviderUnavailableRecord(record) {
+	if isInfrastructureFailureRecord(record) {
 		flow.InfrastructureErrors++
 		return
 	}
@@ -990,7 +990,7 @@ func finishFlowReport(report *SuiteReport) {
 	var scored int
 	var scoreTotal float64
 	for _, record := range report.Runs {
-		if isProviderUnavailableRecord(record) {
+		if isInfrastructureFailureRecord(record) {
 			continue
 		}
 		if record.Quality != nil && record.Quality.Score != nil {
@@ -1010,7 +1010,7 @@ func finishFlowReport(report *SuiteReport) {
 	var timeCount int
 	caseOutcomes := map[string]map[bool]bool{}
 	for _, record := range report.Runs {
-		if isProviderUnavailableRecord(record) {
+		if isInfrastructureFailureRecord(record) {
 			continue
 		}
 		if record.Mode != "flow" || record.Validation == nil || record.Validation.Status != "completed" || record.Validation.Result == nil {

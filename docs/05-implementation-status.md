@@ -1,6 +1,16 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.61-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.62-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+
+## Assistant configuration fail-fast — реализовано в v0.1.62
+
+- Pi startup `Unknown provider` классифицируется как terminal
+  `configuration`, сохраняет stderr и сообщает запрошенные provider/model с
+  подсказкой `pi --list-models`;
+- configuration failure не попадает под workflow/provider retry;
+- flow evaluation записывает его как `infrastructure_error`, пропускает
+  предметный validator, сохраняет evidence/cleanup и не запускает оставшиеся
+  cases с тем же нерабочим config.
 
 ## Test suite tiers — реализовано в v0.1.61
 
@@ -16,6 +26,16 @@
   representative case/repeat, а полная агрегация и gate-failure semantics
   проверяются unit-контрактами;
 - live `eval-*` цели не входят в автоматические проверки.
+
+## Flow-evidence stabilization — Unreleased
+
+- product `source/` публикуется атомарно; symlink/non-regular entry сохраняет
+  `source-unavailable.txt`, не маскируя измеренный validator outcome
+  инфраструктурной ошибкой;
+- binary secret и ошибки persistence по-прежнему fail-closed;
+- relative Pi session evidence безопасно разрешается внутри execution workspace;
+- профиль `code` 0.19.3 ограничивает validation/revalidation probes, выносит
+  scratch data из execution workspace и требует своевременный verdict artifact.
 
 ## Feature-flow gate matrix tiering — реализовано в v0.1.61
 
@@ -90,7 +110,7 @@
 
 ## Outcome-gated Development Flow Acceptance — реализовано в v0.1.59
 
-- профиль `code` 0.19.2 требует user-owned `allowed_paths` для `plan-to-pr`;
+- профиль `code` 0.19.3 требует user-owned `allowed_paths` для `plan-to-pr`;
 - native Git pathspec scope gate проверяет actual tracked/untracked state до draft PR и после review fixes;
 - PR, review и summary domain results закрыты workflow-level gates без новой runtime-абстракции;
 - `code:feature-development` принимает только строгий `validation.md` verdict: `PASS` продолжает flow, `REPAIR` разрешает ровно одну repair и независимую revalidation, `BLOCKED` делает safe stop;
@@ -352,7 +372,7 @@ zero denominators are shown as `n/a`.
 
 ## Предметные поставки
 
-- профиль `code` 0.19.2: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
+- профиль `code` 0.19.3: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
 - Route DSL examples/eval corpus;
 - authoring skill;
 - multi-repo/reference fake adapters.

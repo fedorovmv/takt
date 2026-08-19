@@ -175,6 +175,32 @@ func TestInspectFlowEvaluationReportsMissingExecutorManifest(t *testing.T) {
 	t.Fatalf("missing evidence=%v", inspection.Cases[0].MissingEvidence)
 }
 
+func TestInspectFlowEvaluationReportsUnavailableSourceDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	report := &SuiteReport{ReportVersion: ReportVersion, Mode: "flow", OutputDir: dir, Runs: []RunRecord{{CaseID: "case", Repeat: 1, RunID: "run", Status: "failed"}}}
+	if err := writeReport(dir, report); err != nil {
+		t.Fatal(err)
+	}
+	repeatRoot := filepath.Join(dir, "cases", "case", "repeat-001")
+	if err := os.MkdirAll(repeatRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repeatRoot, "source-unavailable.txt"), []byte("unsupported source\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inspection, err := InspectFlowEvaluation(dir, "case", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "cases/case/repeat-001/source-unavailable.txt"
+	if got := inspection.Cases[0].Evidence; got.Source != want || got.SourcePresent {
+		t.Fatalf("source evidence=%+v", got)
+	}
+	if !strings.Contains(inspection.String(), want) {
+		t.Fatalf("inspection misses source diagnostic:\n%s", inspection.String())
+	}
+}
+
 func TestInspectFlowEvaluationRejectsEvidencePathEscapes(t *testing.T) {
 	t.Run("case id", func(t *testing.T) {
 		dir := t.TempDir()
