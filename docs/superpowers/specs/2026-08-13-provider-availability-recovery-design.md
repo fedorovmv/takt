@@ -2,8 +2,11 @@
 
 ## Status
 
-Approved design. Implementation must remain limited to provider availability
-classification, durable provider retries, trace/report semantics, and tests.
+Implemented historical design. Current semantics and remaining live evidence
+gaps are recorded in `docs/09-runtime-semantics.md`,
+`docs/10-assistant-adapter-spec.md`, `docs/13-evaluation-plan.md` and
+`docs/14-backlog-v0.2.md`. Unchecked execution-plan boxes are not current
+backlog.
 
 ## Problem
 

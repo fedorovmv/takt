@@ -2,8 +2,10 @@
 
 ## Status
 
-Agreed design, pending document review. This document defines an advisory LLM analysis
-layer for saved production-flow evaluation runs. It does not change a
+Implemented historical design. This document defines the advisory LLM analysis
+layer for saved production-flow evaluation runs. Current behavior is documented
+in `docs/13-evaluation-plan.md`; unchecked execution-plan boxes are not current
+backlog. The analysis does not change a
 validator verdict, a Run outcome, or any quality denominator.
 
 ## Goal

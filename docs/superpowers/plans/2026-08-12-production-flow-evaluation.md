@@ -1,5 +1,8 @@
 # Production Flow Evaluation Implementation Plan
 
+> Historical execution plan: implemented. Unchecked boxes preserve the original
+> TDD sequence and are not current backlog; use `docs/14-backlog-v0.2.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add reproducible post-run evaluation of exact production workflows, with self-contained cases, independent executable validation, false-accept metrics, fake GitHub fixtures, and a first `mini-du` corpus.

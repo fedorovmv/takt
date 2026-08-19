@@ -2,6 +2,19 @@
 
 Статус пересобран после `v0.1.56-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
 
+## Текущая граница работ — 2026-08-20
+
+- настройка production workflow на внешнем реальном проекте выполняется
+  пользователем отдельно; Takt repository не читает, не изменяет и не запускает
+  этот workspace до отдельного запроса;
+- live `eval-feature` с preset `qwen38` и assistant idle timeout `15m` также
+  выполняется пользователем; параллельный live eval из этой работы запрещён;
+- repo-owned следующий срез — документационная конвергенция и read-only
+  `takt run inspect`; production evidence обновляется только после передачи
+  результатов внешнего workflow/eval;
+- hard token/tool budgets и parallel mutating merge остаются условными и не
+  начинаются без capability/use-case evidence.
+
 ## P-1. Архитектурный долг — закрыт в v0.1.52, hardened в v0.1.54
 
 ### ARCH-001. Application/transport/runtime boundaries — выполнено
@@ -71,6 +84,10 @@ Task
 
 Критерий: все три сценария используют одно ядро Takt; предметные различия выражаются workflow, blocks, roles, skills, validators и adapters, а не изменениями scheduler/runtime.
 
+Сбор evidence на внешнем реальном проекте уже идёт как user-owned работа. До
+получения сохранённых отчётов этот backlog не авторизует доступ к внешнему
+workspace или параллельный запуск модели.
+
 ## P1. v0.2 Stabilization
 
 ### STABLE-001. Ревизия внешних контрактов — выполнено в v0.1.47
@@ -119,6 +136,10 @@ Draft compatibility/migration policy подготовлен. Финальная 
 ### SEAM-001. Live Pi/OpenCode host conformance
 
 Проверить `/takt`, input interception, tool blocking, completion blocking и recovery на зафиксированных версиях host. До этого bundled integrations остаются `guarded`.
+
+Сохранённое evidence относится к Pi `0.83.0` и OpenCode `1.18.14`; promotion
+требует полного повторного conformance на фактически закрепляемых версиях, а не
+только повторения adapter fresh/resume smoke.
 
 ### SEAM-002. Один внешний coding-agent wrapper — реализовано в v0.1.49
 

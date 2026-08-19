@@ -1,6 +1,6 @@
 # Outcome-gated `feature-development`: дизайн
 
-Статус: **REVIEWED AFTER BASELINE; READY design gate; implementation not started**
+Статус: **IMPLEMENTED; historical design**
 Дата: 2026-08-17
 Обновлено: 2026-08-18
 
@@ -10,6 +10,10 @@
 > and accepted by the fixture gate. The exact-once statements in this design
 > record the original v0.1.59 proposal and are superseded for the current
 > fixture behavior.
+>
+> Текущий контракт находится в `internal/profile/builtin/code`,
+> `docs/13-evaluation-plan.md` и `docs/05-implementation-status.md`;
+> незакрытые checkbox execution plan не являются текущим backlog.
 
 ## 1. Заключение
 

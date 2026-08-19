@@ -1,7 +1,11 @@
 # Production Flow Evaluation: дизайн оценки фактического результата
 
-Статус: **APPROVED DESIGN; implementation not started**
+Статус: **IMPLEMENTED; historical design**
 Дата: 2026-08-12
+
+Текущий контракт и оставшиеся evidence gaps находятся в `docs/13-evaluation-plan.md`,
+`docs/05-implementation-status.md` и `docs/14-backlog-v0.2.md`. Незакрытые
+checkbox в execution plan не являются текущим backlog.
 
 ## 1. Цель
 

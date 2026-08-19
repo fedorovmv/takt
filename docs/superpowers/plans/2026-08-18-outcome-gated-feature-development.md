@@ -1,5 +1,8 @@
 # Outcome-gated Feature Development Implementation Plan
 
+> Historical execution plan: implemented. Unchecked boxes preserve the original
+> TDD sequence and are not current backlog; use `docs/14-backlog-v0.2.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `code:feature-development` stop on review failures, perform at most one repair with independent revalidation, reject duplicate PR creation, and evaluate the complete mini-du contract with validator version 3.

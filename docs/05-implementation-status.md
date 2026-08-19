@@ -452,9 +452,9 @@ zero denominators are shown as `n/a`.
 ## Фактические незакрытые gaps
 
 1. Live Route DSL production evidence.
-2. Обезличенная Go + Document production evaluation; первый Go production-shaped live-срез выполнен, но не заменяет production corpus.
+2. Обезличенная Go + Document production evaluation; первый Go production-shaped live-срез выполнен, но не заменяет production corpus. Настройка workflow и `eval-feature` на внешнем реальном проекте выполняется пользователем отдельно и не входит в repo-owned изменения до передачи evidence.
 3. Финальная v0.2/v1beta1 migration после production evidence; schema subset, field audit и compatibility matrix закрыты в v0.1.48.
-4. Live strict host conformance Pi/OpenCode: fresh/resume и часть guarded host capabilities подтверждены на Pi `0.83.0`/OpenCode `1.18.14`, но tool/completion и часть Pi boundaries остаются непроверенными.
+4. Live strict host conformance Pi/OpenCode: fresh/resume и часть guarded host capabilities подтверждены на Pi `0.83.0`/OpenCode `1.18.14`, но tool/completion и часть Pi boundaries остаются непроверенными; новая pinned host version требует нового полного evidence.
 5. Live Qwen/GitHub smoke reference adapters с внешними credentials при внедрении; public SDK/reference implementations закрыты в v0.1.49–v0.1.50.
 6. Workflow graph/explain/scaffold и статический reject/revise contract.
 7. Archon-first Takt YAML из `docs/superpowers/specs/2026-08-11-archon-compatible-flow-runtime-spec.md`: A0 language switch и A1 loop/session/recovery semantics реализованы и покрыты Go contract/E2E tests. Единый native language surface использует target root/node/provider и `$...` references; legacy Workflow root, frontmatter `assistant` и `${...}` отклоняются. Реализованы `loop`, scalar/structured `until`, `until.signal`, `until.requires`, `until_bash`, durable signal/predicate evidence, `fresh_context`, `context: shared`, exact Session ID resume, cancel metadata и retry history. Сохранён `output_format`/schema-subset contract. Отдельный importer/transpiler и второй executor не планируются. Deferred остаются hard token/tool budgets до live capability proof, `run inspect` и mutating merge fan-out.

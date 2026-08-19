@@ -18,6 +18,16 @@
 
 Следующий механизм добавляется только тогда, когда существующий evaluation или production-сценарий показывает измеримый пробел. До появления evidence приоритет имеют проверка качества, упрощение контрактов и устранение расхождений между схемой, кодом и документацией.
 
+Текущая repo-owned последовательность после gap audit 2026-08-20:
+
+1. привести target/spec/plan status к фактическому состоянию;
+2. реализовать read-only `takt run inspect` как Slice B существующей Archon spec;
+3. принять результаты user-owned production workflow и `eval-feature`, не
+   обращаясь к внешнему workspace и не запуская параллельный live eval;
+4. повторить host conformance на выбранных pinned versions после завершения
+   текущего eval;
+5. формировать финальную v1beta1 migration только после production evidence.
+
 Порядок:
 
 ```text

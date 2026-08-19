@@ -1,5 +1,9 @@
 # Go Stabilization Benchmark Implementation Plan
 
+> Historical execution plan: the benchmark and evidence were delivered.
+> Unchecked final-verification boxes reference the retired manifest workflow and
+> are not current backlog; use `docs/14-backlog-v0.2.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add and run a five-case production-shaped Go benchmark comparing direct and deterministic-repair strategies on Pi/Qwen 3.6 and OpenCode/Qwen3-Coder-Next.
