@@ -48,6 +48,14 @@ func PrepareFlowRepeat(ctx context.Context, suite *FlowSuite, item FlowCase, rep
 		return nil, err
 	}
 	selector := strings.TrimSpace(suite.Workflow)
+	if suite.ResolvedWorkflow == "" {
+		candidate := filepath.Join(control, selector)
+		if info, statErr := os.Stat(candidate); statErr == nil && info.Mode().IsRegular() {
+			copy := *suite
+			copy.ResolvedWorkflow = candidate
+			suite = &copy
+		}
+	}
 	profileName, _ := profile.SelectorParts(selector)
 	if suite.ResolvedWorkflow == "" {
 		if err := ensureFlowProfile(profileName, control); err != nil {

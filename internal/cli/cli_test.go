@@ -136,6 +136,59 @@ func TestEvalFlowParsesOnlyItsContract(t *testing.T) {
 	}
 }
 
+func TestEvaluationGateFlagParsesOneBoundedThreshold(t *testing.T) {
+	var gates evaluationGateFlag
+	if err := gates.Set("valid_rate.min=1"); err != nil {
+		t.Fatal(err)
+	}
+	if gate := gates["valid_rate"]; gate.Min == nil || *gate.Min != 1 || gate.Max != nil {
+		t.Fatalf("gate=%+v", gate)
+	}
+	for _, value := range []string{"valid_rate=1", "valid_rate.min=NaN", "valid_rate.min=2", "unknown.min=1", "valid_rate.max=0"} {
+		if err := gates.Set(value); err == nil {
+			t.Fatalf("gate %q was accepted", value)
+		}
+	}
+}
+
+func TestEvalFlowRequiresCorpusFlagsForOrdinaryWorkflow(t *testing.T) {
+	root := t.TempDir()
+	workflow := filepath.Join(root, "evaluate.yaml")
+	if err := os.WriteFile(workflow, []byte("name: evaluate\nnodes:\n  - id: done\n    bash: 'true'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := evalCmd(context.Background(), []string{"flow", workflow})
+	if err == nil || !strings.Contains(err.Error(), "requires --target, --config, and --cases") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestEvalFlowWarnsForExactLegacySuiteVersion(t *testing.T) {
+	root := t.TempDir()
+	suite := filepath.Join(root, "suite.yaml")
+	if err := os.WriteFile(suite, []byte("version: takt-flow-evaluation/v1alpha1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = old }()
+	_ = evalCmd(context.Background(), []string{"flow", suite})
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "deprecated legacy runner") {
+		t.Fatalf("stderr=%q", raw)
+	}
+}
+
 func TestEvalAnalyzeValidatesArguments(t *testing.T) {
 	if err := evalCmd(context.Background(), []string{"analyze", ".takt/evals/run", "--repeat", "2"}); err == nil || err.Error() != "repeat requires --case" {
 		t.Fatalf("repeat without case error=%v", err)

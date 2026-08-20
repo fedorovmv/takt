@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/v1alpha1/evaluation-input.schema.json",
+  "title": "Takt Evaluation Input v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "type", "cases", "gates", "identity"],
+  "properties": {
+    "protocol_version": {"const": "takt-evaluation-input/v1alpha1"},
+    "type": {"const": "evaluation_input"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1024,
+      "items": {"$ref": "#/$defs/case"}
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "valid_rate": {"$ref": "#/$defs/gate"},
+        "false_accept_rate": {"$ref": "#/$defs/gate"},
+        "false_reject_rate": {"$ref": "#/$defs/gate"},
+        "flow_completion_rate": {"$ref": "#/$defs/gate"},
+        "validation_error_rate": {"$ref": "#/$defs/gate"}
+      }
+    },
+    "identity": {"$ref": "#/$defs/identity"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "repeat", "input", "input_path", "expected_path", "baseline_path", "repository", "workflow_path", "case_fingerprint", "workflow_fingerprint", "prepared_fingerprint"],
+      "properties": {
+        "case_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "repeat": {"type": "integer", "minimum": 1},
+        "input": {"type": "string", "minLength": 1},
+        "input_path": {"type": "string", "minLength": 1},
+        "expected_path": {"type": "string", "minLength": 1},
+        "baseline_path": {"type": "string", "minLength": 1},
+        "repository": {"type": "string", "minLength": 1, "not": {"pattern": "^(?:/|[A-Za-z]:[\\\\/])"}},
+        "workflow_path": {"type": "string", "minLength": 1},
+        "case_fingerprint": {"$ref": "#/$defs/sha256"},
+        "workflow_fingerprint": {"$ref": "#/$defs/sha256"},
+        "prepared_fingerprint": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "oneOf": [{"required": ["min"]}, {"required": ["max"]}],
+      "properties": {
+        "min": {"type": "number", "minimum": 0, "maximum": 1},
+        "max": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fingerprint", "workflow_fingerprint", "config_fingerprint", "dataset_fingerprint", "target"],
+      "properties": {
+        "fingerprint": {"$ref": "#/$defs/sha256"},
+        "workflow_fingerprint": {"$ref": "#/$defs/sha256"},
+        "config_fingerprint": {"$ref": "#/$defs/sha256"},
+        "dataset_fingerprint": {"$ref": "#/$defs/sha256"},
+        "target": {"type": "string", "minLength": 1},
+        "model_preset": {"type": "string"},
+        "models": {"type": "object", "propertyNames": {"minLength": 1}, "additionalProperties": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

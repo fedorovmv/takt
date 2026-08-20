@@ -15,6 +15,24 @@ import (
 const FlowSuiteVersion = "takt-flow-evaluation/v1alpha1"
 const FlowValidatorProtocol = "takt-evaluation-validator/v1alpha1"
 
+func IsLegacyFlowSuite(path string) (bool, error) {
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	var header map[string]json.RawMessage
+	if err := yamlcodec.Unmarshal(source, &header); err != nil {
+		return false, err
+	}
+	var version string
+	if raw := header["version"]; raw != nil {
+		if err := json.Unmarshal(raw, &version); err != nil {
+			return false, err
+		}
+	}
+	return version == FlowSuiteVersion, nil
+}
+
 type FlowSuite struct {
 	Version                                                              string            `json:"version"`
 	Workflow                                                             string            `json:"workflow"`

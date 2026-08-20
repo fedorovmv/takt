@@ -48,12 +48,20 @@ type EvaluationBenchmarkRequest struct {
 
 type FlowEvaluationRequest struct {
 	SuitePath, CaseID, OutputDir, InvocationWorkspace string
+	Target, ConfigPath, CasesDir                      string
 	ModelPreset                                       string
 	ModelOverrides                                    map[string]string
+	Gates                                             map[string]FlowEvaluationGate
 	Repeat                                            int
 	KeepWorkspaces                                    bool
 	Trace                                             func(string)
+	Deprecation                                       func(string)
 	AssistantIdleTimeout                              time.Duration
+}
+
+type FlowEvaluationGate struct {
+	Min *float64 `json:"min,omitempty"`
+	Max *float64 `json:"max,omitempty"`
 }
 
 type EvaluationInspectRequest struct {

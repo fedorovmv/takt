@@ -234,6 +234,28 @@ func TestAssessmentSchemaValidatesPrimaryEnvelope(t *testing.T) {
 	}
 }
 
+func TestEvaluationInputSchemaValidatesStrictEnvelope(t *testing.T) {
+	schema := compileSchemaFixture(t, "evaluation-input.schema.json")
+	sha := strings.Repeat("a", 64)
+	fixture := map[string]any{
+		"protocol_version": "takt-evaluation-input/v1alpha1", "type": "evaluation_input",
+		"cases": []any{map[string]any{
+			"case_id": "case-a", "repeat": 1, "input": "task", "input_path": "/cases/a/input.md", "expected_path": "/cases/a/expected.yaml", "baseline_path": "/eval/a/baseline",
+			"repository": ".takt/evals/run/workspaces/a/repeat-001/control", "workflow_path": "/eval/a/control/workflow.yaml",
+			"case_fingerprint": sha, "workflow_fingerprint": sha, "prepared_fingerprint": sha,
+		}},
+		"gates":    map[string]any{"valid_rate": map[string]any{"min": 1}},
+		"identity": map[string]any{"fingerprint": sha, "workflow_fingerprint": sha, "config_fingerprint": sha, "dataset_fingerprint": sha, "target": "code:feature-development"},
+	}
+	if err := schema.Validate(fixture); err != nil {
+		t.Fatal(err)
+	}
+	fixture["extra"] = true
+	if err := schema.Validate(fixture); err == nil {
+		t.Fatal("unknown evaluation input field was accepted")
+	}
+}
+
 func TestEvaluationSchemasValidateFlowFixtures(t *testing.T) {
 	sha := strings.Repeat("a", 64)
 	metric := map[string]any{"baseline": nil, "candidate": nil, "delta": nil, "delta_percent": nil}

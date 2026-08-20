@@ -43,14 +43,78 @@ func (e evaluationEngine) Benchmark(ctx context.Context, req tooling.EvaluationB
 }
 
 func (e evaluationEngine) Flow(ctx context.Context, req tooling.FlowEvaluationRequest) (any, error) {
+	legacy, err := evaluation.IsLegacyFlowSuite(req.SuitePath)
+	if err != nil {
+		return nil, err
+	}
 	hostPATH := os.Getenv("PATH")
 	if hostPATH == "" {
 		return nil, fmt.Errorf("flow evaluation requires non-empty host PATH")
+	}
+	if !legacy {
+		return e.runOrdinaryEvaluation(ctx, req, hostPATH)
+	}
+	if req.Deprecation != nil {
+		req.Deprecation("takt-flow-evaluation/v1alpha1 uses the deprecated legacy runner")
 	}
 	return evaluation.RunFlow(ctx, evaluation.FlowRunOptions{
 		SuitePath: req.SuitePath, CaseID: req.CaseID, OutputDir: req.OutputDir, InvocationWorkspace: req.InvocationWorkspace,
 		Repeat: req.Repeat, KeepWorkspaces: req.KeepWorkspaces, ModelPreset: req.ModelPreset, ModelOverrides: req.ModelOverrides, Now: time.Now, HostPATH: hostPATH, CaseRunner: e.runFlowCase, Trace: req.Trace, AssistantIdleTimeout: req.AssistantIdleTimeout,
 	})
+}
+
+func (e evaluationEngine) runOrdinaryEvaluation(ctx context.Context, req tooling.FlowEvaluationRequest, hostPATH string) (any, error) {
+	gates := make(map[string]evaluation.EvaluationGate, len(req.Gates))
+	for name, gate := range req.Gates {
+		gates[name] = evaluation.EvaluationGate{Min: gate.Min, Max: gate.Max}
+	}
+	prepared, err := evaluation.PrepareEvaluationInput(ctx, evaluation.EvaluationInputOptions{
+		WorkflowPath: req.SuitePath, Target: req.Target, ConfigPath: req.ConfigPath, CasesDir: req.CasesDir,
+		CaseID: req.CaseID, OutputDir: req.OutputDir, Workspace: req.InvocationWorkspace, Repeat: req.Repeat,
+		Gates: gates, ModelPreset: req.ModelPreset, ModelOverrides: req.ModelOverrides, Now: time.Now, HostPATH: hostPATH,
+	})
+	if err != nil {
+		return nil, err
+	}
+	activity := newFlowActivityTracker()
+	traceContext := newFlowTraceContext()
+	app, err := newApp(req.InvocationWorkspace, prepared.ConfigPath, func(runID, nodeID string, event assistant.Event) {
+		activity.recordEvent(runID, nodeID, event, req.AssistantIdleTimeout)
+		record, _ := activity.get(runID, nodeID)
+		traceEvaluationAssistantEvent(traceContext, req.Trace, runID, nodeID, record.Attempt, event)
+	}, func(runID, nodeID, kind string) {
+		activity.record(flowActivityRecord{RunID: runID, NodeID: nodeID, LastActivity: kind, LastActivityAt: time.Now(), Active: true})
+	}, req.AssistantIdleTimeout)
+	if err != nil {
+		return nil, err
+	}
+	started, err := app.Core.RunService.Start(ctx, application.StartRequest{
+		Selector: req.SuitePath, Input: string(prepared.JSON), ConfigPath: prepared.ConfigPath,
+		ModelPreset: prepared.ModelPreset, ModelOverrides: req.ModelOverrides, Detached: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if started.RunID == "" {
+		return nil, fmt.Errorf("evaluation start returned no run ID")
+	}
+	traceScoped(req.Trace, started.RunID, "", 0, "accepted", "id="+started.RunID)
+	snapshot, pollErr := e.pollFlowCase(ctx, app, started.RunID, "", req.Trace, activity, nil)
+	stats, statsErr := app.Core.RunService.Stats(application.RunStatsQuery{RunID: started.RunID, CheckGates: true})
+	if statsErr != nil {
+		return nil, errors.Join(pollErr, statsErr)
+	}
+	if pollErr != nil {
+		return stats, pollErr
+	}
+	if len(snapshot.States) == 0 || snapshot.States[0] == nil || snapshot.States[0].Status != store.RunCompleted {
+		status, message := "unknown", ""
+		if len(snapshot.States) > 0 && snapshot.States[0] != nil {
+			status, message = snapshot.States[0].Status, snapshot.States[0].Error
+		}
+		return stats, fmt.Errorf("evaluation run %s ended with status %s: %s", started.RunID, status, message)
+	}
+	return stats, stats.GateFailure()
 }
 
 func (e evaluationEngine) Analyze(ctx context.Context, req tooling.EvaluationAnalyzeRequest) (any, error) {

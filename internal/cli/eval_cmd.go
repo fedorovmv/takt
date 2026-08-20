@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +16,34 @@ import (
 	"takt/internal/bootstrap"
 	"takt/internal/tooling"
 )
+
+type evaluationGateFlag map[string]tooling.FlowEvaluationGate
+
+func (f *evaluationGateFlag) String() string { return "" }
+
+func (f *evaluationGateFlag) Set(raw string) error {
+	key, rawValue, ok := strings.Cut(raw, "=")
+	metric, bound, hasBound := strings.Cut(key, ".")
+	allowed := map[string]bool{"valid_rate": true, "false_accept_rate": true, "false_reject_rate": true, "flow_completion_rate": true, "validation_error_rate": true}
+	value, err := strconv.ParseFloat(rawValue, 64)
+	if !ok || !hasBound || !allowed[metric] || (bound != "min" && bound != "max") || err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		return fmt.Errorf("gate must be metric.min|max=value with a supported metric and value between 0 and 1")
+	}
+	if *f == nil {
+		*f = evaluationGateFlag{}
+	}
+	if _, duplicate := (*f)[metric]; duplicate {
+		return fmt.Errorf("gate %q is duplicated", metric)
+	}
+	gate := tooling.FlowEvaluationGate{}
+	if bound == "min" {
+		gate.Min = &value
+	} else {
+		gate.Max = &value
+	}
+	(*f)[metric] = gate
+	return nil
+}
 
 func evalCmd(ctx context.Context, args []string) error {
 	if len(args) == 0 {
@@ -89,6 +119,9 @@ func evalCmd(ctx context.Context, args []string) error {
 			return nil
 		}
 		fs := newFlagSet("eval flow")
+		target := fs.String("target", "", "workflow or profile selector evaluated for every case")
+		configPath := fs.String("config", "", "evaluation config path")
+		casesDir := fs.String("cases", "", "evaluation corpus directory")
 		caseID := fs.String("case", "", "run one case")
 		repeat := fs.Int("repeat", 1, "number of repetitions per case")
 		outputDir := fs.String("output", "", "evaluation output directory")
@@ -96,10 +129,12 @@ func evalCmd(ctx context.Context, args []string) error {
 		modelPreset := fs.String("model-preset", "", "model preset from suite config")
 		var modelOverrides modelOverrideFlag
 		fs.Var(&modelOverrides, "model", "override model alias=provider/model; repeatable")
+		var gates evaluationGateFlag
+		fs.Var(&gates, "gate", "quality gate metric.min|max=value; repeatable")
 		assistantIdleTimeout := fs.Duration("assistant-idle-timeout", 5*time.Minute, "fail an assistant node after this long without progress")
 		trace := fs.Bool("trace", false, "write live durable progress to stderr")
 		jsonOut := fs.Bool("json", true, "JSON output")
-		values := map[string]bool{"--case": true, "--repeat": true, "--output": true, "--model-preset": true, "--model": true, "--assistant-idle-timeout": true, "--keep-workspaces": false, "--trace": false, "--json": false}
+		values := map[string]bool{"--target": true, "--config": true, "--cases": true, "--case": true, "--repeat": true, "--output": true, "--model-preset": true, "--model": true, "--gate": true, "--assistant-idle-timeout": true, "--keep-workspaces": false, "--trace": false, "--json": false}
 		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
 			return err
 		}
@@ -125,7 +160,7 @@ func evalCmd(ctx context.Context, args []string) error {
 			return err
 		}
 		overrides := mergeModelOverrides(environmentOverrides, modelOverrides)
-		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces, ModelPreset: *modelPreset, ModelOverrides: overrides, Trace: traceFn, AssistantIdleTimeout: *assistantIdleTimeout})
+		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), Target: *target, ConfigPath: *configPath, CasesDir: *casesDir, Gates: gates, CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces, ModelPreset: *modelPreset, ModelOverrides: overrides, Trace: traceFn, Deprecation: func(message string) { fmt.Fprintln(os.Stderr, "warning:", message) }, AssistantIdleTimeout: *assistantIdleTimeout})
 		if err != nil {
 			if report != nil {
 				if printErr := printResult(*jsonOut, report); printErr != nil {
