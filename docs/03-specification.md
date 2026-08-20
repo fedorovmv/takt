@@ -586,6 +586,10 @@ workflow/config fingerprints, validation result, evidence checksums и outcome
 missing/corrupt evidence и persistence error завершают Node/Run ошибкой.
 Assessment не изменяет target Run. После operator retry target прежняя запись
 становится stale, потому что pin не совпадает с новым `result_revision`.
+Run stats и evaluation gates учитывают только `primary` assessments, emitted
+самим queried evaluation Run (`relation=assessor`); внешние assessor Runs,
+направившие assessment на этот Run, остаются доступны через
+`run assessment`, но не изменяют quality metrics или gates.
 
 ### `approval`
 
@@ -1020,10 +1024,14 @@ takt eval inspect <evaluation-output-dir> [--case ID] [--repeat N] [--json]
 takt eval analyze <evaluation-output-dir> [--case <case-id>] [--repeat N] [--config <analyzer-config>] [--model-preset <name>] [--language en|ru] [--trace] [--json]
 takt eval benchmark <matrix.yaml> [--output <dir>] [--repeat N] [--replace]
 takt eval compare <baseline-output-dir> <candidate-output-dir>
-takt eval flow <evaluation-workflow> --target <workflow-or-profile> --config <config> --cases <dir> [--repeat N] [--gate metric.min|max=value] [--model-preset <name>] [--assistant-idle-timeout DURATION] [--trace]
+takt eval flow <evaluation-workflow> --target <workflow-or-profile> --config <config> --cases <dir> [--repeat N] [--gate metric.min|max=value] [--model-preset <name>] [--assistant-idle-timeout DURATION] [--keep-workspaces] [--trace]
 ```
 
 ### Production flow evaluation
+
+Пошаговое создание corpus, case, validator, evidence/assessment DAG и команды
+эксплуатации описаны в
+[сквозном руководстве по evaluation](73-evaluation-authoring-guide.md).
 
 Обычный путь принимает authored `takt/v1alpha1` evaluation workflow:
 
@@ -1058,6 +1066,10 @@ Run failed. Gates из `--gate` проверяются после durable reload
 `takt eval status|stats|inspect <run-id>` делегируют тем же application queries.
 Для старого directory argument они продолжают read-only разбор
 `progress.json`/`report.json`.
+В ordinary path terminal cleanup удаляет только подготовленные repeat
+`control`/`baseline`/`origin.git` и managed root/child worktrees; `--keep-workspaces`
+сохраняет их для расследования. Durable Run state, events, artifacts и
+assessments сохраняются в обоих режимах.
 
 `model_presets` is a shared Config feature, not an evaluation-only format. Each
 preset is a non-empty map of arbitrary aliases to atomic `provider/model-id`

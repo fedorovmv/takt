@@ -50,6 +50,91 @@ func TestOrdinaryEvaluationRunUsesOneRootAndAuthoredChildren(t *testing.T) {
 	}
 }
 
+func TestOrdinaryEvaluationCleanupHonorsKeepWorkspaces(t *testing.T) {
+	for _, keep := range []bool{false, true} {
+		t.Run(map[bool]string{false: "remove", true: "keep"}[keep], func(t *testing.T) {
+			workspace, workflow, config, cases := writeOrdinaryEvaluationFixture(t, true)
+			output := filepath.Join(workspace, ".takt", "evals", "cleanup")
+			_, err := (evaluationEngine{}).Flow(context.Background(), tooling.FlowEvaluationRequest{
+				SuitePath: workflow, Target: "target.yaml", ConfigPath: config, CasesDir: cases,
+				InvocationWorkspace: workspace, OutputDir: output, Repeat: 1, KeepWorkspaces: keep,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			control := filepath.Join(output, "workspaces", "a", "repeat-001", "control")
+			baseline := filepath.Join(output, "workspaces", "a", "repeat-001", "baseline")
+			for _, path := range []string{control, baseline} {
+				_, statErr := os.Stat(path)
+				present := statErr == nil
+				if present != keep {
+					t.Fatalf("keep=%t path=%s present=%t err=%v", keep, path, present, statErr)
+				}
+			}
+		})
+	}
+}
+
+func TestOrdinaryEvaluationCleanupRemovesManagedChildWorktrees(t *testing.T) {
+	workspace, workflow, config, cases := writeOrdinaryEvaluationFixture(t, true)
+	raw, err := os.ReadFile(workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = []byte(strings.Replace(string(raw), "            isolation: none", "            isolation: worktree\n            keep_worktree: true", 1))
+	if err := os.WriteFile(workflow, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(workspace, ".takt", "evals", "worktree-cleanup")
+	result, err := (evaluationEngine{}).Flow(context.Background(), tooling.FlowEvaluationRequest{
+		SuitePath: workflow, Target: "target.yaml", ConfigPath: config, CasesDir: cases,
+		InvocationWorkspace: workspace, OutputDir: output, Repeat: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats := result.(*application.RunStatsResult)
+	root, err := (store.FS{Workspace: workspace}).Load(stats.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(root.ChildRunIDs) != 2 {
+		t.Fatalf("child runs=%v", root.ChildRunIDs)
+	}
+	fs := store.FS{Workspace: workspace}
+	for _, id := range root.ChildRunIDs {
+		child, loadErr := fs.Load(id)
+		if loadErr != nil {
+			t.Fatal(loadErr)
+		}
+		if child.Worktree == nil || !child.Worktree.Removed {
+			t.Fatalf("child worktree was not removed: %+v", child)
+		}
+	}
+}
+
+func TestOrdinaryEvaluationCleanupRunsAfterFailedRun(t *testing.T) {
+	workspace, workflow, config, cases := writeOrdinaryEvaluationFixture(t, false)
+	raw, err := os.ReadFile(workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = []byte(strings.Replace(string(raw), `printf '%s' '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":false}'`, `printf '%s' 'malformed'`, 1))
+	if err := os.WriteFile(workflow, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(workspace, ".takt", "evals", "failed-cleanup")
+	if _, err := (evaluationEngine{}).Flow(context.Background(), tooling.FlowEvaluationRequest{
+		SuitePath: workflow, Target: "target.yaml", ConfigPath: config, CasesDir: cases,
+		InvocationWorkspace: workspace, OutputDir: output, Repeat: 1,
+	}); err == nil {
+		t.Fatal("expected failed ordinary evaluation")
+	}
+	if _, err := os.Stat(filepath.Join(output, "workspaces", "a", "repeat-001", "control")); !os.IsNotExist(err) {
+		t.Fatalf("failed evaluation workspace was retained: %v", err)
+	}
+}
+
 func TestOrdinaryEvaluationGateFailsAfterCompletedRunIsDurable(t *testing.T) {
 	workspace, workflow, config, cases := writeOrdinaryEvaluationFixture(t, false)
 	result, err := (evaluationEngine{}).Flow(context.Background(), tooling.FlowEvaluationRequest{

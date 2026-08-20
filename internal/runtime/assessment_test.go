@@ -320,6 +320,9 @@ func TestAssessmentOperatorRetryCreatesNewImmutableAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := state.Nodes["assess"].Artifacts[0]
+	// Operator retry resets the node attempt namespace while the old immutable
+	// artifacts remain attached to the Run. A new terminal target revision must
+	// not reuse the old envelope or path.
 	target.ResultRevision = target.Revision + 1
 	if err := fs.Commit(target, store.Event{Type: "run.completed"}); err != nil {
 		t.Fatal(err)
@@ -327,16 +330,28 @@ func TestAssessmentOperatorRetryCreatesNewImmutableAttempt(t *testing.T) {
 	state.Status = store.RunRunning
 	state.ResultRevision = 0
 	state.Nodes["assess"].Status = store.NodeRunning
-	state.Nodes["assess"].Attempts = 2
+	state.Nodes["assess"].Attempts = 0
 	if err := fs.Commit(state, store.Event{Type: "run.retry_requested", NodeID: "assess"}); err != nil {
 		t.Fatal(err)
 	}
+	state.Nodes["assess"].Attempts++ // runAttempt increments after the retry reset
 	result, err := runner.executeAssessmentAction(state, wf.Nodes[2], runner.actionContext(state, wf.Nodes[2], nil))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Artifacts) != 1 || result.Artifacts[0].ID == old.ID || result.Artifacts[0].Attempt != 2 {
+	if len(result.Artifacts) != 1 || result.Artifacts[0].ID == old.ID || result.Artifacts[0].Path == old.Path || result.Artifacts[0].Attempt != 1 {
 		t.Fatalf("old=%+v new=%+v", old, result.Artifacts)
+	}
+	raw, err := os.ReadFile(result.Artifacts[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := assessment.Decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if envelope.ID != result.Artifacts[0].ID || envelope.Target.RunID != target.ID || envelope.Target.Revision != target.ResultRevision || envelope.Assessor.RunID != state.ID {
+		t.Fatalf("retried assessment provenance = %+v", envelope)
 	}
 }
 

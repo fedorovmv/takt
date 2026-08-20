@@ -61,6 +61,108 @@ func TestRunStatsStatusAndInspectShareAssessmentFacts(t *testing.T) {
 	}
 }
 
+func TestRunStatsFlowCompletionCountsDistinctMatrixScopes(t *testing.T) {
+	service, fs, root, _ := observationFixture(t)
+	first, err := fs.Load(root.ChildRunIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range root.Artifacts {
+		artifact := &root.Artifacts[index]
+		if artifact.ID != "assessment-b" {
+			continue
+		}
+		raw, readErr := os.ReadFile(artifact.Path)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		value, decodeErr := assessment.Decode(raw)
+		if decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		value.Target.RunID = first.ID
+		raw, marshalErr := json.Marshal(value)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		if writeErr := os.WriteFile(artifact.Path, raw, 0o644); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+		sum := sha256.Sum256(raw)
+		artifact.SHA256 = hex.EncodeToString(sum[:])
+		artifact.Size = int64(len(raw))
+		break
+	}
+	if err := fs.Save(root); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := service.RunService.Stats(RunStatsQuery{RunID: root.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.FlowCompletionRate.Numerator != 2 || stats.FlowCompletionRate.Denominator != 2 {
+		t.Fatalf("flow completion=%+v", stats.FlowCompletionRate)
+	}
+}
+
+func TestRunStatsIgnoresExternalPrimaryAssessmentTargetingEvaluation(t *testing.T) {
+	service, fs, root, _ := observationFixture(t)
+	root.Input = `{"gates":{"valid_rate":{"min":0.6}}}`
+	if err := fs.Save(root); err != nil {
+		t.Fatal(err)
+	}
+	external := &store.RunState{
+		ID: "run-external-assessor", Status: store.RunCompleted, WorkflowPath: "assessor.yaml", ConfigPath: root.ConfigPath,
+		Workspace: root.Workspace, Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}, CreatedAt: root.CreatedAt, UpdatedAt: root.UpdatedAt,
+	}
+	externalArtifact := writeAssessmentQueryFixture(t, fs, external, root, "external-primary", assessment.RolePrimary, root.UpdatedAt.Add(time.Second))
+	raw, err := os.ReadFile(externalArtifact.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	externalValue, err := assessment.Decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	externalValue.Scope.CaseID = "external-case"
+	raw, err = json.Marshal(externalValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(externalArtifact.Path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	external.Artifacts[0].SHA256 = hex.EncodeToString(sum[:])
+	external.Artifacts[0].Size = int64(len(raw))
+	if err := fs.Save(external); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := service.RunService.Stats(RunStatsQuery{RunID: root.ID, CheckGates: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Evaluated != 2 || stats.ValidRate.Numerator != 1 || stats.ValidRate.Denominator != 2 || stats.FlowCompletionRate.Numerator != 2 || stats.FlowCompletionRate.Denominator != 2 || stats.GatesPassed {
+		t.Fatalf("external assessment contaminated stats: %+v", stats)
+	}
+	assessments, err := service.RunService.Assessments(AssessmentQuery{RunID: root.ID, IncludeStale: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundExternal := false
+	for _, record := range assessments.Assessments {
+		if record.Assessment.ID == "external-primary" {
+			foundExternal = true
+			if record.Relation != "target" {
+				t.Fatalf("external assessment relation = %q", record.Relation)
+			}
+		}
+	}
+	if !foundExternal {
+		t.Fatalf("run assessment omitted external target relation: %+v", assessments)
+	}
+}
+
 func TestRunInspectFindsMatrixBranchNodeByPublicID(t *testing.T) {
 	service, _, root, _ := observationFixture(t)
 	inspection, err := service.RunService.Inspect(RunInspectQuery{RunID: root.ID, NodeID: "validate"})

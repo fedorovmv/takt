@@ -1,5 +1,10 @@
 # mini-du flow evaluation corpus
 
+Общий порядок создания собственного corpus, authored evaluation workflow,
+validator, evidence и assessment описан в
+[evaluation authoring guide](../../../docs/73-evaluation-authoring-guide.md).
+Этот каталог является полным рабочим примером того контракта.
+
 `validator/` is the portable post-run oracle for the `mini-du` flow cases. It
 reads one `takt-evaluation-validator/v1alpha1` request from stdin and returns
 one `takt-validation/v1alpha1` result. Product failures are measured as

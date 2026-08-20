@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Unified evaluation retries now derive assessment identity from target Run
+  provenance, count flow completion by matrix scope, and honor
+  `--keep-workspaces` for ordinary authored evaluations, including managed
+  child worktrees.
+- Evaluation stats and gates now ignore primary assessments emitted by an
+  external assessor Run while keeping those target relations visible to
+  `run assessment`.
+
 ## v0.1.63-alpha
 
 - Evaluation can now run as one ordinary durable Run. Authored sequential

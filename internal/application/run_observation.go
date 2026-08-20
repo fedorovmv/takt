@@ -183,7 +183,7 @@ func (s *RunService) Stats(query RunStatsQuery) (*RunStatsResult, error) {
 	outcomes := map[string]int{}
 	evaluated, targetsCompleted := 0, 0
 	for _, record := range facts.assessments {
-		if record.Assessment.Role != assessment.RolePrimary {
+		if record.Relation != "assessor" || record.Assessment.Role != assessment.RolePrimary {
 			continue
 		}
 		evaluated++
@@ -193,13 +193,22 @@ func (s *RunService) Stats(query RunStatsQuery) (*RunStatsResult, error) {
 	for _, state := range facts.snapshot.States {
 		currentStatus[state.ID] = state.Status
 	}
-	seenTarget := map[string]bool{}
+	completionRecords := map[string]AssessmentRecord{}
 	for _, record := range facts.allAssessments {
 		value := record.Assessment
-		if value.Role != assessment.RolePrimary || seenTarget[value.Target.RunID] {
+		if record.Relation != "assessor" || value.Role != assessment.RolePrimary {
 			continue
 		}
-		seenTarget[value.Target.RunID] = true
+		completionKey := "target\x00" + value.Target.RunID
+		if value.Scope.CaseID != "" || value.Scope.Repeat != 0 {
+			completionKey = fmt.Sprintf("scope\x00%s\x00%d", value.Scope.CaseID, value.Scope.Repeat)
+		}
+		// Assessments are sorted oldest-first; the latest record wins when an
+		// operator retry reuses a matrix scope.
+		completionRecords[completionKey] = record
+	}
+	for _, record := range completionRecords {
+		value := record.Assessment
 		status := currentStatus[value.Target.RunID]
 		if status == "" {
 			status = value.Target.Status

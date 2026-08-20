@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"takt/internal/assessment"
 	"takt/internal/runtime"
 	"takt/internal/store"
 	"takt/internal/testsupport/runtimefixture"
@@ -60,6 +61,77 @@ func TestOperatorRetryClearsResultRevisionBeforeResuming(t *testing.T) {
 	}
 	if capture.resultRevisionAtRetry != 0 {
 		t.Fatalf("run.retry_requested kept stale result revision %d", capture.resultRevisionAtRetry)
+	}
+}
+
+func TestOperatorRetryMatrixCreatesFreshAssessmentProvenance(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "evaluate.yaml")
+	childPath := filepath.Join(workspace, "candidate.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, childPath, "name: candidate\nnodes:\n  - id: done\n    bash: printf product\n")
+	writeControlFile(t, workflowPath, `name: evaluate-retry-assessment
+input:
+  format: json
+  schema:
+    type: object
+    properties:
+      cases: {type: array, items: {type: object}}
+    required: [cases]
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      nodes:
+        - id: candidate
+          workflow:
+            path: candidate.yaml
+            isolation: none
+        - id: validate
+          depends_on: [candidate]
+          bash: printf '%s' '{"protocol_version":"takt-validation/v1alpha1","type":"validation_result","valid":true}'
+        - id: evidence
+          depends_on: [candidate, validate]
+          bash: printf evidence
+          output_type: evaluation-evidence
+          output_mime: text/plain
+        - id: assess
+          depends_on: [validate, evidence]
+          assessment:
+            role: primary
+            target_run_id: $candidate.child_run_id
+            result_from: $validate.output
+            scope: {case_id: $MATRIX.item.case_id, repeat: $MATRIX.item.repeat}
+            evidence: [$evidence.artifacts.evaluation-evidence]
+        - id: fail
+          depends_on: [assess]
+          bash: exit 1
+      output_node: fail
+`)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath, ConfigPath: configPath, Input: `{"cases":[{"case_id":"case-a","repeat":1}]}`, Detached: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRunStatus(t, service, started.RunID, store.RunFailed, 5*time.Second)
+	if _, err := service.RunService.Retry(context.Background(), RetryRequest{RunID: started.RunID, NodeID: "cases"}); err == nil {
+		t.Fatal("expected the retry to preserve the terminal failing node")
+	}
+	waitRunStatus(t, service, started.RunID, store.RunFailed, 5*time.Second)
+	assessments, err := service.RunService.Assessments(AssessmentQuery{RunID: started.RunID, Role: assessment.RolePrimary, IncludeStale: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(assessments.Assessments) != 2 {
+		t.Fatalf("assessments=%+v", assessments.Assessments)
+	}
+	first, second := assessments.Assessments[0].Assessment, assessments.Assessments[1].Assessment
+	if first.ID == second.ID || first.Target.RunID == second.Target.RunID || first.Assessor.RunID != started.RunID || second.Assessor.RunID != started.RunID {
+		t.Fatalf("retry assessment provenance first=%+v second=%+v", first, second)
 	}
 }
 

@@ -73,11 +73,11 @@ func (r *Runner) executeAssessmentAction(state *store.RunState, node spec.Node, 
 
 	nodeState := state.Nodes[node.ID]
 	scopeID := artifactExecutionScope(state, node.ID)
-	id := fmt.Sprintf("%s:%s:%d", node.ID, assessment.TypeAssessment, nodeState.Attempts)
+	id := fmt.Sprintf("%s:%s:%d:%s:%d", node.ID, assessment.TypeAssessment, nodeState.Attempts, target.ID, target.ResultRevision)
 	if scopeID != "" {
-		id = fmt.Sprintf("%s:%s:%s:%d", node.ID, assessment.TypeAssessment, scopeID, nodeState.Attempts)
+		id = fmt.Sprintf("%s:%s:%s:%d:%s:%d", node.ID, assessment.TypeAssessment, scopeID, nodeState.Attempts, target.ID, target.ResultRevision)
 	}
-	if existing, ok, err := r.existingAssessment(state, id, definition.Role, scope); err != nil {
+	if existing, ok, err := r.existingAssessment(state, id, definition.Role, scope, target); err != nil {
 		if errors.Is(err, errAssessmentAmbiguous) {
 			return execResult{}, &execution.Error{Kind: execution.Kind("assessment_ambiguous"), Op: "record assessment", Err: err}
 		}
@@ -135,6 +135,12 @@ func (r *Runner) executeAssessmentAction(state *store.RunState, node spec.Node, 
 	}
 	dir = filepath.Join(dir, strconv.Itoa(nodeState.Attempts))
 	path := filepath.Join(dir, "assessment.json")
+	if _, err := os.Lstat(path); err == nil {
+		sum := sha256.Sum256([]byte(id))
+		path = filepath.Join(dir, "assessment-"+hex.EncodeToString(sum[:])+".json")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return execResult{}, assessmentExecutionError(err)
+	}
 	if err := writeAtomicArtifact(path, raw); err != nil {
 		return execResult{}, assessmentExecutionError(err)
 	}
@@ -291,7 +297,7 @@ func (r *Runner) verifyAssessmentArtifact(artifact store.ArtifactRef) error {
 	return nil
 }
 
-func (r *Runner) existingAssessment(state *store.RunState, id, role string, scope assessment.Scope) (store.ArtifactRef, bool, error) {
+func (r *Runner) existingAssessment(state *store.RunState, id, role string, scope assessment.Scope, target *store.RunState) (store.ArtifactRef, bool, error) {
 	for _, artifact := range state.Artifacts {
 		if artifact.Type != assessment.TypeAssessment || artifact.ProducerRunID != state.ID {
 			continue
@@ -308,11 +314,7 @@ func (r *Runner) existingAssessment(state *store.RunState, id, role string, scop
 			return artifact, true, nil
 		}
 		if role == assessment.RolePrimary && value.Role == assessment.RolePrimary && value.Scope == scope {
-			target, err := r.store.Load(value.Target.RunID)
-			if err != nil {
-				return store.ArtifactRef{}, false, fmt.Errorf("load existing assessment target: %w", err)
-			}
-			if target.ResultRevision == value.Target.Revision {
+			if target != nil && value.Target.RunID == target.ID && target.ResultRevision == value.Target.Revision {
 				return store.ArtifactRef{}, false, fmt.Errorf("%w: primary scope %q repeat %d", errAssessmentAmbiguous, scope.CaseID, scope.Repeat)
 			}
 		}

@@ -393,7 +393,9 @@ Approval сохраняет active index и продолжает ту же ве�
 `result_revision`, строго декодирует `takt-validation/v1alpha1`, проверяет
 primary provenance и evidence checksums, атомарно сохраняет
 `takt-assessment/v1alpha1` artifact в assessor Run и только затем завершает
-Node. Primary result принимается от `bash|script|adapter` или от выбранного
+Node. Assessment ID включает node/attempt, matrix scope и immutable target
+Run ID/result revision, поэтому operator retry не может переиспользовать
+старую оценку после сброса attempt namespace. Primary result принимается от `bash|script|adapter` или от выбранного
 детерминированного producer governed workflow; assistant result допустим только
 как advisory.
 

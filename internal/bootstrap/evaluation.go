@@ -90,7 +90,7 @@ func (e evaluationEngine) runOrdinaryEvaluation(ctx context.Context, req tooling
 	}
 	started, err := app.Core.RunService.Start(ctx, application.StartRequest{
 		Selector: req.SuitePath, Input: string(prepared.JSON), ConfigPath: prepared.ConfigPath,
-		ModelPreset: prepared.ModelPreset, ModelOverrides: req.ModelOverrides, Detached: true,
+		ModelPreset: prepared.ModelPreset, ModelOverrides: req.ModelOverrides, Detached: true, KeepWorktree: req.KeepWorkspaces,
 	})
 	if err != nil {
 		return nil, err
@@ -101,6 +101,10 @@ func (e evaluationEngine) runOrdinaryEvaluation(ctx context.Context, req tooling
 	traceScoped(req.Trace, started.RunID, "", 0, "accepted", "id="+started.RunID)
 	snapshot, pollErr := e.pollFlowCase(ctx, app, started.RunID, req.ApprovalAnswer, req.Trace, activity, nil)
 	stats, statsErr := app.Core.RunService.Stats(application.RunStatsQuery{RunID: started.RunID, CheckGates: true})
+	cleanupErr := e.cleanupOrdinaryEvaluation(ctx, app, prepared, snapshot, req.KeepWorkspaces)
+	if cleanupErr != nil {
+		return stats, errors.Join(pollErr, statsErr, cleanupErr)
+	}
 	if statsErr != nil {
 		return nil, errors.Join(pollErr, statsErr)
 	}
@@ -115,6 +119,60 @@ func (e evaluationEngine) runOrdinaryEvaluation(ctx context.Context, req tooling
 		return stats, fmt.Errorf("evaluation run %s ended with status %s: %s", started.RunID, status, message)
 	}
 	return stats, stats.GateFailure()
+}
+
+func (e evaluationEngine) cleanupOrdinaryEvaluation(ctx context.Context, app *App, prepared *evaluation.PreparedEvaluationInput, result evaluation.FlowCaseRunResult, keep bool) error {
+	if keep || prepared == nil || len(result.States) == 0 || result.States[0] == nil || !terminalFlowRun(result.States[0].Status) {
+		return nil
+	}
+	for _, state := range result.States {
+		if state == nil || state.Worktree == nil || !state.Worktree.Enabled || state.Worktree.Removed {
+			continue
+		}
+		if !terminalFlowRun(state.Status) {
+			return fmt.Errorf("ordinary evaluation cleanup: run %s is still %s", state.ID, state.Status)
+		}
+	}
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	for index := len(result.States) - 1; index >= 0; index-- {
+		state := result.States[index]
+		if state == nil || state.Worktree == nil || !state.Worktree.Enabled || state.Worktree.Removed {
+			continue
+		}
+		if _, err := app.Core.WorktreeService.Remove(cleanupCtx, state.ID, true); err != nil {
+			return fmt.Errorf("remove ordinary evaluation worktree %s: %w", state.ID, err)
+		}
+	}
+	for _, item := range prepared.Input.Cases {
+		repeatRoot := filepath.Join(prepared.OutputDir, "workspaces", item.CaseID, fmt.Sprintf("repeat-%03d", item.Repeat))
+		paths := make([]string, 0, 3)
+		controlWorkspace, baselineWorkspace := "", ""
+		bareRemote := ""
+		for _, name := range []string{"control", "baseline", "origin.git"} {
+			path := filepath.Join(repeatRoot, name)
+			if _, err := os.Lstat(path); err == nil {
+				paths = append(paths, path)
+				switch name {
+				case "control":
+					controlWorkspace = path
+				case "baseline":
+					baselineWorkspace = path
+				case "origin.git":
+					bareRemote = path
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("inspect ordinary evaluation cleanup path %s: %w", path, err)
+			}
+		}
+		if len(paths) == 0 {
+			continue
+		}
+		if err := evaluation.CleanupFlowRepeat(prepared.OutputDir, evaluation.FlowCleanupPaths{ControlWorkspace: controlWorkspace, BaselineWorkspace: baselineWorkspace, BareRemote: bareRemote, Created: paths}); err != nil {
+			return fmt.Errorf("cleanup ordinary evaluation repeat %s#%d: %w", item.CaseID, item.Repeat, err)
+		}
+	}
+	return nil
 }
 
 func (e evaluationEngine) Analyze(ctx context.Context, req tooling.EvaluationAnalyzeRequest) (any, error) {

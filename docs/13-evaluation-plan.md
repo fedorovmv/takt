@@ -118,7 +118,8 @@ Run с durable `error_code`/diagnostic kind `provider_unavailable` являет�
 diagnostics остаются в отчёте, но он не входит в `evaluated_runs`, quality
 denominators (`quality_runs`, valid/invalid, scores, stability, time-to-valid)
 и не получает true/false accept/reject. Suite продолжает следующий case;
-`flow_completion_rate` по-прежнему использует все scheduled cases.
+`flow_completion_rate` по-прежнему использует все scheduled matrix branches и
+дедуплицирует completion по `case_id + repeat`, а не только по target Run ID.
 
 Durable adapter kind `configuration` также является
 `outcome: infrastructure_error`, но считается общей ошибкой запуска suite:
@@ -166,6 +167,9 @@ takt eval run <workflow> \
 
 ## Unified Run evaluation — v0.1.63
 
+Практический путь от структуры case до запуска и диагностики Run вынесен в
+[руководство по созданию evaluation](73-evaluation-authoring-guide.md).
+
 Новый production flow описывается обычным `takt/v1alpha1` workflow и
 запускается один раз:
 
@@ -205,9 +209,13 @@ evaluated = branches с одним non-stale primary assessment
 valid_rate = true_accept / evaluated
 false_accept_rate = false_accept / evaluated
 false_reject_rate = false_reject / evaluated
-flow_completion_rate = completed targets / total
+flow_completion_rate = completed matrix scopes / total
 validation_error_rate = (total - evaluated) / total
 ```
+
+В эти агрегаты и gates входят только primary assessments, emitted самим
+evaluation Run; внешние assessor relations доступны через `run assessment`, но
+не расширяют denominator или outcomes.
 
 Gate failure вычисляется после durable reload, меняет только CLI exit и не
 изменяет `Run.status=completed`. Общие read-only команды работают по любому Run

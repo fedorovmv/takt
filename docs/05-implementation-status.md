@@ -24,6 +24,11 @@
   truth;
 - canonical `run status|stats|inspect|assessment` работают по любому Run ID;
   gates вычисляются после durable reload и меняют только CLI exit;
+- retry-safe assessment IDs include target Run/revision provenance; ordinary
+  `flow_completion_rate` counts distinct matrix scopes and terminal ordinary
+  evaluations remove prepared workspaces/worktrees unless keep is requested;
+- stats/gates aggregate only primary assessments emitted by the queried
+  evaluation Run; external assessor target relations remain queryable;
 - mini-du и Make live targets переведены на authored
   `workflows/evaluate.yaml` и Run ID. Exact
   `takt-flow-evaluation/v1alpha1` suites и directory readers сохранены как
