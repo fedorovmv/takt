@@ -1,0 +1,95 @@
+name: mini-du-evaluation
+description: Evaluate an authored target workflow for each materialized mini-du case.
+input:
+  format: json
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      protocol_version: {type: string}
+      type: {type: string}
+      cases:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            case_id: {type: string}
+            repeat: {type: integer}
+            input: {type: string}
+            input_path: {type: string}
+            expected_path: {type: string}
+            baseline_path: {type: string}
+            repository: {type: string}
+            workflow_path: {type: string}
+            case_fingerprint: {type: string}
+            workflow_fingerprint: {type: string}
+            prepared_fingerprint: {type: string}
+          required: [case_id, repeat, input, input_path, expected_path, baseline_path, repository, workflow_path, case_fingerprint, workflow_fingerprint, prepared_fingerprint]
+      gates: {type: object}
+      identity: {type: object}
+    required: [protocol_version, type, cases, gates, identity]
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      nodes:
+        - id: candidate
+          workflow:
+            path: $MATRIX.item.workflow_path
+            repository: $MATRIX.item.repository
+            input: $MATRIX.item.input
+            isolation: worktree
+            keep_worktree: true
+          allow_failure: true
+
+        - id: validate
+          depends_on: [candidate]
+          trigger_rule: all_done
+          script:
+            runtime: go
+            path: ../tools/validate/main.go
+            dependencies: [../validator/main.go]
+            stdin: |
+              {
+                "case_id": "$MATRIX.item.case_id",
+                "repeat": $MATRIX.item.repeat,
+                "workspace": "$candidate.child_execution_workspace",
+                "baseline_workspace": "$MATRIX.item.baseline_path",
+                "expected_path": "$MATRIX.item.expected_path",
+                "run_id": "$candidate.child_run_id",
+                "run_status": "$candidate.status"
+              }
+          timeout: 2m
+          allow_failure: true
+
+        - id: evidence
+          depends_on: [candidate, validate]
+          trigger_rule: all_done
+          script:
+            runtime: go
+            path: ../tools/collect-evidence/main.go
+            args:
+              - --workspace
+              - $candidate.child_execution_workspace
+              - --base
+              - $candidate.child_base_commit
+              - --output
+              - $ARTIFACTS_DIR/evaluation-evidence.tar
+          output_type: evaluation-evidence
+          output_mime: application/x-tar
+          output_path: $ARTIFACTS_DIR/evaluation-evidence.tar
+
+        - id: assess
+          depends_on: [validate, evidence]
+          trigger_rule: all_done
+          assessment:
+            role: primary
+            target_run_id: $candidate.child_run_id
+            result_from: $validate.output
+            scope:
+              case_id: $MATRIX.item.case_id
+              repeat: $MATRIX.item.repeat
+            evidence: [$evidence.artifacts.evaluation-evidence]
+      output_node: assess
+

@@ -89,6 +89,24 @@ func TestOrdinaryEvaluationPreflightFailureCreatesNoRun(t *testing.T) {
 	}
 }
 
+func TestOrdinaryEvaluationAnswersTargetApproval(t *testing.T) {
+	workspace, workflow, config, cases := writeOrdinaryEvaluationFixture(t, true)
+	for _, id := range []string{"a", "b"} {
+		writeBootstrapFixture(t, filepath.Join(cases, id, "workspace", "target.yaml"), "name: target\nnodes:\n  - id: approve\n    approval:\n      message: Continue?\n")
+	}
+	result, err := (evaluationEngine{}).Flow(context.Background(), tooling.FlowEvaluationRequest{
+		SuitePath: workflow, Target: "target.yaml", ConfigPath: config, CasesDir: cases,
+		InvocationWorkspace: workspace, OutputDir: filepath.Join(workspace, ".takt", "evals", "approval"), Repeat: 1, ApprovalAnswer: "approved",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats := result.(*application.RunStatsResult)
+	if stats.Status != store.RunCompleted || stats.Evaluated != 2 {
+		t.Fatalf("stats=%+v", stats)
+	}
+}
+
 func writeOrdinaryEvaluationFixture(t *testing.T, valid bool) (string, string, string, string) {
 	t.Helper()
 	workspace := t.TempDir()

@@ -45,6 +45,7 @@ type EvaluationInputIdentity struct {
 	ConfigFingerprint   string            `json:"config_fingerprint"`
 	DatasetFingerprint  string            `json:"dataset_fingerprint"`
 	Target              string            `json:"target"`
+	ApprovalAnswer      string            `json:"approval_answer,omitempty"`
 	ModelPreset         string            `json:"model_preset,omitempty"`
 	Models              map[string]string `json:"models,omitempty"`
 }
@@ -60,6 +61,7 @@ type EvaluationInput struct {
 type EvaluationInputOptions struct {
 	WorkflowPath   string
 	Target         string
+	ApprovalAnswer string
 	ConfigPath     string
 	CasesDir       string
 	CaseID         string
@@ -197,7 +199,7 @@ func PrepareEvaluationInput(ctx context.Context, opts EvaluationInputOptions) (*
 		return nil, err
 	}
 	datasetFingerprint := flowDatasetFingerprint(suite, cases)
-	identity := EvaluationInputIdentity{WorkflowFingerprint: workflowFingerprint, ConfigFingerprint: configFingerprint, DatasetFingerprint: datasetFingerprint, Target: opts.Target, ModelPreset: selectedPreset, Models: effectiveModels}
+	identity := EvaluationInputIdentity{WorkflowFingerprint: workflowFingerprint, ConfigFingerprint: configFingerprint, DatasetFingerprint: datasetFingerprint, Target: opts.Target, ApprovalAnswer: opts.ApprovalAnswer, ModelPreset: selectedPreset, Models: effectiveModels}
 	type caseIdentity struct {
 		CaseID, Case, Workflow, Prepared string
 		Repeat                           int
@@ -207,11 +209,11 @@ func PrepareEvaluationInput(ctx context.Context, opts EvaluationInputOptions) (*
 		caseIdentities[index] = caseIdentity{item.CaseID, item.CaseFingerprint, item.WorkflowFingerprint, item.PreparedFingerprint, item.Repeat}
 	}
 	identity.Fingerprint, err = hashJSON(struct {
-		Workflow, Config, Dataset, Target, Preset string
-		Models                                    map[string]string
-		Cases                                     []caseIdentity
-		Gates                                     map[string]EvaluationGate
-	}{workflowFingerprint, configFingerprint, datasetFingerprint, opts.Target, selectedPreset, effectiveModels, caseIdentities, opts.Gates})
+		Workflow, Config, Dataset, Target, Approval, Preset string
+		Models                                              map[string]string
+		Cases                                               []caseIdentity
+		Gates                                               map[string]EvaluationGate
+	}{workflowFingerprint, configFingerprint, datasetFingerprint, opts.Target, opts.ApprovalAnswer, selectedPreset, effectiveModels, caseIdentities, opts.Gates})
 	if err != nil {
 		return nil, err
 	}

@@ -83,7 +83,7 @@ func newApp(workspace, configPath string, assistantEvents func(string, string, a
 	coreDeps.RunnerFactory = func(def runtime.Definition, options application.RunnerOptions) *runtime.Runner {
 		deps := runtime.Dependencies{
 			Commands:             runtime.NewCommandResolver(def.WorkflowPath, def.ControlWorkspace, def.ControlWorkspace),
-			Store:                store.FS{Workspace: def.ControlWorkspace},
+			Store:                coreDeps.RunStore,
 			Assistants:           assistant.Factory{Config: def.Config, Providers: providers},
 			Adapters:             domainadapter.Factory{Config: def.Config},
 			Redactor:             redact.NewFromConfig(def.Config),

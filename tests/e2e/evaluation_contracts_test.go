@@ -10,8 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"takt/internal/assessment"
 	"takt/internal/runtime"
 	"takt/internal/spec"
+	"takt/internal/store"
 	"takt/internal/workflow"
 )
 
@@ -247,6 +249,62 @@ func TestFlowEvaluationContract(t *testing.T) {
 	takt(t, []string{"TAKT_FLOW_E2E_VALIDATOR=1"}, "eval", "flow", suite, "--output", failingOutput, "--json").RequireFailure(t).Contains(t, "flow evaluation gates failed")
 	if _, err := os.Stat(filepath.Join(failingOutput, "report.json")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUnifiedEvaluationUsesOneRunWithAuthoredAssessmentBranches(t *testing.T) {
+	workspace := t.TempDir()
+	cases := filepath.Join(workspace, "cases")
+	for _, item := range []struct{ source, id string }{
+		{source: "implement-basic", id: "case-a"},
+		{source: "implement-multiple-paths", id: "case-b"},
+	} {
+		destination := filepath.Join(cases, item.id)
+		copyTree(t, filepath.Join(repoRoot, "examples", "flow-evaluation", "mini-du", "feature-development", "cases", item.source), destination)
+		writeFile(t, filepath.Join(destination, "workspace"), "target.yaml", "name: target\nnodes:\n  - id: done\n    bash: printf done\n")
+	}
+	config := writeFile(t, workspace, "config.yaml", "apiVersion: takt/v1alpha1\nkind: Config\n")
+	output := filepath.Join(workspace, ".takt", "evals", "unified")
+	workflow := filepath.Join(repoRoot, "examples", "flow-evaluation", "mini-du", "workflows", "evaluate.yaml")
+	result := run(t, workspace, nil, nil, binary(t, "takt"), "eval", "flow", workflow,
+		"--target", "target.yaml", "--config", config, "--cases", cases, "--repeat", "2", "--output", output,
+		"--gate", "valid_rate.min=1", "--json")
+	result.RequireFailure(t)
+	stats := resultObject(t, result.JSON(t))
+	runID := stringField(t, stats, "run_id")
+	fs := store.FS{Workspace: workspace}
+	root, loadErr := fs.Load(runID)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if stats["status"] != store.RunCompleted || stats["total"] != float64(4) || stats["evaluated"] != float64(4) || stats["gates_passed"] != false {
+		branches := root.Nodes["cases"].MatrixBranches
+		var first any
+		if len(branches) > 0 {
+			first = branches[0].Nodes
+		}
+		t.Fatalf("stats=%#v root_error=%s first_branch=%+v stderr=%s", stats, root.Error, first, result.Stderr)
+	}
+	ids, err := fs.ListRunIDs()
+	if err != nil || len(ids) != 5 {
+		t.Fatalf("runs=%v err=%v", ids, err)
+	}
+	if len(root.ChildRunIDs) != 4 || len(root.Nodes["cases"].MatrixBranches) != 4 {
+		t.Fatalf("root=%+v", root)
+	}
+	assessments := 0
+	for _, artifact := range root.Artifacts {
+		if artifact.Type == assessment.TypeAssessment {
+			assessments++
+		}
+	}
+	if assessments != 4 {
+		t.Fatalf("assessment artifacts=%d root artifacts=%+v", assessments, root.Artifacts)
+	}
+	for _, legacy := range []string{"report.json", "progress.json"} {
+		if _, err := os.Stat(filepath.Join(output, legacy)); !os.IsNotExist(err) {
+			t.Fatalf("legacy %s exists: %v", legacy, err)
+		}
 	}
 }
 

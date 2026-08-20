@@ -69,7 +69,7 @@ func (e evaluationEngine) runOrdinaryEvaluation(ctx context.Context, req tooling
 		gates[name] = evaluation.EvaluationGate{Min: gate.Min, Max: gate.Max}
 	}
 	prepared, err := evaluation.PrepareEvaluationInput(ctx, evaluation.EvaluationInputOptions{
-		WorkflowPath: req.SuitePath, Target: req.Target, ConfigPath: req.ConfigPath, CasesDir: req.CasesDir,
+		WorkflowPath: req.SuitePath, Target: req.Target, ApprovalAnswer: req.ApprovalAnswer, ConfigPath: req.ConfigPath, CasesDir: req.CasesDir,
 		CaseID: req.CaseID, OutputDir: req.OutputDir, Workspace: req.InvocationWorkspace, Repeat: req.Repeat,
 		Gates: gates, ModelPreset: req.ModelPreset, ModelOverrides: req.ModelOverrides, Now: time.Now, HostPATH: hostPATH,
 	})
@@ -99,7 +99,7 @@ func (e evaluationEngine) runOrdinaryEvaluation(ctx context.Context, req tooling
 		return nil, fmt.Errorf("evaluation start returned no run ID")
 	}
 	traceScoped(req.Trace, started.RunID, "", 0, "accepted", "id="+started.RunID)
-	snapshot, pollErr := e.pollFlowCase(ctx, app, started.RunID, "", req.Trace, activity, nil)
+	snapshot, pollErr := e.pollFlowCase(ctx, app, started.RunID, req.ApprovalAnswer, req.Trace, activity, nil)
 	stats, statsErr := app.Core.RunService.Stats(application.RunStatsQuery{RunID: started.RunID, CheckGates: true})
 	if statsErr != nil {
 		return nil, errors.Join(pollErr, statsErr)
@@ -697,10 +697,35 @@ func (e evaluationEngine) pollFlowCase(ctx context.Context, app *App, runID, ans
 			}
 			// approval.requested makes waiting durable before the starting runner
 			// commits node.suspended. Wait for that quiescent state before Answer.
-			if node := state.Nodes[state.Waiting.NodeID]; node == nil || node.Status != store.NodeWaiting || node.Attempts != 0 {
+			requestedNodeID := state.Waiting.NodeID
+			node := state.Nodes[requestedNodeID]
+			if node == nil || node.Status != store.NodeWaiting {
+				snapshot, snapshotErr := app.Core.RunService.EvaluationSnapshot(runID)
+				if snapshotErr != nil {
+					return evaluation.FlowCaseRunResult{}, snapshotErr
+				}
+				waitingState := snapshot.Root
+				for waitingState.Waiting != nil && waitingState.Waiting.Kind == "child_run" && waitingState.Waiting.ChildRunID != "" {
+					var child *store.RunState
+					for _, candidate := range snapshot.States {
+						if candidate.ID == waitingState.Waiting.ChildRunID {
+							child = candidate
+							break
+						}
+					}
+					if child == nil {
+						break
+					}
+					waitingState = child
+				}
+				if waitingState.Waiting != nil {
+					node = waitingState.Nodes[waitingState.Waiting.NodeID]
+				}
+			}
+			if node == nil || node.Status != store.NodeWaiting || node.Attempts != 0 {
 				break
 			}
-			if _, err := app.Core.RunService.Answer(ctx, runID, state.Waiting.NodeID, answer); err != nil {
+			if _, err := app.Core.RunService.Answer(ctx, runID, requestedNodeID, answer); err != nil {
 				if ctx.Err() != nil {
 					return e.cancelFlowCase(ctx, app, runID, trace)
 				}

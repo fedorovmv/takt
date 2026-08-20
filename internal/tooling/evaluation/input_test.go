@@ -101,6 +101,17 @@ func TestPrepareEvaluationInputOrdersCasesAndPinsPreparedIdentity(t *testing.T) 
 	if second.Input.Identity.Fingerprint != prepared.Input.Identity.Fingerprint {
 		t.Fatalf("identity depends on output path: %s != %s", second.Input.Identity.Fingerprint, prepared.Input.Identity.Fingerprint)
 	}
+	approved, err := PrepareEvaluationInput(context.Background(), EvaluationInputOptions{
+		WorkflowPath: workflowPath, Target: "target.yaml", ConfigPath: configPath, CasesDir: filepath.Join(root, "cases"),
+		OutputDir: filepath.Join(root, ".takt", "evals", "input-test-approved"), Workspace: root, Repeat: 2, ApprovalAnswer: "approved",
+		Gates: map[string]EvaluationGate{"valid_rate": {Min: &minimum}}, Now: func() time.Time { return time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC) }, HostPATH: "host-path",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved.Input.Identity.Fingerprint == prepared.Input.Identity.Fingerprint {
+		t.Fatal("approval answer is absent from evaluation identity")
+	}
 }
 
 func TestDecodeEvaluationInputRejectsUnknownFields(t *testing.T) {

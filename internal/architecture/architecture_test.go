@@ -512,10 +512,13 @@ func TestMakefileExposesLiveFlowEvaluationTargets(t *testing.T) {
 			t.Fatalf("Makefile missing %s", target)
 		}
 	}
-	for _, required := range []string{"--trace", "examples/flow-evaluation/mini-du/config.yaml"} {
+	for _, required := range []string{"--trace", "examples/flow-evaluation/mini-du/config.yaml", "mini-du/workflows/evaluate.yaml", "--target code:feature-development", "--config", "--cases", "--gate validation_error_rate.max=0"} {
 		if !strings.Contains(source, required) {
 			t.Fatalf("Makefile eval targets missing %q", required)
 		}
+	}
+	if strings.Contains(source, "mini-du/feature-development/suite.yaml") || strings.Contains(source, "mini-du/review/suite.yaml") || strings.Contains(source, "mini-du/architect/suite.yaml") {
+		t.Fatal("Makefile still launches legacy fixed-stage suites")
 	}
 }
 

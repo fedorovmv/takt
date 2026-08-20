@@ -14,15 +14,9 @@ import (
 
 func TestFeatureCorpusManifest(t *testing.T) {
 	root := filepath.Join("..", "feature-development")
-	suite, err := evaluation.LoadFlowSuite(filepath.Join(root, "suite.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if suite.Workflow != "code:feature-development" || suite.Config != "../config.yaml" || suite.Validator.Version != "4" || suite.External.GitHub == nil || suite.External.GitHub.Require != "repository" {
+	suite := corpusSuite(root, "code:feature-development", "repository")
+	if suite.Workflow != "code:feature-development" || suite.External.GitHub == nil || suite.External.GitHub.Require != "repository" {
 		t.Fatalf("suite=%+v", suite)
-	}
-	if _, err := os.Stat(suite.Validator.ResolvedPath); err != nil {
-		t.Fatalf("validator path %q: %v", suite.Validator.ResolvedPath, err)
 	}
 	cases, err := evaluation.DiscoverFlowCases(suite.SuitePath, suite, "")
 	if err != nil {
@@ -88,6 +82,19 @@ func TestFeatureCorpusManifest(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("cases=%v want=%v", got, want)
 	}
+}
+
+func corpusSuite(root, workflow, scmRequirement string) *evaluation.FlowSuite {
+	absolute, _ := filepath.Abs(root)
+	suite := &evaluation.FlowSuite{
+		Workflow: workflow, Config: "../config.yaml", Cases: evaluation.FlowCasesSpec{Directory: "cases"},
+		SuitePath: filepath.Join(absolute, "evaluation.yaml"), SuiteDir: absolute,
+		ResolvedConfig: filepath.Join(filepath.Dir(absolute), "config.yaml"), ResolvedCases: filepath.Join(absolute, "cases"),
+	}
+	if scmRequirement != "" {
+		suite.External.GitHub = &evaluation.FlowGitHubSpec{Mode: "fixture", Require: scmRequirement}
+	}
+	return suite
 }
 
 func containsString(values []string, want string) bool {

@@ -34,10 +34,11 @@ func TestReviewAndArchitectPreparationUsesPatchedHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"review", "architect"} {
-		suite, err := evaluation.LoadFlowSuite(filepath.Join(copy, name, "suite.yaml"))
-		if err != nil {
-			t.Fatal(err)
+		workflow := "code:comprehensive-pr-review"
+		if name == "architect" {
+			workflow = "code:architect"
 		}
+		suite := corpusSuite(filepath.Join(copy, name), workflow, "pull_request")
 		cases, err := evaluation.DiscoverFlowCases(suite.SuitePath, suite, "")
 		if err != nil {
 			t.Fatal(err)
@@ -55,11 +56,8 @@ func TestReviewAndArchitectPreparationUsesPatchedHead(t *testing.T) {
 func assertCorpus(t *testing.T, name, workflow string, wantIDs []string, wantPRs []int) {
 	t.Helper()
 	root := filepath.Join("..", name)
-	suite, err := evaluation.LoadFlowSuite(filepath.Join(root, "suite.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if suite.Workflow != workflow || suite.Config != "../config.yaml" || suite.Validator.Version != "4" || suite.External.GitHub == nil || suite.External.GitHub.Require != "pull_request" {
+	suite := corpusSuite(root, workflow, "pull_request")
+	if suite.Workflow != workflow || suite.External.GitHub == nil || suite.External.GitHub.Require != "pull_request" {
 		t.Fatalf("suite=%+v", suite)
 	}
 	cases, err := evaluation.DiscoverFlowCases(suite.SuitePath, suite, "")

@@ -122,6 +122,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		target := fs.String("target", "", "workflow or profile selector evaluated for every case")
 		configPath := fs.String("config", "", "evaluation config path")
 		casesDir := fs.String("cases", "", "evaluation corpus directory")
+		approvalAnswer := fs.String("answer", "", "automatic approval answer")
 		caseID := fs.String("case", "", "run one case")
 		repeat := fs.Int("repeat", 1, "number of repetitions per case")
 		outputDir := fs.String("output", "", "evaluation output directory")
@@ -134,7 +135,7 @@ func evalCmd(ctx context.Context, args []string) error {
 		assistantIdleTimeout := fs.Duration("assistant-idle-timeout", 5*time.Minute, "fail an assistant node after this long without progress")
 		trace := fs.Bool("trace", false, "write live durable progress to stderr")
 		jsonOut := fs.Bool("json", true, "JSON output")
-		values := map[string]bool{"--target": true, "--config": true, "--cases": true, "--case": true, "--repeat": true, "--output": true, "--model-preset": true, "--model": true, "--gate": true, "--assistant-idle-timeout": true, "--keep-workspaces": false, "--trace": false, "--json": false}
+		values := map[string]bool{"--target": true, "--config": true, "--cases": true, "--answer": true, "--case": true, "--repeat": true, "--output": true, "--model-preset": true, "--model": true, "--gate": true, "--assistant-idle-timeout": true, "--keep-workspaces": false, "--trace": false, "--json": false}
 		if err := fs.Parse(interspersed(args[1:], values)); err != nil {
 			return err
 		}
@@ -160,7 +161,7 @@ func evalCmd(ctx context.Context, args []string) error {
 			return err
 		}
 		overrides := mergeModelOverrides(environmentOverrides, modelOverrides)
-		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), Target: *target, ConfigPath: *configPath, CasesDir: *casesDir, Gates: gates, CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces, ModelPreset: *modelPreset, ModelOverrides: overrides, Trace: traceFn, Deprecation: func(message string) { fmt.Fprintln(os.Stderr, "warning:", message) }, AssistantIdleTimeout: *assistantIdleTimeout})
+		report, err := service.Flow(ctx, tooling.FlowEvaluationRequest{SuitePath: fs.Arg(0), Target: *target, ConfigPath: *configPath, CasesDir: *casesDir, ApprovalAnswer: *approvalAnswer, Gates: gates, CaseID: *caseID, OutputDir: *outputDir, InvocationWorkspace: invocation, Repeat: *repeat, KeepWorkspaces: *keepWorkspaces, ModelPreset: *modelPreset, ModelOverrides: overrides, Trace: traceFn, Deprecation: func(message string) { fmt.Fprintln(os.Stderr, "warning:", message) }, AssistantIdleTimeout: *assistantIdleTimeout})
 		if err != nil {
 			if report != nil {
 				if printErr := printResult(*jsonOut, report); printErr != nil {

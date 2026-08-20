@@ -66,6 +66,7 @@
         "config_fingerprint": {"$ref": "#/$defs/sha256"},
         "dataset_fingerprint": {"$ref": "#/$defs/sha256"},
         "target": {"type": "string", "minLength": 1},
+        "approval_answer": {"type": "string"},
         "model_preset": {"type": "string"},
         "models": {"type": "object", "propertyNames": {"minLength": 1}, "additionalProperties": {"type": "string", "minLength": 1}}
       }
