@@ -43,8 +43,10 @@
 - `evaluation-validator-request.schema.json` — validator invocation protocol.
 - `executor-manifest.json` — per-repeat `takt-evaluation-executor/v1alpha1` adapter/session evidence manifest с bounded redacted session copies.
 
-Flow suites are created with `takt eval flow init`; the scaffold intentionally
-does not generate a validator or any executable code.
+`takt eval flow init` creates an authored workflow, example case and replaceable
+executable validation/evidence shell tools. It intentionally does not create
+`config.yaml`; the author must create or copy one for the target workflow.
+Use `--legacy` only for the deprecated fixed-stage suite scaffold.
 - `task-case-manifest.schema.json` — task-level cases с ожидаемым route/status и минимальной ревизией плана;
 - `task-evaluation-matrix.schema.json` — matrix для полного `Task Router → Dynamic Plan → replan` контура;
 - `task-evaluation-report.schema.json` — task-level report с route accuracy, plan revisions, replanner runs, pairwise outcomes и gates.

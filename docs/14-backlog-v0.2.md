@@ -1,200 +1,69 @@
-# Актуальный backlog Takt v0.2
-
-Статус пересобран после `v0.1.56-alpha`. Этот документ содержит открытые задачи и явно отмеченные стабилизационные решения. Выполненные срезы находятся в `05-implementation-status.md` и `06-roadmap.md`.
-
-## Текущая граница работ — 2026-08-20
-
-Repo-owned срез
-`superpowers/specs/2026-08-20-unified-run-evaluation-design.md` выполнен в
-`v0.1.63-alpha`: самодостаточный Run, immutable assessments, evaluation как
-обычный parent Run и общие `run status|stats|inspect|assessment`. Фактическое
-состояние находится в `05-implementation-status.md`; детали и gap registry здесь
-не дублируются.
-
-- настройка production workflow на внешнем реальном проекте выполняется
-  пользователем отдельно; Takt repository не читает, не изменяет и не запускает
-  этот workspace до отдельного запроса;
-- live `eval-feature` с preset `qwen38` и assistant idle timeout `15m` также
-  выполняется пользователем; параллельный live eval из этой работы запрещён;
-- production evidence обновляется только после передачи результатов внешнего
-  workflow/eval;
-- hard token/tool budgets и parallel mutating merge остаются условными и не
-  начинаются без capability/use-case evidence.
-
-## P-1. Архитектурный долг — закрыт в v0.1.52, hardened в v0.1.54
-
-### ARCH-001. Application/transport/runtime boundaries — выполнено
-
-Удалён `internal/control.Service`, введены use-case application services и production `bootstrap`; `cmd/takt` оставлен launcher, daemon/MCP используют canonical API, runtime dependencies явные. `v0.1.54` удалил shared application Context и Run↔Plan cycle, перенёс concrete infrastructure wiring в bootstrap, сделал execution lifetime явной и добавил gate на ацикличность/private dependencies.
-
-Новый DI/plugin/event-bus framework не вводился; refactor не изменил внешний API/state contracts.
-
-## P-0.5. Тестовый долг — закрыт в v0.1.53, hardened в v0.1.54
-
-Основной contract contour переведён на стандартные Go tests и `tests/e2e`; в `v0.1.54` из исторических 38 `scripts/test-*.sh` остался один TypeScript compiler smoke. Остальные process/package/host assertions работают через bounded Go E2E harness. `internal/architecture` фиксирует границу.
-
-## P-0.25. Модульный долг — закрыт в v0.1.55
-
-### ARCH-002. Stable / experimental / extensions / tooling boundaries — выполнено
-
-Функциональность не удалялась. Dynamic Flow/Host/Learning отделены в experimental, evaluation/compatibility — в tooling, package/block/notification — в extensions. Stable core не импортирует эти модули. `profile` больше не зависит от package manager; extension-aware catalog собирается выше stable boundary. Самописный YAML parser удалён в пользу upstream `go.yaml.in/yaml/v3`.
-
-Следующая стабилизация должна исправлять дефекты реальных user/live сценариев, а не снова перестраивать package tree без evidence.
-
-## P0. Стабилизировать пользовательский stable path
-
-### STAB-001. Реальные user journeys и platform smoke
-
-Поддерживать `build/init/validate/run/inspect/recover` как основной пользовательский путь. `make journeys` уже закрепляет black-box baseline; следующий evidence должен прийти из реальных Linux/macOS запусков, coding-agent/adapter интеграций и обратной связи пользователей. Найденные ошибки совместимости, диагностики и lifecycle имеют приоритет над новым feature growth.
-
-## P0.5. Доказать полезность experimental/tooling механизмов
-
-### EVIDENCE-001. Live Route DSL matrix
-
-Запустить неизменную `EvaluationMatrix` из `v0.1.45` на реальном обезличенном corpus, штатном Route DSL validator и фактически используемых coding-agent/model конфигурациях.
-
-Нужно получить:
-
-- не менее трёх повторов каждого case/strategy;
-- `success@1`, final success, attempts-to-valid, time-to-valid, tokens/cost;
-- stable/unstable cases и diagnostic fingerprints;
-- manual corrections отдельной метрикой;
-- сравнение `baseline-direct`, feedback/simple-reliable и Dynamic Takt там, где стратегии применимы.
-
-Synthetic `production-shaped` corpus остаётся regression fixture и не считается production evidence.
-
-### EVIDENCE-002. Task-level Dynamic Takt benchmark — реализовано в v0.1.46
-
-`takt eval task-benchmark` проверяет полный управляющий путь:
-
-```text
-Task
-→ semantic Router
-→ workflow | template | dynamic
-→ Dynamic Plan
-→ checkpoint
-→ replan
-→ execution
-→ terminal result
-```
-
-Остаётся прогнать этот контракт на реальных задачах и моделях. Встроенный deterministic fixture доказывает correctness измерительного контура, а не качество LLM.
-
-### EVIDENCE-003. Универсальность на трёх предметных классах
-
-Зафиксировать production-like наборы для:
-
-1. Route DSL;
-2. Go-разработки;
-3. подготовки технического документа.
-
-Критерий: все три сценария используют одно ядро Takt; предметные различия выражаются workflow, blocks, roles, skills, validators и adapters, а не изменениями scheduler/runtime.
-
-Сбор evidence на внешнем реальном проекте уже идёт как user-owned работа. До
-получения сохранённых отчётов этот backlog не авторизует доступ к внешнему
-workspace или параллельный запуск модели.
-
-## P1. v0.2 Stabilization
-
-### STABLE-001. Ревизия внешних контрактов — выполнено в v0.1.47
-
-Контракты классифицированы как `stable-candidate | supported-alpha | deprecated | internal` в `docs/archive/releases/61-v0.2-stabilization-iteration-history-v0.1.47.md`:
-
-- `takt/v1alpha1 Workflow`;
-- Config/Profile/BlockPackage;
-- TaskRoute/WorkflowPlan;
-- run state/events;
-- `takt-assistant/v1alpha1|v1alpha2`;
-- Agent/Domain Adapter SDK;
-- evaluation formats;
-- MCP agent/host/worker/operator surfaces.
-
-### STABLE-002. План `v1alpha1 → v1beta1` — draft в v0.1.47
-
-Draft compatibility/migration policy подготовлен. Финальная field-by-field migration и, при необходимости, migrator выполняются только после evidence из P0 и не должны фиксировать механизмы, которые не доказали пользу.
-
-### STABLE-003. Полная история iteration state — выполнено в v0.1.47
-
-Добавлен `loop_iterations[]` со всеми завершёнными iteration snapshots. `loop_previous` сохранён как compatibility alias последней итерации; `max_iterations <= 64` ограничивает durable state.
-
-### STABLE-004. Решение по nested composition — выполнено в v0.1.47
-
-Для `v0.2` и первого `v1beta1` nested `loop_group` явно остаётся запрещённым. Возврат этой возможности требует отдельного production use case и совместимого расширения контракта.
-
-### STABLE-005. Граница structured output — выполнено в v0.1.48
-
-Текущий контракт зафиксирован как `takt-schema-subset/v1` и используется одинаково для `input.schema` и `output_format`. Полный JSON Schema не входит в v0.2; расширение возможно только новой совместимой версией по production evidence.
-
-### STABLE-006. Compatibility matrix adapters/hosts — выполнено в v0.1.48
-
-Добавлены `takt compatibility matrix|check`, разделяющие session adapter, host integration и domain adapter. Bundled Pi/OpenCode host остаются `guarded`; `strict` требует live conformance на pinned version.
-
-### STABLE-007. Field-by-field v1beta1 audit — выполнено в v0.1.48
-
-`takt compatibility fields` и contract-test фиксируют точный набор публичных полей stable-candidate authoring/config contracts. `executor`, `native_hooks` и `tool_approval` остаются `supported-alpha/defer`; process protocol `v1alpha1` deprecated для новых wrappers.
-
-### STABLE-008. Финальная v1beta1 migration — после P0 evidence
-
-На основании live Route DSL + Go + Document evidence подтвердить/скорректировать field decisions, выпустить migration guide и только при необходимости автоматический migrator.
-
-## P2. Доказать внешние seams
-
-### SEAM-001. Live Pi/OpenCode host conformance
-
-Проверить `/takt`, input interception, tool blocking, completion blocking и recovery на зафиксированных версиях host. До этого bundled integrations остаются `guarded`.
-
-Сохранённое evidence относится к Pi `0.83.0` и OpenCode `1.18.14`; promotion
-требует полного повторного conformance на фактически закрепляемых версиях, а не
-только повторения adapter fresh/resume smoke.
-
-### SEAM-002. Один внешний coding-agent wrapper — реализовано в v0.1.49
-
-`qwen-takt-adapter` реализует `takt-assistant/v1alpha2` только через public `sdk/agentadapter`, поддерживает headless Qwen Code fresh/exact resume/model/usage и проходит общий conformance kit. Capability surface намеренно узкий и не выдаёт transport version за `tool_control`.
-
-### SEAM-003. Один production-like Domain Adapter — реализовано в v0.1.49
-
-`takt-github-scm-adapter` реализует neutral SCM contract через public `sdk/domainadapter` и `gh`: repository/change/check reads, change create/comment/review и reconcile неизвестного side effect. Public domain request получил execution `workspace`, multi-repo publication — точный `repository_workspace`. Корпоративные Git/Tracker/CI должны использовать тот же SDK.
-
-### SEAM-004. Structured task source adapter — реализовано в v0.1.50
-
-`takt-task-source/v1alpha1` и public `sdk/tasksource` приводят внешний объект к normalized Task до Router. `takt task start`/`takt.task.start` принимают `source + source_ref`; provenance/revision сохраняются в plan и передаются Router/Planner/Replanner. Reference GitHub Issue source доказан E2E. Корпоративные tracker/OpenSpec/PRD adapters используют тот же протокол и не требуют новой core-фичи.
-
-## P3. Product learning и UX
-
-### LEARN-001. Skill/Block Learning Loop — реализовано в v0.1.51
-
-`takt learn scan|propose|review|evaluate|stage` реализует управляемый путь от повторяемого durable fingerprint к immutable candidate snapshot. Proposal сохраняет supporting Run IDs, expected benefit, human rationale и matrix evaluation provenance. Stage доступен только после accept + passing gates и пишет в `.takt/learning/ready`, не изменяя trusted package/skill configuration.
-
-### UX-001. Представление процесса
-
-Небольшой локальный UX без Web Builder:
-
-```text
-takt workflow graph
-takt workflow explain
-takt workflow scaffold
-takt plan explain
-```
-
-Цель — объяснять DAG, extension points, approvals, policies и выбранные controls, не вводя отдельный server/UI runtime.
-
-### FLOW-001. Декларативный reject/revise
-
-Добавить для статических процессов проверяемый `approval.on_reject`/revise path. Dynamic Takt уже умеет steering/replan, но статический корпоративный workflow должен иметь явный bounded контракт пересмотра.
-
-## По evidence, а не по календарю
-
-Следующие идеи остаются условными до появления фактической потребности:
-
-- path-level OS write allowlists сверх текущего read-only sandbox;
-- constrained Route DSL generation, RAG examples, N-candidate selection, DSPy/GEPA optimization как отдельные benchmark strategies;
-- object storage;
-- database-backed store;
-- server/Web UI;
-- remote workers;
-- message adapters;
-- multi-user auth/RBAC.
-
-## Не является backlog ядра
-
-Takt не должен становиться ещё одним coding-agent. В ядро не планируются собственные `read/edit/bash` tools для LLM, LSP, model tool-loop, agent conversation memory или TUI редактора. Этим управляет конкретный coding-agent; Takt оркестрирует сессии и проверяемый процесс вокруг них.
+# Приоритетный backlog Takt v0.2
+
+Срез от `2026-08-21`, после `v0.1.64-alpha`. Здесь остаются только текущие
+release-gates, открытые evidence gaps и условные задачи. Реализованные
+архитектурные и тестовые срезы описаны в
+[`docs/05-implementation-status.md`](05-implementation-status.md), а история
+релизов — в [`docs/archive/releases/`](archive/releases/).
+
+## Решение по границе продукта
+
+Takt остаётся локальным trusted single-user runtime. Следующий рост —
+evidence-driven: сначала доказательства user journeys, host compatibility и
+реальной полезности evaluation, затем стабилизация контрактов. Не добавлять
+server, Web UI, database-backed store, remote workers или multi-user auth без
+отдельного use case и threat model.
+
+Route DSL/micro DSL, их examples, validators, benchmarks и evaluation fixtures
+являются публичными OSS surfaces. Их нельзя отключать или удалять при
+подготовке open-source репозитория; authored evaluation использует тот же
+обычный scheduler и deterministic validation.
+
+## P0 — release и внешняя совместимость
+
+| ID | Задача | Владелец | Критерий закрытия | Зависимости | Статус |
+|---|---|---|---|---|---|
+| `REL-001` | Синхронизировать versioned-срез после `v0.1.63-alpha` | maintainer | `VERSION`, `internal/version`, README, specification/status и changelog согласованы на `0.1.64-alpha`; contract test проходит | — | **закрыто в `v0.1.64-alpha`** |
+| `HOST-001` | Доказать strict host control для закреплённых Pi/OpenCode | integration owner | На pinned versions пройдены command/input interception, tool blocking, completion blocking и recovery; сохранены redacted logs/fingerprints; только тогда `strict_allowed=true` | `HOST-002` | открыто, `guarded` |
+| `HOST-002` | Повторить evidence для реально поддерживаемых версий host | integration owner | Выбраны и зафиксированы версии; полный conformance повторён для Pi/OpenCode (сейчас локально наблюдаются Pi `0.84.1`, OpenCode `1.18.18`, старое evidence — Pi `0.83.0`, OpenCode `1.18.14`) | credentials и live host | открыто |
+
+До закрытия `HOST-001`/`HOST-002` bundled Pi/OpenCode остаются `guarded`.
+Version probe или fresh/resume smoke сами по себе не дают права объявить host
+`strict`.
+
+## P1 — production evidence и контрактная стабилизация
+
+| ID | Задача | Владелец | Критерий закрытия | Зависимости | Статус |
+|---|---|---|---|---|---|
+| `EVAL-001` | Измерить полезность Takt на реальном обезличенном corpus | product/evaluation owner | Для Route DSL, Go и Document: штатный validator, минимум 3 repeat на case/strategy, `success@1`, final success, attempts-to-valid, time-to-valid, tokens/cost, stable/unstable cases и manual corrections; отчёты сохранены с model/adapter/version fingerprints | внешний corpus, credentials, модели | открыто |
+| `EVAL-002` | Завершить переход authoring с deprecated fixed-stage suite | evaluation owner | `eval flow init` по умолчанию создаёт authored `takt/v1alpha1` scaffold; `--legacy` явно сохраняет compatibility path; docs и tests согласованы; после `EVAL-001` принять срок/условия удаления legacy | `EVAL-001` для deprecation decision | implementation закрыта; compatibility window активен |
+| `ADAPTER-001` | Провести live smoke reference Qwen/GitHub adapters | integration owner | Отдельные credentialed smoke runs с redacted evidence подтверждают fresh/resume, model/usage и domain read/write/reconcile; отсутствие credentials фиксируется как gap, а не unsupported claim | pinned providers, credentials | открыто |
+| `API-001` | Подготовить финальный `v1alpha1 → v1beta1` field audit и migration policy | contract owner | Реальные workflow/config/evaluation из `EVAL-001` сопоставлены с полями; выпущены migration guide и migrator только там, где он нужен; неиспользованные поля не замораживаются без evidence | `EVAL-001`, `HOST-001` | заблокировано до evidence |
+
+Synthetic fixtures и deterministic contract tests подтверждают correctness
+измерительного контура, но не заменяют `EVAL-001` или live adapter/host evidence.
+
+## P2 — только при подтверждённой потребности
+
+| ID | Кандидат | Условие старта | Минимальный acceptance |
+|---|---|---|---|
+| `UX-001` | `workflow graph/explain/scaffold`, расширенный `plan explain` | реальный user request, который не покрывают `workflow describe`, `task explain` и `run inspect` | один bounded CLI contract и user-journey test |
+| `FLOW-001` | static approval reject/revise path | use case нельзя выразить существующими `loop_group` + approval + `when` без потери governance | fail-closed schema/runtime semantics и E2E contract |
+| `BUDGET-001` | hard token/tool budgets | live capability proof конкретного adapter и измеренная потребность | fail-before-execution, durable diagnostics, adapter contract tests |
+| `MERGE-001` | mutating merge fan-out | production multi-repo use case и threat model внешнего side effect | reconcile/rollback contract, unknown-effect handling и deterministic tests |
+
+Остальные идеи (object storage, database, server/UI, remote workers, message
+adapters, RBAC) не являются backlog ядра до появления отдельной границы
+безопасности и эксплуатационного сценария.
+
+## Порядок работы
+
+1. Сохранить `guarded` для host и получить `HOST-001`/`HOST-002` evidence.
+2. Собрать `EVAL-001`; не считать synthetic benchmark production evidence.
+3. На этой базе закрыть `EVAL-002`, затем `ADAPTER-001` и `API-001`.
+4. P2 начинать только после явного use case; новые YAML-поля и runtime seams не
+   добавлять ради гипотетического будущего.
+
+Подробный реестр неизвестных, исходные свидетельства и условия возврата к
+design review сохранены в
+[`docs/archive/analysis/2026-08-21-gap-backlog-audit.md`](archive/analysis/2026-08-21-gap-backlog-audit.md).

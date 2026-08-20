@@ -101,21 +101,26 @@ func evalCmd(ctx context.Context, args []string) error {
 		if len(args) > 1 && args[1] == "init" {
 			fs := newFlagSet("eval flow init")
 			output := fs.String("output", "", "directory for the new flow suite")
+			legacy := fs.Bool("legacy", false, "create the deprecated takt-flow-evaluation/v1alpha1 compatibility scaffold")
 			jsonOut := fs.Bool("json", true, "JSON output")
-			if err := fs.Parse(interspersed(args[2:], map[string]bool{"--output": true, "--json": false})); err != nil {
+			if err := fs.Parse(interspersed(args[2:], map[string]bool{"--output": true, "--legacy": false, "--json": false})); err != nil {
 				return err
 			}
 			if fs.NArg() != 1 || *output == "" {
 				return fmt.Errorf("usage: takt eval flow init <workflow-selector> --output <directory>")
 			}
-			result, err := service.FlowInit(ctx, fs.Arg(0), *output)
+			result, err := service.FlowInit(ctx, fs.Arg(0), *output, *legacy)
 			if err != nil {
 				return err
 			}
 			if *jsonOut {
 				return printResult(true, result)
 			}
-			fmt.Printf("created %s; add config.yaml, implement ./validator, and replace the example case before running takt eval flow %s/suite.yaml\n", result.(map[string]any)["output"], result.(map[string]any)["output"])
+			if *legacy {
+				fmt.Printf("created deprecated compatibility scaffold %s; add config.yaml, implement ./validator, and replace the example case before running takt eval flow %s/suite.yaml\n", result.(map[string]any)["output"], result.(map[string]any)["output"])
+			} else {
+				fmt.Printf("created authored evaluation scaffold %s; create or copy config.yaml, replace the deterministic tools and example case, then run takt eval flow %s/workflows/evaluate.yaml --target %s --config %s/config.yaml --cases %s/cases\n", result.(map[string]any)["output"], result.(map[string]any)["output"], fs.Arg(0), result.(map[string]any)["output"], result.(map[string]any)["output"])
+			}
 			return nil
 		}
 		fs := newFlagSet("eval flow")

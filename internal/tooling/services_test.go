@@ -9,6 +9,7 @@ import (
 type flowEvaluationEngine struct {
 	request          FlowEvaluationRequest
 	selector, output string
+	legacy           bool
 	statsPath        string
 	statusPath       string
 	inspectRequest   EvaluationInspectRequest
@@ -42,8 +43,8 @@ func (e *flowEvaluationEngine) Flow(_ context.Context, request FlowEvaluationReq
 	e.request = request
 	return "flow", nil
 }
-func (e *flowEvaluationEngine) FlowInit(_ context.Context, selector, output string) (any, error) {
-	e.selector, e.output = selector, output
+func (e *flowEvaluationEngine) FlowInit(_ context.Context, selector, output string, legacy bool) (any, error) {
+	e.selector, e.output, e.legacy = selector, output, legacy
 	return "init", nil
 }
 func (e *flowEvaluationEngine) Analyze(_ context.Context, request EvaluationAnalyzeRequest) (any, error) {
@@ -62,8 +63,8 @@ func TestFlowEvaluationServiceForwardsRequest(t *testing.T) {
 
 func TestFlowInitEvaluationServiceForwardsRequest(t *testing.T) {
 	engine := &flowEvaluationEngine{}
-	result, err := NewEvaluation(engine).FlowInit(context.Background(), "code:feature-development", "out")
-	if err != nil || result != "init" || engine.selector != "code:feature-development" || engine.output != "out" {
+	result, err := NewEvaluation(engine).FlowInit(context.Background(), "code:feature-development", "out", true)
+	if err != nil || result != "init" || engine.selector != "code:feature-development" || engine.output != "out" || !engine.legacy {
 		t.Fatalf("result=%#v engine=%#v err=%v", result, engine, err)
 	}
 }

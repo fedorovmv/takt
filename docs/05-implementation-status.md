@@ -1,6 +1,6 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.63-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.64-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
 
 ## Unified Run evaluation — реализовано в v0.1.63
 
@@ -32,8 +32,8 @@
 - mini-du и Make live targets переведены на authored
   `workflows/evaluate.yaml` и Run ID. Exact
   `takt-flow-evaluation/v1alpha1` suites и directory readers сохранены как
-  deprecated read/run compatibility; `eval flow init` пока остаётся legacy
-  scaffold.
+  deprecated read/run compatibility; `eval flow init` по умолчанию создаёт
+  authored scaffold, а legacy scaffold доступен только с явным `--legacy`.
 
 ## Assistant configuration fail-fast — реализовано в v0.1.62
 
@@ -307,8 +307,10 @@ Deterministic fixture доказывает measurement correctness. Production q
 ### Legacy flow compatibility
 
 Exact `takt-flow-evaluation/v1alpha1` `eval flow` executes isolated flow suites through the application control path,
-persists repeat evidence and supports `eval flow init` for a validator-free
-skeleton. Repeat evidence preserves a secret-checked full-history
+persists repeat evidence and supports `eval flow init --legacy` for the
+validator-free compatibility skeleton. The default `eval flow init` creates an
+authored ordinary workflow scaffold with replaceable deterministic tools.
+Repeat evidence preserves a secret-checked full-history
 `repository.bundle`, the redacted final product source tree and baseline-to-final
 Git diff before workspace cleanup; `.git/` and `.takt/` are excluded from the
 source copy. `--trace` streams elapsed suite stages, durable root progress and

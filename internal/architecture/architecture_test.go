@@ -551,3 +551,31 @@ func TestMakefileFastCheckExcludesProcessHeavySuites(t *testing.T) {
 		t.Fatal("make e2e must use the configured test parallelism")
 	}
 }
+
+func TestCIRunsStableJourneysAndCompatibilityOnSupportedOSes(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	if !strings.Contains(source, "os: [ubuntu-latest, macos-latest]") {
+		t.Fatal("CI must retain Linux and macOS coverage")
+	}
+	if !strings.Contains(source, "run: make journeys") {
+		t.Fatal("CI must run stable user journeys")
+	}
+	if !strings.Contains(source, "run: make compatibility-contract") {
+		t.Fatal("CI must run deterministic compatibility contracts")
+	}
+}
+
+func TestCompatibilityContractRunsAllPackagePolicyTests(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(data)
+	if !strings.Contains(source, "compatibility-contract:\n\tgo test ./internal/tooling/compatibility -count=1\n\tgo test ./tests/e2e -run 'Compatibility' -count=1") {
+		t.Fatal("compatibility-contract must run the whole compatibility package before filtered E2E contracts")
+	}
+}

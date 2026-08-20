@@ -84,7 +84,7 @@ type EvaluationEngine interface {
 	Benchmark(context.Context, EvaluationBenchmarkRequest) (any, error)
 	TaskBenchmark(context.Context, EvaluationBenchmarkRequest) (any, error)
 	Flow(context.Context, FlowEvaluationRequest) (any, error)
-	FlowInit(context.Context, string, string) (any, error)
+	FlowInit(context.Context, string, string, bool) (any, error)
 	Analyze(context.Context, EvaluationAnalyzeRequest) (any, error)
 	Compare(context.Context, string, string) (any, error)
 	Report(context.Context, string) (any, error)
@@ -122,11 +122,11 @@ func (s *EvaluationService) Flow(ctx context.Context, req FlowEvaluationRequest)
 	}
 	return s.engine.Flow(ctx, req)
 }
-func (s *EvaluationService) FlowInit(ctx context.Context, workflowSelector, output string) (any, error) {
+func (s *EvaluationService) FlowInit(ctx context.Context, workflowSelector, output string, legacy bool) (any, error) {
 	if s == nil || s.engine == nil {
 		return nil, fmt.Errorf("evaluation service is not configured")
 	}
-	return s.engine.FlowInit(ctx, workflowSelector, output)
+	return s.engine.FlowInit(ctx, workflowSelector, output, legacy)
 }
 func (s *EvaluationService) Analyze(ctx context.Context, req EvaluationAnalyzeRequest) (any, error) {
 	if s == nil || s.engine == nil {

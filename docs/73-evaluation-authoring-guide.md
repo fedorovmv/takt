@@ -1,13 +1,39 @@
 # Сквозное создание и использование evaluation
 
 Этот документ описывает актуальный production flow evaluation в Takt
-`v0.1.63-alpha`: как подготовить corpus, написать evaluation workflow и
+`v0.1.64-alpha`: как подготовить corpus, написать evaluation workflow и
 детерминированный validator, запустить оценку и исследовать сохранённый Run.
 
 Для нового evaluation не используйте `suite.yaml` версии
 `takt-flow-evaluation/v1alpha1`: это deprecated compatibility path с
 фиксированным runner. Новый evaluation является обычным `takt/v1alpha1`
 workflow.
+
+## Канонический authoring path
+
+Команда
+
+```bash
+takt eval flow init <workflow-selector> --output <directory>
+```
+
+по умолчанию создаёт authored evaluation scaffold: обычный
+`workflows/evaluate.yaml`, cases и deterministic tools. Это рекомендуемый путь
+для новых наборов. Старый fixed-stage scaffold создаётся только по явному
+
+```bash
+takt eval flow init <workflow-selector> --output <directory> --legacy
+```
+
+и предназначен для чтения и запуска существующих compatibility suites. Legacy
+режим не является вторым runtime и не расширяет новый authoring contract.
+Scaffold намеренно не создаёт `config.yaml`: создайте или скопируйте Config с
+assistant/model bindings перед первым запуском.
+
+Route DSL/micro DSL, их examples, validators, benchmarks и evaluation fixtures
+остаются публичными OSS surfaces. Authored workflow должен выражать предметную
+логику обычными nodes и deterministic validation; переход на authored path не
+отключает и не удаляет эти поверхности.
 
 ## 1. Модель выполнения
 

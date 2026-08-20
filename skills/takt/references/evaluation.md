@@ -44,11 +44,18 @@ takt run assessment run-... --role primary
 corpus используй `EVAL_PRESET=qwen38 EVAL_IDLE_TIMEOUT=15m make eval-feature`;
 live eval требует модели/credentials и не входит в release checks.
 
-## Legacy compatibility
+## Authoring and legacy compatibility
 
-`takt eval flow init` пока создаёт deprecated
-`takt-flow-evaluation/v1alpha1` `suite.yaml`. Только exact suite version выбирает
-старый fixed-stage runner; `eval status|stats|inspect <directory>` продолжает
-read-only разбор его `progress.json`/`report.json`. Не используй legacy suite
-как шаблон для нового evaluation workflow и не импортируй старые отчёты в Run
-Store.
+`takt eval flow init` по умолчанию создаёт authored workflow scaffold с
+`workflows/evaluate.yaml`, case example и заменяемыми deterministic tools.
+Scaffold не создаёт `config.yaml`: создай или скопируй Config с нужными
+assistant/model bindings перед запуском. После заполнения запускай обычный Run
+evaluation из scaffold. Route/micro DSL,
+benchmark cases и validator contracts остаются публичными OSS surfaces.
+
+Для старого fixed-stage runner используй явный `--legacy`:
+`takt eval flow init <selector> --output DIR --legacy`. Только exact suite
+version выбирает compatibility runner; `eval status|stats|inspect <directory>`
+продолжает read-only разбор его `progress.json`/`report.json`. Не используй
+legacy suite как шаблон для нового evaluation workflow и не импортируй старые
+отчёты в Run Store.

@@ -1,7 +1,7 @@
 # Руководство пользователя
 
 Это руководство описывает установку, настройку и повседневное использование
-Takt `v0.1.63-alpha`. Точный Workflow/Config contract находится в
+Takt `v0.1.64-alpha`. Точный Workflow/Config contract находится в
 [`03-specification.md`](03-specification.md), а полный список текущих
 ограничений — в [`05-implementation-status.md`](05-implementation-status.md).
 

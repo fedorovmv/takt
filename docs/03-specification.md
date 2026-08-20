@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.63-alpha` с единым
+Статус: текущий реализованный внешний контракт `v0.1.64-alpha` с единым
 Archon-first языком Workflow A0, bounded repair/runtime semantics A1 и unified
 Run evaluation.
 Config, Profile, Run и assistant protocol сохраняют собственные versioned
@@ -1166,10 +1166,11 @@ Make targets `eval-feature`, `eval-feature-smoke`, `eval-review` и
 например: `EVAL_IDLE_TIMEOUT=10m make eval-feature`. Это настройка только
 evaluation и не изменяет production workflow.
 
-Legacy `takt eval flow init <workflow-selector> --output <directory>` creates
-only a deprecated `takt-flow-evaluation/v1alpha1` suite skeleton and one example
-case. It never creates a validator or executable setup. Новый ordinary
-evaluation workflow автор создаёт как обычный `takt/v1alpha1` файл.
+`takt eval flow init <workflow-selector> --output <directory>` creates an
+authored `takt/v1alpha1` evaluation workflow scaffold and one example case.
+Legacy `takt eval flow init ... --legacy` creates the deprecated
+`takt-flow-evaluation/v1alpha1` suite skeleton and one example case. Новый
+ordinary evaluation workflow автор создаёт как обычный `takt/v1alpha1` файл.
 
 `takt eval analyze` is a read-only advisory pass over a saved flow evaluation.
 The selected analyzer Config must materialize the dedicated `takt_analyze` model

@@ -167,7 +167,8 @@ iteration-history-contract:
 	go test ./internal/runtime ./internal/store -run 'Iteration|Loop|Resume' -count=1
 
 compatibility-contract:
-	go test ./internal/tooling/compatibility ./tests/e2e -run 'Compatibility' -count=1
+	go test ./internal/tooling/compatibility -count=1
+	go test ./tests/e2e -run 'Compatibility' -count=1
 
 task-source-contract:
 	go test ./internal/tasksource ./sdk/tasksource ./reference/githubtask ./tests/e2e -run 'TaskSource|TaskSources' -count=1

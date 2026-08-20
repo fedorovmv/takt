@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: реализованный контракт `v0.1.63-alpha`. Он фиксирует единый
+Статус документа: реализованный контракт `v0.1.64-alpha`. Он фиксирует единый
 Archon-first Workflow language, durable loop/matrix evidence, immutable
 assessments, exact session resume и recovery/retry поверх существующего
 scheduler. Hard budgets и mutating fan-out остаются отдельными deferred срезами.

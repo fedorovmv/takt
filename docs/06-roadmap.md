@@ -1,13 +1,13 @@
 # План развития Takt
 
-Актуальный план после `v0.1.57-alpha`. История реализованных срезов находится
+Актуальный план после `v0.1.64-alpha`. История реализованных срезов находится
 в `05-implementation-status.md` и документах
 `docs/archive/releases/`. Текущие architecture/evaluation contracts остаются
 в `docs/71–73`.
 
 ## Текущая позиция
 
-Takt уже закрывает основной локальный control plane и в `v0.1.52–v0.1.57` прошёл application, test, architecture-hardening и modularization стабилизацию: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
+Takt уже закрывает основной локальный control plane и в `v0.1.52–v0.1.64` прошёл application, test, architecture-hardening, modularization и unified-evaluation стабилизацию: workflow/runtime, child Runs и fan-out, worktree/multi-repo, Dynamic Takt, host control, autonomous operations, evidence/failure routing, adapters/packages, local security и сравнительный evaluation.
 
 Главный риск теперь — продолжать добавлять механизмы быстрее, чем появляется evidence их пользы. Поэтому ближайший порядок меняется с feature-driven на evidence-driven.
 
@@ -53,6 +53,10 @@ Commodity JSON Schema execution вынесен в upstream library, Pi/OpenCode 
 - live coding-agent/adapter сценарии через stable APIs.
 
 `make journeys` закрепляет минимальный black-box baseline. Новые проблемы из реального использования исправляются раньше расширения feature surface.
+
+GitHub CI запускает `make check`, `make journeys` и deterministic
+`make compatibility-contract` на `ubuntu-latest` и `macos-latest`; live model и
+host conformance остаются отдельным credentialed gate.
 
 ## P0.5. Evidence для experimental/tooling
 

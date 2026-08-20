@@ -2,7 +2,7 @@
 
 ## Supported trust model
 
-Takt `v0.1.63-alpha` is a local, single-user, trusted runtime. `takt daemon` may serve several clients owned by the same OS user but does not create authentication, authorization, tenant isolation or an untrusted execution boundary.
+Takt `v0.1.64-alpha` is a local, single-user, trusted runtime. `takt daemon` may serve several clients owned by the same OS user but does not create authentication, authorization, tenant isolation or an untrusted execution boundary.
 
 Trusted inputs include workflow/config/package files, Markdown commands, scripts and hooks, assistant/adapter binaries and argv, workspace contents and locally installed package sources. Do not expose the current runtime as a service that accepts these values from untrusted users.
 

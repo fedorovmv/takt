@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v0.1.64-alpha
+
+- `eval flow init` now creates an authored `takt/v1alpha1` evaluation scaffold
+  by default; the deprecated fixed-stage scaffold remains available only with
+  explicit `--legacy`. Stable journeys and deterministic compatibility
+  contracts now run in both Linux and macOS CI jobs. Route/micro DSL examples,
+  validators and benchmark fixtures remain public OSS surfaces.
+- The compatibility gate now runs the complete compatibility package policy
+  suite. Authored scaffold validators receive candidate/case context and
+  evidence tools receive workspace/base/output arguments; generated docs call
+  out the required `config.yaml` explicitly.
 - Documentation now has a concise open-source README, a user guide for
   installation/configuration/operation, a contributor guide, and an audience-
   oriented document map. Historical implementation detail was removed from

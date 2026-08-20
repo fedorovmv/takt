@@ -192,12 +192,16 @@ func (e evaluationEngine) Analyze(ctx context.Context, req tooling.EvaluationAna
 	return report, err
 }
 
-func (evaluationEngine) FlowInit(_ context.Context, workflowSelector, output string) (any, error) {
+func (evaluationEngine) FlowInit(_ context.Context, workflowSelector, output string, legacy bool) (any, error) {
 	absOutput, err := filepath.Abs(output)
 	if err != nil {
 		return nil, err
 	}
-	if err := evaluation.InitFlowSuite(workflowSelector, absOutput); err != nil {
+	init := evaluation.InitEvaluationWorkflow
+	if legacy {
+		init = evaluation.InitFlowSuite
+	}
+	if err := init(workflowSelector, absOutput); err != nil {
 		return nil, err
 	}
 	return map[string]any{"output": absOutput, "created": true}, nil

@@ -34,3 +34,7 @@ jobs:
         env:
           TAKT_REQUIRE_TYPESCRIPT: "1"
         run: make check
+      - name: Run stable user journeys
+        run: make journeys
+      - name: Run deterministic compatibility contracts
+        run: make compatibility-contract

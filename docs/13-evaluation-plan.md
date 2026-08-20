@@ -1,6 +1,6 @@
 # План оценки агентных стратегий
 
-Статус: в `v0.1.52-alpha` workflow-level контур поддерживает `takt eval run/report/benchmark/compare`, а task-level — `takt eval task-benchmark`. Fake contract benchmarks отделены от live Route DSL/Go/Document evidence со штатными validators и реальными моделями.
+Статус: в `v0.1.64-alpha` workflow-level контур поддерживает `takt eval run/report/benchmark/compare`, authored ordinary Run evaluation и task-level `takt eval task-benchmark`. Fake contract benchmarks отделены от live Route DSL/Go/Document evidence со штатными validators и реальными моделями. Route/micro DSL и evaluation fixtures являются публичными OSS surfaces.
 
 ## 1. Цель
 
@@ -165,7 +165,7 @@ takt eval run <workflow> \
 
 `examples/route-dsl-eval` проверяет инфраструктуру с fake adapter. `examples/route-dsl-benchmark` содержит agent-neutral matrix на 25 regression/production-shaped synthetic cases; live запуск использует configured coding-agent и штатный валидатор.
 
-## Unified Run evaluation — v0.1.63
+## Unified Run evaluation — v0.1.64
 
 Практический путь от структуры case до запуска и диагностики Run вынесен в
 [руководство по созданию evaluation](73-evaluation-authoring-guide.md).
@@ -233,8 +233,10 @@ Mini-du теперь использует authored DAG
 Только suite с точным `version: takt-flow-evaluation/v1alpha1` выбирает
 deprecated fixed-stage runner. Он сохраняётся на compatibility window вместе с
 read-only directory readers; legacy reports не импортируются и не изменяются.
-Текущий `takt eval flow init` также создаёт legacy skeleton и не является
-рекомендуемым authoring path нового evaluation workflow.
+`takt eval flow init` по умолчанию создаёт authored workflow scaffold;
+deprecated legacy skeleton доступен только через явный `--legacy` и сохраняется
+как compatibility window. Новый evaluation workflow всегда должен оставаться
+обычным `takt/v1alpha1` Run.
 
 `takt eval flow` evaluates cases sequentially: every case/repeat receives a fresh
 control workspace and produces `cases/<case>/repeat-<NNN>/` evidence containing

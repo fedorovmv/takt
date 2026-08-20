@@ -263,8 +263,39 @@ func TestEvalFlowInitRequiresSelectorAndOutput(t *testing.T) {
 	if err := evalCmd(context.Background(), []string{"flow", "init", "code:feature-development", "--output", "flow", "--json=false"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "flow", "suite.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "flow", "workflows", "evaluate.yaml")); err != nil {
 		t.Fatal(err)
+	}
+	if err := evalCmd(context.Background(), []string{"flow", "init", "code:feature-development", "--output", "legacy", "--legacy", "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "legacy", "suite.yaml")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEvalFlowInitTextExplainsRequiredConfig(t *testing.T) {
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+
+	output := filepath.Join(t.TempDir(), "flow")
+	if err := evalCmd(context.Background(), []string{"flow", "init", "code:feature-development", "--output", output, "--json=false"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "create or copy config.yaml") {
+		t.Fatalf("stdout does not explain the required config: %s", raw)
 	}
 }
 
