@@ -903,6 +903,13 @@ func TestPrintResultJSONUsesStableEnvelope(t *testing.T) {
 	}
 }
 
+func TestRunAssessmentCmdRequiresRunID(t *testing.T) {
+	err := runDispatchCmd(context.Background(), []string{"assessment"})
+	if err == nil || !strings.Contains(err.Error(), "usage: takt run assessment <run-id>") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestPrintErrorJSONUsesStableEnvelope(t *testing.T) {
 	old := os.Stderr
 	r, w, err := os.Pipe()

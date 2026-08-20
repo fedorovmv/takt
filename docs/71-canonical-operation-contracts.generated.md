@@ -115,6 +115,43 @@ Input schema:
 }
 ```
 
+### `run.assessment` — List Takt Run assessments
+
+- MCP tool: `takt.run.assessment`
+- Stage: `stable`
+
+List immutable assessments where the Run is the target or assessor; stale target revisions are excluded by default.
+
+Input schema:
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "include_stale": {
+      "description": "Include assessments pinned to an older target result revision",
+      "type": "boolean"
+    },
+    "role": {
+      "description": "Optional assessment role filter",
+      "enum": [
+        "primary",
+        "advisory"
+      ],
+      "type": "string"
+    },
+    "run_id": {
+      "description": "Run ID",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `run.attention` — List Runs requiring attention
 
 - MCP tool: `takt.run.attention`

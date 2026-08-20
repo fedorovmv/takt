@@ -26,7 +26,7 @@ func TestCanonicalOperationRegistry(t *testing.T) {
 		"host.begin", "host.confirm", "host.find", "host.get", "host.guard_completion", "host.guard_tool", "host.release",
 		"notify.ack", "notify.dispatch", "notify.list", "notify.test",
 		"plan.create", "plan.execute", "plan.get", "plan.promote", "plan.steer",
-		"run.abandon", "run.answer", "run.artifacts", "run.attention", "run.cancel", "run.children", "run.events", "run.fork", "run.get", "run.list", "run.pause", "run.recover", "run.resume", "run.resume_paused", "run.retry", "run.start", "run.summary",
+		"run.abandon", "run.answer", "run.artifacts", "run.assessment", "run.attention", "run.cancel", "run.children", "run.events", "run.fork", "run.get", "run.list", "run.pause", "run.recover", "run.resume", "run.resume_paused", "run.retry", "run.start", "run.summary",
 		"task.explain", "task.respond", "task.start", "task.status", "task.stop",
 		"workflow.describe", "workflow.list",
 	}

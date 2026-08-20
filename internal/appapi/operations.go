@@ -109,6 +109,10 @@ var canonicalOperationDescriptors = []OperationDescriptor{
 		"run_id": stringProp("Run ID"), "node_id": stringProp("Optional producer node filter"), "type": stringProp("Optional semantic type filter"),
 		"recursive": boolProp("Include descendant Runs"), "include_content": boolProp("Include bounded artifact content"), "max_bytes": integerProp("Maximum bytes per included artifact; defaults to 65536", 1, 1048576),
 	}, "run_id"), Annotations: readOnly, Stage: StageStable},
+	{ID: "run.assessment", MCPTool: "takt.run.assessment", Title: "List Takt Run assessments", Description: "List immutable assessments where the Run is the target or assessor; stale target revisions are excluded by default.", InputSchema: object(map[string]any{
+		"run_id": stringProp("Run ID"), "role": map[string]any{"type": "string", "enum": []string{"primary", "advisory"}, "description": "Optional assessment role filter"},
+		"include_stale": boolProp("Include assessments pinned to an older target result revision"),
+	}, "run_id"), Annotations: readOnly, Stage: StageStable},
 	{ID: "run.events", MCPTool: "takt.run.events", Title: "Read Takt Run events", Description: "Read events after a durable revision cursor. wait_ms enables bounded long polling for incremental monitoring.", InputSchema: object(map[string]any{
 		"run_id": stringProp("Run ID"), "after_revision": integerProp("Return events with a greater revision", 0, int(^uint32(0))),
 		"limit": integerProp("Maximum events, defaults to 200", 1, 1000), "wait_ms": integerProp("Long-poll wait, 0 to 30000 milliseconds", 0, 30000),

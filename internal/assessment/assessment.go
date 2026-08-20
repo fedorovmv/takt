@@ -16,6 +16,7 @@ import (
 const (
 	ProtocolV1Alpha1 = "takt-assessment/v1alpha1"
 	TypeAssessment   = "assessment"
+	MIMEAssessment   = "application/vnd.takt.assessment+json"
 	RolePrimary      = "primary"
 	RoleAdvisory     = "advisory"
 
@@ -49,6 +50,18 @@ type EvidenceRef struct {
 	ArtifactID    string `json:"artifact_id"`
 	SHA256        string `json:"sha256"`
 }
+
+type CorruptError struct {
+	ProducerRunID string
+	ArtifactID    string
+	Err           error
+}
+
+func (e *CorruptError) Error() string {
+	return fmt.Sprintf("assessment_corrupt: producer Run %s artifact %s: %v", e.ProducerRunID, e.ArtifactID, e.Err)
+}
+
+func (e *CorruptError) Unwrap() error { return e.Err }
 
 type Envelope struct {
 	ProtocolVersion string            `json:"protocol_version"`

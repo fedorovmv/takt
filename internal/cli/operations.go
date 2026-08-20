@@ -18,7 +18,7 @@ func runDispatchCmd(ctx context.Context, args []string) error {
 		return runCmd(ctx, args)
 	}
 	switch args[0] {
-	case "list", "attention", "summary", "watch", "pause", "resume", "retry", "fork", "abandon", "recover":
+	case "list", "attention", "summary", "assessment", "watch", "pause", "resume", "retry", "fork", "abandon", "recover":
 		return runOperationsCmd(ctx, args[0], args[1:])
 	default:
 		return runCmd(ctx, args)
@@ -33,6 +33,8 @@ func runOperationsCmd(ctx context.Context, operation string, args []string) erro
 		return attentionCmd(ctx, args)
 	case "summary":
 		return runSummaryCmd(ctx, args)
+	case "assessment":
+		return runAssessmentCmd(ctx, args)
 	case "watch":
 		return runWatchCmd(ctx, args)
 	case "pause":
@@ -50,6 +52,44 @@ func runOperationsCmd(ctx context.Context, operation string, args []string) erro
 	default:
 		return fmt.Errorf("unknown run operation %q", operation)
 	}
+}
+
+func runAssessmentCmd(ctx context.Context, args []string) error {
+	fs := newFlagSet("run assessment")
+	workspace := fs.String("workspace", ".", "control workspace")
+	role := fs.String("role", "", "filter by primary or advisory role")
+	includeStale := fs.Bool("include-stale", false, "include stale target revisions")
+	useDaemon := fs.Bool("daemon", false, "use local daemon")
+	socket := fs.String("socket", "", "daemon Unix socket path")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--role": true, "--include-stale": false, "--daemon": false, "--socket": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt run assessment <run-id> [--role primary|advisory] [--include-stale]")
+	}
+	request := application.AssessmentQuery{RunID: fs.Arg(0), Role: *role, IncludeStale: *includeStale}
+	var result application.AssessmentResult
+	if *useDaemon {
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		if err := client.Call(ctx, "run.assessment", request, &result); err != nil {
+			return err
+		}
+	} else {
+		service, err := localServices(*workspace, ".takt/config.yaml")
+		if err != nil {
+			return err
+		}
+		value, err := service.RunService.Assessments(request)
+		if err != nil {
+			return err
+		}
+		result = *value
+	}
+	return printResult(*jsonOut, &result)
 }
 
 func runsCmd(ctx context.Context, args []string) error {

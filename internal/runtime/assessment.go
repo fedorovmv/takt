@@ -21,8 +21,6 @@ import (
 	"takt/internal/workflow"
 )
 
-const assessmentMIME = "application/vnd.takt.assessment+json"
-
 var errAssessmentAmbiguous = errors.New("assessment is ambiguous")
 
 func (r *Runner) executeAssessmentAction(state *store.RunState, node spec.Node, action actionContext) (execResult, error) {
@@ -134,7 +132,7 @@ func (r *Runner) executeAssessmentAction(state *store.RunState, node spec.Node, 
 	}
 	sum := sha256.Sum256(raw)
 	artifact := store.ArtifactRef{
-		ID: id, Type: assessment.TypeAssessment, MIME: assessmentMIME, Path: path,
+		ID: id, Type: assessment.TypeAssessment, MIME: assessment.MIMEAssessment, Path: path,
 		SHA256: hex.EncodeToString(sum[:]), Size: int64(len(raw)), ProducerRunID: state.ID,
 		ProducerNodeID: node.ID, Attempt: nodeState.Attempts, CreatedAt: createdAt,
 	}

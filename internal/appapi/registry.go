@@ -413,6 +413,9 @@ func (r *Registry) registerRunOperations() {
 		}
 		return result, nil
 	})
+	registerOperation(r, "run.assessment", func(ctx context.Context, params application.AssessmentQuery) (any, error) {
+		return r.runs.Assessments(params)
+	})
 	registerOperation(r, "run.events", func(ctx context.Context, params struct {
 		RunID         string `json:"run_id"`
 		AfterRevision uint64 `json:"after_revision"`

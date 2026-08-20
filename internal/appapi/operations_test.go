@@ -83,3 +83,14 @@ func TestOperationDescriptorSnapshotsDoNotMutateCanonicalState(t *testing.T) {
 		t.Fatalf("descriptor annotations were mutated through returned snapshot: %#v", second.Annotations)
 	}
 }
+
+func TestRunAssessmentDescriptorIsCanonical(t *testing.T) {
+	descriptor, ok := Descriptor("run.assessment")
+	if !ok || descriptor.MCPTool != "takt.run.assessment" || descriptor.Stage != StageStable {
+		t.Fatalf("descriptor = %#v, ok=%v", descriptor, ok)
+	}
+	properties := descriptor.InputSchema["properties"].(map[string]any)
+	if properties["run_id"] == nil || properties["role"] == nil || properties["include_stale"] == nil {
+		t.Fatalf("input schema = %#v", descriptor.InputSchema)
+	}
+}

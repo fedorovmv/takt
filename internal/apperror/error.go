@@ -3,6 +3,7 @@ package apperror
 import (
 	"errors"
 
+	"takt/internal/assessment"
 	"takt/internal/authoring"
 	"takt/internal/definition"
 	"takt/internal/runtime"
@@ -42,6 +43,12 @@ func Describe(err error) Descriptor {
 	if errors.As(err, &authoringErr) {
 		result.Code = "authoring_validation_failed"
 		result.Details["diagnostics"] = authoringErr.Diagnostics
+	}
+	var corrupt *assessment.CorruptError
+	if errors.As(err, &corrupt) {
+		result.Code = "assessment_corrupt"
+		result.Details["producer_run_id"] = corrupt.ProducerRunID
+		result.Details["artifact_id"] = corrupt.ArtifactID
 	}
 	return result
 }
