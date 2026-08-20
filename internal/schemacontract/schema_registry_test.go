@@ -150,6 +150,41 @@ func TestWorkflowSchemaAcceptsAssessmentNode(t *testing.T) {
 	}
 }
 
+func TestWorkflowSchemaAcceptsMatrixNode(t *testing.T) {
+	schema := compileSchemaFixture(t, "workflow.schema.json")
+	fixture := map[string]any{
+		"name": "matrix",
+		"nodes": []any{map[string]any{"id": "cases", "matrix": map[string]any{
+			"items_from": "$INPUTS.cases", "as": "case", "output_node": "emit",
+			"nodes": []any{map[string]any{"id": "emit", "bash": "printf ok"}},
+		}}},
+	}
+	if err := schema.Validate(fixture); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func compileSchemaFixture(t *testing.T, name string) *jsonschema.Schema {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "schemas", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	document, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compiler.AddResource(name, document); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := compiler.Compile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return schema
+}
+
 func TestAssessmentSchemaValidatesPrimaryEnvelope(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "schemas", "assessment.schema.json"))
 	if err != nil {
@@ -322,6 +357,17 @@ func TestRunStateSchemaAcceptsAssistantSessionMetadata(t *testing.T) {
 	fixture := map[string]any{
 		"id": "run", "status": "completed", "workflow_path": "workflow.yaml", "config_path": "config.yaml", "workspace": "workspace", "input": "", "approvals": map[string]any{}, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z", "revision": 2, "result_revision": 1,
 		"nodes": map[string]any{"agent": map[string]any{"status": "completed", "adapter": "pi", "session_path": "/tmp/session.jsonl", "executions": []any{map[string]any{"attempt": 1, "status": "completed", "adapter": "pi", "session_path": "/tmp/session.jsonl"}}}},
+	}
+	if err := schema.Validate(fixture); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunStateSchemaAcceptsMatrixHistory(t *testing.T) {
+	schema := compileSchemaFixture(t, "run-state.schema.json")
+	fixture := map[string]any{
+		"id": "run", "status": "completed", "workflow_path": "workflow.yaml", "config_path": "config.yaml", "workspace": "workspace", "input": "{}", "input_format": "json", "approvals": map[string]any{}, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z", "revision": 2, "result_revision": 2,
+		"nodes": map[string]any{"cases": map[string]any{"status": "completed", "matrix_fingerprint": strings.Repeat("a", 64), "matrix_branches": []any{map[string]any{"index": 0, "item": map[string]any{"name": "a"}, "item_fingerprint": strings.Repeat("b", 64), "status": "completed", "nodes": map[string]any{"cases__emit": map[string]any{"status": "completed", "path": "/cases[0]/emit"}}, "output": "a", "completed_at": "2026-01-01T00:00:00Z"}}}},
 	}
 	if err := schema.Validate(fixture); err != nil {
 		t.Fatal(err)

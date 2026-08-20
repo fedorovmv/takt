@@ -1,6 +1,7 @@
 package flowref_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -50,6 +51,39 @@ func TestReferenceLexerKeepsDottedArtifactTypeCanonical(t *testing.T) {
 	}
 	if got := strings.Join(whole.Path, "/"); got != "artifacts/report.json" {
 		t.Fatalf("whole artifact path = %q", got)
+	}
+}
+
+func TestReferenceLexerAcceptsMatrixTemplateReferences(t *testing.T) {
+	cases := []struct {
+		source string
+		name   string
+		path   []string
+	}{
+		{source: "$MATRIX.index", name: "index"},
+		{source: "$MATRIX.total", name: "total"},
+		{source: "$MATRIX.item", name: "item"},
+		{source: "$MATRIX.item.case_id", name: "item", path: []string{"case_id"}},
+	}
+	for _, tc := range cases {
+		ref, err := flowref.Parse(tc.source, flowref.NonShell)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", tc.source, err)
+		}
+		if ref.Kind != flowref.KindMatrix || ref.Name != tc.name || !reflect.DeepEqual(ref.Path, tc.path) {
+			t.Fatalf("Parse(%q) = %#v", tc.source, ref)
+		}
+	}
+}
+
+func TestReferenceLexerRejectsInvalidMatrixReferences(t *testing.T) {
+	for _, source := range []string{"$MATRIX", "$MATRIX.unknown", "$MATRIX.index.value", "$MATRIX.item.bad/path"} {
+		if _, err := flowref.Parse(source, flowref.NonShell); err == nil {
+			t.Fatalf("Parse(%q) succeeded", source)
+		}
+	}
+	if _, err := flowref.Parse("$MATRIX.item", flowref.When); err == nil {
+		t.Fatal("matrix reference was accepted directly in when")
 	}
 }
 

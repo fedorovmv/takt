@@ -887,6 +887,17 @@ func (s *RunService) recoverInterruptedRuns(ctx context.Context, detached bool) 
 
 func (s *RunService) recoverRunState(st RunStore, state *store.RunState) error {
 	now := time.Now().UTC()
+	recoveredParents := map[string]bool{}
+	markWorkerLost := func(node *store.NodeState) {
+		node.Executions = append(node.Executions, store.ExecutionState{Attempt: node.Attempts, Status: store.NodeErrored, ErrorCode: "worker_lost", Error: "executor process ended before node completion"})
+		if node.Attempts > 0 {
+			node.Attempts--
+		}
+		node.Status = store.NodePending
+		node.ErrorCode = "worker_lost"
+		node.Error = "executor process ended before node completion"
+		node.External = nil
+	}
 	for _, nodeID := range append(append([]string(nil), state.CurrentNodes...), state.CurrentNode) {
 		if nodeID == "" {
 			continue
@@ -899,16 +910,14 @@ func (s *RunService) recoverRunState(st RunStore, state *store.RunState) error {
 			node.Status = store.NodePending
 			node.ErrorCode = ""
 			node.Error = ""
-			continue
+		} else {
+			markWorkerLost(node)
 		}
-		node.Executions = append(node.Executions, store.ExecutionState{Attempt: node.Attempts, Status: store.NodeErrored, ErrorCode: "worker_lost", Error: "executor process ended before node completion"})
-		if node.Attempts > 0 {
-			node.Attempts--
+		parent := state.Nodes[node.PublicParent]
+		if parent != nil && parent.Status == store.NodeRunning && parent.MatrixActiveIndex != nil && !recoveredParents[node.PublicParent] {
+			markWorkerLost(parent)
+			recoveredParents[node.PublicParent] = true
 		}
-		node.Status = store.NodePending
-		node.ErrorCode = "worker_lost"
-		node.Error = "executor process ended before node completion"
-		node.External = nil
 	}
 	state.Status = store.RunRunning
 	state.CurrentNode = ""

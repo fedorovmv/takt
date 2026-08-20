@@ -25,6 +25,7 @@ const (
 	KindNode Kind = iota
 	KindInput
 	KindFanout
+	KindMatrix
 	KindLoopPrevious
 	KindBare
 	KindApproval
@@ -56,7 +57,7 @@ var (
 
 var reserved = map[string]bool{
 	"ARGUMENTS": true, "ARTIFACTS_DIR": true, "BASE_BRANCH": true, "TAKT_WORKSPACE": true,
-	"INPUTS": true, "LOOP_PREV": true, "FEEDBACK": true, "FANOUT": true,
+	"INPUTS": true, "LOOP_PREV": true, "FEEDBACK": true, "FANOUT": true, "MATRIX": true,
 }
 
 // Parse parses one complete Takt reference. Literal text should be handled by
@@ -135,6 +136,26 @@ func Parse(source string, surface Surface) (Reference, error) {
 			}
 		}
 		return Reference{Kind: KindFanout, Name: parts[1], Path: append([]string(nil), parts[2:]...), Optional: optional, Default: def}, nil
+	}
+	if parts[0] == "MATRIX" {
+		if surface == When {
+			return Reference{}, fmt.Errorf("$MATRIX is not valid in when; compute a value in a node first")
+		}
+		if len(parts) < 2 {
+			return Reference{}, fmt.Errorf("$MATRIX requires a field")
+		}
+		if parts[1] != "item" && parts[1] != "index" && parts[1] != "total" {
+			return Reference{}, fmt.Errorf("invalid matrix field %q", parts[1])
+		}
+		if (parts[1] == "index" || parts[1] == "total") && len(parts) != 2 {
+			return Reference{}, fmt.Errorf("matrix %s does not accept a path", parts[1])
+		}
+		for _, part := range parts[2:] {
+			if !segmentRE.MatchString(part) {
+				return Reference{}, fmt.Errorf("invalid matrix path segment %q", part)
+			}
+		}
+		return Reference{Kind: KindMatrix, Name: parts[1], Path: append([]string(nil), parts[2:]...), Optional: optional, Default: def}, nil
 	}
 	if parts[0] == "LOOP_PREV" {
 		if len(parts) < 3 || !nameRE.MatchString(parts[1]) || parts[2] != "output" {

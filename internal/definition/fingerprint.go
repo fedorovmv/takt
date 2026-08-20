@@ -195,6 +195,9 @@ func collectGovernedWorkflowPaths(nodes []spec.Node) []string {
 			if node.LoopGroup != nil {
 				visit(node.LoopGroup.Nodes)
 			}
+			if node.Matrix != nil {
+				visit(node.Matrix.Nodes)
+			}
 		}
 	}
 	visit(nodes)
@@ -215,6 +218,9 @@ func collectInternalNodes(nodes []spec.Node) map[string]spec.InternalNodeSpec {
 			}
 			if node.LoopGroup != nil {
 				visit(node.LoopGroup.Nodes)
+			}
+			if node.Matrix != nil {
+				visit(node.Matrix.Nodes)
 			}
 		}
 	}
@@ -251,6 +257,9 @@ func collectCommands(nodes []spec.Node) []string {
 			}
 			if node.LoopGroup != nil {
 				visit(node.LoopGroup.Nodes)
+			}
+			if node.Matrix != nil {
+				visit(node.Matrix.Nodes)
 			}
 		}
 	}
@@ -331,6 +340,11 @@ func collectDefinitionResourcePaths(workflowPath string, nodes []spec.Node) ([]s
 			}
 			if node.LoopGroup != nil {
 				if err := visit(node.LoopGroup.Nodes); err != nil {
+					return err
+				}
+			}
+			if node.Matrix != nil {
+				if err := visit(node.Matrix.Nodes); err != nil {
 					return err
 				}
 			}

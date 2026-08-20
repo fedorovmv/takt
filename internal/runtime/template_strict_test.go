@@ -56,3 +56,15 @@ func TestLoopPreviousIsImplicitlyEmptyOnFirstIteration(t *testing.T) {
 		t.Fatalf("first iteration loop previous = %q, want empty", value)
 	}
 }
+
+func TestJSONInputReferencesRequireJSONContract(t *testing.T) {
+	jsonState := &store.RunState{Input: `{"cases":[{"name":"alpha"}]}`, InputFormat: "json", Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}
+	value, err := renderTemplate("$INPUTS.cases.0.name", jsonState, nil, "", "")
+	if err != nil || value != "alpha" {
+		t.Fatalf("JSON input value=%q err=%v", value, err)
+	}
+	textState := &store.RunState{Input: jsonState.Input, InputFormat: "text", Nodes: map[string]*store.NodeState{}, Approvals: map[string]string{}}
+	if _, err := renderTemplate("$INPUTS.cases.0.name", textState, nil, "", ""); err == nil {
+		t.Fatal("nested input reference was accepted for text input")
+	}
+}

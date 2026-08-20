@@ -64,6 +64,11 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 				return fmt.Errorf("loop_group %q: %w", node.ID, err)
 			}
 		}
+		if node.Matrix != nil {
+			if err := validateCapabilitiesRecursive(&spec.Workflow{Provider: wf.Provider, Model: wf.Model, Nodes: node.Matrix.Nodes}, cfg, workflowPath, resolver, assistants, inherited, stack, depth); err != nil {
+				return fmt.Errorf("matrix %q: %w", node.ID, err)
+			}
+		}
 		if node.WorkflowRun == nil {
 			continue
 		}

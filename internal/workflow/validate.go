@@ -84,6 +84,9 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 	if err := validateAssessmentDependencies(nodes, byID); err != nil {
 		return err
 	}
+	if err := validateMatrixDependencies(nodes, byID); err != nil {
+		return err
+	}
 	if err := validateFanOutDependencies(nodes, byID); err != nil {
 		return err
 	}
@@ -311,7 +314,7 @@ var nodeIDRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 
 var reservedNodeIDs = map[string]bool{
 	"ARGUMENTS": true, "ARTIFACTS_DIR": true, "BASE_BRANCH": true,
-	"INPUTS": true, "LOOP_PREV": true, "FEEDBACK": true, "FANOUT": true,
+	"INPUTS": true, "LOOP_PREV": true, "FEEDBACK": true, "FANOUT": true, "MATRIX": true,
 }
 
 func validateArchonA0Fields(node spec.Node) error {
@@ -326,7 +329,7 @@ func validateActionShape(node spec.Node) error {
 	for _, present := range []bool{
 		node.Command != "", node.Prompt != "", node.Bash != "", node.Script != nil,
 		node.Approval != nil, node.LoopGroup != nil, node.Loop != nil, node.Cancel != "", node.Subworkflow != nil,
-		node.Foreach != nil, node.WorkflowRun != nil, node.Assessment != nil, node.Internal != nil, node.Adapter != nil,
+		node.Foreach != nil, node.Matrix != nil, node.WorkflowRun != nil, node.Assessment != nil, node.Internal != nil, node.Adapter != nil,
 	} {
 		if present {
 			kinds++
@@ -337,6 +340,29 @@ func validateActionShape(node spec.Node) error {
 	}
 	if node.Subworkflow != nil || node.Foreach != nil {
 		return fmt.Errorf("node %q contains an unexpanded workflow container", node.ID)
+	}
+	if node.Matrix != nil {
+		if strings.TrimSpace(node.Matrix.ItemsFrom) == "" {
+			return fmt.Errorf("matrix node %q items_from is required", node.ID)
+		}
+		ref, err := flowref.Parse(node.Matrix.ItemsFrom, flowref.NonShell)
+		if err != nil {
+			return fmt.Errorf("matrix node %q items_from must be one exact reference: %w", node.ID, err)
+		}
+		if ref.Optional || ref.Default != "" || (ref.Kind != flowref.KindInput && (ref.Kind != flowref.KindNode || len(ref.Path) == 0 || ref.Path[0] != "output")) {
+			return fmt.Errorf("matrix node %q items_from must be one exact input or node output reference", node.ID)
+		}
+		if !nodeIDRE.MatchString(node.Matrix.As) {
+			return fmt.Errorf("matrix node %q as must be an identifier", node.ID)
+		}
+		for _, child := range node.Matrix.Nodes {
+			if child.Matrix != nil || child.LoopGroup != nil {
+				return fmt.Errorf("matrix node %q cannot contain nested matrix or loop_group", node.ID)
+			}
+		}
+		if err := validateNodes(node.Matrix.Nodes, "matrix "+node.ID+".nodes", true); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -787,6 +813,25 @@ func validateAssessmentDependencies(nodes []spec.Node, byID map[string]spec.Node
 			if ref.NodeID == node.ID || !nodeDependsOn(node.ID, ref.NodeID, byID, map[string]bool{}) {
 				return fmt.Errorf("node %q assessment source %q must be an upstream dependency", node.ID, ref.NodeID)
 			}
+		}
+	}
+	return nil
+}
+
+func validateMatrixDependencies(nodes []spec.Node, byID map[string]spec.Node) error {
+	for _, node := range nodes {
+		if node.Matrix == nil {
+			continue
+		}
+		ref, err := flowref.Parse(node.Matrix.ItemsFrom, flowref.NonShell)
+		if err != nil || ref.Kind != flowref.KindNode {
+			continue
+		}
+		if _, ok := byID[ref.NodeID]; !ok {
+			return fmt.Errorf("matrix node %q references unknown source node %q", node.ID, ref.NodeID)
+		}
+		if ref.NodeID == node.ID || !nodeDependsOn(node.ID, ref.NodeID, byID, map[string]bool{}) {
+			return fmt.Errorf("matrix node %q source %q must be an upstream dependency", node.ID, ref.NodeID)
 		}
 	}
 	return nil

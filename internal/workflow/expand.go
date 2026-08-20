@@ -468,6 +468,12 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 			node.WorkflowRun.Path = filepath.Clean(filepath.Join(filepath.Dir(workflowPath), node.WorkflowRun.Path))
 		}
 	}
+	if node.Matrix != nil {
+		node.Matrix.ItemsFrom = rewriteTemplate(node.Matrix.ItemsFrom)
+		if err := c.rewriteMatrix(node, vars, workflowPath, inlineLocalCommands); err != nil {
+			return err
+		}
+	}
 	if node.Assessment != nil {
 		node.Assessment.TargetRunID = rewriteTemplate(node.Assessment.TargetRunID)
 		node.Assessment.ResultFrom = rewriteTemplate(node.Assessment.ResultFrom)
@@ -565,6 +571,13 @@ func unresolvedInput(node *spec.Node) string {
 	if node.WorkflowRun != nil {
 		values = append(values, node.WorkflowRun.Input)
 	}
+	if node.Matrix != nil {
+		for i := range node.Matrix.Nodes {
+			if value := unresolvedInput(&node.Matrix.Nodes[i]); value != "" {
+				return value
+			}
+		}
+	}
 	if node.Assessment != nil {
 		values = append(values, node.Assessment.TargetRunID, node.Assessment.ResultFrom)
 		for _, value := range node.Assessment.Scope {
@@ -615,6 +628,30 @@ func (c *compiler) rewriteLoopGroup(node *spec.Node, vars map[string]string, wor
 	loop.Nodes = group.nodes
 	loop.Until.Node = untilID
 	loop.Until.OutputContains = replaceVars(loop.Until.OutputContains, vars)
+	return nil
+}
+
+func (c *compiler) rewriteMatrix(node *spec.Node, vars map[string]string, workflowPath string, inlineLocalCommands bool) error {
+	matrix := node.Matrix
+	as := strings.TrimSpace(matrix.As)
+	if as == "" {
+		as = "item"
+		matrix.As = as
+	}
+	matrixVars := mergeVars(vars, map[string]string{as: "$MATRIX.item"})
+	group, err := c.compileNodes(matrix.Nodes, workflowPath, node.ID+"__", effectiveDefaults{Provider: node.Provider, Model: node.Model, Context: node.Context}, spec.HookSet{}, matrixVars, inlineLocalCommands)
+	if err != nil {
+		return fmt.Errorf("matrix %q: %w", node.ID, err)
+	}
+	outputID, err := chooseOutput(matrix.OutputNode, group, workflowPath)
+	if err != nil {
+		return fmt.Errorf("matrix %q: %w", node.ID, err)
+	}
+	for i := range group.nodes {
+		group.nodes[i].PublicParent = node.ID
+	}
+	matrix.Nodes = group.nodes
+	matrix.OutputNode = outputID
 	return nil
 }
 
@@ -688,6 +725,9 @@ func sourceKinds(node spec.Node) int {
 		count++
 	}
 	if node.Foreach != nil {
+		count++
+	}
+	if node.Matrix != nil {
 		count++
 	}
 	if node.WorkflowRun != nil {

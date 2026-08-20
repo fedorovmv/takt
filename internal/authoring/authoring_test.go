@@ -80,3 +80,29 @@ func TestAnalyzeRejectsReferencesInInlineScriptSource(t *testing.T) {
 	}
 	t.Fatalf("inline reference was accepted: %#v", diagnostics)
 }
+
+func TestAnalyzeChecksMatrixBodyTemplates(t *testing.T) {
+	workflow := &spec.Workflow{Nodes: []spec.Node{{
+		ID: "cases", Matrix: &spec.MatrixSpec{ItemsFrom: "$INPUTS.cases", As: "item", OutputNode: "emit", Nodes: []spec.Node{{
+			ID: "emit", Bash: "printf '%s' $MATRIX.item; echo $missing.output",
+		}}},
+	}}}
+	diagnostics := Analyze(workflow, command.Resolver{})
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == "template.node_unknown" {
+			return
+		}
+	}
+	t.Fatalf("matrix body was not analyzed: %#v", diagnostics)
+}
+
+func TestAnalyzeRejectsMatrixReferenceOutsideMatrix(t *testing.T) {
+	workflow := &spec.Workflow{Nodes: []spec.Node{{ID: "emit", Bash: "echo $MATRIX.item"}}}
+	diagnostics := Analyze(workflow, command.Resolver{})
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == "template.matrix_outside_matrix" {
+			return
+		}
+	}
+	t.Fatalf("root matrix reference was accepted: %#v", diagnostics)
+}

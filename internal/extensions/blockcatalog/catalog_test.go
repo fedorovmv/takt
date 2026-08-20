@@ -152,6 +152,48 @@ blocks:
 	}
 }
 
+func TestPackageRejectsMatrixBodyThatStartsGovernedChildRun(t *testing.T) {
+	root := t.TempDir()
+	mustWriteCatalog(t, filepath.Join(root, "child.yaml"), `name: child
+nodes:
+  - id: done
+    bash: echo done
+`)
+	mustWriteCatalog(t, filepath.Join(root, "parent.yaml"), `name: parent
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      nodes:
+        - id: child
+          workflow:
+            path: child.yaml
+      output_node: child
+  - id: result
+    depends_on: [cases]
+    prompt: summarize
+    output_format:
+      type: object
+      properties:
+        summary: {type: string}
+      required: [summary]
+`)
+	mustWriteCatalog(t, filepath.Join(root, "package.yaml"), `apiVersion: takt/v1alpha1
+kind: BlockPackage
+metadata:
+  name: non-atomic-matrix
+  version: 1.0.0
+  scope: project
+blocks:
+  nested:
+    workflow: parent.yaml
+    output_paths: [summary]
+`)
+	if _, err := blockcatalog.LoadOne(filepath.Join(root, "package.yaml")); err == nil || !strings.Contains(err.Error(), "starts governed child Runs") {
+		t.Fatalf("expected matrix governed child Run rejection, got %v", err)
+	}
+}
+
 func TestPackageFingerprintIncludesResolvedCommandContent(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "commands"), 0o700); err != nil {

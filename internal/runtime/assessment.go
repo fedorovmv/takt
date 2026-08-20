@@ -72,7 +72,11 @@ func (r *Runner) executeAssessmentAction(state *store.RunState, node spec.Node, 
 	}
 
 	nodeState := state.Nodes[node.ID]
+	scopeID := artifactExecutionScope(state, node.ID)
 	id := fmt.Sprintf("%s:%s:%d", node.ID, assessment.TypeAssessment, nodeState.Attempts)
+	if scopeID != "" {
+		id = fmt.Sprintf("%s:%s:%s:%d", node.ID, assessment.TypeAssessment, scopeID, nodeState.Attempts)
+	}
 	if existing, ok, err := r.existingAssessment(state, id, definition.Role, scope); err != nil {
 		if errors.Is(err, errAssessmentAmbiguous) {
 			return execResult{}, &execution.Error{Kind: execution.Kind("assessment_ambiguous"), Op: "record assessment", Err: err}
@@ -125,7 +129,11 @@ func (r *Runner) executeAssessmentAction(state *store.RunState, node spec.Node, 
 	if currentTarget.ResultRevision != target.ResultRevision || currentTarget.Status != target.Status {
 		return execResult{}, assessmentExecutionError(fmt.Errorf("target Run %q result changed during assessment capture", target.ID))
 	}
-	dir := filepath.Join(r.store.ArtifactsDir(state.ID), "nodes", safeArtifactPart(node.ID), strconv.Itoa(nodeState.Attempts))
+	dir := filepath.Join(r.store.ArtifactsDir(state.ID), "nodes", safeArtifactPart(node.ID))
+	if scopeID != "" {
+		dir = filepath.Join(dir, scopeID)
+	}
+	dir = filepath.Join(dir, strconv.Itoa(nodeState.Attempts))
 	path := filepath.Join(dir, "assessment.json")
 	if err := writeAtomicArtifact(path, raw); err != nil {
 		return execResult{}, assessmentExecutionError(err)
@@ -183,31 +191,36 @@ func deterministicAssessmentProducer(nodes []spec.Node, nodeID, workflowPath str
 		return false
 	}
 	for _, node := range nodes {
-		if node.ID != nodeID {
-			continue
+		if node.ID == nodeID {
+			if node.Bash != "" || node.Script != nil || node.Adapter != nil {
+				return true
+			}
+			if node.Internal != nil && node.Internal.Mode == "result" {
+				return deterministicAssessmentProducer(nodes, node.Internal.ResultFrom, workflowPath, depth+1)
+			}
+			if node.WorkflowRun == nil {
+				return false
+			}
+			path := node.WorkflowRun.Path
+			if !filepath.IsAbs(path) {
+				path = filepath.Join(filepath.Dir(workflowPath), path)
+			}
+			child, err := workflow.Load(path)
+			if err != nil {
+				return false
+			}
+			outputNode := node.WorkflowRun.OutputNode
+			if outputNode == "" {
+				outputNode = singleTerminalNode(child.Nodes)
+			}
+			return outputNode != "" && deterministicAssessmentProducer(child.Nodes, outputNode, path, depth+1)
 		}
-		if node.Bash != "" || node.Script != nil || node.Adapter != nil {
+		if node.Matrix != nil && deterministicAssessmentProducer(node.Matrix.Nodes, nodeID, workflowPath, depth+1) {
 			return true
 		}
-		if node.Internal != nil && node.Internal.Mode == "result" {
-			return deterministicAssessmentProducer(nodes, node.Internal.ResultFrom, workflowPath, depth+1)
+		if node.LoopGroup != nil && deterministicAssessmentProducer(node.LoopGroup.Nodes, nodeID, workflowPath, depth+1) {
+			return true
 		}
-		if node.WorkflowRun == nil {
-			return false
-		}
-		path := node.WorkflowRun.Path
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(filepath.Dir(workflowPath), path)
-		}
-		child, err := workflow.Load(path)
-		if err != nil {
-			return false
-		}
-		outputNode := node.WorkflowRun.OutputNode
-		if outputNode == "" {
-			outputNode = singleTerminalNode(child.Nodes)
-		}
-		return outputNode != "" && deterministicAssessmentProducer(child.Nodes, outputNode, path, depth+1)
 	}
 	return false
 }

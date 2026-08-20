@@ -77,6 +77,11 @@ func validateReferencesRecursive(nodes []spec.Node, defaults effectiveDefaults, 
 				return fmt.Errorf("loop_group %q: %w", n.ID, err)
 			}
 		}
+		if n.Matrix != nil {
+			if err := validateReferencesRecursive(n.Matrix.Nodes, defaults, cfg, resolver, stack, depth); err != nil {
+				return fmt.Errorf("matrix %q: %w", n.ID, err)
+			}
+		}
 		if n.WorkflowRun == nil {
 			continue
 		}

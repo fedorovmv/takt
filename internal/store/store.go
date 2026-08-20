@@ -261,6 +261,9 @@ type NodeState struct {
 	LoopPrevious            map[string]NodeState    `json:"loop_previous,omitempty"`
 	LoopIterations          []LoopIterationState    `json:"loop_iterations,omitempty"`
 	LoopIteration           int                     `json:"loop_iteration,omitempty"`
+	MatrixFingerprint       string                  `json:"matrix_fingerprint,omitempty"`
+	MatrixActiveIndex       *int                    `json:"matrix_active_index,omitempty"`
+	MatrixBranches          []MatrixBranchState     `json:"matrix_branches,omitempty"`
 	Hidden                  bool                    `json:"internal,omitempty"`
 	PublicParent            string                  `json:"public_parent,omitempty"`
 	ChildRunID              string                  `json:"child_run_id,omitempty"`
@@ -276,6 +279,17 @@ type NodeState struct {
 	Artifacts               []ArtifactRef           `json:"artifacts,omitempty"`
 	External                *ExternalExecutionState `json:"external,omitempty"`
 	DomainOperation         *DomainOperationState   `json:"domain_operation,omitempty"`
+}
+
+type MatrixBranchState struct {
+	Index               int                  `json:"index"`
+	Item                json.RawMessage      `json:"item"`
+	ItemFingerprint     string               `json:"item_fingerprint"`
+	Status              string               `json:"status"`
+	Nodes               map[string]NodeState `json:"nodes,omitempty"`
+	Output              string               `json:"output,omitempty"`
+	PrimaryAssessmentID string               `json:"primary_assessment_id,omitempty"`
+	CompletedAt         time.Time            `json:"completed_at,omitempty"`
 }
 
 // LoopIterationState is the durable, immutable snapshot of one completed
@@ -369,6 +383,7 @@ type RunState struct {
 	RunOptions            RunOptionsState       `json:"run_options,omitempty"`
 	InheritedPolicy       *NodePolicyState      `json:"inherited_policy,omitempty"`
 	Input                 string                `json:"input"`
+	InputFormat           string                `json:"input_format,omitempty"`
 	Output                string                `json:"output,omitempty"`
 	Usage                 *Usage                `json:"usage,omitempty"`
 	Artifacts             []ArtifactRef         `json:"artifacts,omitempty"`
@@ -434,6 +449,7 @@ func (s *RunState) PublicView() *RunState {
 		clone.PublicParent = ""
 		clone.LoopPrevious = publicLoopPrevious(id, node.LoopPrevious)
 		clone.LoopIterations = publicLoopIterations(id, node.LoopIterations)
+		clone.MatrixBranches = publicMatrixBranches(id, node.MatrixBranches)
 		if node.External != nil {
 			external := *node.External
 			external.ClaimToken = ""
@@ -501,11 +517,30 @@ func publicLoopPrevious(parentID string, values map[string]NodeState) map[string
 		node.Hidden = false
 		node.PublicParent = ""
 		node.LoopPrevious = publicLoopPrevious(id, node.LoopPrevious)
+		node.MatrixBranches = publicMatrixBranches(id, node.MatrixBranches)
+		if node.External != nil {
+			external := *node.External
+			external.ClaimToken = ""
+			node.External = &external
+		}
 		publicID := strings.TrimPrefix(id, parentID+"__")
 		out[publicID] = node
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+func publicMatrixBranches(parentID string, values []MatrixBranchState) []MatrixBranchState {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]MatrixBranchState, len(values))
+	for index, branch := range values {
+		out[index] = branch
+		out[index].Item = append(json.RawMessage(nil), branch.Item...)
+		out[index].Nodes = publicLoopPrevious(parentID, branch.Nodes)
 	}
 	return out
 }

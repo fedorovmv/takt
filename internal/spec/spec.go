@@ -41,6 +41,7 @@ type Node struct {
 	LoopGroup    *LoopGroupSpec    `json:"loop_group,omitempty"`
 	Subworkflow  *SubworkflowSpec  `json:"subworkflow,omitempty"`
 	Foreach      *ForeachSpec      `json:"foreach,omitempty"`
+	Matrix       *MatrixSpec       `json:"matrix,omitempty"`
 	WorkflowRun  *WorkflowRunSpec  `json:"workflow,omitempty"`
 	Assessment   *AssessmentSpec   `json:"assessment,omitempty"`
 	Internal     *InternalNodeSpec `json:"-"`
@@ -136,6 +137,13 @@ type ForeachSpec struct {
 
 type ForeachItemsSource struct {
 	Path string `json:"path"`
+}
+
+type MatrixSpec struct {
+	ItemsFrom  string `json:"items_from"`
+	As         string `json:"as,omitempty"`
+	Nodes      []Node `json:"nodes"`
+	OutputNode string `json:"output_node,omitempty"`
 }
 
 // WorkflowRunSpec starts another workflow as a separately persisted child Run.

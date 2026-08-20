@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"takt/internal/spec"
 	"testing"
+
+	"takt/internal/command"
+	"takt/internal/spec"
 )
 
 func TestHookDecisionDirectJSONKeepsPresenceAndCompatibility(t *testing.T) {
@@ -307,6 +309,133 @@ func TestValidateAssessmentRequiresUpstreamResultAndEvidence(t *testing.T) {
 	}}
 	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "upstream dependency") {
 		t.Fatalf("missing assessment dependencies accepted: %v", err)
+	}
+}
+
+func TestLoadAcceptsMatrixAction(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "matrix.yaml")
+	if err := os.WriteFile(path, []byte(`name: matrix
+input:
+  format: json
+  schema:
+    type: object
+    properties:
+      cases:
+        type: array
+        items:
+          type: object
+          properties:
+            name: {type: string}
+          required: [name]
+    required: [cases]
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      as: case
+      nodes:
+        - id: emit
+          bash: printf '%s' '$MATRIX.item.name'
+      output_node: emit
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wf.Nodes[0].Matrix == nil || wf.Nodes[0].Matrix.As != "case" || wf.Nodes[0].Matrix.Nodes[0].ID != "cases__emit" {
+		t.Fatalf("matrix = %#v", wf.Nodes[0].Matrix)
+	}
+}
+
+func TestValidateRejectsInvalidMatrixContracts(t *testing.T) {
+	zero := 0
+	cases := []struct {
+		name   string
+		matrix spec.MatrixSpec
+	}{
+		{name: "literal source", matrix: spec.MatrixSpec{ItemsFrom: "[]", As: "item", Nodes: []spec.Node{{ID: "done", Bash: "true"}}, OutputNode: "done"}},
+		{name: "optional source", matrix: spec.MatrixSpec{ItemsFrom: "$INPUTS.cases?", As: "item", Nodes: []spec.Node{{ID: "done", Bash: "true"}}, OutputNode: "done"}},
+		{name: "empty body", matrix: spec.MatrixSpec{ItemsFrom: "$INPUTS.cases", As: "item"}},
+		{name: "nested matrix", matrix: spec.MatrixSpec{ItemsFrom: "$INPUTS.cases", As: "item", Nodes: []spec.Node{{ID: "nested", Matrix: &spec.MatrixSpec{ItemsFrom: "$INPUTS.cases", As: "item", Nodes: []spec.Node{{ID: "done", Bash: "true"}}, OutputNode: "done"}}}}},
+		{name: "nested loop", matrix: spec.MatrixSpec{ItemsFrom: "$INPUTS.cases", As: "item", Nodes: []spec.Node{{ID: "nested", LoopGroup: &spec.LoopGroupSpec{MaxIterations: 1, Nodes: []spec.Node{{ID: "done", Bash: "true"}}, Until: spec.UntilSpec{Node: "done", ExitCode: &zero}}}}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			wf := &spec.Workflow{Name: "matrix", Nodes: []spec.Node{{ID: "cases", Matrix: &tc.matrix}}}
+			if err := Validate(wf); err == nil {
+				t.Fatalf("invalid matrix %s was accepted", tc.name)
+			}
+		})
+	}
+}
+
+func TestValidateMatrixRequiresUpstreamNodeSource(t *testing.T) {
+	wf := &spec.Workflow{Name: "matrix", Nodes: []spec.Node{
+		{ID: "discover", Bash: "printf '[]'"},
+		{ID: "cases", Matrix: &spec.MatrixSpec{ItemsFrom: "$discover.output", As: "item", Nodes: []spec.Node{{ID: "done", Bash: "true"}}, OutputNode: "done"}},
+	}}
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "upstream dependency") {
+		t.Fatalf("matrix missing dependency accepted: %v", err)
+	}
+}
+
+func TestValidateReferencesChecksMatrixBody(t *testing.T) {
+	wf := &spec.Workflow{Name: "matrix", Nodes: []spec.Node{{
+		ID: "cases", Matrix: &spec.MatrixSpec{ItemsFrom: "$INPUTS.cases", As: "item", OutputNode: "agent", Nodes: []spec.Node{{
+			ID: "agent", Prompt: "work", Provider: "missing", Model: "missing",
+		}}},
+	}}}
+	if err := ValidateReferences(wf, &spec.Config{}, command.Resolver{}); err == nil || !strings.Contains(err.Error(), "unknown assistant") {
+		t.Fatalf("matrix references error = %v", err)
+	}
+}
+
+func TestLoadChecksMatrixBodyResources(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "matrix.yaml")
+	if err := os.WriteFile(path, []byte(`name: matrix
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      nodes:
+        - id: agent
+          prompt: work
+          mcp: missing.json
+      output_node: agent
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "read MCP config") {
+		t.Fatalf("matrix resource error = %v", err)
+	}
+}
+
+func TestLoadChecksStaticGovernedWorkflowInMatrixBody(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "matrix.yaml")
+	if err := os.WriteFile(path, []byte(`name: matrix
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      nodes:
+        - id: child
+          workflow:
+            path: missing.yaml
+      output_node: child
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "missing.yaml") {
+		t.Fatalf("matrix child workflow error = %v", err)
+	}
+}
+
+func TestValidateRejectsMatrixReservedNodeID(t *testing.T) {
+	wf := &spec.Workflow{Name: "reserved", Nodes: []spec.Node{{ID: "MATRIX", Bash: "true"}}}
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "reserved node id") {
+		t.Fatalf("MATRIX node id error = %v", err)
 	}
 }
 

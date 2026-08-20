@@ -85,11 +85,18 @@ func resolveFlowReference(ref flowref.Reference, state *store.RunState, local ma
 		}
 	case flowref.KindInput:
 		if ref.Name == "input" || ref.Name == "message" {
-			return state.Input, true
+			if len(ref.Path) == 0 {
+				return state.Input, true
+			}
 		}
-		return "", false
+		if state.InputFormat != "json" {
+			return "", false
+		}
+		return jsonPathLookup(state.Input, append([]string{ref.Name}, ref.Path...))
 	case flowref.KindFanout:
 		return "", false
+	case flowref.KindMatrix:
+		return activeMatrixValue(state, ref.Name, ref.Path)
 	case flowref.KindLoopPrevious:
 		if n, ok := local[ref.NodeID]; ok {
 			return nodePathLookup(n, ref.Path)
@@ -128,6 +135,8 @@ func flowReferenceKey(ref flowref.Reference) string {
 		return "inputs." + strings.Join(append([]string{ref.Name}, ref.Path...), ".")
 	case flowref.KindFanout:
 		return "fanout." + strings.Join(append([]string{ref.Name}, ref.Path...), ".")
+	case flowref.KindMatrix:
+		return "matrix." + strings.Join(append([]string{ref.Name}, ref.Path...), ".")
 	case flowref.KindLoopPrevious:
 		return "loop.previous." + strings.Join(append([]string{ref.NodeID}, ref.Path...), ".")
 	case flowref.KindApproval:

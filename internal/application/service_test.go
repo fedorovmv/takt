@@ -18,7 +18,7 @@ func TestEvaluationSnapshotIncludesDurableRunTreeWithoutSharingStoreState(t *tes
 	configPath := filepath.Join(workspace, "config.yaml")
 	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
 	now := time.Now().UTC()
-	child := &store.RunState{ID: "snapshot-child", Status: store.RunCompleted, ConfigPath: configPath, Workspace: workspace, CreatedAt: now, UpdatedAt: now, Nodes: map[string]*store.NodeState{"compiled": {Status: store.NodeCompleted, External: &store.ExternalExecutionState{ClaimToken: "secret-claim"}}}, Approvals: map[string]string{}, Artifacts: []store.ArtifactRef{{ID: "child-artifact", ProducerRunID: "snapshot-child"}}}
+	child := &store.RunState{ID: "snapshot-child", Status: store.RunCompleted, ConfigPath: configPath, Workspace: workspace, CreatedAt: now, UpdatedAt: now, Nodes: map[string]*store.NodeState{"compiled": {Status: store.NodeCompleted, External: &store.ExternalExecutionState{ClaimToken: "secret-claim"}}, "cases": {MatrixBranches: []store.MatrixBranchState{{Nodes: map[string]store.NodeState{"cases__agent": {External: &store.ExternalExecutionState{ClaimToken: "secret-matrix-claim"}}}}}}}, Approvals: map[string]string{}, Artifacts: []store.ArtifactRef{{ID: "child-artifact", ProducerRunID: "snapshot-child"}}}
 	root := &store.RunState{ID: "snapshot-root", Status: store.RunCompleted, ConfigPath: configPath, Workspace: workspace, CreatedAt: now, UpdatedAt: now, Nodes: map[string]*store.NodeState{"visible": {Status: store.NodeCompleted}, "compiled": {Status: store.NodeCompleted, Hidden: true}}, Approvals: map[string]string{}, ChildRunIDs: []string{child.ID}, Artifacts: []store.ArtifactRef{{ID: "root-artifact", ProducerRunID: "snapshot-root"}}}
 	fs := store.FS{Workspace: workspace}
 	if err := fs.Save(child); err != nil {
@@ -52,6 +52,9 @@ func TestEvaluationSnapshotIncludesDurableRunTreeWithoutSharingStoreState(t *tes
 	}
 	if snapshot.States[1].Nodes["compiled"].External.ClaimToken != "" {
 		t.Fatalf("claim token leaked: %#v", snapshot.States[1].Nodes["compiled"].External)
+	}
+	if snapshot.States[1].Nodes["cases"].MatrixBranches[0].Nodes["cases__agent"].External.ClaimToken != "" {
+		t.Fatalf("matrix claim token leaked: %#v", snapshot.States[1].Nodes["cases"].MatrixBranches)
 	}
 	if got := snapshot.Artifacts[0].ID; got != "child-artifact" {
 		t.Fatalf("artifacts not sorted: %#v", snapshot.Artifacts)

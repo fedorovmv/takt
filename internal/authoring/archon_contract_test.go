@@ -40,7 +40,7 @@ func TestArchonProviderModelPreflight(t *testing.T) {
 }
 
 func TestArchonReservedNodeIDsAreRejected(t *testing.T) {
-	for _, id := range []string{"ARGUMENTS", "ARTIFACTS_DIR", "BASE_BRANCH", "INPUTS", "LOOP_PREV", "FEEDBACK", "FANOUT"} {
+	for _, id := range []string{"ARGUMENTS", "ARTIFACTS_DIR", "BASE_BRANCH", "INPUTS", "LOOP_PREV", "FEEDBACK", "FANOUT", "MATRIX"} {
 		wf := &spec.Workflow{Nodes: []spec.Node{{ID: id, Bash: "true"}}}
 		if diagnostics := Analyze(wf, command.Resolver{}); !hasArchonDiagnostic(diagnostics, "node.id_reserved") {
 			t.Errorf("node %q diagnostics = %#v", id, diagnostics)

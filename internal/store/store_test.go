@@ -119,6 +119,18 @@ func TestProviderRetryStateRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPublicViewRedactsMatrixBranchClaimToken(t *testing.T) {
+	state := &RunState{Nodes: map[string]*NodeState{"cases": {
+		MatrixBranches: []MatrixBranchState{{Nodes: map[string]NodeState{"cases__agent": {
+			PublicParent: "cases", External: &ExternalExecutionState{ClaimToken: "secret-claim"},
+		}}}},
+	}}}
+	public := state.PublicView()
+	if token := public.Nodes["cases"].MatrixBranches[0].Nodes["agent"].External.ClaimToken; token != "" {
+		t.Fatalf("matrix branch claim token leaked: %q", token)
+	}
+}
+
 func TestCancellationMarkerLifecycle(t *testing.T) {
 	fs := FS{Workspace: t.TempDir()}
 	if err := fs.RequestCancel("run-1"); err != nil {

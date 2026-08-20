@@ -478,6 +478,13 @@ func clearEvaluationClaimTokens(node *store.NodeState) {
 			node.LoopIterations[i].Nodes[id] = item
 		}
 	}
+	for i := range node.MatrixBranches {
+		for id := range node.MatrixBranches[i].Nodes {
+			item := node.MatrixBranches[i].Nodes[id]
+			clearEvaluationClaimTokens(&item)
+			node.MatrixBranches[i].Nodes[id] = item
+		}
+	}
 }
 
 func (s *RunService) Resume(ctx context.Context, runID string) (*store.RunState, error) {

@@ -132,6 +132,11 @@ func validateWorkflowResources(path string, wf *spec.Workflow) error {
 					return err
 				}
 			}
+			if node.Matrix != nil {
+				if err := visit(node.Matrix.Nodes); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	}
@@ -160,6 +165,9 @@ func collectGovernedWorkflowPaths(nodes []spec.Node) []string {
 			}
 			if node.LoopGroup != nil {
 				visit(node.LoopGroup.Nodes)
+			}
+			if node.Matrix != nil {
+				visit(node.Matrix.Nodes)
 			}
 		}
 	}

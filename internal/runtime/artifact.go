@@ -37,7 +37,12 @@ func (r *Runner) captureDeclaredArtifact(state *store.RunState, node spec.Node, 
 			mime = "text/plain"
 		}
 	}
-	artifactDir := filepath.Join(r.store.ArtifactsDir(state.ID), "nodes", safeArtifactPart(node.ID), strconv.Itoa(ns.Attempts))
+	scope := artifactExecutionScope(state, node.ID)
+	artifactDir := filepath.Join(r.store.ArtifactsDir(state.ID), "nodes", safeArtifactPart(node.ID))
+	if scope != "" {
+		artifactDir = filepath.Join(artifactDir, scope)
+	}
+	artifactDir = filepath.Join(artifactDir, strconv.Itoa(ns.Attempts))
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
 		return err
 	}
@@ -92,8 +97,12 @@ func (r *Runner) captureDeclaredArtifact(state *store.RunState, node spec.Node, 
 		return err
 	}
 	sum := sha256.Sum256(data)
+	id := fmt.Sprintf("%s:%s:%d", node.ID, node.OutputType, ns.Attempts)
+	if scope != "" {
+		id = fmt.Sprintf("%s:%s:%s:%d", node.ID, node.OutputType, scope, ns.Attempts)
+	}
 	artifact := store.ArtifactRef{
-		ID:             fmt.Sprintf("%s:%s:%d", node.ID, node.OutputType, ns.Attempts),
+		ID:             id,
 		Type:           node.OutputType,
 		MIME:           mime,
 		Path:           absolute,
@@ -113,6 +122,17 @@ func (r *Runner) captureDeclaredArtifact(state *store.RunState, node spec.Node, 
 			SHA256: artifact.SHA256, Size: artifact.Size,
 		},
 	}))
+}
+
+func artifactExecutionScope(state *store.RunState, nodeID string) string {
+	if state == nil || state.Nodes[nodeID] == nil {
+		return ""
+	}
+	parent := state.Nodes[nodeID].PublicParent
+	if parent == "" || state.Nodes[parent] == nil || state.Nodes[parent].MatrixActiveIndex == nil {
+		return ""
+	}
+	return fmt.Sprintf("matrix-%04d", *state.Nodes[parent].MatrixActiveIndex)
 }
 
 func (r *Runner) resolveArtifactSourcePath(value, artifactsDir string) (string, error) {

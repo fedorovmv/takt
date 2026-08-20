@@ -49,6 +49,9 @@
     "input": {
       "type": "string"
     },
+    "input_format": {
+      "enum": ["text", "markdown", "json"]
+    },
     "current_node": {
       "type": "string"
     },
@@ -408,6 +411,20 @@
             "$ref": "#/$defs/loopIterationState"
           },
           "maxItems": 64
+        },
+        "matrix_fingerprint": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
+        "matrix_active_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1023
+        },
+        "matrix_branches": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {"$ref": "#/$defs/matrixBranchState"}
         }
       }
     },
@@ -1133,6 +1150,24 @@
         "reason": {
           "type": "string"
         }
+      }
+    },
+    "matrixBranchState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "item", "item_fingerprint", "status"],
+      "properties": {
+        "index": {"type": "integer", "minimum": 0, "maximum": 1023},
+        "item": {},
+        "item_fingerprint": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+        "status": {"enum": ["pending", "running", "completed", "failed"]},
+        "nodes": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/nodeState"}
+        },
+        "output": {"type": "string"},
+        "primary_assessment_id": {"type": "string"},
+        "completed_at": {"type": "string", "format": "date-time"}
       }
     },
     "loopIterationState": {

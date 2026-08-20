@@ -42,6 +42,64 @@ func TestCommandFingerprintChangesWithContent(t *testing.T) {
 	}
 }
 
+func TestMatrixCommandFingerprintChangesWithContent(t *testing.T) {
+	dir := t.TempDir()
+	cmdDir := filepath.Join(dir, "commands")
+	if err := os.MkdirAll(cmdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(cmdDir, "build.md")
+	if err := os.WriteFile(path, []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf := &spec.Workflow{Name: "test", Nodes: []spec.Node{{
+		ID: "cases", Matrix: &spec.MatrixSpec{ItemsFrom: "$INPUTS.cases", As: "item", OutputNode: "build", Nodes: []spec.Node{{ID: "build", Command: "build"}}},
+	}}}
+	resolver := command.Resolver{Dirs: []string{cmdDir}}
+	before, err := Compute(wf, &spec.Config{}, "<workflow>", "<config>", resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	after, err := Compute(wf, &spec.Config{}, "<workflow>", "<config>", resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Commands == after.Commands {
+		t.Fatal("matrix command content did not change command fingerprint")
+	}
+}
+
+func TestMatrixScriptDependencyChangesWorkflowFingerprint(t *testing.T) {
+	dir := t.TempDir()
+	dependency := filepath.Join(dir, "schema.json")
+	if err := os.WriteFile(dependency, []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf := &spec.Workflow{Name: "test", Nodes: []spec.Node{{
+		ID: "cases", Matrix: &spec.MatrixSpec{ItemsFrom: "$INPUTS.cases", As: "item", OutputNode: "validate", Nodes: []spec.Node{{
+			ID: "validate", Script: &spec.ScriptSpec{Runtime: "python", Inline: "print('ok')", Dependencies: []string{"schema.json"}},
+		}}},
+	}}}
+	workflowPath := filepath.Join(dir, "workflow.yaml")
+	before, err := Compute(wf, &spec.Config{}, workflowPath, "<config>", command.Resolver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dependency, []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	after, err := Compute(wf, &spec.Config{}, workflowPath, "<config>", command.Resolver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Workflow == after.Workflow {
+		t.Fatal("matrix script dependency did not change workflow fingerprint")
+	}
+}
+
 func TestGovernedChildWorkflowChangesParentFingerprint(t *testing.T) {
 	dir := t.TempDir()
 	childPath := filepath.Join(dir, "child.yaml")

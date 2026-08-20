@@ -531,6 +531,11 @@ func validateRoleWorkflowContract(name string, role rolecontract.Definition, wf 
 					return err
 				}
 			}
+			if node.Matrix != nil {
+				if err := visit(node.Matrix.Nodes); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	}
@@ -546,6 +551,11 @@ func validateAtomicBlockWorkflow(wf *spec.Workflow) error {
 			}
 			if node.LoopGroup != nil {
 				if err := visit(node.LoopGroup.Nodes); err != nil {
+					return err
+				}
+			}
+			if node.Matrix != nil {
+				if err := visit(node.Matrix.Nodes); err != nil {
 					return err
 				}
 			}

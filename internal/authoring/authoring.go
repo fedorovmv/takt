@@ -54,7 +54,7 @@ func Analyze(wf *spec.Workflow, resolver command.Resolver) []Diagnostic {
 		return []Diagnostic{{Code: "workflow.required", Severity: "error", Message: "workflow is required"}}
 	}
 	var diagnostics []Diagnostic
-	diagnostics = append(diagnostics, analyzeScope(wf.Nodes, "nodes", resolver, false, nil)...)
+	diagnostics = append(diagnostics, analyzeScope(wf.Nodes, "nodes", resolver, false, false, nil)...)
 	sort.SliceStable(diagnostics, func(i, j int) bool {
 		if diagnostics[i].Severity != diagnostics[j].Severity {
 			return diagnostics[i].Severity == "error"
@@ -67,7 +67,7 @@ func Analyze(wf *spec.Workflow, resolver command.Resolver) []Diagnostic {
 	return diagnostics
 }
 
-func analyzeScope(nodes []spec.Node, scope string, resolver command.Resolver, insideLoop bool, inherited map[string]spec.Node) []Diagnostic {
+func analyzeScope(nodes []spec.Node, scope string, resolver command.Resolver, insideLoop, insideMatrix bool, inherited map[string]spec.Node) []Diagnostic {
 	local := make(map[string]spec.Node, len(nodes))
 	byID := make(map[string]spec.Node, len(nodes)+len(inherited))
 	for id, node := range inherited {
@@ -106,7 +106,7 @@ func analyzeScope(nodes []spec.Node, scope string, resolver command.Resolver, in
 			if strings.HasSuffix(field.path, ".bash") {
 				surface = flowref.Shell
 			}
-			diagnostics = append(diagnostics, analyzeTemplate(field.value, field.path, node, byID, local, insideLoop, surface)...)
+			diagnostics = append(diagnostics, analyzeTemplate(field.value, field.path, node, byID, local, insideLoop, insideMatrix, surface)...)
 		}
 		if strings.TrimSpace(node.When) != "" {
 			diagnostics = append(diagnostics, analyzeWhen(node.When, path+".when", node, byID, local)...)
@@ -121,7 +121,19 @@ func analyzeScope(nodes []spec.Node, scope string, resolver command.Resolver, in
 					childInherited[id] = candidate
 				}
 			}
-			diagnostics = append(diagnostics, analyzeScope(node.LoopGroup.Nodes, path+".loop_group.nodes", resolver, true, childInherited)...)
+			diagnostics = append(diagnostics, analyzeScope(node.LoopGroup.Nodes, path+".loop_group.nodes", resolver, true, insideMatrix, childInherited)...)
+		}
+		if node.Matrix != nil {
+			childInherited := make(map[string]spec.Node)
+			for id, candidate := range inherited {
+				childInherited[id] = candidate
+			}
+			for id, candidate := range local {
+				if id != node.ID && dependsOn(node.ID, id, local, map[string]bool{}) {
+					childInherited[id] = candidate
+				}
+			}
+			diagnostics = append(diagnostics, analyzeScope(node.Matrix.Nodes, path+".matrix.nodes", resolver, insideLoop, true, childInherited)...)
 		}
 	}
 	return diagnostics
@@ -202,7 +214,7 @@ func parseExpression(raw string) (expression, error) {
 	return result, nil
 }
 
-func analyzeTemplate(value, path string, current spec.Node, byID, local map[string]spec.Node, insideLoop bool, surface flowref.Surface) []Diagnostic {
+func analyzeTemplate(value, path string, current spec.Node, byID, local map[string]spec.Node, insideLoop, insideMatrix bool, surface flowref.Surface) []Diagnostic {
 	var diagnostics []Diagnostic
 	if strings.Contains(path, ".tool_approval.message") {
 		// `${tool}` is an external-worker protocol placeholder, not a workflow
@@ -222,6 +234,11 @@ func analyzeTemplate(value, path string, current spec.Node, byID, local map[stri
 	for _, ref := range refs {
 		switch ref.Kind {
 		case flowref.KindBare, flowref.KindInput, flowref.KindFanout:
+			continue
+		case flowref.KindMatrix:
+			if !insideMatrix {
+				diagnostics = append(diagnostics, Diagnostic{Code: "template.matrix_outside_matrix", Severity: "error", Path: path, Message: "$MATRIX is available only inside matrix"})
+			}
 			continue
 		case flowref.KindApproval:
 			target, ok := byID[ref.NodeID]
@@ -254,7 +271,7 @@ func analyzeTemplate(value, path string, current spec.Node, byID, local map[stri
 
 func reservedArchonNodeID(id string) bool {
 	switch id {
-	case "ARGUMENTS", "ARTIFACTS_DIR", "BASE_BRANCH", "INPUTS", "LOOP_PREV", "FEEDBACK", "FANOUT":
+	case "ARGUMENTS", "ARTIFACTS_DIR", "BASE_BRANCH", "INPUTS", "LOOP_PREV", "FEEDBACK", "FANOUT", "MATRIX":
 		return true
 	default:
 		return false

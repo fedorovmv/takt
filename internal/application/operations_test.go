@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -266,6 +268,73 @@ nodes:
 	final := waitRunStatus(t, service, lost.ID, store.RunCompleted, 4*time.Second)
 	if final.RecoveryCount != 1 {
 		t.Fatalf("recovery count = %d", final.RecoveryCount)
+	}
+}
+
+func TestRecoverInterruptedRunResumesActiveMatrixBranch(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, workflowPath, `name: matrix-recovery
+input:
+  format: json
+  schema:
+    type: object
+    properties:
+      cases:
+        type: array
+        items: {type: string}
+    required: [cases]
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      nodes:
+        - id: emit
+          bash: printf '%s' '$MATRIX.item'
+      output_node: emit
+`)
+	item := []byte(`"alpha"`)
+	itemsHash := sha256.Sum256([]byte(`["alpha"]`))
+	itemHash := sha256.Sum256(item)
+	active := 0
+	now := time.Now().UTC()
+	state := &store.RunState{
+		WorkflowContract: store.CurrentWorkflowContract,
+		ID:               "run-matrix-worker-lost", Status: store.RunRunning,
+		WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace,
+		Input: `{"cases":["alpha"]}`, InputFormat: "json",
+		Nodes: map[string]*store.NodeState{
+			"cases": {
+				Status: store.NodeRunning, Attempts: 1, MatrixFingerprint: hex.EncodeToString(itemsHash[:]), MatrixActiveIndex: &active,
+				MatrixBranches: []store.MatrixBranchState{{Index: 0, Item: item, ItemFingerprint: hex.EncodeToString(itemHash[:]), Status: store.NodeRunning}},
+			},
+			"cases__emit": {Status: store.NodeRunning, Attempts: 1, PublicParent: "cases", Path: "/cases[0]/emit"},
+		},
+		Approvals: map[string]string{}, CurrentNode: "cases__emit", CurrentNodes: []string{"cases__emit"}, ExecutorPID: 99999999, CreatedAt: now, UpdatedAt: now,
+	}
+	st := store.FS{Workspace: workspace}
+	if err := st.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.RunService.RecoverInterruptedRunsForeground(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Recovered) != 1 || result.Recovered[0] != state.ID {
+		t.Fatalf("recovery = %#v", result)
+	}
+	completed, err := service.RunService.GetRun(state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.Status != store.RunCompleted || completed.Output != `["alpha"]` || len(completed.Nodes["cases"].MatrixBranches) != 1 {
+		t.Fatalf("completed matrix = %#v", completed)
 	}
 }
 

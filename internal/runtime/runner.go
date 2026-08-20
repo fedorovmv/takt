@@ -273,6 +273,9 @@ func (r *Runner) StartWithOptions(ctx context.Context, input string, options Sta
 		ConfigFingerprint:   fingerprints.Config,
 		CommandsFingerprint: fingerprints.Commands,
 	}
+	if r.workflow.Input != nil {
+		state.InputFormat = r.workflow.Input.Format
+	}
 	for _, node := range r.workflow.Nodes {
 		state.Nodes[node.ID] = &store.NodeState{Status: store.NodePending, Path: canonicalNodePath(node.ID), Hidden: node.Hidden, PublicParent: node.PublicParent}
 	}
@@ -836,6 +839,8 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		return r.executeCancelAction(state, node, action)
 	case node.LoopGroup != nil:
 		return r.runLoopGroup(ctx, state, node)
+	case node.Matrix != nil:
+		return r.runMatrix(ctx, state, node)
 	case node.WorkflowRun != nil:
 		return r.runChildWorkflow(ctx, state, node, action.local, action.feedback, action.artifacts)
 	case node.Assessment != nil:
