@@ -722,3 +722,34 @@ token/tool budgets и mutating merge fan-out требуют отдельного
 fingerprint/resume contract. Один parser и существующий DAG дают меньше
 состояний, а durable evidence делает bounded repair loop проверяемым без
 доверия к тексту агента.
+
+## ADR-092. Evaluation is one ordinary Run with immutable assessments
+
+**Статус:** принято.
+
+Evaluation не имеет собственного scheduler или фиксированных стадий
+`candidate → validator`. Один ordinary root Run выполняет authored DAG;
+case/repeat представлены последовательными `matrix` branches того же Run, а
+только обычный `workflow` action создаёт governed child Run. `matrix` использует
+существующий `executeGraph`, сохраняет bounded branch snapshots и resume state,
+но не вводит evaluation-specific сущности в scheduler.
+
+Предметное качество записывается immutable `takt-assessment/v1alpha1` artifact
+assessor Run. Он pin-ит terminal `result_revision` target и checksums evidence,
+не изменяя target. Primary assessment принимает только deterministic result;
+assistant judgment является advisory. Stale вычисляется при чтении после новой
+terminal revision target.
+
+Три результата независимы: `Run.status` описывает техническое выполнение,
+assessment — измеренное качество, gate — exit code явно запросившей его CLI
+команды после durable reload. Поэтому `valid:false` не делает completed
+measurement failed, а malformed/missing measurement evidence делает. Exact
+`takt-flow-evaluation/v1alpha1` dispatch и directory readers сохранены только
+как явно ограниченная legacy compatibility boundary.
+
+**Причина.** Внешний evaluator loop дублировал lifecycle, persistence и inspect
+обычного Run и жёстко задавал две стадии. Общий scheduler плюс два небольших
+декларативных action дают произвольный workflow, единые
+`run status|stats|inspect|assessment` и меньше runtime semantics. Индекс
+assessments, parallel matrix и новый plugin framework не добавляются без
+измеренной потребности.

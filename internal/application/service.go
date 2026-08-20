@@ -154,8 +154,12 @@ func nodeKind(node spec.Node) string {
 		return "approval"
 	case node.LoopGroup != nil:
 		return "loop_group"
+	case node.Matrix != nil:
+		return "matrix"
 	case node.WorkflowRun != nil:
 		return "workflow"
+	case node.Assessment != nil:
+		return "assessment"
 	case node.Internal != nil:
 		return "internal"
 	default:

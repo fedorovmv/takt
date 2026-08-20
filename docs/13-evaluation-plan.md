@@ -164,7 +164,69 @@ takt eval run <workflow> \
 
 `examples/route-dsl-eval` проверяет инфраструктуру с fake adapter. `examples/route-dsl-benchmark` содержит agent-neutral matrix на 25 regression/production-shaped synthetic cases; live запуск использует configured coding-agent и штатный валидатор.
 
-## Production flow evaluation
+## Unified Run evaluation — v0.1.63
+
+Новый production flow описывается обычным `takt/v1alpha1` workflow и
+запускается один раз:
+
+```bash
+takt eval flow workflows/evaluate.yaml \
+  --target code:feature-development \
+  --config config.yaml \
+  --cases cases \
+  --repeat 3 \
+  --gate valid_rate.min=1 \
+  --assistant-idle-timeout 15m \
+  --trace
+```
+
+Launcher выполняет только безопасный corpus/config/workspace preflight и
+создаёт строгий `takt-evaluation-input/v1alpha1`. Один root evaluation Run
+исполняет ordered case/repeat branches через общий `matrix`; внутри authored
+DAG могут быть любые preparation, assistant, governed child workflow,
+детерминированные проверки, evidence и advisory nodes. Фиксированной
+последовательности candidate/validator нет. Только обычный `workflow` action
+создаёт child Run.
+
+Каждая ветка с quality result создаёт ровно один primary
+`takt-assessment/v1alpha1`, pin-ящий `target.result_revision` и evidence
+checksums. Primary result может происходить только из детерминированного
+`bash|script|adapter` output; agent judge допустим как advisory. `valid:false`
+является измеренным результатом и не делает технически корректную evaluation
+failed. Malformed result, crash валидатора, missing evidence или persistence
+failure делают Run failed.
+
+Outcome и знаменатели сохраняют прежний смысл, но единицей orchestration теперь
+является matrix branch, а не отдельный case Run:
+
+```text
+total = materialized case/repeat branches
+evaluated = branches с одним non-stale primary assessment
+valid_rate = true_accept / evaluated
+false_accept_rate = false_accept / evaluated
+false_reject_rate = false_reject / evaluated
+flow_completion_rate = completed targets / total
+validation_error_rate = (total - evaluated) / total
+```
+
+Gate failure вычисляется после durable reload, меняет только CLI exit и не
+изменяет `Run.status=completed`. Общие read-only команды работают по любому Run
+ID: `takt run status|stats|inspect|assessment`; `eval status|stats|inspect`
+делегируют им для Run ID. Новый path не пишет отдельные `progress.json` и
+`report.json` как source of truth.
+
+Mini-du теперь использует authored DAG
+`examples/flow-evaluation/mini-du/workflows/evaluate.yaml`; Make-команды
+печатают/принимают Run ID. Live model eval остаётся отдельным ручным evidence и
+не входит в release gate.
+
+## Legacy production flow evaluation compatibility
+
+Только suite с точным `version: takt-flow-evaluation/v1alpha1` выбирает
+deprecated fixed-stage runner. Он сохраняётся на compatibility window вместе с
+read-only directory readers; legacy reports не импортируются и не изменяются.
+Текущий `takt eval flow init` также создаёт legacy skeleton и не является
+рекомендуемым authoring path нового evaluation workflow.
 
 `takt eval flow` evaluates cases sequentially: every case/repeat receives a fresh
 control workspace and produces `cases/<case>/repeat-<NNN>/` evidence containing

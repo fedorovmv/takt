@@ -63,6 +63,38 @@ func TestPlanCandidateProducesPreviewAndRequiresConfirmation(t *testing.T) {
 	}
 }
 
+func TestAdvanceDynamicPlansWaitsForAcceptedRunState(t *testing.T) {
+	workspace := t.TempDir()
+	if _, err := profile.Init("code", workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	service, err := newTestServices(workspace, filepath.Join(workspace, ".takt", "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := candidateDynamicPlan()
+	now := time.Now().UTC()
+	record := &dynamicplan.Record{
+		ID: "plan-acceptedrun123", Status: "running", Profile: "code",
+		CurrentRunID: "run-state-not-created", ExecutionRunIDs: []string{"run-state-not-created"},
+		Results: map[string]string{}, CreatedAt: now, UpdatedAt: now,
+		Revisions: []dynamicplan.Revision{{Number: 1, Reason: "test", CreatedAt: now, Plan: plan}},
+	}
+	if err := (dynamicplan.Store{Workspace: workspace}).Save(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.PlanService.AdvanceDynamicPlans(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := (dynamicplan.Store{Workspace: workspace}).Load(record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != "running" || loaded.CurrentRunID != record.CurrentRunID {
+		t.Fatalf("accepted Run was treated as failed: %+v", loaded)
+	}
+}
+
 func TestPromoteCompletedPlanCreatesProjectWorkflow(t *testing.T) {
 	workspace := t.TempDir()
 	if _, err := profile.Init("code", workspace, false); err != nil {

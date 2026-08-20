@@ -20,10 +20,9 @@
 
 Текущая repo-owned последовательность после gap audit 2026-08-20:
 
-1. реализовать единый Run/assessment/evaluation contract по
-   `superpowers/specs/2026-08-20-unified-run-evaluation-design.md`; общий
-   `run inspect|stats|assessment` входит в этот срез, а не является отдельной
-   конкурирующей задачей;
+1. единый Run/assessment/evaluation contract по
+   `superpowers/specs/2026-08-20-unified-run-evaluation-design.md` реализован в
+   `v0.1.63-alpha`, включая общий `run status|stats|inspect|assessment`;
 2. принять результаты user-owned production workflow и `eval-feature`, не
    обращаясь к внешнему workspace и не запуская параллельный live eval;
 3. повторить host conformance на выбранных pinned versions после завершения
@@ -39,6 +38,15 @@
 → повторить benchmark
 → только затем стабилизировать контракт
 ```
+
+## 1.5. Веха E-Run — единый evaluation Run — выполнено в v0.1.63-alpha
+
+Evaluation запускается как один ordinary Run; case/repeat — ordered matrix
+branches, а произвольный authored DAG создаёт deterministic primary assessments
+с immutable target/evidence provenance. Gates отделены от technical Run status.
+Legacy suite runner и directory readers оставлены только для compatibility.
+Фактический контракт перечислен в `05-implementation-status.md`; здесь он не
+дублируется.
 
 ## 2. Веха E0 — измерительный контур task-level — выполнено в v0.1.46-alpha
 

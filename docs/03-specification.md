@@ -1,7 +1,8 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.62-alpha` с единым
-Archon-first языком Workflow A0 и bounded repair/runtime semantics A1.
+Статус: текущий реализованный внешний контракт `v0.1.63-alpha` с единым
+Archon-first языком Workflow A0, bounded repair/runtime semantics A1 и unified
+Run evaluation.
 Config, Profile, Run и assistant protocol сохраняют собственные versioned
 контракты. Машиночитаемые схемы находятся в `schemas/`.
 
@@ -18,7 +19,7 @@ Config, Profile, Run и assistant protocol сохраняют собственн
 - legacy `initialize` с версиями MCP 2025;
 - stateless `server/discover` с `protocolVersion: 2026-07-28`.
 
-Полная совместимая поверхность публикует 54 операции, разделённые на `agent|host|worker|operator|all`. Поверхность `agent` является default и содержит только пять `takt.task.start|status|respond|stop|explain`; host-control, notification delivery и внешний executor/tool-call lifecycle скрыты от основной LLM. `takt.run.start` по умолчанию отсоединяет запуск и возвращает устойчивый `run_id`. События читаются по `revision` cursor, а содержимое артефактов выдаётся только по явному запросу с ограничением размера.
+Полная совместимая поверхность публикует 58 операций, разделённых на `agent|host|worker|operator|all`. Поверхность `agent` является default и содержит только пять `takt.task.start|status|respond|stop|explain`; host-control, notification delivery и внешний executor/tool-call lifecycle скрыты от основной LLM. `takt.run.start` по умолчанию отсоединяет запуск и возвращает устойчивый `run_id`. События читаются по `revision` cursor, а содержимое артефактов выдаётся только по явному запросу с ограничением размера.
 
 MCP и daemon являются локальными интерфейсами текущего пользователя. Они не добавляют sandbox или новые полномочия и не предназначены для сетевой публикации. Полный control contract зафиксирован в `44-local-mcp-control-plane-v0.1.30.md`, внешний executor и события — в `45-agent-events-external-executor-v0.1.31.md`, а daemon и authoring preflight — в `47-authoring-local-daemon-v0.1.33.md`.
 
@@ -351,7 +352,9 @@ Root Workflow принимает `name`, `description`, `labels`, `provider`, `m
 `nodes` и существующие Takt extensions (`hooks`, `worktree`, `input`).
 `apiVersion`, `kind`, `metadata`, `defaults` и node field `assistant` относятся
 к старому dialect и fail-closed отклоняются. Каждый node обязан иметь ровно
-одно действие; `provider` и `context` (`fresh` по умолчанию или `shared` в A1)
+одно действие: `command`, `prompt`, `bash`, `script`, `adapter`, `approval`,
+`loop_group`, `subworkflow`, `foreach`, `matrix`, `workflow` или `assessment`;
+`provider` и `context` (`fresh` по умолчанию или `shared` в A1)
 являются декларативными defaults для assistant node.
 
 `timeout` использует формат Go duration: `500ms`, `30s`, `5m`, `1h` и ограничивает всю попытку узла. `idle_timeout` поддерживается AI-узлами и сбрасывается нормализованными событиями активности; для claimed внешнего узла его обслуживает daemon. `always_run: true` запускает cleanup-узел после terminal-состояния всех зависимостей независимо от их результата, но не скрывает failure основного графа.
@@ -478,6 +481,7 @@ Linux использует `bwrap`, macOS — `sandbox-exec` при наличи
     runtime: command
     path: tools/build-index
     args: [--json]
+    stdin: $INPUTS.request
     env:
       MODE: strict
     dependencies: [schemas/index.schema.json]
@@ -492,7 +496,16 @@ Linux использует `bwrap`, macOS — `sandbox-exec` при наличи
   output_mime: application/json
 ```
 
-`runtime` принимает `command`, `python` или `node`. `command` требует `path`; `python` и `node` принимают ровно одно из `path` и `inline`. Дополнительно доступны `args`, `env`, `working_directory` и `dependencies`. Пути вычисляются относительно workflow и отображаются в execution workspace при managed worktree. Runtime передаёт `TAKT_RUN_ID`, `TAKT_NODE_ID`, `TAKT_ATTEMPT`, `TAKT_WORKSPACE` и `TAKT_ARTIFACTS_DIR`. Inline source передаётся интерпретатору byte-for-byte: Takt references в нём запрещены authoring-валидацией; значения передаются только через `args` или `env`.
+`runtime` принимает `command`, `python`, `node`, `go` и специальный
+`validation`. `command` и `go` требуют `path`; `python` и `node` принимают
+ровно одно из `path` и `inline`. Дополнительно доступны `args`, `env`, `stdin`,
+`working_directory` и `dependencies`. `stdin` проходит обычный NonShell
+renderer и передаётся процессу byte-for-byte. Пути вычисляются относительно
+workflow и отображаются в execution workspace при managed worktree. Runtime
+передаёт `TAKT_RUN_ID`, `TAKT_NODE_ID`, `TAKT_ATTEMPT`, `TAKT_WORKSPACE` и
+`TAKT_ARTIFACTS_DIR`. Inline source передаётся интерпретатору byte-for-byte:
+Takt references в нём запрещены authoring-валидацией; значения передаются
+через `args`, `env` или `stdin`.
 
 Stdout/stderr сохраняются раздельно. `output_format` нормализует только `Output`, не затирая raw stdout. Исходник script и файлы `dependencies` входят в fingerprint.
 
@@ -538,6 +551,41 @@ Stdout/stderr сохраняются раздельно. `output_format` нор�
 metadata и другие именованные поля. Числовой artifact type/index запрещён.
 Governed child Run и fan-out поднимают ссылки родителю, сохраняя producer
 provenance.
+
+### `assessment`
+
+Не запускает модель или валидатор, а неизменяемо связывает результат
+детерминированной проверки с terminal revision другого Run:
+
+```yaml
+- id: assess
+  depends_on: [validate, evidence]
+  assessment:
+    role: primary
+    target_run_id: $candidate.child_run_id
+    result_from: $validate.output
+    scope:
+      case_id: $MATRIX.item.case_id
+      repeat: $MATRIX.item.repeat
+    evidence: [$evidence.artifacts.evaluation-evidence]
+```
+
+`role` принимает `primary|advisory`. `target_run_id` обязан указывать на
+terminal Run из того же Store; runtime фиксирует его `result_revision`.
+`result_from` декодируется как строгий `takt-validation/v1alpha1`. Для primary
+источник должен быть детерминированным `bash|script|adapter` output, а scope
+обязан содержать `case_id`, положительный `repeat` и хотя бы одну проверенную
+immutable artifact reference. Assistant output разрешён только для advisory.
+
+Artifact имеет type `assessment`, MIME
+`application/vnd.takt.assessment+json` и protocol
+`takt-assessment/v1alpha1`. Envelope содержит target/assessor revisions,
+workflow/config fingerprints, validation result, evidence checksums и outcome
+`true_accept|false_accept|true_reject|false_reject`. `valid:false` успешно
+завершает action; malformed result, nonterminal target, неподходящий source,
+missing/corrupt evidence и persistence error завершают Node/Run ошибкой.
+Assessment не изменяет target Run. После operator retry target прежняя запись
+становится stale, потому что pin не совпадает с новым `result_revision`.
 
 ### `approval`
 
@@ -704,6 +752,40 @@ Approval ребёнка переводит родителя в `waiting` с `kin
 
 Runtime читает только явный массив и не преобразует Markdown-план в task AST.
 
+### `matrix`
+
+Повторяет произвольный вложенный DAG для JSON-массива внутри одного Run:
+
+```yaml
+- id: cases
+  matrix:
+    items_from: $INPUTS.cases
+    as: case
+    nodes:
+      - id: validate
+        script:
+          runtime: command
+          path: tools/validate
+          stdin: $MATRIX.item.request
+    output_node: validate
+```
+
+`items_from` является одной обязательной ссылкой на JSON array из workflow JSON
+input или structured upstream output. `as` по умолчанию равен `item`; доступны
+`$MATRIX.item`, `$MATRIX.index`, `$MATRIX.total` и alias `$<as>`. Максимум —
+1024 элемента, canonical duplicates отклоняются. Ветки выполняются
+последовательно в исходном порядке, а output контейнера — ordered JSON array.
+
+До первой branch action runtime канонизирует все items, проверяет каждый
+динамический `workflow.path`/`repository`, containment и child fingerprint.
+Завершённые ветки сохраняются в `matrix_branches[]`; active body state имеет
+`NodePath` вида `/cases[0]/validate`. Resume продолжает активную ветку и не
+повторяет completed branches; изменение items или resolved child identity
+fail-closed. Вложенные `matrix` и `loop_group` внутри `matrix` запрещены;
+`subworkflow`, `foreach`, governed `workflow`, approval, hooks и attempts
+разрешены. Если body объявляет primary assessment, на каждый item должен быть
+создан ровно один такой artifact.
+
 ## 7. Зависимости, ошибки и итог Run
 
 Узел начинает выполнение после terminal-состояния зависимостей.
@@ -817,7 +899,9 @@ YAML syntax разбирается upstream-библиотекой `go.yaml.in/y
 - `When`: только левая ссылка из `nodes`/`inputs` и операторы `==`, `!=`, `&&`,
   `||`.
 
-`$path` обязателен, `$path?` допускает отсутствие, `$path:-default` задаёт
+Для workflow с `input.format: json` ссылки `$INPUTS.<field>[.<path>]` читают
+проверенный root JSON. `$MATRIX.item|index|total` и alias `$<as>` из `matrix.as`
+действуют только внутри matrix body. `$path` обязателен, `$path?` допускает отсутствие, `$path:-default` задаёт
 fallback. `$FANOUT.item`, `$FANOUT.index`, `$FANOUT.total` действуют внутри
 fan-out; `$INPUTS.<name>` — внутри подключённого subworkflow. В non-shell
 поверхностях `$$` становится literal `$`; в shell-сценариях `$$`, `$?`, `$1`,
@@ -847,14 +931,15 @@ execution workspace, а при его отсутствии — на control work
 RunState содержит:
 
 - fingerprints workflow, config и Markdown-команд;
-- revision;
+- `revision` и terminal `result_revision`; administrative commits увеличивают
+  только `revision`, а operator retry очищает старый result pin;
 - статусы и ошибки узлов;
 - approval answers;
 - session IDs и подтверждённый resume;
 - assistant, версию assistant, requested model и resolved model агентных узлов;
 - aggregate usage узлов: input/output tokens и cost всех агентных попыток;
 - `executions` — отдельные записи фактических попыток с execution identity и usage;
-- результаты последней loop iteration;
+- bounded `loop_iterations[]` и `matrix_branches[]` с immutable snapshots;
 - parent/child links, run output, aggregate usage и durable cancellation state.
 
 Каждый commit состояния и события получает одну revision. При несовпадении ревизий `Load` возвращает `store_inconsistent`.
@@ -920,6 +1005,10 @@ takt cancel <run-id> --workspace <dir> [--reason <text>]
 takt command run <name> --config <config> --workspace <dir> --input <text> [--model-preset <name>]
 takt workflow list <profile> --workspace <dir>
 takt workflow describe <profile[:workflow]> --workspace <dir>
+takt run status <run-id> [--workspace <dir>]
+takt run stats <run-id> [--workspace <dir>] [--check-gates]
+takt run inspect <run-id> [--workspace <dir>] [--case ID] [--repeat N] [--node ID]
+takt run assessment <run-id> [--workspace <dir>] [--role primary|advisory] [--include-stale]
 takt worktree list --workspace <dir>
 takt worktree remove <run-id> --workspace <dir> [--force]
 takt worktree prune --workspace <dir>
@@ -931,9 +1020,44 @@ takt eval inspect <evaluation-output-dir> [--case ID] [--repeat N] [--json]
 takt eval analyze <evaluation-output-dir> [--case <case-id>] [--repeat N] [--config <analyzer-config>] [--model-preset <name>] [--language en|ru] [--trace] [--json]
 takt eval benchmark <matrix.yaml> [--output <dir>] [--repeat N] [--replace]
 takt eval compare <baseline-output-dir> <candidate-output-dir>
+takt eval flow <evaluation-workflow> --target <workflow-or-profile> --config <config> --cases <dir> [--repeat N] [--gate metric.min|max=value] [--model-preset <name>] [--assistant-idle-timeout DURATION] [--trace]
 ```
 
 ### Production flow evaluation
+
+Обычный путь принимает authored `takt/v1alpha1` evaluation workflow:
+
+```text
+takt eval flow workflows/evaluate.yaml \
+  --target code:feature-development \
+  --config config.yaml \
+  --cases cases \
+  --repeat 3 \
+  --gate valid_rate.min=1 \
+  --assistant-idle-timeout 15m \
+  --trace
+```
+
+Launcher выполняет corpus/config/workspace preflight, формирует строгий
+`takt-evaluation-input/v1alpha1` и запускает workflow ровно один раз. Cases и
+repeats становятся последовательными `matrix` branches этого root Run;
+candidate, validator, evidence и assessments задаются самим DAG, фиксированной
+стадии `candidate → validator` нет. Только authored `workflow` action создаёт
+child Run. Новый запуск не пишет `progress.json`/`report.json` как source of
+truth: state, events, artifacts и assessments обычного Run являются canonical.
+
+Качество не меняет технический статус. `valid:false` сохраняется в primary
+assessment, а malformed result, missing evidence или persistence failure делают
+Run failed. Gates из `--gate` проверяются после durable reload; их failure
+меняет exit code CLI, но не `Run.status`. Допустимые метрики:
+`valid_rate`, `false_accept_rate`, `false_reject_rate`,
+`flow_completion_rate`, `validation_error_rate`; threshold находится в
+диапазоне `0..1` и задаёт ровно одно из `min|max`.
+
+`takt run status|stats|inspect|assessment` читают любой Run. Совместимые
+`takt eval status|stats|inspect <run-id>` делегируют тем же application queries.
+Для старого directory argument они продолжают read-only разбор
+`progress.json`/`report.json`.
 
 `model_presets` is a shared Config feature, not an evaluation-only format. Each
 preset is a non-empty map of arbitrary aliases to atomic `provider/model-id`
@@ -944,6 +1068,10 @@ references fail before Run creation. Only effective models enter the Config
 fingerprint; editing an unselected preset does not change it. Repeated
 `--model alias=provider/model` overrides are accepted for any alias.
 
+#### Legacy `takt-flow-evaluation/v1alpha1`
+
+Только файл с точным root `version: takt-flow-evaluation/v1alpha1` выбирает
+deprecated legacy runner и получает warning. Для него команда
 `takt eval flow <suite.yaml> [--case ID] [--repeat N] [--output DIR]
 [--assistant-idle-timeout DURATION] [--keep-workspaces] [--trace] [--json]` runs sequential isolated production-shaped cases.
 The strict `takt-flow-evaluation/v1alpha1` suite declares `workflow`, `config`,
@@ -1026,9 +1154,10 @@ Make targets `eval-feature`, `eval-feature-smoke`, `eval-review` и
 например: `EVAL_IDLE_TIMEOUT=10m make eval-feature`. Это настройка только
 evaluation и не изменяет production workflow.
 
-`takt eval flow init <workflow-selector> --output <directory>` creates only a
-suite skeleton and one example case. It never creates a validator or executable
-setup: add `config.yaml`, implement `./validator`, and replace the example case.
+Legacy `takt eval flow init <workflow-selector> --output <directory>` creates
+only a deprecated `takt-flow-evaluation/v1alpha1` suite skeleton and one example
+case. It never creates a validator or executable setup. Новый ordinary
+evaluation workflow автор создаёт как обычный `takt/v1alpha1` файл.
 
 `takt eval analyze` is a read-only advisory pass over a saved flow evaluation.
 The selected analyzer Config must materialize the dedicated `takt_analyze` model

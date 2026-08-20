@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## v0.1.63-alpha
+
+- Evaluation can now run as one ordinary durable Run. Authored sequential
+  `matrix` branches execute arbitrary case/repeat DAGs; only explicit
+  `workflow` nodes create child Runs, and `script.stdin` plus dynamic contained
+  child workflow references keep validation logic in workflow/code rather than
+  a fixed evaluator state machine.
+- Added immutable `takt-assessment/v1alpha1` artifacts pinned to terminal
+  `result_revision`, with deterministic primary provenance, evidence checksums,
+  stale/corrupt detection and the four existing accept/reject outcomes.
+  Technical Run status, measured quality and CLI gates are independent.
+- Added canonical `takt run status|stats|inspect|assessment` operations. New
+  `takt eval flow <evaluation-workflow> --target ... --config ... --cases ...`
+  materializes strict `takt-evaluation-input/v1alpha1`, starts once, and checks
+  gates only after durable reload. `eval status|stats|inspect` delegate for Run
+  IDs and retain read-only legacy directory support.
+- Migrated mini-du feature/review/architect Make targets to the shared authored
+  evaluation workflow and Run IDs. Exact `takt-flow-evaluation/v1alpha1`
+  dispatch remains deprecated compatibility; `eval flow init` still creates
+  the legacy scaffold in this release.
+- Dynamic Plan foreground and maintenance advancement now tolerate the bounded
+  absence of `state.json` after a detached Run has been accepted, without
+  converting the plan to waiting; other Store errors remain fail-closed.
+- Product version is `0.1.63-alpha`; the Takt authoring skill is `0.42.0`.
+
 - Feature validation now accepts one case-insensitive `PASS|REPAIR|BLOCKED`
   control line, optionally formatted as an ATX Markdown heading, while still
   rejecting duplicates and malformed tails. Exact-reference tasks require a
@@ -12,8 +37,7 @@
   non-retryable `configuration` error with requested provider/model and a
   `pi --list-models` hint. Flow evaluation records the failure as
   infrastructure, skips the misleading product validator, preserves evidence
-  and cleanup, and stops the remaining suite cases. Product version is
-  `0.1.62-alpha`.
+  and cleanup, and stops the remaining suite cases.
 - Evaluation SCM fixtures now support stateful `gh pr list --head/--state`
   checks, and the feature-flow PR receipt gate accepts at least one successful
   `gh pr create` instead of rejecting duplicate receipts from one assistant
@@ -269,8 +293,9 @@
 - Добавлены bounded repair loops: scalar/structured `until`, signal
   `matched_signal`/`signal_diagnostic`, `until.requires`, `until_bash`, durable
   loop history, `fresh_context`, `context: shared`, exact Session ID resume,
-  approval continuation и cancel/retry evidence. Hard budgets, `run inspect` и
-  mutating merge fan-out остаются deferred.
+  approval continuation и cancel/retry evidence. Hard budgets, расширенные
+  iteration/evidence projections `run inspect` и mutating merge fan-out остаются
+  deferred.
 - `code:plan-to-pr` получил обязательный user-owned `allowed_paths`, native Git
   scope checks до draft PR и после review, а также fail-closed PR/review/summary
   gates. Go E2E покрывает один `safe_success` и семь `safe_stop` outcomes.

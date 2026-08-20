@@ -142,6 +142,8 @@ func TestTaktSkillContract(t *testing.T) {
 	t.Parallel()
 	skill := filepath.Join(repoRoot, "skills", "takt", "SKILL.md")
 	requireFileContains(t, skill, "name: takt", "takt validate", "references/patterns.md", "opencode")
+	requireFileContains(t, filepath.Join(repoRoot, "skills", "takt", "references", "evaluation.md"), "takt eval flow workflows/evaluate.yaml", "--target", "takt run stats")
+	requireFileContains(t, filepath.Join(repoRoot, "skills", "takt", "references", "workflows.md"), "matrix:", "assessment:", "stdin:")
 	skillVersionBytes, _ := os.ReadFile(filepath.Join(repoRoot, "skills", "takt", "VERSION"))
 	taktVersionBytes, _ := os.ReadFile(filepath.Join(repoRoot, "VERSION"))
 	requireFileContains(t, filepath.Join(repoRoot, "skills", "takt", "README.md"), "Версия скилла — `"+strings.TrimSpace(string(skillVersionBytes))+"`.", "Takt `v"+strings.TrimSpace(string(taktVersionBytes))+"`")

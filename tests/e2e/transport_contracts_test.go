@@ -167,7 +167,7 @@ nodes:
 		t.Fatalf("discover=%#v", byID[2])
 	}
 	tools := byID[3]["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 54 {
+	if len(tools) != 58 {
 		t.Fatalf("all surface tools=%d", len(tools))
 	}
 	names := make([]string, 0, len(tools))
@@ -239,7 +239,7 @@ nodes:
 		t.Fatalf("state=%#v", state)
 	}
 	mcp := taktInput(t, nil, `{"jsonrpc":"2.0","id":"daemon-tools","method":"tools/list","params":{}}`+"\n", "mcp", "--daemon", "--surface", "all", "--workspace", work).RequireSuccess(t)
-	if len(decodeJSONLines(t, mcp.Stdout)[0]["result"].(map[string]any)["tools"].([]any)) != 54 {
+	if len(decodeJSONLines(t, mcp.Stdout)[0]["result"].(map[string]any)["tools"].([]any)) != 58 {
 		t.Fatalf("mcp=%s", mcp.Stdout)
 	}
 	takt(t, nil, "daemon", "stop", "--workspace", work, "--json").RequireSuccess(t)

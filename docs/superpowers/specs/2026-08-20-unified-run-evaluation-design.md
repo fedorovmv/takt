@@ -1,6 +1,6 @@
 # Unified Run Evaluation: обычный Run, произвольный DAG и assessments
 
-Статус: **READY FOR REVIEW**
+Статус: **IMPLEMENTED in v0.1.63-alpha**
 Дата: 2026-08-20
 
 ## 1. Решение
@@ -317,7 +317,7 @@ items в одном Run.
   primary artifact для каждого item;
 - item и его SHA-256 фиксируются до первой branch action; изменение source при
   resume является `matrix_items_changed`;
-- `$MATRIX.index`, `$MATRIX.total`, `$MATRIX.item` и alias из `as` доступны во
+- `$MATRIX.index`, `$MATRIX.total`, `$MATRIX.item` и alias `$<as>` доступны во
   всех обычных template surfaces;
 - public `matrix` output — ordered JSON array branch results.
 
@@ -503,8 +503,9 @@ input. Разница `takt eval flow` — удобный corpus preflight и ex
 
 Gate definitions сохраняются в evaluation input и входят в identity
 fingerprint. Без `--gate` quality gate отсутствует: CLI exit определяется
-только техническим завершением. `eval flow init` генерирует безопасный default
-`validation_error_rate.max=0` в Make example.
+только техническим завершением. Bundled Make targets явно передают безопасный
+`validation_error_rate.max=0`. Существующий `eval flow init` пока остаётся
+legacy scaffold и не является authoring path нового workflow.
 
 ## 8. Gates и метрики
 
@@ -606,7 +607,8 @@ timeout не маскировались под допустимый candidate re
 - `eval status|stats|inspect <directory>` продолжают читать сохранённые
   progress/report/evidence;
 - legacy reports immutable и не импортируются автоматически в Run Store;
-- `eval flow init` создаёт только новый ordinary workflow form;
+- `eval flow init` пока создаёт exact legacy suite и явно документирован как
+  deprecated compatibility scaffold;
 - удаление старого runner разрешено после миграции feature/review/architect
   examples и одного release cycle чтения старых reports.
 

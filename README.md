@@ -6,13 +6,13 @@
 
 ## Область применения текущей версии
 
-`v0.1.62-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
+`v0.1.63-alpha` предназначена для **локального однопользовательского trusted runtime**. Workflow, config, Markdown-команды и рабочая директория считаются доверенными.
 
 Локальный `takt daemon` поддерживает фоновые Run и несколько клиентов одного пользователя через Unix socket. Сетевой и многопользовательский запуск, а также выполнение конфигураций от недоверенных пользователей требуют sandbox, политики путей, изоляции сети, управления секретами и distributed locking. Эти режимы не поддерживаются.
 
 ## Текущая точка развития
 
-К `v0.1.62-alpha` Takt завершил архитектурный feature freeze и перешёл от накопления возможностей к стабилизации пользовательского контура. Stable core отделён от extensions, experimental и tooling; Dynamic Flow остаётся доступным, но больше не определяет стабильность основного Run/runtime API. Ближайшая цель — **проверять основные пользовательские сценарии на реальных задачах, исправлять найденные дефекты и постепенно продвигать доказанные experimental contracts в stable surface**.
+К `v0.1.63-alpha` Takt завершил архитектурный feature freeze и перешёл от накопления возможностей к стабилизации пользовательского контура. Stable core отделён от extensions, experimental и tooling; evaluation теперь использует обычный Run/runtime API, а Dynamic Flow остаётся experimental. Ближайшая цель — **проверять основные пользовательские сценарии на реальных задачах, исправлять найденные дефекты и постепенно продвигать доказанные experimental contracts в stable surface**.
 
 Приоритеты:
 
@@ -31,9 +31,10 @@
 - workflow в YAML или JSON;
 - DAG с параллельным выполнением независимых узлов, `depends_on`, `when`, `trigger_rule` и cleanup-семантикой `always_run`;
 - единая семантика корневого DAG и дочернего DAG `loop_group`;
-- узлы `command`, `prompt`, `bash`, `script`, `adapter`, `approval`, `loop_group`, `subworkflow`, `foreach`, `workflow`;
+- узлы `command`, `prompt`, `bash`, `script`, `adapter`, `approval`, `loop_group`, `subworkflow`, `foreach`, `matrix`, `workflow`, `assessment`;
 - reusable `subworkflow` компилируется в тот же DAG, а `workflow` запускает отдельный governed child Run;
 - последовательный и параллельный `foreach` для inline-списков и внешних YAML/JSON-массивов без преобразования Markdown в task AST;
+- последовательный `matrix` для runtime JSON items с произвольным вложенным DAG, durable branch snapshots и resume в одном Run;
 - `subworkflow` и `foreach` внутри `loop_group`;
 - JSON-массив результатов всех итераций `foreach`;
 - публичное состояние Run без внутренних развёрнутых ID;
@@ -69,7 +70,7 @@
 - динамический fan-out governed child Runs из структурированного output: устойчивые child ID, `max_parallel`, resume, ordered aggregation и join policies;
 - script runtime `command|python|node|go|validation` с fingerprints исходника и зависимостей;
 - типизированные артефакты с MIME, SHA-256, producer metadata, CLI `takt artifacts` и передачей parent/child/fan-out;
-- role-based локальный MCP control plane: основная LLM по умолчанию видит пять `takt.task.*`, а полная совместимая поверхность содержит 54 операции workflow/Run/host/worker/operator;
+- role-based локальный MCP control plane: основная LLM по умолчанию видит пять `takt.task.*`, а полная совместимая поверхность содержит 58 операций workflow/Run/host/worker/operator;
 - Simple Reliable Task Router: выбор `workflow|template|dynamic`, прогрессивные baseline/independent-tests/enhanced-review controls и inspect-first fallback;
 - Evidence/baseline/failure routing: `EvidenceManifest`, candidate content SHA-256, stale verdict invalidation, baseline failure fingerprints, `parked` с safe next action и external `side_effect: reconcile`;
 - Adapter Platform: нейтральные SCM/tracker/CI операции через `adapter`-узлы, process/MCP transports, capability discovery, durable idempotency/receipt/reconcile, public Agent/Domain SDK и reference Qwen Code/GitHub SCM adapters;
@@ -82,9 +83,10 @@
 - aggregate usage по узлам и отдельные execution records по каждой фактической попытке;
 - `takt eval run/report/benchmark/compare` для воспроизводимой оценки и попарного сравнения стратегий: matrix/repeat/gates, fingerprints, true time-to-valid, failed-execution cost, diagnostic stability и category breakdown;
 - `takt eval task-benchmark` для полного `Task Router → template/dynamic → checkpoint → replan → result`: route accuracy, plan revisions, replanner runs, pairwise outcomes и task-level gates;
-- `takt eval flow` для изолированных production-shaped cases с durable repeat evidence и читаемым `SCOPE | EVENT | DETAILS` trace в stderr; heartbeat показывает последний измеренный model-request context или `unknown`; `takt eval flow init code:feature-development --output evals/feature` создаёт только suite/example skeleton, после чего добавь config, validator и initial workspace;
-- `make eval-smoke|eval-feature-smoke|eval-feature|eval-review|eval-architect` запускает готовые live Pi-проверки без ручного набора аргументов; `eval-feature-smoke` проверяет `implement-basic`, а `eval-feature` — все feature cases; progress и путь `report.json` видны в trace, требуется локальный `examples/flow-evaluation/mini-du/config.yaml`;
-- `make eval-status RUN=<eval-dir>` читает атомарный `progress.json` работающего или завершённого flow eval и показывает elapsed time, фазовые тайминги, наблюдаемые LLM wait/stream/total/tool durations, процент завершённых cases/nodes, quality valid rate, input/output/total tokens и текущий измеренный model context; `make eval-stats RUN=<eval-dir>` печатает итоговую статистику, а до первого report checkpoint — partial live stats из `progress.json` с `complete=false`; `make eval-inspect RUN=<eval-dir> [CASE=...] [REPEAT=...]` во время работы читает live progress, а после checkpoint показывает validator/runtime cause, незавершённые узлы и доступные evidence; `make eval-compare A=<eval-dir> B=<eval-dir>` выдаёт A/B scorecard с явными `BETTER|WORSE|SAME`, correctness/reliability/efficiency, моделями, ресурсами и переходами cases; ни одна из этих команд не запускает workflow или модели;
+- `takt eval flow <evaluation-workflow> --target ... --config ... --cases ...` материализует `takt-evaluation-input/v1alpha1` и запускает один ordinary Run; authored `matrix` DAG владеет candidate workflows, validator, evidence и immutable primary/advisory assessments без встроенных стадий;
+- `takt run status|stats|inspect|assessment` единообразно читает technical state, usage, matrix progress, outcomes и evidence любого Run; assessment pin-ит terminal `result_revision`, а gates меняют только CLI exit после durable reload;
+- `make eval-smoke|eval-feature-smoke|eval-feature|eval-review|eval-architect` запускает authored mini-du evaluation workflow; `eval-feature-smoke` проверяет `implement-basic`, `eval-feature` — все feature cases, а read-only `make eval-status|eval-stats|eval-inspect RUN=<run-id>` используют общий Run API;
+- exact `takt-flow-evaluation/v1alpha1` suites и saved report directories остаются deprecated compatibility path; старые `eval status|stats|inspect <dir>` продолжают read-only разбор, `eval flow init` пока создаёт legacy skeleton;
 - `takt eval analyze <saved-evaluation-dir> [--language en|ru]` запускает read-only advisory расследование сохранённого прогона через dedicated `takt_analyze`; timestamped redacted analysis reports добавляют к immutable deterministic verdict причинный механизм, failure point и prevention с проверяемыми citations, сохраняют язык, session evidence и bounded raw output для protocol errors; `make eval-analyze RUN=... EVAL_ANALYSIS_LANGUAGE=ru` — короткий запуск этой команды на русском;
 - `eval-feature|eval-review|eval-architect` fail-closed после 5 минут без assistant progress; для калибровки используйте `EVAL_IDLE_TIMEOUT=10m make eval-feature`;
 - атрибуция tokens/cost по execution identity; смена assistant, его версии или resolved model между retry помечается как mixed;
@@ -94,11 +96,13 @@
 - строгий контракт результата валидатора `takt-validation/v1alpha1`;
 - commodity parsing/validation делегированы поддерживаемым Go-библиотекам: `go.yaml.in/yaml/v3` и `github.com/santhosh-tekuri/jsonschema/v6`; Takt сохраняет только собственные strict/subset contracts.
 
-## Outcome-gated Production Flow Evaluation v0.1.62
+## Unified Run Evaluation v0.1.63
 
-`v0.1.62-alpha` сохраняет воспроизводимые production-flow suites, внешний
-статус и трассировку активного flow, сохранение исходников и Git evidence,
-человекоочитаемые stats/compare/inspect и отдельный read-only LLM-анализ причин.
+`v0.1.63-alpha` запускает production evaluation как один ordinary Run с
+ordered matrix branches и произвольным authored DAG. Immutable assessments
+отделяют качество от technical Run status, pin-ят result revision и evidence;
+общие `run status|stats|inspect|assessment` больше не зависят от eval report
+directory. Legacy suites/reports остаются read-only compatibility.
 `code:feature-development` принимает единственный case-insensitive review verdict
 как обычную строку или ATX Markdown heading:
 `PASS` продолжает flow, `REPAIR` разрешает ровно одну repair и независимую
@@ -277,7 +281,7 @@ takt mcp --surface agent --workspace . --daemon
 takt daemon stop --workspace .
 ```
 
-По умолчанию `takt mcp` публикует безопасную agent surface из пяти `takt.task.*`. `--surface host|worker|operator|all` открывает отдельный протокол соответствующего потребителя; полная совместимая поверхность содержит 54 операции. `run.start` по умолчанию возвращает durable `run_id` после принятия запуска; состояние и поток событий читаются отдельными вызовами по revision cursor. Поддерживаются legacy initialization до `2025-11-25` и stateless discovery `2026-07-28`.
+По умолчанию `takt mcp` публикует безопасную agent surface из пяти `takt.task.*`. `--surface host|worker|operator|all` открывает отдельный протокол соответствующего потребителя; полная совместимая поверхность содержит 58 операций. `run.start` по умолчанию возвращает durable `run_id` после принятия запуска; состояние и поток событий читаются отдельными вызовами по revision cursor. Поддерживаются legacy initialization до `2025-11-25` и stateless discovery `2026-07-28`.
 
 Прямой MCP и daemon используют тот же файловый store, locks, fingerprints, governed children и worktree lifecycle, что CLI. Daemon слушает только Unix socket текущего пользователя, переживает закрытие клиента, восстанавливает durable Run после потери локального executor PID и не является сетевым или многопользовательским сервером. Подробности: [Локальный MCP control plane v0.1.30](docs/44-local-mcp-control-plane-v0.1.30.md), [внешний executor v0.1.31](docs/45-agent-events-external-executor-v0.1.31.md) и [управляемые события и глубокие workflow v0.1.32](docs/46-controlled-agent-events-deep-workflows-v0.1.32.md), а также [authoring/daemon v0.1.33](docs/47-authoring-local-daemon-v0.1.33.md).
 

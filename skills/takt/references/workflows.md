@@ -216,6 +216,7 @@ hooks:
 - `$<id>.exit_code`;
 - `$<id>.status`;
 - `$LOOP_PREV.<id>.output`;
+- `$MATRIX.item`, `$MATRIX.index`, `$MATRIX.total` и alias `$<as>` из `matrix.as`;
 - `$<approval-id>.output` (с fallback к durable approval answer);
 - `$ARTIFACTS_DIR` — каталог артефактов текущего Run.
 
@@ -318,6 +319,41 @@ takt cancel <run-id> --reason "stop"
 
 `subworkflow` и `foreach` внутри `loop_group` используют ту же компиляцию в DAG.
 
+## Matrix
+
+Используй `matrix`, когда один Run должен последовательно выполнить
+произвольный DAG для JSON items:
+
+```yaml
+- id: cases
+  matrix:
+    items_from: $INPUTS.cases
+    as: case
+    nodes:
+      - id: candidate
+        workflow:
+          path: $MATRIX.item.workflow_path
+          repository: $MATRIX.item.repository
+          input: $MATRIX.item.input
+          isolation: worktree
+          keep_worktree: true
+      - id: validate
+        depends_on: [candidate]
+        trigger_rule: all_done
+        script:
+          runtime: command
+          path: tools/validate
+          stdin: $MATRIX.item.request
+    output_node: validate
+```
+
+`items_from` — одна ссылка на JSON array из root JSON `$INPUTS.*` или
+structured node output. Ветки идут в исходном порядке, результат — ordered JSON
+array. Максимум 1024 items; canonical duplicates отклоняются. Runtime проверяет
+все dynamic child paths/repositories/fingerprints до branch 0. Resume не
+повторяет completed branches и fail-closed отклоняет drift. Вложенные `matrix`
+и `loop_group` запрещены, остальные обычные actions/composition разрешены.
+
 ## Script и типизированные артефакты
 
 ```yaml
@@ -326,6 +362,7 @@ takt cancel <run-id> --reason "stop"
     runtime: python
     path: tools/collect.py
     args: [--json]
+    stdin: $INPUTS.request
     dependencies: [schemas/result.schema.json]
   output_format:
     type: object
@@ -336,9 +373,44 @@ takt cancel <run-id> --reason "stop"
   output_mime: application/json
 ```
 
-`runtime` принимает `command`, `python`, `node`. У Python/Node можно заменить `path` на `inline`. `working_directory` вычисляется относительно workflow. Script source и `dependencies` входят в fingerprint и блокируют resume после изменения.
+`runtime` принимает `command`, `python`, `node`, `go`, а также специальный
+`validation`. У Python/Node можно заменить `path` на `inline`. `stdin` проходит
+NonShell rendering и передаётся процессу byte-for-byte. `working_directory`
+вычисляется относительно workflow. Script source и `dependencies` входят в
+fingerprint и блокируют resume после изменения.
 
 Для сохранения файла после успешного узла добавь `output_type`, MIME и `output_path`. Без `output_path` сохраняется Output узла. Используй `$collect.artifacts.collected-data.path` и другие metadata-поля (`sha256`, `mime`, `size`, producer IDs). Governed children и fan-out передают ссылки родителю. CLI: `takt artifacts <run-id> [--node ...] [--type ...] [--recursive]`.
+
+## Assessment
+
+`assessment` записывает immutable результат проверки другого terminal Run:
+
+```yaml
+- id: assess
+  depends_on: [validate, evidence]
+  assessment:
+    role: primary
+    target_run_id: $candidate.child_run_id
+    result_from: $validate.output
+    scope:
+      case_id: $MATRIX.item.case_id
+      repeat: $MATRIX.item.repeat
+    evidence: [$evidence.artifacts.evaluation-evidence]
+```
+
+Primary требует deterministic `bash|script|adapter` result в формате
+`takt-validation/v1alpha1`, `case_id`, положительный `repeat` и immutable
+evidence. Assistant result используй только как `role: advisory`. `valid:false`
+успешно сохраняется; malformed result, nonterminal target, invalid provenance,
+missing/corrupt evidence или persistence error завершают Run ошибкой.
+Assessment pin-ит `target.result_revision`, не изменяет target и становится
+stale после нового terminal result target. Чтение:
+
+```bash
+takt run assessment <run-id> --role primary
+takt run stats <run-id> --check-gates
+takt run inspect <run-id> --case case-id --repeat 1
+```
 
 ## Именованные workflow профиля
 

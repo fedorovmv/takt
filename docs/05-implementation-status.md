@@ -1,6 +1,34 @@
 # Текущее состояние реализации
 
-Статус после `v0.1.62-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+Статус после `v0.1.63-alpha`. Документ описывает фактическое состояние, а не исторический backlog.
+
+## Unified Run evaluation — реализовано в v0.1.63
+
+- ordinary evaluation является одним root Run с последовательными
+  `matrix` branches для case/repeat и произвольным authored DAG без встроенных
+  стадий candidate/validator;
+- только обычный `workflow` action создаёт governed child Run; dynamic
+  `workflow.path`/`repository` проходят containment/fingerprint preflight до
+  первой branch action;
+- `RunState.result_revision` pin-ит terminal result независимо от последующих
+  administrative commits и очищается перед operator retry;
+- immutable `takt-assessment/v1alpha1` artifact связывает deterministic
+  validation result и evidence с точной result revision target; stale и corrupt
+  записи вычисляются/read fail-closed без изменения target;
+- `valid:false` остаётся completed measurement, а malformed result, missing
+  evidence и persistence failure делают evaluation Run failed;
+- `script.stdin`, root JSON `$INPUTS.*` и `$MATRIX.item|index|total` образуют
+  общий authoring boundary, не evaluation-specific callback;
+- `takt-evaluation-input/v1alpha1` материализуется preflight-ом; новый path
+  запускает workflow один раз и не пишет legacy report/progress как source of
+  truth;
+- canonical `run status|stats|inspect|assessment` работают по любому Run ID;
+  gates вычисляются после durable reload и меняют только CLI exit;
+- mini-du и Make live targets переведены на authored
+  `workflows/evaluate.yaml` и Run ID. Exact
+  `takt-flow-evaluation/v1alpha1` suites и directory readers сохранены как
+  deprecated read/run compatibility; `eval flow init` пока остаётся legacy
+  scaffold.
 
 ## Assistant configuration fail-fast — реализовано в v0.1.62
 
@@ -27,7 +55,7 @@
   проверяются unit-контрактами;
 - live `eval-*` цели не входят в автоматические проверки.
 
-## Flow-evidence stabilization — Unreleased
+## Flow-evidence stabilization — реализовано в v0.1.63
 
 - product `source/` публикуется атомарно; symlink/non-regular entry сохраняет
   `source-unavailable.txt`, не маскируя измеренный validator outcome
@@ -188,6 +216,8 @@ Live smoke на Qwen 3.6 27B подтвердил adapter fresh/exact resume д�
 ## Dynamic Takt — реализовано
 
 - Task Router `workflow|template|dynamic`;
+- foreground и maintenance advancement ждут первый durable state accepted
+  detached Run и не превращают его краткую недоступность в plan failure;
 - `simple-reliable` template с monotonic controls;
 - bounded `WorkflowPlan` из trusted blocks;
 - preview/confirmation, budgets, checkpoints, replan, steering, immutable revisions;
@@ -230,6 +260,14 @@ Provider-specific adapters не встроены в runtime. `v0.1.49` доба�
 
 ## Evaluation — реализовано
 
+### Ordinary Run evaluation — v0.1.63
+
+Один root Run материализует cases/repeats как ordered `matrix` branches.
+Authored workflow владеет preparation, candidate child workflows, validation,
+evidence и primary/advisory assessments. Run state/events/artifacts являются
+source of truth; общие Run queries строят status, stats, deterministic inspect,
+assessment relations и gates из durable Store без запуска модели.
+
 ### Workflow-level
 
 `eval run/report/benchmark/compare`:
@@ -261,9 +299,9 @@ Deterministic fixture доказывает measurement correctness. Production q
 
 Первый live Go-срез на пяти production-shaped cases выполнен с моделями Qwen. Pi/Qwen 3.6 `repeat=3` дал direct `14/15` и repair `14/15 → 15/15` с одним exact resume. Текущий OpenCode/Qwen3-Coder-Next дал direct `15/15` и repair `13/15 → 15/15`: два `GOFMT_FAILED` восстановлены exact resume, failed executions отсутствуют, все cases stable-valid. Сохранённый OpenCode/Qwen 3.6 evidence заметно хуже: прямой `aihub-sbt` дал `0/15 → 0/15`, `aihub-proxy` до исправления SSE — `0/15 → 6/15`, а post-fix smoke без transport failures — `0/5 → 0/5` из-за отсутствия tool calls. Measurement path подтверждён; влияние compact rewrite и преимущество repair при уже валидном direct не заявляются. Время provider не используется для вывода; production-shaped evidence не закрывает production evaluation.
 
-### Production flow
+### Legacy flow compatibility
 
-`eval flow` executes isolated flow suites through the application control path,
+Exact `takt-flow-evaluation/v1alpha1` `eval flow` executes isolated flow suites through the application control path,
 persists repeat evidence and supports `eval flow init` for a validator-free
 skeleton. Repeat evidence preserves a secret-checked full-history
 `repository.bundle`, the redacted final product source tree and baseline-to-final
@@ -457,7 +495,7 @@ zero denominators are shown as `n/a`.
 4. Live strict host conformance Pi/OpenCode: fresh/resume и часть guarded host capabilities подтверждены на Pi `0.83.0`/OpenCode `1.18.14`, но tool/completion и часть Pi boundaries остаются непроверенными; новая pinned host version требует нового полного evidence.
 5. Live Qwen/GitHub smoke reference adapters с внешними credentials при внедрении; public SDK/reference implementations закрыты в v0.1.49–v0.1.50.
 6. Workflow graph/explain/scaffold и статический reject/revise contract.
-7. Archon-first Takt YAML из `docs/superpowers/specs/2026-08-11-archon-compatible-flow-runtime-spec.md`: A0 language switch и A1 loop/session/recovery semantics реализованы и покрыты Go contract/E2E tests. Единый native language surface использует target root/node/provider и `$...` references; legacy Workflow root, frontmatter `assistant` и `${...}` отклоняются. Реализованы `loop`, scalar/structured `until`, `until.signal`, `until.requires`, `until_bash`, durable signal/predicate evidence, `fresh_context`, `context: shared`, exact Session ID resume, cancel metadata и retry history. Сохранён `output_format`/schema-subset contract. Отдельный importer/transpiler и второй executor не планируются. Deferred остаются hard token/tool budgets до live capability proof, `run inspect` и mutating merge fan-out.
+7. Archon-first Takt YAML из `docs/superpowers/specs/2026-08-11-archon-compatible-flow-runtime-spec.md`: A0 language switch и A1 loop/session/recovery semantics реализованы и покрыты Go contract/E2E tests. Единый native language surface использует target root/node/provider и `$...` references; legacy Workflow root, frontmatter `assistant` и `${...}` отклоняются. Реализованы `loop`, scalar/structured `until`, `until.signal`, `until.requires`, `until_bash`, durable signal/predicate evidence, `fresh_context`, `context: shared`, exact Session ID resume, cancel metadata и retry history. Сохранён `output_format`/schema-subset contract. Отдельный importer/transpiler и второй executor не планируются. Deferred остаются hard token/tool budgets до live capability proof, дополнительные iteration/evidence projections `run inspect` и mutating merge fan-out.
 
 Подробный порядок — `06-roadmap.md`; задачи — `14-backlog-v0.2.md`.
 

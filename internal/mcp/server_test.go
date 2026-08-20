@@ -55,7 +55,7 @@ func TestServeStdioSupportsLegacyInitializeAndModernDiscover(t *testing.T) {
 		t.Fatalf("modern protocol = %v", got)
 	}
 	listed := responses["3"]["result"].(map[string]any)["tools"].([]any)
-	if len(listed) != 54 {
+	if len(listed) != 58 {
 		t.Fatalf("tools count = %d", len(listed))
 	}
 	first := listed[0].(map[string]any)["name"]

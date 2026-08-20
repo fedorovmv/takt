@@ -1,6 +1,6 @@
 ---
 name: takt
-description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили разных кодинг-агентов через нейтральный adapter contract. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать параллельный DAG, структурированный роутер, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, governed workflow, script-узлы, типизированные артефакты, политики инструментов/skills/MCP/sandbox, диагностировать workflow либо подготовить готовый .takt-профиль, проверить authoring diagnostics или управлять Takt через локальный MCP/daemon или запускать Dynamic Takt из основной сессии кодинг-агента.
+description: Создаёт, устанавливает, изменяет, проверяет и запускает Takt workflows, configs, Markdown-команды и профили разных кодинг-агентов через нейтральный adapter contract. Используй, когда нужно настроить Takt, выбрать модель или assistant, собрать DAG, retry/feedback, hooks, approval, loop_group, subworkflow, foreach, matrix, governed workflow, assessment, script-узлы, evaluation flow, артефакты и политики, диагностировать workflow, подготовить .takt-профиль, управлять Takt через MCP/daemon или запускать Dynamic Takt.
 ---
 
 # Работа с Takt
@@ -25,6 +25,8 @@ description: Создаёт, устанавливает, изменяет, пр�
    - `subworkflow` — когда блок должен компилироваться в общий DAG и общий Run;
    - `workflow` — когда этапу нужен отдельный Run ID, state/events/artifacts/usage, cancellation или собственная worktree-политика;
    - `foreach` — для явно заданного inline-списка или внешнего YAML/JSON-массива, без скрытого разбора Markdown;
+   - `matrix` — для последовательных runtime JSON items, каждый из которых выполняет произвольный вложенный DAG в том же Run;
+   - `assessment` — для immutable quality result с deterministic provenance и evidence, привязанного к terminal result другого Run;
    - `output_type`/`output_mime`/`output_path` — для результата, который должен стать проверяемым артефактом и передаваться между Run.
    - `allowed_tools`/`denied_tools`, `skills`, `mcp`, `sandbox`, `requires` — для проверяемых ограничений AI-узла; явный `allowed_tools: []` означает отсутствие инструментов;
    - `always_run` — только для cleanup/finally после terminal dependencies;
@@ -194,9 +196,14 @@ takt block validate path/to/package.yaml
   stdout/stderr evidence; обрезанный output и missing/ambiguous signal не
   считаются успехом.
 - Вложенные `loop_group` в `takt/v1alpha1` и целевом `v0.2` не поддерживаются. `subworkflow`, `foreach`, governed `workflow` и approval внутри `loop_group` разрешены.
+- Вложенные `matrix` и `loop_group` внутри `matrix` не поддерживаются. Ветки
+  последовательны; `$MATRIX.item|index|total` доступны только внутри body.
 - `allow_failure: true` разрешает только штатный ненулевой exit code, но не timeout, cancellation или ошибку запуска.
 - Bash stdout/stderr сохраняются отдельно, а `$<id>.output` содержит объединённый вывод. Script stdout/stderr также сохраняются раздельно; `output_format` меняет только нормализованный Output.
 - Validation envelope `takt-validation/v1alpha1` выводится только в stdout; логи валидатора идут в stderr.
+- Primary `assessment` принимает deterministic `bash|script|adapter` result и
+  immutable evidence. `valid:false` сохраняется как измерение; assistant verdict
+  допускается только как advisory.
 - Takt использует стандартный YAML parser `go.yaml.in/yaml/v3` и строгие публичные поля Takt. Для многострочного prompt или bash используй block scalar `|`.
 - Markdown-план не преобразуй в task AST ради `foreach`: используй явный `foreach.items` или `foreach.items_from.path` к YAML/JSON-массиву.
 - Неподдерживаемая capability должна завершать узел до вызова модели; не описывай ограничения только в prompt.
@@ -275,6 +282,7 @@ takt block validate path/to/package.yaml
 ```
 
 Runtime: `command`, `python`, `node`, `go`, а также специальный `validation` для последовательного исполнения `input.validation_commands`. Для Python/Node допустим `inline`; для command/Go нужен исполняемый `path`. Исходник и `dependencies` входят в fingerprint. Takt не устанавливает зависимости runtime автоматически.
+`script.stdin` проходит NonShell rendering и передаётся процессу byte-for-byte.
 
 Для файла, созданного AI-узлом или script, укажи:
 

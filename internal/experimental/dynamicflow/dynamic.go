@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -381,10 +382,17 @@ func (s *PlanService) advanceForegroundPlan(ctx context.Context, record *dynamic
 			}
 			return record, nil
 		}
-		run, err := s.runs.GetRun(record.CurrentRunID)
+		run, ready, err := s.loadAcceptedRun(record.CurrentRunID)
 		if err != nil {
 			_ = advanceLock.Release()
 			return nil, err
+		}
+		if !ready {
+			if releaseErr := advanceLock.Release(); releaseErr != nil {
+				return nil, releaseErr
+			}
+			time.Sleep(20 * time.Millisecond)
+			continue
 		}
 		if run.Status == store.RunRunning || run.Status == store.RunPausing {
 			if releaseErr := advanceLock.Release(); releaseErr != nil {
@@ -622,9 +630,12 @@ func (s *PlanService) AdvanceDynamicPlans(ctx context.Context) error {
 }
 
 func (s *PlanService) advanceDynamicRecord(ctx context.Context, record *dynamicplan.Record) error {
-	run, err := s.runs.GetRun(record.CurrentRunID)
+	run, ready, err := s.loadAcceptedRun(record.CurrentRunID)
 	if err != nil {
 		return err
+	}
+	if !ready {
+		return nil
 	}
 	if handled, err := s.reconcileSegmentRunStatus(record, run); handled || err != nil {
 		return err
@@ -641,6 +652,14 @@ func (s *PlanService) advanceDynamicRecord(ctx context.Context, record *dynamicp
 		return err
 	}
 	return s.advanceToNextSegment(ctx, record, candidateSHA)
+}
+
+func (s *PlanService) loadAcceptedRun(runID string) (*store.RunState, bool, error) {
+	run, err := s.runs.GetRun(runID)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	return run, err == nil, err
 }
 
 // reconcileSegmentRunStatus handles states that do not require segment output

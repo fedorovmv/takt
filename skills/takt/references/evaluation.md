@@ -1,40 +1,54 @@
 # Flow evaluation
 
-Create a suite with:
+Опиши evaluation обычным `takt/v1alpha1` workflow. В нём `matrix` выполняет
+authored DAG для каждого case/repeat, governed `workflow` при необходимости
+создаёт candidate Run, deterministic validator пишет
+`takt-validation/v1alpha1`, а `assessment` pin-ит result и evidence.
+
+Минимальная форма запуска:
 
 ```bash
-takt eval flow init code:feature-development --output evals/feature
+takt eval flow workflows/evaluate.yaml \
+  --target code:feature-development \
+  --config config.yaml \
+  --cases cases \
+  --repeat 3 \
+  --gate validation_error_rate.max=0 \
+  --assistant-idle-timeout 15m \
+  --trace
 ```
 
-Add `config.yaml`, an executable `validator`, and a complete initial repository
-under `cases/<id>/workspace/`. A case has `input.md`, `expected.yaml`, and its
-workspace. The suite's validator receives a versioned request on stdin and emits
-one `takt-validation/v1alpha1` result on stdout. Its deterministic result—not
-the assistant response—decides correctness.
+Launcher проверяет corpus/config/workspaces, формирует
+`takt-evaluation-input/v1alpha1` и стартует один root Run. В workflow читай
+items через `$INPUTS.cases`; внутри branch используй `$MATRIX.item`. Передавай
+validator request через `script.stdin`. Фиксированных стадий candidate и
+validator нет: preparation, несколько моделей, review, checks, evidence и
+advisory assessments — обычные узлы DAG.
 
-Run a case with:
+Primary assessment обязан происходить из deterministic `bash|script|adapter`,
+иметь `case_id`, положительный `repeat` и immutable evidence artifact.
+`valid:false` — корректно измеренный результат, а malformed result или missing
+evidence — failure измерительного Run. Gate failure меняет только exit code
+команды после durable reload, не `Run.status`.
+
+Сохрани выведенный Run ID и используй общие команды:
 
 ```bash
-takt eval flow evals/feature/suite.yaml --case example --repeat 1 --output evals/out --trace
+takt run status run-...
+takt run stats run-... --check-gates
+takt run inspect run-... --case implement-basic --repeat 1
+takt run assessment run-... --role primary
 ```
 
-For the bundled mini-du live corpus, use `make eval-smoke`, `make eval-feature`,
-`make eval-review`, or `make eval-architect` from the repository root.
-The live flow targets fail after five minutes without assistant progress. Set
-`EVAL_IDLE_TIMEOUT=10m` before `make` only when the provider legitimately needs
-a longer silent interval; tool and assistant message events reset the timer.
-Pi streaming activity also resets it without printing every partial token;
-`node.active` shows the current idle duration, limit, last activity and wait.
+`takt eval status|stats|inspect` принимают тот же Run ID. Для bundled mini-du
+corpus используй `EVAL_PRESET=qwen38 EVAL_IDLE_TIMEOUT=15m make eval-feature`;
+live eval требует модели/credentials и не входит в release checks.
 
-Compare model combinations without editing the suite:
+## Legacy compatibility
 
-```bash
-EVAL_PRESET=mixed make eval-feature
-# or: takt eval flow suite.yaml --model-preset mixed --model review=anthropic/claude-sonnet-4
-```
-
-Presets live in the normal project Config and are also available to `takt run`.
-
-Inspect `report.json` and `cases/<id>/repeat-001/` evidence before changing a
-workflow or validator. Do not treat fake SCM fixtures as a remote provider or
-security boundary. Trace progress is printed to stderr; stdout stays valid JSON.
+`takt eval flow init` пока создаёт deprecated
+`takt-flow-evaluation/v1alpha1` `suite.yaml`. Только exact suite version выбирает
+старый fixed-stage runner; `eval status|stats|inspect <directory>` продолжает
+read-only разбор его `progress.json`/`report.json`. Не используй legacy suite
+как шаблон для нового evaluation workflow и не импортируй старые отчёты в Run
+Store.

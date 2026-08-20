@@ -1,9 +1,9 @@
 # Спецификация семантики runtime
 
-Статус документа: реализованный контракт A0/A1 `v0.1.57-alpha`. Он фиксирует
-единый Archon-first Workflow language, durable loop evidence, exact session
-resume и recovery/retry поверх существующего scheduler. Hard budgets, `run
-inspect` и mutating fan-out остаются отдельными deferred срезами.
+Статус документа: реализованный контракт `v0.1.63-alpha`. Он фиксирует единый
+Archon-first Workflow language, durable loop/matrix evidence, immutable
+assessments, exact session resume и recovery/retry поверх существующего
+scheduler. Hard budgets и mutating fan-out остаются отдельными deferred срезами.
 
 ## 1. Основные сущности
 
@@ -46,6 +46,17 @@ Control workspace хранит определения, state/events, locks и ar
 
 Один проход `loop_group` с отдельными состояниями дочерних узлов. Завершённая итерация сохраняется в `NodeState.loop_iterations[]`; `loop_previous` остаётся compatibility view последней итерации. `max_iterations` ограничен 64, поэтому полная история остаётся bounded частью durable state.
 
+### Matrix branch
+
+Один последовательный проход вложенного DAG для канонического JSON item внутри
+`matrix`. Это structural state того же Run, а не отдельный case Run.
+
+### Assessment
+
+Immutable typed artifact assessor Run, который связывает строгий validation
+result и evidence с terminal `result_revision` target Run. Assessment качества
+не меняет технический статус target.
+
 ## 2. Состояния Run
 
 ```text
@@ -59,6 +70,11 @@ running ──approval──> waiting ──answer──> running
 ```
 
 `completed`, `failed`, `cancelled` и `abandoned` — terminal-состояния. `paused` является durable non-terminal состоянием. Pause не прерывает attempt посередине provider/tool call: scheduler перестаёт запускать новые узлы и fan-out batches, активная попытка доходит до безопасной границы.
+
+При terminal transition Run фиксирует `result_revision` равной revision события
+`run.completed|failed|cancelled|abandoned`. Administrative commits после
+результата увеличивают обычную `revision`, но не меняют этот pin. Operator retry
+очищает его до нового terminal result.
 
 Run не переходит в `failed` сразу после первого неуспешного узла. Scheduler сначала выполняет доступные ветви, включая `all_done`, затем вычисляет итоговый статус графа.
 
@@ -130,7 +146,8 @@ Scheduler собирает все готовые узлы текущего то�
 
 ## 5. Корневой и дочерний DAG
 
-Корневой workflow и тело `loop_group` используют один scheduler и одинаковую семантику:
+Корневой workflow, тело `loop_group` и ветки `matrix` используют один scheduler
+и одинаковую семантику:
 
 - `depends_on`;
 - `when`;
@@ -142,6 +159,12 @@ Scheduler собирает все готовые узлы текущего то�
 - `allow_failure`.
 
 Различается только область состояния: после итерации child states добавляются в `LoopIterations`, последняя итерация также копируется в совместимое `LoopPrevious`, после чего активные child states удаляются из карты. Вложенные `loop_group` запрещены в `v1alpha1`: path namespace уже поддерживает другие виды композиции, а рекурсивную loop-семантику не замораживаем без production evidence.
+
+После matrix branch active child states копируются в `MatrixBranches` и также
+удаляются. Вложенные `matrix` и `loop_group` внутри matrix запрещены;
+`subworkflow`, `foreach`, governed `workflow`, approval, attempts и hooks
+разрешены. Branches выполняются последовательно; parallel matrix не входит в
+текущий контракт.
 
 ## 6. Попытки узла
 
@@ -344,6 +367,42 @@ Approval внутри `loop_group` сохраняет `loop_iteration` и доч
 parser также обслуживает `$INPUTS.*`, `$LOOP_PREV.*`, `$FANOUT.*`, approval
 output и shell/script escaping; `${...}` legacy forms fail closed.
 
+Workflow с `input.format: json` читает root поля через
+`$INPUTS.<field>[.<path>]`. В matrix body доступны `$MATRIX.item`,
+`$MATRIX.index`, `$MATRIX.total` и alias `$<as>` из `matrix.as`. `script.stdin`
+рендерится через NonShell surface и передаётся дочернему процессу byte-for-byte.
+
+### Matrix resume и immutable branches
+
+Перед branch 0 runtime разрешает и канонизирует весь `items_from`, отклоняет
+более 1024 элементов и canonical duplicates, проверяет все динамические child
+workflow identities. Container сохраняет `matrix_fingerprint`, active index и
+`matrix_branches[]`; каждый completed branch содержит item fingerprint,
+структурный snapshot nodes, output, child workflow identities и при наличии
+primary assessment ID.
+
+Активные nodes существуют в общем state только во время текущей ветки. После
+completion они копируются в snapshot и удаляются; их канонический NodePath имеет
+вид `/cases[0]/validate`. Crash/resume продолжает active branch, не повторяет
+completed branches и fail-closed возвращает `matrix_items_changed` при drift.
+Approval сохраняет active index и продолжает ту же ветку.
+
+### Assessment capture и stale semantics
+
+`assessment` action загружает terminal target из того же Store, pin-ит его
+`result_revision`, строго декодирует `takt-validation/v1alpha1`, проверяет
+primary provenance и evidence checksums, атомарно сохраняет
+`takt-assessment/v1alpha1` artifact в assessor Run и только затем завершает
+Node. Primary result принимается от `bash|script|adapter` или от выбранного
+детерминированного producer governed workflow; assistant result допустим только
+как advisory.
+
+`valid:false` является успешно измеренным результатом. Malformed result,
+nonterminal target, invalid provenance, missing/corrupt evidence и persistence
+failure являются execution error. Target state не изменяется. Query вычисляет
+`stale` сравнением сохранённого pin с текущим target `result_revision`; corrupt
+artifact возвращает `assessment_corrupt`, а не пропускается.
+
 ## 13. Persistence
 
 Каждое изменение runtime проходит через `Store.Commit`:
@@ -353,6 +412,11 @@ output и shell/script escaping; `${...}` legacy forms fail closed.
 - event log заменяется до state;
 - `Load` сравнивает последние revision;
 - рассогласование возвращает `store_inconsistent`.
+
+Terminal Run commit одновременно устанавливает `result_revision`.
+Последующие cleanup/worktree/notification commits её не меняют. Для legacy Run
+assessment query восстанавливает pin по последнему terminal Run event и
+fail-closed возвращает `target_revision_unavailable`, если такого event нет.
 
 Это не полная транзакционная БД, но повреждение не скрывается.
 
@@ -385,7 +449,7 @@ Flag parser не печатает дополнительный текст в std
 
 ## 17. Оставшаяся семантика v0.2
 
-- `run inspect --node/--iteration` и отдельная public projection durable evidence;
+- расширение `run inspect` отдельными iteration/evidence projections;
 - hard token/tool budgets после live capability proof Pi/OpenCode;
 - mutating merge fan-out после отдельной merge action и threat-model.
 - финальная `v1alpha1 → v1beta1` migration после production evidence;

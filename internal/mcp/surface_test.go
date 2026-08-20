@@ -24,7 +24,7 @@ func TestEmptySurfaceDefaultsToAgentWhileNewKeepsCompatibilityAll(t *testing.T) 
 }
 
 func TestSurfaceToolCountsRemainExplicitContracts(t *testing.T) {
-	want := map[Surface]int{SurfaceAgent: 5, SurfaceHost: 7, SurfaceWorker: 13, SurfaceOperator: 29, SurfaceAll: 54}
+	want := map[Surface]int{SurfaceAgent: 5, SurfaceHost: 7, SurfaceWorker: 13, SurfaceOperator: 33, SurfaceAll: 58}
 	for surface, count := range want {
 		if got := len(tools(surface)); got != count {
 			t.Fatalf("surface %s tools=%d want=%d", surface, got, count)

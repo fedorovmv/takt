@@ -4,11 +4,12 @@
 
 ## Текущая граница работ — 2026-08-20
 
-Активный repo-owned срез описан одним источником:
-`superpowers/specs/2026-08-20-unified-run-evaluation-design.md`. Он объединяет
-самодостаточный Run, immutable assessments, evaluation как обычный parent Run и
-общие `run status|stats|inspect|assessment`. Детали и gap registry здесь не
-дублируются.
+Repo-owned срез
+`superpowers/specs/2026-08-20-unified-run-evaluation-design.md` выполнен в
+`v0.1.63-alpha`: самодостаточный Run, immutable assessments, evaluation как
+обычный parent Run и общие `run status|stats|inspect|assessment`. Фактическое
+состояние находится в `05-implementation-status.md`; детали и gap registry здесь
+не дублируются.
 
 - настройка production workflow на внешнем реальном проекте выполняется
   пользователем отдельно; Takt repository не читает, не изменяет и не запускает

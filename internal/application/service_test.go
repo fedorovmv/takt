@@ -10,8 +10,20 @@ import (
 	"time"
 
 	"takt/internal/runcontrol"
+	"takt/internal/spec"
 	"takt/internal/store"
 )
+
+func TestWorkflowDescriptionNamesUnifiedEvaluationActions(t *testing.T) {
+	for name, node := range map[string]spec.Node{
+		"matrix":     {Matrix: &spec.MatrixSpec{}},
+		"assessment": {Assessment: &spec.AssessmentSpec{}},
+	} {
+		if got := nodeKind(node); got != name {
+			t.Fatalf("nodeKind(%s)=%q", name, got)
+		}
+	}
+}
 
 func TestEvaluationSnapshotIncludesDurableRunTreeWithoutSharingStoreState(t *testing.T) {
 	workspace := t.TempDir()
