@@ -696,7 +696,7 @@ Concrete assistant extensions объявляют `assistant.ProviderRegistration
 
 MCP canonical surface строится из `appapi.CanonicalOperations()`, а generated `docs/71-canonical-operation-contracts.generated.md` строится из тех же descriptors и защищён regression test. MCP-specific external-worker protocol tools могут сохранять локальные descriptors, поскольку они не являются canonical application operations.
 
-**Причина.** После стабилизации `v0.1.52–v0.1.56` главный риск сместился от god objects к постепенной архитектурной энтропии: рост собственного expression language, скрытая mutable registration и рассинхронизация Go DTO/MCP schema/docs. Эти три контракта уменьшают будущую стоимость изменений без нового слоя фреймворков и поддерживают SOLID/DRY/KISS/YAGNI. Подробности: `docs/72-architecture-contracts-v0.1.57.md`.
+**Причина.** После стабилизации `v0.1.52–v0.1.56` главный риск сместился от god objects к постепенной архитектурной энтропии: рост собственного expression language, скрытая mutable registration и рассинхронизация Go DTO/MCP schema/docs. Эти три контракта уменьшают будущую стоимость изменений без нового слоя фреймворков и поддерживают SOLID/DRY/KISS/YAGNI. Исторический release slice: `docs/archive/releases/72-architecture-contracts-v0.1.57.md`.
 
 ## ADR-091. Archon-first Workflow language is a single native contract with durable A1 loop evidence
 

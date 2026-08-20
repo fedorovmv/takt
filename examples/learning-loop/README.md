@@ -26,4 +26,4 @@ takt learn evaluate learn-... --workspace . \
 takt learn stage learn-... --workspace .
 ```
 
-Подробный контракт: [`../../docs/65-human-reviewed-learning-loop-v0.1.51.md`](../../docs/65-human-reviewed-learning-loop-v0.1.51.md).
+Подробный контракт: [`../../docs/archive/releases/65-human-reviewed-learning-loop-v0.1.51.md`](../../docs/archive/releases/65-human-reviewed-learning-loop-v0.1.51.md).

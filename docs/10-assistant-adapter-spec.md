@@ -536,7 +536,7 @@ assistants:
     capabilities: [agent_events_v2, session_events, usage_events]
 ```
 
-Подробности и ограничения: `docs/63-reference-external-adapters-v0.1.49.md`.
+Подробности и ограничения: `docs/archive/releases/63-reference-external-adapters-v0.1.49.md`.
 
 
 ## v0.1.50: terminal failure kind

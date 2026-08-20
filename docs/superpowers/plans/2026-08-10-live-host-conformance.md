@@ -148,7 +148,7 @@ git commit -m "test: cover live OpenCode resume"
 ### Task 3: Реальные host entrypoints и capability evidence
 
 **Files:**
-- Modify: `TEST_RESULTS.md`
+- Modify: `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`
 - Modify only after observed incompatibility: `integrations/coding-agent-host-control/pi/index.ts`
 - Modify only after observed incompatibility: `integrations/coding-agent-host-control/opencode/index.ts`
 
@@ -206,7 +206,7 @@ Expected: ни одна capability не получает PASS по source inspec
 
 - [x] **Step 5: Записать sanitized evidence**
 
-Добавить в `TEST_RESULTS.md` таблицу:
+Добавить в `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md` таблицу:
 
 ```markdown
 | Host | Version | Adapter fresh | Adapter resume | Extension load | Command | Input | Tool | Recovery | Completion |
@@ -220,7 +220,7 @@ Expected: ни одна capability не получает PASS по source inspec
 - [x] **Step 6: Commit evidence**
 
 ```bash
-git add TEST_RESULTS.md integrations/coding-agent-host-control/pi/index.ts integrations/coding-agent-host-control/opencode/index.ts
+git add docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md integrations/coding-agent-host-control/pi/index.ts integrations/coding-agent-host-control/opencode/index.ts
 git commit -m "docs: record live host conformance"
 ```
 
@@ -291,7 +291,7 @@ Run:
 ```bash
 git status --short
 git diff --check
-git diff --no-ext-diff -- TEST_RESULTS.md docs/05-implementation-status.md docs/10-assistant-adapter-spec.md \
+git diff --no-ext-diff -- docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md docs/05-implementation-status.md docs/10-assistant-adapter-spec.md \
   | rg -n '(apiKey\s*[:=]|Bearer\s+[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})'
 ```
 

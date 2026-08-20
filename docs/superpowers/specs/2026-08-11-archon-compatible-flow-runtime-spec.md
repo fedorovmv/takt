@@ -121,7 +121,7 @@ definition generators/rewriters и весь актуальный in-repo workflo
 - production generators, включая Dynamic Takt, которые создают старые root или
   `${...}` references;
 - `docs/03`, `docs/07`, `docs/09`, `docs/72`, `ARCHITECTURE_DECISIONS.md`,
-  schema, changelog и `TEST_RESULTS.md`.
+  schema, changelog и `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`.
 
 Config, package, workspace и evaluation documents сохраняют собственные
 `apiVersion`/`kind`: они не являются Workflow authoring language. Исторические
@@ -1011,8 +1011,8 @@ Eval сравнивает плоскость продукта (acceptance/eviden
 6. Обновить `schemas/workflow.schema.json`, `schemas/run-state.schema.json`,
    `docs/03-specification.md`,
    `docs/07-archon-compatibility.md`, `docs/09-runtime-semantics.md`,
-   `docs/72-architecture-contracts-v0.1.57.md`, `ARCHITECTURE_DECISIONS.md`,
-   `docs/05-implementation-status.md`, `CHANGELOG.md` и `TEST_RESULTS.md`.
+   `docs/archive/releases/72-architecture-contracts-v0.1.57.md`, `ARCHITECTURE_DECISIONS.md`,
+   `docs/05-implementation-status.md`, `CHANGELOG.md` и `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`.
    `docs/03` показывает отдельно non-shell `$$` escape и shell `$$` PID/native
    expansion, чтобы одинаковый token не выглядел единым поведением.
 
@@ -1029,7 +1029,7 @@ Eval сравнивает плоскость продукта (acceptance/eviden
 5. Обновить `schemas/workflow.schema.json`, `schemas/run-state.schema.json`
    (`matched_signal`, `required_evidence_missing`, workflow cancel source),
    `docs/03`, `docs/09`, `docs/10`, ADR, `skills/takt`, `docs/05`,
-   `CHANGELOG.md` и `TEST_RESULTS.md`.
+   `CHANGELOG.md` и `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`.
 
 ### Срез B — инспектор
 
@@ -1038,7 +1038,7 @@ Eval сравнивает плоскость продукта (acceptance/eviden
 2. Добавить application/CLI/MCP contract tests; не создавать transport-specific
    state или второй executor.
 3. Обновить `docs/03-specification.md`, карту operations, `CHANGELOG.md` и
-   `TEST_RESULTS.md`.
+   `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`.
 
 ### Срез C — guarded budgets
 
@@ -1048,7 +1048,7 @@ Eval сравнивает плоскость продукта (acceptance/eviden
 3. Обновить workflow schema и run-state schema (`budget_exceeded`, enforcement
    decision/counters), `docs/03-specification.md`,
    `docs/09-runtime-semantics.md`, `docs/10-assistant-adapter-spec.md`, ADR,
-   `skills/takt`, `docs/05`, `CHANGELOG.md` и `TEST_RESULTS.md`.
+   `skills/takt`, `docs/05`, `CHANGELOG.md` и `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`.
 
 Parallel mutating merge остаётся отложенным до реального flow-потребителя. До
 этого mutation выполняется последовательно либо через явную user-owned merge

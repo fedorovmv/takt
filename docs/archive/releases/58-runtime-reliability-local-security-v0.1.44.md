@@ -120,7 +120,7 @@ outer__002__inner__003   -> /outer[2]/inner[3]
 - добавлены прямые regressions для multi-repo integrity deny, replanner repository payload, repository fingerprint drift, dependency-results TaskBrief и node-level `workflow.repository` правил;
 - retry родительского governed workflow переиспользует уже `completed` child Run. Новый child создаётся только когда предыдущий не завершился успешно; это предотвращает повторную mutating работу в уже завершённом repository.
 
-Репозиторий содержит GitHub Actions matrix `ubuntu-latest` + `macos-latest`, но наличие workflow-файла само по себе не доказывает прогон конкретного локально собранного релиза. Release contract подтверждается только фактически выполненными командами, перечисленными в `TEST_RESULTS.md`.
+Репозиторий содержит GitHub Actions matrix `ubuntu-latest` + `macos-latest`, но наличие workflow-файла само по себе не доказывает прогон конкретного локально собранного релиза. Release contract подтверждается только фактически выполненными командами, перечисленными в `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`.
 
 ## Release contract
 

@@ -46,4 +46,4 @@ While a cached managed session is active:
 - OpenCode uses `tool.execute.before` and keeps policy deny distinct from transport failure;
 - all user text is placed after `--`, while Takt workspace/daemon/JSON flags are inserted before it.
 
-The exact host guarantees and remaining limitations are documented in `docs/50-coding-agent-host-control-v0.1.36.md`. Autonomous run commands and notifications are documented in `docs/51-autonomous-run-operations-v0.1.37.md`.
+The exact host guarantees and remaining limitations are documented in `docs/archive/releases/50-coding-agent-host-control-v0.1.36.md`. Autonomous run commands and notifications are documented in `docs/archive/releases/51-autonomous-run-operations-v0.1.37.md`.

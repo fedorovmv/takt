@@ -21,7 +21,7 @@ Config, Profile, Run и assistant protocol сохраняют собственн
 
 Полная совместимая поверхность публикует 58 операций, разделённых на `agent|host|worker|operator|all`. Поверхность `agent` является default и содержит только пять `takt.task.start|status|respond|stop|explain`; host-control, notification delivery и внешний executor/tool-call lifecycle скрыты от основной LLM. `takt.run.start` по умолчанию отсоединяет запуск и возвращает устойчивый `run_id`. События читаются по `revision` cursor, а содержимое артефактов выдаётся только по явному запросу с ограничением размера.
 
-MCP и daemon являются локальными интерфейсами текущего пользователя. Они не добавляют sandbox или новые полномочия и не предназначены для сетевой публикации. Полный control contract зафиксирован в `44-local-mcp-control-plane-v0.1.30.md`, внешний executor и события — в `45-agent-events-external-executor-v0.1.31.md`, а daemon и authoring preflight — в `47-authoring-local-daemon-v0.1.33.md`.
+MCP и daemon являются локальными интерфейсами текущего пользователя. Они не добавляют sandbox или новые полномочия и не предназначены для сетевой публикации. Актуальные операции и их схемы перечислены в [`71-canonical-operation-contracts.generated.md`](71-canonical-operation-contracts.generated.md), а пользовательские сценарии — в [`user-guide.md`](user-guide.md).
 
 ## 1.2. Authoring preflight
 

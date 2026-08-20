@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Documentation now has a concise open-source README, a user guide for
+  installation/configuration/operation, a contributor guide, and an audience-
+  oriented document map. Historical implementation detail was removed from
+  the README and stale security/notice version references were corrected.
+  Versioned release notes and old verification reports now live under
+  `docs/archive/`; current behavior remains in the numbered contract docs.
+  Added a concise Contributor Covenant and documented the current user and
+  contributor paths. Initial design context is archived with the analysis
+  documents, and root `.takt/` runtime state is ignored by Git.
 - Unified evaluation retries now derive assessment identity from target Run
   provenance, count flow completion by matrix scope, and honor
   `--keep-workspaces` for ordinary authored evaluations, including managed
@@ -332,7 +341,7 @@
 - `internal/appapi.OperationDescriptor` стал schema-first источником canonical operation ID/stage/MCP metadata/InputSchema/annotations/docs; вход валидируется той же schema до generic typed decode.
 - MCP canonical tools проецируются из appapi descriptors. `docs/71-canonical-operation-contracts.generated.md` генерируется из них же и защищён drift-test.
 - Architecture gate запрещает второй `when` parser, production provider-registry assembly вне bootstrap и расхождение canonical MCP/appapi boundary.
-- Добавлены ADR-090 и `docs/72-architecture-contracts-v0.1.57.md`; основной `docs/04-architecture.md` обновлён нормативными правилами. Takt skill обновлён до 0.39.0.
+- Добавлены ADR-090 и `docs/archive/releases/72-architecture-contracts-v0.1.57.md`; основной `docs/04-architecture.md` обновлён нормативными правилами. Takt skill обновлён до 0.39.0.
 
 ## v0.1.56-alpha
 
@@ -345,7 +354,7 @@
 - External worker/tool lifecycle вынесен из `internal/application` в `internal/externalworker`; общие durable lock/redaction/reload helpers централизованы в `internal/runcontrol`, application уменьшен примерно до 2,2 тыс. production-строк.
 - CLI help разделяет stable/extensions/experimental/tooling; MCP Dynamic Flow и Host Control явно маркируются Experimental, compatibility matrix отражает тот же статус.
 - Architecture gate закрепляет отсутствие fake product commands, provider-specific assistant code в core и собственного JSON Schema engine.
-- Добавлены ADR-089 и `docs/70-codebase-hygiene-stabilization-v0.1.56.md`; Takt skill обновлён до 0.38.0.
+- Добавлены ADR-089 и `docs/archive/releases/70-codebase-hygiene-stabilization-v0.1.56.md`; Takt skill обновлён до 0.38.0.
 
 ## v0.1.55-alpha
 
@@ -357,7 +366,7 @@
 - Добавлен `make journeys`: black-box gate `init/validate/run/status/events/artifacts`, approval/answer, failure/retry и reusable subworkflow через настоящий CLI.
 - CLI usage группирует команды как stable/extensions/experimental/tooling.
 - Architecture gate закрепляет односторонние module dependencies и запрет возврата самописного YAML parser.
-- Добавлены ADR-088 и `docs/69-core-stabilization-modularization-v0.1.55.md`; Takt skill обновлён до 0.37.0.
+- Добавлены ADR-088 и `docs/archive/releases/69-core-stabilization-modularization-v0.1.55.md`; Takt skill обновлён до 0.37.0.
 
 ## v0.1.54-alpha
 
@@ -370,7 +379,7 @@
 - Разложены Task response, Dynamic Plan advance и governed child fan-out state machines без нового plugin/DI framework.
 - Canonical app operation identity централизована в `internal/appapi`; MCP использует тот же mapping вместо отдельной таблицы.
 - Оставшиеся package/reference/host/deep-workflow shell contracts перенесены в bounded Go E2E; `scripts/test-*.sh` содержит только TypeScript compiler smoke.
-- Добавлены ADR-087 и `docs/68-architecture-hardening-v0.1.54.md`; Takt skill обновлён до 0.36.0.
+- Добавлены ADR-087 и `docs/archive/releases/68-architecture-hardening-v0.1.54.md`; Takt skill обновлён до 0.36.0.
 
 ## v0.1.53-alpha
 
@@ -381,7 +390,7 @@
 - Удалены test-only `evalassert`/`routee2eassert`; JSON/JSON-RPC, fixtures, temp projects и process assertions переиспользуют `tests/e2e` harness вместо встроенных Python/grep helpers.
 - Исторические Make targets сохранены как совместимые входы, но маршрутизированы в Go packages/tests; `make e2e` и `make smoke` явно разделяют black-box product tests и внешний smoke layer.
 - Монолитный deep-code shell regression сокращён до representative Git/fake-gh/process-agent smoke; валидность полного каталога 19 code workflows закреплена Go E2E и runtime/application suites.
-- Добавлены ADR-086 и `docs/67-go-native-test-architecture-v0.1.53.md`; Takt skill обновлён до 0.35.0.
+- Добавлены ADR-086 и `docs/archive/releases/67-go-native-test-architecture-v0.1.53.md`; Takt skill обновлён до 0.35.0.
 
 ## v0.1.52-alpha
 
@@ -394,7 +403,7 @@
 - Runtime получил явные `Definition + Dependencies` и `NewWithDependencies`; dependency fields `Runner` стали private, attempt lifecycle и node action implementations вынесены из scheduler orchestration без введения plugin framework.
 - CLI evaluation/learning/package/compatibility/adapter operations переведены за application boundary; evaluation task matrix использует injected application callback вместо самостоятельной сборки control plane.
 - Монолитные workflow/config/learning validators разложены на тематические проверки с сохранением error semantics.
-- Добавлен архитектурный regression gate `scripts/test-architecture.sh`, ADR-085 и `docs/66-application-boundary-architecture-refactor-v0.1.52.md`; Takt skill обновлён до 0.34.0.
+- Добавлен архитектурный regression gate `scripts/test-architecture.sh`, ADR-085 и `docs/archive/releases/66-application-boundary-architecture-refactor-v0.1.52.md`; Takt skill обновлён до 0.34.0.
 
 ## v0.1.51-alpha
 
@@ -405,7 +414,7 @@
 - MCP Domain Describe получил bounded default timeout и текущую client version; GitHub SCM discovery получил timeout, GitHub Task Source URL ограничен `github.com`, пустой process `event_types` закреплён как deny-all.
 - Compatibility mini-validator стал fail-closed по schema keywords и использует JSON-number equality; добавлен meta-schema ↔ `schemasubset.Description()` contract test.
 - Исправлен Task Source README, CLI JSON envelope закреплён schema/test, control-level Task Source flow покрыт unit-test, `verify-manifest.sh` включён в `make check`.
-- Добавлены `scripts/test-learning-loop.sh`, `docs/65-human-reviewed-learning-loop-v0.1.51.md`; Takt skill обновлён до 0.33.0.
+- Добавлены `scripts/test-learning-loop.sh`, `docs/archive/releases/65-human-reviewed-learning-loop-v0.1.51.md`; Takt skill обновлён до 0.33.0.
 
 ## v0.1.50-alpha
 
@@ -415,7 +424,7 @@
 - Schema subset получил поведенческие input/output/unsupported-keyword tests, расширенное keyword coverage и numeric equality для `uniqueItems`; schema registry проверяется offline и без cross-file refs.
 - Pi/OpenCode probes, Domain Describe и reference GitHub commands получили bounded timeouts; MCP domain env поддерживает `secret://`; Qwen budget timeout нормализован через `failure_kind`.
 - Release manifest теперь проверяется `scripts/verify-manifest.sh`; временные `.tmp/.swp/.bak` файлы запрещены в поставке.
-- Добавлены ADR-082/083 и `docs/64-structured-task-sources-v0.1.50.md`.
+- Добавлены ADR-082/083 и `docs/archive/releases/64-structured-task-sources-v0.1.50.md`.
 
 ## v0.1.49-alpha
 
@@ -424,7 +433,7 @@
 - Добавлен `cmd/takt-github-scm-adapter` как reference implementation neutral SCM contract через authenticated `gh`: repository/change/check reads, change create/comment/review и reconcile.
 - Public `sdk/domainadapter.InvokeRequest`/`ReconcileRequest` получили execution `workspace` и request validators; process и MCP transports применяют один validation/cwd contract, а multi-repo publication передаёт `repository_workspace` candidate worktree.
 - GitHub mutating operations используют SHA-256-derived idempotency marker и reconcile после ambiguous transport failure без повторной mutation.
-- Добавлены `reference/qwencode`, `reference/githubscm`, `examples/reference-adapters`, `scripts/test-reference-adapters.sh`, ADR-080/081 и `docs/63-reference-external-adapters-v0.1.49.md`.
+- Добавлены `reference/qwencode`, `reference/githubscm`, `examples/reference-adapters`, `scripts/test-reference-adapters.sh`, ADR-080/081 и `docs/archive/releases/63-reference-external-adapters-v0.1.49.md`.
 - P2 backlog/roadmap/status обновлены: external wrapper и production-like SCM reference закрыты; остаются live host conformance и structured task source adapter.
 - Takt skill обновлён до 0.31.0; профиль `code` остаётся 0.16.0.
 
@@ -471,7 +480,7 @@
 - Добавлены regression gates для success@1/final success, cost/time regression и unstable cases; gate failure возвращает non-zero после сохранения полного `benchmark.json`.
 - Route DSL corpus расширен до 25 cases: 10 regression + 15 production-shaped synthetic cases. Добавлены baseline-direct, feedback-repair и inspect-feedback стратегии; конкретный coding-agent выбирается конфигурацией, а не workflow.
 - Добавлен воспроизводимый `scripts/test-route-dsl-benchmark.sh`, который доказывает baseline→candidate improvement на fake Route DSL model/validator и отрицательный gate path без Python dependency.
-- Добавлены ADR-072/073, `docs/59-route-dsl-evaluation-strategy-benchmark-v0.1.45.md` и новые evaluation schemas. Takt skill обновлён до 0.27.0; профиль `code`/`code-core` не меняются.
+- Добавлены ADR-072/073, `docs/archive/releases/59-route-dsl-evaluation-strategy-benchmark-v0.1.45.md` и новые evaluation schemas. Takt skill обновлён до 0.27.0; профиль `code`/`code-core` не меняются.
 
 ## v0.1.44-alpha
 
@@ -481,7 +490,7 @@
 - `bash/script` получили локальный OS sandbox `enforcement: required|optional`: `bubblewrap` на Linux, `sandbox-exec` на macOS при наличии. Validation runtime и hooks используют тот же node-level enforcement; command/prompt остаются честным assistant-enforced contract.
 - `NodeState.path` и `node_path` events добавляют канонический path namespace для вложенной композиции без смены совместимых node IDs.
 - Исправлены замечания v0.1.43: macOS symlink auto-discovery, resolved child paths, python3 fallback, настоящий topological merge order, пустой Workspace fail-closed, Git allowlist boundary, adapter-doctor negative regression, multi-repo deny/replanner/fingerprint/brief/node-rule tests. Completed governed child теперь переиспользуется при retry родительского post-check.
-- Добавлены ADR-070/071, `docs/58-runtime-reliability-local-security-v0.1.44.md` и `scripts/test-runtime-reliability-security.sh`. Takt skill обновлён до 0.26.0; профиль `code` и `code-core` не меняют содержимое и остаются 0.16.0 / 0.5.0.
+- Добавлены ADR-070/071, `docs/archive/releases/58-runtime-reliability-local-security-v0.1.44.md` и `scripts/test-runtime-reliability-security.sh`. Takt skill обновлён до 0.26.0; профиль `code` и `code-core` не меняют содержимое и остаются 0.16.0 / 0.5.0.
 
 ## v0.1.43-alpha
 
@@ -491,7 +500,7 @@
 - Добавлены per-repository candidate SHA/EvidenceManifest, aggregation actual Git diff как `repo/path`, общий multi-repo candidate fingerprint, trusted `repository-change` и `integration-verify` blocks.
 - `publish_change` компилируется в provider-neutral `scm/change.create` с существующим idempotency/reconciliation contract; план хранит output каждого change и deterministic merge order.
 - Закрыты замечания v0.1.42: security-negative package tests, path-boundary allowlist, scope-aware dependencies, npm-compatible caret для 0.x, tested lock rollback, executable portable-package example, non-zero adapter doctor, process stderr lifecycle и дополнительные conformance/package regressions.
-- Добавлены ADR-068/069, `schemas/workspace.schema.json`, `docs/57-multi-repo-dynamic-workflows-v0.1.43.md` и `scripts/test-multi-repo.sh`. Профиль `code` обновлён до 0.16.0, `code-core` — до 0.5.0, Takt skill — до 0.25.0.
+- Добавлены ADR-068/069, `schemas/workspace.schema.json`, `docs/archive/releases/57-multi-repo-dynamic-workflows-v0.1.43.md` и `scripts/test-multi-repo.sh`. Профиль `code` обновлён до 0.16.0, `code-core` — до 0.5.0, Takt skill — до 0.25.0.
 
 ## v0.1.42-alpha
 
@@ -500,7 +509,7 @@
 - `BlockPackage` получил dependencies, `requirements.takt` и adapter requirements `required|preferred`; required capabilities проверяются до Run, preferred availability передаётся Task Router/Planner.
 - Добавлен `PackagePolicy`: source allowlist, trusted Ed25519 keys и обязательные подписи для выбранных scopes. Git sync восстанавливает exact commit; local sync запрещает drift от locked checksum/version.
 - Закрыты замечания ревью v0.1.41: public agent-adapter envelopes/validators, shared fixtures, использование conformance kit реальным fake wrapper contract, явная граница OS exit-code проверки, настоящий `adapter doctor`, расширенные SDK tests, точная reconcile-документация и регрессии pause/cancel/overflow/boundary/evidence.
-- Добавлены ADR-066/067, `docs/56-portable-package-distribution-v0.1.42.md`, package lock/policy/signature schemas и `scripts/test-package-distribution.sh`. Takt skill обновлён до 0.24.0.
+- Добавлены ADR-066/067, `docs/archive/releases/56-portable-package-distribution-v0.1.42.md`, package lock/policy/signature schemas и `scripts/test-package-distribution.sh`. Takt skill обновлён до 0.24.0.
 
 ## v0.1.41-alpha
 
@@ -509,7 +518,7 @@
 - Side-effect reconciliation распространён на доменные adapters: capability проверяется до мутации, idempotency key/receipt сохраняются durable, `unknown` запрещает blind retry до reconcile.
 - Добавлен `sdk/agentadapter` с conformance kit для сторонних `takt-assistant/v1alpha2` wrappers. Публичная agent MCP surface остаётся пять `takt.task.*` tools.
 - Исправления ревью v0.1.40: спецификация `side_effect`, сохранение parking record при неудачном steering, достижимый `partial` verdict, Pi overflow timeout, единая parking-модель `BOUNDARY_VIOLATION`, evidence failed→passed regression, явные MCP surface counts и unknown-claim regression.
-- Добавлены ADR-064/065, `docs/55-adapter-platform-v0.1.41.md`, `schemas/domain-adapter-protocol.schema.json`; Takt skill обновлён до 0.23.0.
+- Добавлены ADR-064/065, `docs/archive/releases/55-adapter-platform-v0.1.41.md`, `schemas/domain-adapter-protocol.schema.json`; Takt skill обновлён до 0.23.0.
 
 ## v0.1.40-alpha
 
@@ -520,7 +529,7 @@
 - Полная MCP surface содержит 54 operations: agent 5, host 7, worker 13, operator 29. Agent surface не расширялась.
 - Закрыты тестовые пробелы последнего ревью: lexeme matching, bounded repair branches, pause-before-attempt, реальный `question`, persistence errors, transient summary, plan-fork fingerprint, notification dispatch lock/prune/desktop timeout, `--file`, MCP default, direct-run capability preflight и router diagnostic/cancellation.
 - Старые OpenCode timeout tests получили больший deadline для race-нагрузки; полный `go test -race ./internal/...` проходит единым прогоном.
-- Добавлены `schemas/evidence-manifest.schema.json`, ADR-062/063 и release note `docs/54-evidence-baseline-failure-routing-v0.1.40.md`. `code-core` обновлён до 0.4.0, профиль `code` — до 0.15.0, Takt skill — до 0.22.0.
+- Добавлены `schemas/evidence-manifest.schema.json`, ADR-062/063 и release note `docs/archive/releases/54-evidence-baseline-failure-routing-v0.1.40.md`. `code-core` обновлён до 0.4.0, профиль `code` — до 0.15.0, Takt skill — до 0.22.0.
 
 ## v0.1.39-alpha
 
@@ -532,7 +541,7 @@
 - Foreground recovery теперь исполняется до следующей durable границы; retry сохраняет per-attempt execution history и корректно работает из `cancelled`; recursive summary терпит ещё не опубликованного child; fork сохраняет source fingerprint/provenance; ошибки persistence operator markers не маскируются.
 - Закрыты compact Task API defects v0.1.38: plan-level `answer` доставляется ожидающему Run/node, `stop` reconcile-ит plan без daemon, пустой answer отклоняется, отсутствующий router использует stable fallback, cancellation не поглощается, `task start` читает файл только через `--file`.
 - `coding-agent` resolution сведён к `assistant.Factory.Resolve`, прямой `takt run` выполняет capability preflight, risk term matching больше не путает `auth/author` и `bug/debug`, пустой MCP surface означает `agent`.
-- Добавлены `schemas/task-brief.schema.json`, расширенная schema `BlockPackage`, ADR-060/061, release note `docs/53-role-brief-controls-v0.1.39.md` и расширенный `scripts/test-simple-reliable-router.sh` с fail-once automatic repair.
+- Добавлены `schemas/task-brief.schema.json`, расширенная schema `BlockPackage`, ADR-060/061, release note `docs/archive/releases/53-role-brief-controls-v0.1.39.md` и расширенный `scripts/test-simple-reliable-router.sh` с fail-once automatic repair.
 
 ## v0.1.38-alpha
 
@@ -544,7 +553,7 @@
 - Профиль `code` использует логический `coding-agent`; `default_assistant` выбирает Pi, OpenCode или внешний process adapter. Старый OpenCode config и конфигурация с одним assistant совместимы.
 - Process config теперь принимает `takt-assistant/v1alpha2`; нейтральный `SessionAdapter` предназначен для Codex, Oh My Pi, Qwen CLI и других coding-agent wrappers без зависимости от Kiro CLI.
 - В `code-core` добавлены trusted blocks `baseline` и `test-design`; версия профиля — 0.13.0, skill — 0.20.0.
-- Добавлены proposal `docs/proposals/001-simple-reliable-agent-neutral-takt.md`, release note `docs/52-simple-reliable-agent-neutral-router-v0.1.38.md` и contract `scripts/test-simple-reliable-router.sh`.
+- Добавлены proposal `docs/proposals/001-simple-reliable-agent-neutral-takt.md`, release note `docs/archive/releases/52-simple-reliable-agent-neutral-router-v0.1.38.md` и contract `scripts/test-simple-reliable-router.sh`.
 
 ## v0.1.37-alpha
 
@@ -555,7 +564,7 @@
 - Добавлен notification dispatcher с durable inbox, дедупликацией, ack и sinks `coding_agent_host|desktop|process`; Pi/OpenCode получили команды runs/attention/pause/resume/result.
 - Исправлен host-control: terminal session не переиспользуется, begin сериализуется file lock, повреждённые records fail-closed, транспортная ошибка bundled integrations сохраняет managed cache и блокирует обход.
 - Pi 0.73.1 и OpenCode V2 integrations честно переведены в `guarded`: Pi не заявляет неподтверждённый completion gate, OpenCode помечен `verified:false`; убраны `before_agent_start`, floating `next` и fail-open steering/shell paths.
-- MCP расширен до 48 tools; добавлены ADR-055/056, `docs/51-autonomous-run-operations-v0.1.37.md` и контракт `scripts/test-autonomous-runs.sh`.
+- MCP расширен до 48 tools; добавлены ADR-055/056, `docs/archive/releases/51-autonomous-run-operations-v0.1.37.md` и контракт `scripts/test-autonomous-runs.sh`.
 - Takt обновлён до 0.1.37-alpha, skill — до 0.19.0; профиль `code` остаётся 0.12.0, поскольку его workflow-контракт не менялся.
 
 ## v0.1.36-alpha
@@ -566,7 +575,7 @@
 - Явный `allowed_integrations: []` теперь запрещает все интеграции; отсутствие поля не добавляет ограничения. Нулевая граница package limits документирована отдельно от bounded default динамического плана.
 - Исправлены macOS unit expectation, единый revision limit steering для `running|waiting`, foreground locking, обработка ошибок workflow listing/JSON/promote rollback и точный atomic-block contract test.
 - Добавлена миграционная заметка: статические профили без `block_packages` продолжают работать, Dynamic Plan требует явного каталога. `.commandcode/taste/taste.md` остаётся удалённым как мусор предыдущей разработки.
-- Профиль `code` обновлён до 0.12.0, skill — до 0.18.0; MCP расширен до 36 tools; добавлены ADR-053/054 и `docs/50-coding-agent-host-control-v0.1.36.md`.
+- Профиль `code` обновлён до 0.12.0, skill — до 0.18.0; MCP расширен до 36 tools; добавлены ADR-053/054 и `docs/archive/releases/50-coding-agent-host-control-v0.1.36.md`.
 
 ## v0.1.35-alpha
 
@@ -577,7 +586,7 @@
 - Исправлен прямой `takt execute`: без daemon план выполняется до terminal/waiting, с `--daemon` остаётся отсоединённым. Добавлен межпроцессный lock продвижения планов.
 - Лимиты revisions/child Runs/tokens теперь учитывают steering, planner, replanner, сегменты и детей; `max_parallel` ограничивает независимые task-фазы; `max_tokens: 0` нормализуется в bounded default.
 - Исправлены macOS artifact paths с несуществующим файлом под symlinked prefix, полный анализ составных `when`, безопасный promote с `--force`, порядок применения steering и ошибки persistence.
-- Профиль `code` обновлён до 0.11.0, coding-agent skill — до 0.17.0; добавлены ADR-051/052, schema/contract пакетов и `docs/49-trusted-block-packages-v0.1.35.md`.
+- Профиль `code` обновлён до 0.11.0, coding-agent skill — до 0.17.0; добавлены ADR-051/052, schema/contract пакетов и `docs/archive/releases/49-trusted-block-packages-v0.1.35.md`.
 
 ## v0.1.34-alpha
 
@@ -589,7 +598,7 @@
 - Исправлен daemon на длинных Unix socket paths macOS через hashed `$TMPDIR` fallback; terminal event subscription дочитывает журнал до revision состояния.
 - External claim хранит `claimed_at`; устранена утечка process assistant v1alpha2 на protocol-ошибках; governed child input повторно валидируется после рендеринга.
 - Профиль code выполняет `validation_commands` детерминированным `script.runtime: validation`, получил явные review/approval gates и непустые review inputs; `when` поддерживает `&&`/`||`.
-- Профиль `code` обновлён до 0.10.0, authoring/coding-agent skill — до 0.16.0; добавлены ADR-049/050 и `docs/48-dynamic-takt-v0.1.34.md`.
+- Профиль `code` обновлён до 0.10.0, authoring/coding-agent skill — до 0.16.0; добавлены ADR-049/050 и `docs/archive/releases/48-dynamic-takt-v0.1.34.md`.
 
 ## v0.1.33-alpha
 
@@ -600,7 +609,7 @@
 - Добавлен локальный `takt daemon` на Unix socket и файловом Store: background Runs, event subscriptions, MCP proxy и несколько локальных клиентов без БД.
 - Control plane сериализует concurrent mutations bounded retry, external task становится claimable только после durable suspension checkpoint, daemon shutdown ожидает завершения monitor goroutine.
 - Authoring skill обновлён до 0.15.0; профиль `code` обновлён до 0.9.1 для явных optional recovery references.
-- Добавлены ADR-047/048, contracts `test-authoring.sh`/`test-daemon.sh` и `docs/47-authoring-local-daemon-v0.1.33.md`.
+- Добавлены ADR-047/048, contracts `test-authoring.sh`/`test-daemon.sh` и `docs/archive/releases/47-authoring-local-daemon-v0.1.33.md`.
 
 ## v0.1.32-alpha
 
@@ -611,7 +620,7 @@
 - Шесть основных workflow профиля `code` получили строгие JSON-входы, специализированные фазы, обязательные checkpoint artifacts, domain error codes, Git decision trees и recovery.
 - Добавлен сквозной Git/GitHub contract с настоящим локальным repository, bare remote, fake `gh`, успешным issue flow и validation-recovery flow.
 - Профиль `code` обновлён до 0.9.0, authoring skill — до 0.14.0.
-- Добавлены ADR-045/046 и `docs/46-controlled-agent-events-deep-workflows-v0.1.32.md`.
+- Добавлены ADR-045/046 и `docs/archive/releases/46-controlled-agent-events-deep-workflows-v0.1.32.md`.
 
 ## v0.1.31-alpha
 
@@ -625,7 +634,7 @@
 - Fan-out по умолчанию отклоняет дубли, smart review требует непустой уникальный список, pre-start cancellation marker сохраняется.
 - Static `subworkflow` корректно ребейзит script/dependencies/MCP/path skills; artifact type validation использует один общий контракт.
 - Профиль `code` обновлён до 0.8.1: smart review требует непустой уникальный список перспектив.
-- Authoring skill обновлён до 0.13.0; добавлен contract `scripts/test-external-executor.sh` и документ `docs/45-agent-events-external-executor-v0.1.31.md`.
+- Authoring skill обновлён до 0.13.0; добавлен contract `scripts/test-external-executor.sh` и документ `docs/archive/releases/45-agent-events-external-executor-v0.1.31.md`.
 
 ## v0.1.30-alpha
 
@@ -636,7 +645,7 @@
 - Tool results одновременно содержат text content, `structuredContent`, `resultType: complete` и `isError`.
 - Artifact tool поддерживает recursive filters и ограниченное UTF-8/base64 содержимое с сохранением checksum/provenance.
 - Добавлены общий local control service, чтение events из store, MCP cancellation request contexts, unit/lifecycle tests и `scripts/test-mcp.sh`.
-- Roadmap локального MCP перенесён в выполненные работы и заархивирован в `docs/44-local-mcp-control-plane-v0.1.30.md`.
+- Roadmap локального MCP перенесён в выполненные работы и заархивирован в `docs/archive/releases/44-local-mcp-control-plane-v0.1.30.md`.
 - Authoring skill обновлён до 0.12.0 и дополнен инструкцией локального MCP.
 
 ## v0.1.29-alpha
@@ -687,7 +696,7 @@
 - fingerprint родителя рекурсивно включает definitions governed children; рекурсия и глубина 16 проверяются до запуска;
 - умный router и reusable review-блоки профиля `code` переведены на отдельные child Runs;
 - профиль `code` обновлён до 0.5.0, authoring skill — до 0.8.0;
-- добавлены ADR-038, governed child run contract suite и `docs/40-governed-child-runs-v0.1.26.md`.
+- добавлены ADR-038, governed child run contract suite и `docs/archive/releases/40-governed-child-runs-v0.1.26.md`.
 
 ## v0.1.25-alpha
 
@@ -699,7 +708,7 @@
 - исправлены approved-итерация `interactive-prd`, fallback `create-issue`, публикация параллельного статуса и exact integer validation;
 - полный review block использует настоящий `foreach.parallel` по пяти перспективам;
 - профиль `code` обновлён до 0.4.0, authoring skill — до 0.7.0;
-- добавлены ADR-037, worktree contract suite и `docs/39-git-worktree-isolation-v0.1.25.md`.
+- добавлены ADR-037, worktree contract suite и `docs/archive/releases/39-git-worktree-isolation-v0.1.25.md`.
 
 ## v0.1.24-alpha
 
@@ -712,7 +721,7 @@
 - добавлено `trigger_rule: one_success` для соединения условных ветвей;
 - добавлены reusable full/smart review blocks, тест роутера, race/timing regressions и контракт всех 19 workflow;
 - authoring skill обновлён до 0.6.0;
-- добавлены ADR-035, ADR-036 и `docs/38-archon-workflow-catalog-v0.1.24.md`.
+- добавлены ADR-035, ADR-036 и `docs/archive/releases/38-archon-workflow-catalog-v0.1.24.md`.
 
 ## v0.1.23-alpha
 
@@ -725,7 +734,7 @@
 - схема согласована с value-семантикой контейнера, задокументированы рекурсия и предел глубины 16;
 - усилены timeout/overflow-регрессии, устранена гонка закрытия stderr в Pi adapter, расширены тесты композиции и исправлена проверка документации;
 - профиль `code` обновлён до 0.2.1, authoring skill — до 0.5.0;
-- добавлены ADR-034 и `docs/37-composition-hardening-v0.1.23.md`.
+- добавлены ADR-034 и `docs/archive/releases/37-composition-hardening-v0.1.23.md`.
 
 ## v0.1.22-alpha
 
@@ -735,7 +744,7 @@
 - подключённые workflow и локальные команды входят в workflow fingerprint;
 - профиль `code` 0.2.0 разделён на переиспользуемые фазы implementation и review;
 - authoring skill обновлён до 0.4.0;
-- добавлены composition example, contract suite, ADR-033 и `docs/36-workflow-composition-v0.1.22.md`.
+- добавлены composition example, contract suite, ADR-033 и `docs/archive/releases/36-workflow-composition-v0.1.22.md`.
 
 ## v0.1.20-alpha
 
@@ -743,7 +752,7 @@
 - raw stdout/stderr и краткая диагностика попадают в NodeState и per-attempt execution record без изменения execution kind;
 - scheduler сохраняет специализированную context-ошибку adapter вместо общего `node attempt`;
 - authoring skill обновлён до v0.2.1, а его README и поддерживаемая версия Takt проверяются автоматически;
-- добавлены ADR-031 и `docs/34-opencode-provider-diagnostics-v0.1.20.md`.
+- добавлены ADR-031 и `docs/archive/releases/34-opencode-provider-diagnostics-v0.1.20.md`.
 
 ## v0.1.19-alpha
 
@@ -751,7 +760,7 @@
 - поддержаны model/agent/variant, fresh/resume, version probe, per-step usage/cost и error events;
 - добавлены fake OpenCode binary, contract suite, runtime retry/resume test и opt-in real smoke;
 - OpenCode включён в config schema, примеры и Takt authoring skill v0.2.0;
-- добавлены ADR-030 и `docs/33-opencode-adapter-v0.1.19.md`.
+- добавлены ADR-030 и `docs/archive/releases/33-opencode-adapter-v0.1.19.md`.
 
 ## v0.1.18-alpha
 
@@ -760,7 +769,7 @@
 - добавлен копируемый `validated-agent-profile` с inline prompt, моделями на узлах, Markdown-командой, validator retry/resume и approval;
 - добавлен контрактный `scripts/test-takt-skill.sh`, который проверяет структуру скилла и валидирует оба шаблонных workflow;
 - прежний `examples/coding-agent-skill` переименован по назначению в минимальный `takt-runner`;
-- добавлен документ `docs/32-takt-authoring-skill-v0.1.18.md`.
+- добавлен документ `docs/archive/releases/32-takt-authoring-skill-v0.1.18.md`.
 
 ## v0.1.17-alpha
 
@@ -769,7 +778,7 @@
 - evaluation декодирует `takt-validation/v1alpha1` только из stdout quality-node;
 - stderr валидатора больше не повреждает корректный validation envelope и сохраняется в отчёте отдельно;
 - добавлены регрессии `valid:false + stderr + exit 1`, схема состояния и схема evaluation report;
-- добавлены ADR-029 и документ `docs/31-quality-stdout-separation-v0.1.17.md`.
+- добавлены ADR-029 и документ `docs/archive/releases/31-quality-stdout-separation-v0.1.17.md`.
 
 ## v0.1.16-alpha
 
@@ -779,7 +788,7 @@
 - `valid: true` из failed/errored/timed_out/cancelled узла сохраняется для аудита, но не повышает success rate;
 - malformed validation envelope при любом статусе остаётся ошибкой измерительного контура;
 - evaluation report сохраняет `quality_node_status`;
-- добавлены ADR-028 и документ `docs/30-quality-envelope-semantics-v0.1.16.md`.
+- добавлены ADR-028 и документ `docs/archive/releases/30-quality-envelope-semantics-v0.1.16.md`.
 
 ## v0.1.15-alpha
 
@@ -790,7 +799,7 @@
 - benchmark fingerprint включает ID и объявленную версию валидатора;
 - `duration_per_valid_ms` заменён на точное по смыслу `amortized_end_to_end_ms_per_valid`;
 - opt-in Pi smoke проверяет наличие фактического `ResolvedModel`;
-- добавлены ADR-027 и отчёт `docs/29-benchmark-metric-semantics-v0.1.15.md`.
+- добавлены ADR-027 и отчёт `docs/archive/releases/29-benchmark-metric-semantics-v0.1.15.md`.
 
 ## v0.1.14-alpha
 
@@ -801,7 +810,7 @@
 - добавлен строгий предметно-независимый контракт `takt-validation/v1alpha1`;
 - summary рассчитывает success@1, final success, average score, attempts/cost/time per valid и diagnostics по severity/code;
 - `examples/route-dsl-eval` закреплён как инфраструктурный suite, добавлен отдельный `examples/route-dsl-benchmark` для реального Pi и штатного валидатора;
-- добавлены схемы validation result/evaluation report, ADR-026 и отчёт `docs/28-benchmark-identity-quality-v0.1.14.md`.
+- добавлены схемы validation result/evaluation report, ADR-026 и отчёт `docs/archive/releases/28-benchmark-identity-quality-v0.1.14.md`.
 
 ## v0.1.13-alpha
 
@@ -810,7 +819,7 @@
 - `NodeState` сохраняет подтверждённый факт resume;
 - `report.json` содержит `resumed`, `feedback`, ошибку и диагностический вывод каждого узла;
 - Route DSL eval suite проверяет retry/resume и сохранение validator diagnostics;
-- добавлены ADR-025 и отчёт `docs/27-evaluation-isolation-report-v0.1.13.md`.
+- добавлены ADR-025 и отчёт `docs/archive/releases/27-evaluation-isolation-report-v0.1.13.md`.
 
 ## v0.1.12-alpha
 
@@ -821,7 +830,7 @@
 - добавлены `takt eval run` и `takt eval report` для изолированного прогона каталогов заданий;
 - evaluation report содержит статусы, attempts, duration, usage, approvals и truncation;
 - добавлен стартовый набор из десяти Route DSL заданий и контрактный eval-тест;
-- добавлен отчёт `docs/26-evaluation-runner-v0.1.12.md`.
+- добавлен отчёт `docs/archive/releases/26-evaluation-runner-v0.1.12.md`.
 
 ## v0.1.11-alpha
 
@@ -831,7 +840,7 @@
 - добавлен воспроизводимый Route DSL end-to-end: Pi → validator → feedback → retry/resume → artifacts → approval;
 - первая попытка намеренно не проходит проверку, вторая использует Session ID и диагностику;
 - новый сквозной сценарий включён в `make check` и `scripts/verify.sh`;
-- добавлены ADR-023 и отчёт `docs/25-route-dsl-e2e-v0.1.11.md`.
+- добавлены ADR-023 и отчёт `docs/archive/releases/25-route-dsl-e2e-v0.1.11.md`.
 
 ## v0.1.10-alpha
 
@@ -840,7 +849,7 @@
 - исчезновение cumulative usage после его наличия в первом снимке классифицируется как `protocol`;
 - явные нулевые usage-значения остаются валидными;
 - добавлены регрессии timeout+overflow, cancel+overflow, missing usage и zero usage;
-- добавлены ADR-022 и отчёт `docs/24-pi-context-usage-hardening-v0.1.10.md`.
+- добавлены ADR-022 и отчёт `docs/archive/releases/24-pi-context-usage-hardening-v0.1.10.md`.
 
 ## v0.1.9-alpha
 
@@ -850,7 +859,7 @@
 - fire-and-forget `set_editor_text` допускается без ответа;
 - usage Pi вычисляется как дельта накопленной статистики до/после prompt;
 - добавлены регрессии для fresh/resume usage delta и уменьшения cumulative stats;
-- добавлен ADR-021 и отчёт `docs/23-pi-rpc-alignment-v0.1.9.md`.
+- добавлен ADR-021 и отчёт `docs/archive/releases/23-pi-rpc-alignment-v0.1.9.md`.
 
 ## v0.1.8-alpha
 
@@ -862,7 +871,7 @@
 - добавлены `cmd/takt-fake-pi`, Pi contract suite, runtime retry/resume test и opt-in real smoke;
 - Pi-specific Config и JSON Schema синхронизированы;
 - закрыты P2 документации: нумерация adapter tests, актуальная runtime version и optional metadata policy;
-- добавлен ADR-020 и отчёт `docs/22-pi-adapter-v0.1.8.md`.
+- добавлен ADR-020 и отчёт `docs/archive/releases/22-pi-adapter-v0.1.8.md`.
 
 ## v0.1.7-alpha
 
@@ -872,7 +881,7 @@
 - fake assistant отклоняет второй JSON request envelope;
 - contract suite проверяет передачу `metadata` и `native_hooks`;
 - `config.schema.json` запрещает `protocol` для `type: mock`, как runtime validator;
-- добавлен отчёт `docs/21-protocol-hardening-v0.1.7.md`.
+- добавлен отчёт `docs/archive/releases/21-protocol-hardening-v0.1.7.md`.
 
 ## v0.1.6-alpha
 
@@ -889,7 +898,7 @@
 - восстановлены полные редакции документов `v0.1.2–v0.1.3`, случайно перезаписанные при сборке `v0.1.4`;
 - поверх восстановленной документации перенесена семантика parent-loop timeout/cancel из `v0.1.4`;
 - восстановлены ADR-008–ADR-016, актуальные runtime specification, adapter contract, document map и coding-agent guide;
-- добавлен отчёт `docs/19-document-recovery-v0.1.5.md`;
+- добавлен отчёт `docs/archive/releases/19-document-recovery-v0.1.5.md`;
 - кодовая семантика относительно `v0.1.4-alpha` не изменена.
 
 ## v0.1.4-alpha

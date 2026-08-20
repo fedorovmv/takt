@@ -41,4 +41,4 @@ GitHub Actions will install the already-declared TypeScript version, `5.7.2`, an
 
 ## Documentation and Release Metadata
 
-The repair does not change `takt/v1alpha1`; it enforces the already documented strict authoring contract. `CHANGELOG.md`, `docs/05-implementation-status.md`, and `TEST_RESULTS.md` will record the repaired gate and regressions. `MANIFEST.sha256` will be regenerated after all tracked changes are final.
+The repair does not change `takt/v1alpha1`; it enforces the already documented strict authoring contract. `CHANGELOG.md`, `docs/05-implementation-status.md`, and `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md` will record the repaired gate and regressions. `MANIFEST.sha256` will be regenerated after all tracked changes are final.

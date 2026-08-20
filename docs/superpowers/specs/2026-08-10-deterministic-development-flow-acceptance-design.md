@@ -127,7 +127,7 @@ producer of `plan-to-pr` input.
 
 The contract change will be documented in `docs/03-specification.md`, the code
 profile README and `route-workflow.md`. Historical `docs/38` remains unchanged.
-Implementation status, changelog and `TEST_RESULTS.md` are updated with only the
+Implementation status, changelog and `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md` are updated with only the
 delivered evidence. No new generic workflow field or node type is added.
 
 ### Domain completion gates

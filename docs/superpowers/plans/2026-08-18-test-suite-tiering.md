@@ -32,11 +32,11 @@
 
 **Files:**
 - Modify: `DEVELOPMENT.md:76-99`
-- Modify: `docs/67-go-native-test-architecture-v0.1.53.md:76-92`
+- Modify: `docs/archive/releases/67-go-native-test-architecture-v0.1.53.md:76-92`
 - Modify: `README.md` test/release-gate references
 - Modify: `docs/05-implementation-status.md` current test-gate status
 - Modify: `CHANGELOG.md` under `Unreleased`
-- Modify: `TEST_RESULTS.md` current verification notes
+- Modify: `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md` current verification notes
 
 - [x] Document the fast/full target split and the fact that live evaluations stay opt-in.
 - [x] Replace claims that `make check` always includes journeys and race with the new target names.

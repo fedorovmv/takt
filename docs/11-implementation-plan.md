@@ -4,15 +4,15 @@
 
 ## 0. Веха A1 — application boundary refactor — выполнено в v0.1.52
 
-До новых feature slices выполнен feature freeze: thin CLI transports, application services, production bootstrap, canonical daemon/MCP API, RunStore port, explicit runtime dependencies и architecture gate. Детали — `docs/66-application-boundary-architecture-refactor-v0.1.52.md`, ADR-085.
+До новых feature slices выполнен feature freeze: thin CLI transports, application services, production bootstrap, canonical daemon/MCP API, RunStore port, explicit runtime dependencies и architecture gate. Детали — `docs/archive/releases/66-application-boundary-architecture-refactor-v0.1.52.md`, ADR-085.
 
 ## 0.5. Веха A2 — Test architecture refactor — выполнено в v0.1.53
 
-38 shell contract suites сведены к Go unit/component + black-box `tests/e2e`; после `v0.1.54` оставлен один TypeScript compiler smoke. Schema registry больше не имеет отдельной Python-семантики. Architecture gate защищает test boundary. Детали — `docs/67-go-native-test-architecture-v0.1.53.md`, ADR-086.
+38 shell contract suites сведены к Go unit/component + black-box `tests/e2e`; после `v0.1.54` оставлен один TypeScript compiler smoke. Schema registry больше не имеет отдельной Python-семантики. Architecture gate защищает test boundary. Детали — `docs/archive/releases/67-go-native-test-architecture-v0.1.53.md`, ADR-086.
 
 ## 0.75. Веха A3 — Architecture hardening — выполнено в v0.1.54
 
-Повторный аудит после A1/A2 закрыл остаточную связность: private acyclic application dependencies, отдельный Fork coordinator, bootstrap-only concrete wiring, explicit runtime/evaluation composition, signal-aware context propagation, durable plan/host locks, decomposition state-machine hotspots и финальная миграция shell assertions в Go. Детали — `docs/68-architecture-hardening-v0.1.54.md`, ADR-087.
+Повторный аудит после A1/A2 закрыл остаточную связность: private acyclic application dependencies, отдельный Fork coordinator, bootstrap-only concrete wiring, explicit runtime/evaluation composition, signal-aware context propagation, durable plan/host locks, decomposition state-machine hotspots и финальная миграция shell assertions в Go. Детали — `docs/archive/releases/68-architecture-hardening-v0.1.54.md`, ADR-087.
 
 ## 1. Принцип
 

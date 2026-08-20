@@ -71,7 +71,7 @@ Go-loader и authoring preflight остаются главным валидат�
 
 ## v0.1.49 external adapter seam
 
-`domain-adapter-protocol.schema.json` includes optional `workspace` in Invoke/Reconcile requests. It is the execution workspace/cwd supplied by Takt; provider-specific repository identity stays in the operation input/config. Reference implementations are documented in `docs/63-reference-external-adapters-v0.1.49.md`.
+`domain-adapter-protocol.schema.json` includes optional `workspace` in Invoke/Reconcile requests. It is the execution workspace/cwd supplied by Takt; provider-specific repository identity stays in the operation input/config. Reference implementations are documented in `docs/archive/releases/63-reference-external-adapters-v0.1.49.md`.
 
 
 ## v0.1.50 structured task sources

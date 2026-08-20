@@ -1,5 +1,9 @@
 # Архитектура
 
+Архитектура Takt разделяет транспорт, стабильные use cases, scheduler и
+локальное durable-хранилище. Extensions, experimental-функции и evaluation
+подключаются к stable core через явный bootstrap и не создают второй runtime.
+
 ```text
 CLI / MCP / Local Daemon
  │
@@ -22,6 +26,23 @@ Dependency rule:
 experimental / extensions / tooling ──► stable core
 stable core ──X─► experimental / extensions / tooling
 ```
+
+## Обзор жизненного цикла
+
+1. CLI, MCP или daemon принимает запрос и передаёт его стабильному
+   application service.
+2. Authoring preflight загружает Config/Workflow, разрешает paths и
+   capabilities и проверяет references до первого action.
+3. Scheduler компилирует композицию в один DAG, запускает независимые узлы
+   волнами и записывает каждый transition через Store.
+4. Assistant, script или domain adapter выполняет конкретное действие в
+   control/execution workspace.
+5. Runtime сохраняет terminal status, diagnostic fingerprint, usage и
+   artifacts; approval, retry или child Run продолжают ту же durable модель.
+
+Transport не владеет бизнес-семантикой Run, а assistant не владеет scheduler.
+Это позволяет CLI, MCP и daemon использовать один контракт и одну модель
+восстановления.
 
 ## Архитектурные контракты эволюции
 
@@ -57,7 +78,9 @@ Stable `internal/assistant` знает registration contract, но не импо
 
 MCP canonical tools проецируются из `appapi.CanonicalOperations()`, а `docs/71-canonical-operation-contracts.generated.md` генерируется из тех же descriptors и проверяется на drift. Локальные MCP schemas остаются только у MCP-specific external-worker protocol tools, которые не являются canonical application operations.
 
-Эти правила и их executable gates подробно описаны в `docs/72-architecture-contracts-v0.1.57.md` и ADR-090.
+Эти правила закреплены executable gates и ADR-090. Исторический release slice
+сохранён в
+[`archive/releases/72-architecture-contracts-v0.1.57.md`](archive/releases/72-architecture-contracts-v0.1.57.md).
 
 ## Пакеты
 

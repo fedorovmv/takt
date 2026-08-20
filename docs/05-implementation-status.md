@@ -477,7 +477,7 @@ zero denominators are shown as `n/a`.
 - `internal/architecture` содержит allowlist shell smoke tests и блокирует возврат второго shell test framework;
 - historical Makefile contract targets сохранены, но Go-доступная семантика запускается напрямую через `go test`.
 
-Внешние product contracts не менялись. Детали — `docs/67-go-native-test-architecture-v0.1.53.md`, ADR-086.
+Внешние product contracts не менялись. Детали — `docs/archive/releases/67-go-native-test-architecture-v0.1.53.md`, ADR-086.
 
 ## Architecture hardening — v0.1.54
 
@@ -490,7 +490,7 @@ zero denominators are shown as `n/a`.
 - appapi/MCP используют единую canonical operation identity;
 - shell `test-*.sh` сокращён до одного TypeScript compiler smoke, остальные внешние boundaries проверяются bounded Go E2E.
 
-Внешние product contracts не менялись. Детали — `docs/68-architecture-hardening-v0.1.54.md`, ADR-087.
+Внешние product contracts не менялись. Детали — `docs/archive/releases/68-architecture-hardening-v0.1.54.md`, ADR-087.
 
 ## Фактические незакрытые gaps
 

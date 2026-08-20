@@ -1044,7 +1044,7 @@ binary, credentials, model и validator; его outcome сохраняется �
 - `schemas/evaluation-validator-request.schema.json`;
 - `schemas/evaluation-report.schema.json`;
 - `skills/takt` references после появления стабильного authoring journey;
-- changelog, `TEST_RESULTS.md` и implementation plan status.
+- changelog, `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md` и implementation plan status.
 
 Product correctness остаётся в Go `*_test.go`; black-box CLI contracts — в
 `tests/e2e`. Новый shell test script не нужен.

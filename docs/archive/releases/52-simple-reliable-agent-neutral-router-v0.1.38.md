@@ -166,4 +166,4 @@ Codex, Oh My Pi и Qwen CLI не входят в поставку как гот�
 - все маршруты компилируются в стандартный Workflow и Run.
 
 Полное архитектурное обоснование и дальнейший план находятся в
-[`proposals/001-simple-reliable-agent-neutral-takt.md`](proposals/001-simple-reliable-agent-neutral-takt.md).
+[`proposals/001-simple-reliable-agent-neutral-takt.md`](../../proposals/001-simple-reliable-agent-neutral-takt.md).

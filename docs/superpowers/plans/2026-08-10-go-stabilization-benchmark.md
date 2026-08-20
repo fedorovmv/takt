@@ -44,7 +44,7 @@
 **Modify:**
 
 - `.gitignore` — ignore `examples/**/.takt/` live output.
-- `docs/05-implementation-status.md`, `docs/13-evaluation-plan.md`, `TEST_RESULTS.md`, `CHANGELOG.md` — record only evidence actually obtained.
+- `docs/05-implementation-status.md`, `docs/13-evaluation-plan.md`, `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`, `CHANGELOG.md` — record only evidence actually obtained.
 - `MANIFEST.sha256` — include the committed corpus, validator, workflows and docs.
 
 No production Go package is scheduled for modification. Such a change is added only after a live run reproduces a Takt defect.
@@ -400,7 +400,7 @@ git commit -m "feat: wire Go strategy benchmark"
 **Files:**
 
 - Create: `examples/go-benchmark/README.md`
-- Modify after evidence: `TEST_RESULTS.md`
+- Modify after evidence: `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`
 
 - [x] **Step 1: Document requirements, commands and evidence limits**
 
@@ -438,10 +438,10 @@ Expected: same measurement contract as Pi; requested model is `aihub-sbt/Qwen/Qw
 
 - [x] **Step 6: Record exact smoke evidence and commit docs**
 
-Add versions, requested models, matrix status, infrastructure failures and explicit limitations to `TEST_RESULTS.md`. Do not claim quality statistics from a run that did not write a valid report.
+Add versions, requested models, matrix status, infrastructure failures and explicit limitations to `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`. Do not claim quality statistics from a run that did not write a valid report.
 
 ```bash
-git add examples/go-benchmark/README.md TEST_RESULTS.md
+git add examples/go-benchmark/README.md docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md
 git commit -m "docs: record Go benchmark smoke"
 ```
 
@@ -542,7 +542,7 @@ git commit -m "fix: isolate OpenCode benchmark host"
 - Modify: `internal/runtime/runner.go`
 - Modify: `internal/runtime/attempt.go`
 - Modify: `docs/09-runtime-semantics.md`
-- Modify: `docs/29-benchmark-metric-semantics-v0.1.15.md`
+- Modify: `docs/archive/releases/29-benchmark-metric-semantics-v0.1.15.md`
 
 **Interfaces:**
 
@@ -575,7 +575,7 @@ Expected: PASS.
 - [x] **Step 4: Commit the root-cause fix**
 
 ```bash
-git add internal/runtime/attempt.go internal/runtime/runner.go internal/runtime/runner_test.go docs/09-runtime-semantics.md docs/29-benchmark-metric-semantics-v0.1.15.md
+git add internal/runtime/attempt.go internal/runtime/runner.go internal/runtime/runner_test.go docs/09-runtime-semantics.md docs/archive/releases/29-benchmark-metric-semantics-v0.1.15.md
 git commit -m "fix: preserve exhausted retry execution state"
 ```
 
@@ -588,7 +588,7 @@ git commit -m "fix: preserve exhausted retry execution state"
 - Local only: `${TMPDIR:-/tmp}/takt-go-benchmark/evals/pi/**`
 - Local only: `${TMPDIR:-/tmp}/takt-go-benchmark/evals/opencode/**`
 - Conditional product test/fix: exact shared package identified by a reproduced defect
-- Modify after evidence: `TEST_RESULTS.md`, `docs/05-implementation-status.md`, `docs/13-evaluation-plan.md`, `CHANGELOG.md`
+- Modify after evidence: `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`, `docs/05-implementation-status.md`, `docs/13-evaluation-plan.md`, `CHANGELOG.md`
 
 - [x] **Step 1: Run Pi full matrix**
 
@@ -639,7 +639,7 @@ Update status/evaluation docs and changelog with actual corpus size, host/model 
 **Files:**
 
 - Modify: `MANIFEST.sha256`
-- Modify if needed for final factual state: `TEST_RESULTS.md`, `docs/05-implementation-status.md`, `docs/13-evaluation-plan.md`, `CHANGELOG.md`
+- Modify if needed for final factual state: `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`, `docs/05-implementation-status.md`, `docs/13-evaluation-plan.md`, `CHANGELOG.md`
 
 - [ ] **Step 1: Format all changed Go files**
 
@@ -681,7 +681,7 @@ Run:
 git status --short
 git diff --check
 git diff --stat HEAD~1
-rg -n "(api[_-]?key|token|secret|session[_-]?id)" examples/go-benchmark TEST_RESULTS.md
+rg -n "(api[_-]?key|token|secret|session[_-]?id)" examples/go-benchmark docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md
 ```
 
 Inspect matches; only schema/field names and redacted explanatory text may remain.
@@ -689,7 +689,7 @@ Inspect matches; only schema/field names and redacted explanatory text may remai
 - [ ] **Step 6: Commit final evidence and manifest**
 
 ```bash
-git add MANIFEST.sha256 CHANGELOG.md TEST_RESULTS.md docs/05-implementation-status.md docs/13-evaluation-plan.md examples/go-benchmark .gitignore
+git add MANIFEST.sha256 CHANGELOG.md docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md docs/05-implementation-status.md docs/13-evaluation-plan.md examples/go-benchmark .gitignore
 git commit -m "test: record Go stabilization evidence"
 ```
 

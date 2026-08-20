@@ -98,7 +98,7 @@ workspace или параллельный запуск модели.
 
 ### STABLE-001. Ревизия внешних контрактов — выполнено в v0.1.47
 
-Контракты классифицированы как `stable-candidate | supported-alpha | deprecated | internal` в `docs/61-v0.2-stabilization-iteration-history-v0.1.47.md`:
+Контракты классифицированы как `stable-candidate | supported-alpha | deprecated | internal` в `docs/archive/releases/61-v0.2-stabilization-iteration-history-v0.1.47.md`:
 
 - `takt/v1alpha1 Workflow`;
 - Config/Profile/BlockPackage;

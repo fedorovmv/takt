@@ -1,59 +1,31 @@
 # Разработка Takt
 
-## Первый запуск
-
-```bash
-go test ./...
-go test -race ./...
-go vet ./...
-go build -o bin/takt ./cmd/takt
-./scripts/verify.sh
-```
-
-## Что прочитать перед изменением ядра
-
-1. `AGENTS.md`;
-2. `docs/12-document-map.md`;
-3. `docs/05-implementation-status.md`;
-4. `skills/takt/SKILL.md`;
-5. `docs/32-takt-authoring-skill-v0.1.18.md`;
-6. `docs/31-quality-stdout-separation-v0.1.17.md`;
-7. `docs/30-quality-envelope-semantics-v0.1.16.md`;
-8. `docs/29-benchmark-metric-semantics-v0.1.15.md`;
-9. `docs/28-benchmark-identity-quality-v0.1.14.md`;
-10. `docs/13-evaluation-plan.md`;
-11. `docs/09-runtime-semantics.md`;
-12. `docs/10-assistant-adapter-spec.md`;
-13. `ARCHITECTURE_DECISIONS.md`.
-
-
-## С чего продолжать реализацию
-
-Текущая рекомендуемая ветка работ:
-
-```text
-Pi adapter и Route DSL contract suites — выполнено
-→ evaluation identity и quality contract — выполнено
-→ локальный MCP control plane — выполнено
-→ нормализованные agent/tool-call events и внешний исполнитель узла — выполнено
-→ глубокие шесть workflow — выполнено
-→ authoring preflight и локальный daemon — выполнено
-→ runtime security hardening
-→ baseline на реальном Pi, штатном validator и обезличенных заданиях
-→ сравнение моделей и стратегий на одинаковых fingerprints
-```
-
-Реальный benchmark запускается отдельно:
+## Требования и первый запуск
 
 ```bash
 make build
-TAKT_CONFIG=/path/to/config.yaml \
-TAKT_ROUTE_VALIDATOR=/path/to/route-tool \
-TAKT_REPEAT=3 \
-make route-benchmark
+make check
 ```
 
-Подробная декомпозиция находится в `docs/11-implementation-plan.md` и `docs/14-backlog-v0.2.md`.
+Нужны Go 1.23+, Git и, для обязательного TypeScript smoke, Node.js 22 с
+TypeScript 5.7.2. `make check` можно запускать без `tsc`: тогда smoke явно
+помечается как `SKIP`; CI устанавливает pinned compiler и требует его.
+
+## Источники перед изменением
+
+1. `AGENTS.md`;
+2. `docs/README.md` и `docs/12-document-map.md`;
+3. `docs/05-implementation-status.md`;
+4. `skills/takt/SKILL.md`;
+5. `docs/03-specification.md`;
+6. `docs/09-runtime-semantics.md`;
+7. `docs/10-assistant-adapter-spec.md`;
+8. `docs/04-architecture.md`;
+9. `ARCHITECTURE_DECISIONS.md`.
+
+Для evaluation добавьте `docs/13-evaluation-plan.md` и
+`docs/73-evaluation-authoring-guide.md`. Versioned release slices находятся в
+`docs/archive/releases/` и нужны только для traceability конкретного решения.
 
 ## Правила изменения
 
@@ -67,10 +39,10 @@ make route-benchmark
 - хранить credentials в окружении или внешнем secret source, а не в `models.*.params`;
 - не игнорировать ошибки persistence;
 - не использовать `allow_failure` для transport/runtime errors;
-- отделять infrastructure contract suite от quality benchmark.
+- отделять infrastructure contract suite от quality benchmark;
 - сохранять per-attempt execution identity при любом retry;
 - не трактовать амортизированную длительность benchmark как time-to-valid;
-- декодировать доступный validation envelope независимо от exit code; считать успехом только `completed && valid=true`.
+- декодировать доступный validation envelope независимо от exit code; считать успехом только `completed && valid=true`;
 - декодировать validation envelope только из stdout quality-node; stderr сохранять как отдельную диагностику.
 
 ## Тесты
@@ -93,42 +65,61 @@ make e2e-race     # E2E под -race
 E2E-контракты используют `GO_TEST_PARALLEL_P=16` независимых test workers по
 умолчанию; на слабой машине значение можно уменьшить.
 
-`tests/e2e` запускает настоящий `takt` и проверяет CLI/daemon/MCP/evaluation через общий Go harness. Shell не используется как второй assertion framework.
+`tests/e2e` запускает настоящий `takt` и проверяет CLI/daemon/MCP/evaluation
+через общий Go harness. Shell не используется как второй assertion framework.
 
 Отдельно остаётся один внешний shell smoke test:
 
 ```bash
 make smoke
-
-# release targets default to GO_TEST_P=8; override if the host has a different safe capacity
 ```
 
-Он проверяет TypeScript host integration через реальную TypeScript toolchain. Process/package/host/deep-workflow boundaries находятся в bounded Go E2E. Allowlist закреплён в `internal/architecture`; новый shell test требует отдельного архитектурного обоснования. Быстрый gate — `make check` (без process-heavy E2E, обычно менее минуты), полный release gate — `make check-full` или `./scripts/verify.sh`.
+Он проверяет TypeScript host integration через реальную TypeScript toolchain.
+Process/package/host/deep-workflow boundaries находятся в bounded Go E2E.
+Allowlist закреплён в `internal/architecture`; новый shell test требует
+отдельного архитектурного обоснования. Быстрый gate — `make check`, полный
+release gate — `make check-full` или `./scripts/verify.sh`.
 
-Реальные live Pi/OpenCode/credentials smoke и production quality benchmark выполняются отдельно и не подменяются deterministic release fixtures.
+Реальные live Pi/OpenCode/credentials smoke и production quality benchmark
+выполняются отдельно и не подменяются deterministic release fixtures.
+
+## Структура репозитория
+
+- `cmd/takt` — тонкий launcher;
+- `internal/application` — стабильные Run/Catalog/Authoring use cases;
+- `internal/runtime` — единый scheduler и execution semantics;
+- `internal/store` — durable state, events, locks и artifacts;
+- `internal/bootstrap` — единственный production composition root;
+- `internal/extensions` — adapters, packages, blocks и notifications;
+- `internal/experimental` — Dynamic Flow, host control и learning;
+- `internal/tooling` — evaluation и compatibility;
+- `tests/e2e` — black-box CLI/daemon/MCP/evaluation contracts.
 
 ## Структура задачи
 
-Хорошая задача содержит:
+Хорошая задача содержит изменяемый контракт, ожидаемые переходы Run и Node,
+события, классы ошибок, критерии приёмки, unit/contract tests, сквозной пример
+и обновление спецификации, схем и status.
 
-- изменяемый контракт;
-- ожидаемые переходы Run и Node;
-- события;
-- классы ошибок;
-- критерии приёмки;
-- unit/contract tests;
-- сквозной пример;
-- обновление спецификации, схем и status.
+## Контрактные изменения
+
+- YAML/JSON contract: обновите `docs/03-specification.md` и соответствующие
+  `schemas/*.json`;
+- runtime/protocol semantics: добавьте Go contract test и обновите
+  `docs/09-runtime-semantics.md` или `docs/10-assistant-adapter-spec.md`;
+- архитектурная граница: добавьте ADR и architecture gate;
+- фактический статус: обновите `docs/05-implementation-status.md` и
+  `CHANGELOG.md`;
+- совместимость: не добавляйте второй scheduler, transport-specific Run
+  semantics или второй composition root.
 
 ## OpenCode adapter
-
-Run the deterministic contract suite with:
 
 ```bash
 make opencode-contracts
 ```
 
-A real smoke test is opt-in:
+Реальный smoke test является opt-in:
 
 ```bash
 TAKT_OPENCODE_SMOKE=1 \
@@ -145,4 +136,6 @@ make composition
 
 ## CI matrix
 
-`.github/workflows/ci.yml` запускает `make check` на `ubuntu-latest` и `macos-latest`. Worktree/path changes должны проходить обе ОС; локальный Linux-прогон не заменяет macOS job.
+`.github/workflows/ci.yml` запускает `make check` на `ubuntu-latest` и
+`macos-latest`. Worktree/path changes должны проходить обе ОС; локальный
+Linux-прогон не заменяет macOS job.

@@ -9,9 +9,9 @@ Takt — Go-runtime, который снаружи оркестрирует го
 ## Перед изменением
 
 1. Прочитайте `docs/12-document-map.md` и `docs/05-implementation-status.md`.
-2. Для runtime и local control plane изучите `docs/03-specification.md`, `docs/04-architecture.md`, `docs/09-runtime-semantics.md`, `docs/72-architecture-contracts-v0.1.57.md` и ADR.
+2. Для runtime и local control plane изучите `docs/03-specification.md`, `docs/04-architecture.md`, `docs/09-runtime-semantics.md` и ADR.
 3. Для assistants изучите `docs/10-assistant-adapter-spec.md` и соответствующие contract tests.
-4. Для evaluation изучите `docs/13-evaluation-plan.md` и документы `docs/26–30`.
+4. Для evaluation изучите `docs/13-evaluation-plan.md`, `docs/73-evaluation-authoring-guide.md` и соответствующие tests.
 5. Зафиксируйте исходное состояние командой `make check`.
 
 Расширенная инструкция находится в `docs/15-coding-agent-start.md`.

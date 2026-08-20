@@ -104,7 +104,7 @@ OpenCode smoke дополнительно проверяет фактическ�
 5. каждый исправленный дефект имеет Go regression test до production change;
 6. `make check` и `scripts/verify.sh` проходят после изменений;
 7. отчёт не содержит credentials, provider secrets или session artifacts;
-8. `docs/05-implementation-status.md`, changelog и `TEST_RESULTS.md` отражают только фактически полученное evidence.
+8. `docs/05-implementation-status.md`, changelog и `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md` отражают только фактически полученное evidence.
 
 ## Условия остановки
 

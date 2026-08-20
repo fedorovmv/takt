@@ -156,7 +156,7 @@ PASS:
 
 ### Workflow Language Constitution
 
-- normative rule is documented in `docs/04-architecture.md`, `docs/03-specification.md`, `AGENTS.md`, ADR-090 and `docs/72-architecture-contracts-v0.1.57.md`;
+- normative rule is documented in `docs/04-architecture.md`, `docs/03-specification.md`, `AGENTS.md`, ADR-090 and the archived release slice `docs/archive/releases/72-architecture-contracts-v0.1.57.md`;
 - `internal/whenexpr` is the single implementation of `when` parsing/evaluation;
 - supported gate language remains only `==`, `!=`, `&&`, `||`, `nodes.*`/`inputs.*` paths and literals;
 - parentheses/functions/arithmetic/order operators are rejected;
@@ -224,7 +224,7 @@ Expected release metadata:
 - authoring skill `0.39.0`;
 - Workflow/Config API remains `takt/v1alpha1`;
 - ADR-090 present in `ARCHITECTURE_DECISIONS.md`;
-- normative architecture contract present in `docs/04-architecture.md` and `docs/72-architecture-contracts-v0.1.57.md`;
+- normative architecture contract present in `docs/04-architecture.md`; the historical release slice is archived at `docs/archive/releases/72-architecture-contracts-v0.1.57.md`;
 - generated canonical operation surface present in `docs/71-canonical-operation-contracts.generated.md`.
 
 ## Clean archive verification

@@ -2,9 +2,22 @@
 
 ## Supported trust model
 
-Takt `v0.1.44-alpha` is a local, single-user, trusted runtime. `takt daemon` may serve several clients owned by the same OS user but does not create authentication, authorization, tenant isolation or an untrusted execution boundary.
+Takt `v0.1.63-alpha` is a local, single-user, trusted runtime. `takt daemon` may serve several clients owned by the same OS user but does not create authentication, authorization, tenant isolation or an untrusted execution boundary.
 
 Trusted inputs include workflow/config/package files, Markdown commands, scripts and hooks, assistant/adapter binaries and argv, workspace contents and locally installed package sources. Do not expose the current runtime as a service that accepts these values from untrusted users.
+
+## Reporting a vulnerability
+
+Do not open a public issue for a suspected vulnerability and do not include
+credentials, exploit details or private workspace contents in a public report.
+Use GitHub's private security advisory flow for this repository:
+<https://github.com/fedorovmv/takt/security/advisories/new>.
+
+Include the affected version or commit, operating system, a minimal trusted
+reproduction, impact and any safe mitigation. If the advisory form is
+unavailable, open a non-public maintainer contact through the repository
+administration rather than disclosing exploit details publicly. There is no
+guaranteed response or remediation SLA during the alpha period.
 
 ## Current protection layers
 

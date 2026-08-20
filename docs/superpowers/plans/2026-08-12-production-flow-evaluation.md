@@ -1928,7 +1928,7 @@ cp examples/flow-evaluation/mini-du/config.opencode.example.yaml examples/flow-e
 Use the Pi example instead only when OpenCode is unavailable. Do not rerun to
 improve the result. Record exact binary versions, requested model, output path,
 report outcome, and command exit. If binary/credentials/provider are unavailable,
-record those exact missing prerequisites as a skip in `TEST_RESULTS.md`; deterministic
+record those exact missing prerequisites as a skip in `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`; deterministic
 commits remain allowed.
 
 ---
@@ -1955,7 +1955,7 @@ commits remain allowed.
 - Modify: `schemas/README.md`
 - Modify: `README.md`
 - Modify: `CHANGELOG.md`
-- Modify: `TEST_RESULTS.md`
+- Modify: `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`
 
 **Interfaces:**
 - CLI: `takt eval flow init <workflow-selector> --output <directory>`.
@@ -2046,7 +2046,7 @@ commits remain allowed.
   Commit all implementation/docs files with:
 
   ```bash
-  git add .gitignore internal/tooling/evaluation/flow_init.go internal/tooling/evaluation/flow_init_test.go internal/tooling/services.go internal/tooling/services_test.go internal/bootstrap/evaluation.go internal/cli/eval_cmd.go internal/cli/cli_test.go tests/e2e/evaluation_contracts_test.go schemas docs skills examples/flow-evaluation/mini-du/README.md README.md CHANGELOG.md TEST_RESULTS.md
+  git add .gitignore internal/tooling/evaluation/flow_init.go internal/tooling/evaluation/flow_init_test.go internal/tooling/services.go internal/tooling/services_test.go internal/bootstrap/evaluation.go internal/cli/eval_cmd.go internal/cli/cli_test.go tests/e2e/evaluation_contracts_test.go schemas docs skills examples/flow-evaluation/mini-du/README.md README.md CHANGELOG.md docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md
   git commit -m "docs: publish production flow evaluation"
   ```
 
@@ -2066,10 +2066,10 @@ commits remain allowed.
 
 - [ ] **Step 8: Record final evidence and commit only the record if changed.**
 
-  Add exact commands/results and live Pi/OpenCode outcome or explicit credentials/provider skip to `TEST_RESULTS.md`. Then run `git status --short` and commit only the evidence update:
+  Add exact commands/results and live Pi/OpenCode outcome or explicit credentials/provider skip to `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`. Then run `git status --short` and commit only the evidence update:
 
   ```bash
-  git add TEST_RESULTS.md
+  git add docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md
   git commit -m "test: record production flow evaluation evidence"
   ```
 

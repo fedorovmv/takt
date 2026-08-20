@@ -38,7 +38,7 @@
 | Generators | `internal/experimental/dynamicplan/compiler.go`, `internal/experimental/dynamicflow/*.go` и все production generators, найденные inventory-тестом | генерировать только target YAML/references |
 | Contracts | `internal/workflow/*_test.go`, `internal/runtime/*_test.go`, `internal/authoring/*_test.go`, `internal/store/*_test.go`, `tests/e2e/*` | product correctness и black-box acceptance |
 | Content | все файлы с `kind: Workflow` в `internal/profile/builtin/code`, `examples`, `skills/takt/assets/validated-agent-profile/.takt/workflows`, плюс активные Markdown commands и references | атомарная миграция, без legacy dialect |
-| Docs | `docs/03-specification.md`, `docs/07-archon-compatibility.md`, `docs/09-runtime-semantics.md`, `docs/10-assistant-adapter-spec.md`, `docs/72-architecture-contracts-v0.1.57.md`, `ARCHITECTURE_DECISIONS.md`, `docs/05-implementation-status.md`, `docs/12-document-map.md`, `CHANGELOG.md`, `TEST_RESULTS.md`, `skills/takt/SKILL.md` и references | публичный контракт и след реализации |
+| Docs | `docs/03-specification.md`, `docs/07-archon-compatibility.md`, `docs/09-runtime-semantics.md`, `docs/10-assistant-adapter-spec.md`, `docs/archive/releases/72-architecture-contracts-v0.1.57.md`, `ARCHITECTURE_DECISIONS.md`, `docs/05-implementation-status.md`, `docs/12-document-map.md`, `CHANGELOG.md`, `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`, `skills/takt/SKILL.md` и references | публичный контракт и след реализации |
 
 Путь `internal/flowref` оправдан двумя уже существующими потребителями (`template` и `when`) и не является plugin framework: пакет содержит только закрытую грамматику и render policy, а значения разрешаются текущим runtime/authoring state.
 
@@ -305,7 +305,7 @@
 - Modify: `internal/runtime/output_format.go`, `internal/runtime/output_format_test.go`, `internal/runtime/actions.go`
 - Modify: `internal/authoring/authoring.go`, `internal/authoring/authoring_test.go`
 - Modify: `schemas/workflow.schema.json`, `schemas/schema-subset-v1.schema.json` only when schema reference paths require it
-- Modify: `docs/03-specification.md`, `docs/07-archon-compatibility.md`, `docs/09-runtime-semantics.md`, `docs/72-architecture-contracts-v0.1.57.md`, `ARCHITECTURE_DECISIONS.md`, `docs/05-implementation-status.md`, `docs/12-document-map.md`, `CHANGELOG.md`, `TEST_RESULTS.md`, `skills/takt/SKILL.md`, `skills/takt/references/*.md`
+- Modify: `docs/03-specification.md`, `docs/07-archon-compatibility.md`, `docs/09-runtime-semantics.md`, `docs/archive/releases/72-architecture-contracts-v0.1.57.md`, `ARCHITECTURE_DECISIONS.md`, `docs/05-implementation-status.md`, `docs/12-document-map.md`, `CHANGELOG.md`, `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`, `skills/takt/SKILL.md`, `skills/takt/references/*.md`
 
 - [x] **Step 1: Сохранить existing structured-output tests.**
 
@@ -317,7 +317,7 @@
 
 - [x] **Step 3: Обновить публичные документы.**
 
-  В `docs/03` описать target root/node/command, все reference contexts, shell/non-shell `$$`, `output_format`, A0/A1 gating и old Run guard. В `docs/09` описать runtime precedence; в ADR зафиксировать language switch и отсутствие compatibility layer. `docs/05`, `CHANGELOG.md`, `TEST_RESULTS.md`, `skills/takt` должны отражать только фактически реализованный срез после прохождения tests.
+  В `docs/03` описать target root/node/command, все reference contexts, shell/non-shell `$$`, `output_format`, A0/A1 gating и old Run guard. В `docs/09` описать runtime precedence; в ADR зафиксировать language switch и отсутствие compatibility layer. `docs/05`, `CHANGELOG.md`, `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`, `skills/takt` должны отражать только фактически реализованный срез после прохождения tests.
 
 - [x] **Step 4: Завершить A0 release gate.**
 
@@ -486,7 +486,7 @@
 - Modify: `tests/e2e/core_contracts_test.go` or create a focused `tests/e2e/archon_loop_contracts_test.go`
 - Modify: `internal/runtime/runner_test.go`, `internal/runtime/composition_test.go`
 - Use: `internal/workflow/testdata/archon/t1-fix-issue.yaml`
-- Modify: `docs/05-implementation-status.md`, `CHANGELOG.md`, `TEST_RESULTS.md`
+- Modify: `docs/05-implementation-status.md`, `CHANGELOG.md`, `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`
 
 - [x] **Step 1: Add fake-host vertical fixture.**
 
@@ -517,12 +517,12 @@
 - Modify: `docs/09-runtime-semantics.md`
 - Modify: `docs/10-assistant-adapter-spec.md`
 - Modify: `docs/07-archon-compatibility.md`
-- Modify: `docs/72-architecture-contracts-v0.1.57.md`
+- Modify: `docs/archive/releases/72-architecture-contracts-v0.1.57.md`
 - Modify: `ARCHITECTURE_DECISIONS.md`
 - Modify: `docs/05-implementation-status.md`
 - Modify: `docs/12-document-map.md`
 - Modify: `skills/takt/SKILL.md`, `skills/takt/references/*.md`
-- Modify: `CHANGELOG.md`, `TEST_RESULTS.md`
+- Modify: `CHANGELOG.md`, `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`
 
 - [x] **Step 1: Синхронизировать документы с фактической реализацией.**
 
@@ -530,7 +530,7 @@
 
 - [x] **Step 2: Обновить status только после доказательств.**
 
-  В `docs/05` пометить A0/A1 как реализованные только после полного gate; B/C и parallel mutating merge оставить deferred/conditional. `TEST_RESULTS.md` содержит команды, даты, результаты и ограничения fake-host; не заявлять live Pi/OpenCode budget proof.
+  В `docs/05` пометить A0/A1 как реализованные только после полного gate; B/C и parallel mutating merge оставить deferred/conditional. `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md` содержит команды, даты, результаты и ограничения fake-host; не заявлять live Pi/OpenCode budget proof.
 
 - [x] **Step 3: Выполнить полный release gate.**
 

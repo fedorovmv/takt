@@ -1,6 +1,9 @@
 # План развития Takt
 
-Актуальный план после `v0.1.57-alpha`. История реализованных срезов находится в `05-implementation-status.md` и релизных документах `docs/18-*.md` … `docs/72-*.md`.
+Актуальный план после `v0.1.57-alpha`. История реализованных срезов находится
+в `05-implementation-status.md` и документах
+`docs/archive/releases/`. Текущие architecture/evaluation contracts остаются
+в `docs/71–73`.
 
 ## Текущая позиция
 
@@ -25,19 +28,19 @@ Takt уже закрывает основной локальный control plane
 
 ## P-0.5. Test architecture — выполнено в v0.1.53 и hardened в v0.1.54
 
-После production refactor product correctness принадлежит Go tests, black-box проверки живут в `tests/e2e`, subprocesses bounded. В `v0.1.54` shell ограничен единственным TypeScript compiler smoke. Architecture gate контролирует эту границу. Детали — `docs/67-go-native-test-architecture-v0.1.53.md`, `docs/68-architecture-hardening-v0.1.54.md`, ADR-086/087.
+После production refactor product correctness принадлежит Go tests, black-box проверки живут в `tests/e2e`, subprocesses bounded. В `v0.1.54` shell ограничен единственным TypeScript compiler smoke. Architecture gate контролирует эту границу. Детали — `docs/archive/releases/67-go-native-test-architecture-v0.1.53.md`, `docs/archive/releases/68-architecture-hardening-v0.1.54.md`, ADR-086/087.
 
 ## P-0.25. Core modularization — выполнено в v0.1.55
 
-Stable core отделён от `experimental`, `extensions` и `tooling` односторонними import boundaries. Dynamic Flow остаётся одним из экспериментальных способов интеграции с coding agents, evaluation/compatibility вынесены из runtime graph, Package/Block/Notification оформлены как extensions. Самописный YAML parser заменён upstream library, добавлен отдельный user-journey release gate. Детали — `docs/69-core-stabilization-modularization-v0.1.55.md`, ADR-088.
+Stable core отделён от `experimental`, `extensions` и `tooling` односторонними import boundaries. Dynamic Flow остаётся одним из экспериментальных способов интеграции с coding agents, evaluation/compatibility вынесены из runtime graph, Package/Block/Notification оформлены как extensions. Самописный YAML parser заменён upstream library, добавлен отдельный user-journey release gate. Детали — `docs/archive/releases/69-core-stabilization-modularization-v0.1.55.md`, ADR-088.
 
 ## P-0.1. Codebase hygiene — выполнено в v0.1.56
 
-Commodity JSON Schema execution вынесен в upstream library, Pi/OpenCode отделены от stable assistant core, fake binaries — от product commands, внешний worker/tool lifecycle выделен в `internal/externalworker`, а оставшиеся стабильные orchestration hotspots разложены на фазы. После этого общий архитектурный refactor считается закрытым; дальнейшие изменения должны исходить из реальных user/live scenarios. Детали — `docs/70-codebase-hygiene-stabilization-v0.1.56.md`, ADR-089.
+Commodity JSON Schema execution вынесен в upstream library, Pi/OpenCode отделены от stable assistant core, fake binaries — от product commands, внешний worker/tool lifecycle выделен в `internal/externalworker`, а оставшиеся стабильные orchestration hotspots разложены на фазы. После этого общий архитектурный refactor считается закрытым; дальнейшие изменения должны исходить из реальных user/live scenarios. Детали — `docs/archive/releases/70-codebase-hygiene-stabilization-v0.1.56.md`, ADR-089.
 
 ## P-0.05. Architecture contracts — выполнено в v0.1.57
 
-Перед переходом к user stabilization закреплены три ограничения эволюции: workflow-language constitution, immutable extension registrations через единственный bootstrap и schema-first canonical operations для appapi/MCP/docs. Это не новый framework и не feature slice; правила защищают уже очищенные границы от повторного разрастания. Детали — `docs/72-architecture-contracts-v0.1.57.md`, ADR-090.
+Перед переходом к user stabilization закреплены три ограничения эволюции: workflow-language constitution, immutable extension registrations через единственный bootstrap и schema-first canonical operations для appapi/MCP/docs. Это не новый framework и не feature slice; правила защищают уже очищенные границы от повторного разрастания. Текущий контракт описан в `docs/04-architecture.md` и ADR-090.
 
 ## P0. User stabilization
 

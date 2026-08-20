@@ -61,7 +61,8 @@ Takt успешно превратился из эксперимента по г
 - роли не являются фиксированной сущностью ядра; они могут быть инструкциями, отдельными sessions или отсутствовать (`H1:11482-11505`);
 - Takt не реализует собственный tool loop, LSP, файловые LLM-tools, память беседы или subagent framework.
 
-Эта модель закреплена в `docs/01-project.md:17-53` и `docs/02-approach.md:23-62`.
+Эта модель закреплена в `docs/01-project.md:17-53` и историческом
+`docs/archive/analysis/02-initial-approach.md:23-62`.
 
 ### 3.3. Dynamic Takt и embedding в coding agents
 
@@ -102,7 +103,7 @@ Takt успешно превратился из эксперимента по г
 | Компактная agent-facing MCP surface | Основной агент видит пять task tools; host/worker/operator скрыты |
 | Deterministic `code:plan-to-pr` acceptance | Реализовано в `5c390f9`: scope, PR/review/summary gates и `safe_success/safe_stop` |
 
-Подтверждающие текущие источники: `docs/05-implementation-status.md`, `docs/09-runtime-semantics.md`, `docs/10-assistant-adapter-spec.md`, `docs/72-architecture-contracts-v0.1.57.md`, `internal/architecture`, `internal/runtime`, `tests/e2e`.
+Подтверждающие текущие источники: `docs/05-implementation-status.md`, `docs/09-runtime-semantics.md`, `docs/10-assistant-adapter-spec.md`, `docs/04-architecture.md`, `internal/architecture`, `internal/runtime`, `tests/e2e`. Исторический release slice сохранён в `docs/archive/releases/72-architecture-contracts-v0.1.57.md`.
 
 ## 5. Явно незавершённые продуктовые направления
 

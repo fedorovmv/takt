@@ -379,7 +379,7 @@ predicate truncation, `requires`, `until_bash`, cancel/recovery, retry N+1,
 - [x] Foreign promise сериализуется как `signal_ambiguous`.
 - [x] JSON Schema и Go validation совпадают по размещению A1 fields.
 - [x] Root README и current user docs используют только target Workflow dialect.
-- [x] `TEST_RESULTS.md` обновляется только фактически выполненными командами и тестами.
+- [x] `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md` обновляется только фактически выполненными командами и тестами.
 - [x] После focused checks выполнены `make check`, `./scripts/verify.sh` и `git diff --check`.
 
 В текущей review-сессии commit выполняется по прямому запросу пользователя

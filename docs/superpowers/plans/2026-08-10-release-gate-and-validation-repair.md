@@ -278,7 +278,7 @@ git commit -m "ci: require host TypeScript smoke"
 **Files:**
 - Modify: `CHANGELOG.md`
 - Modify: `docs/05-implementation-status.md`
-- Modify: `TEST_RESULTS.md`
+- Modify: `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`
 - Modify: `MANIFEST.sha256`
 - Include: `docs/superpowers/specs/2026-08-10-release-gate-and-validation-repair-design.md`
 - Include: `docs/superpowers/plans/2026-08-10-release-gate-and-validation-repair.md`
@@ -296,7 +296,7 @@ Add concise `v0.1.57-alpha` bullets stating:
 - GitHub Actions now installs pinned TypeScript 5.7.2 and requires host-integration compilation; local Go-only checks may still skip it when the compiler is absent.
 ```
 
-Record the final commands and exact outcomes in a dated addendum at the top of `TEST_RESULTS.md`. Do not rewrite historical release evidence.
+Record the final commands and exact outcomes in a dated addendum at the top of `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`. Do not rewrite historical release evidence.
 
 - [x] **Step 2: Run formatting and focused checks**
 
@@ -357,7 +357,7 @@ Expected: PASS. The local TypeScript step may print `SKIP`; the separate require
 - [x] **Step 7: Commit release metadata and manifest**
 
 ```bash
-git add CHANGELOG.md docs/05-implementation-status.md TEST_RESULTS.md MANIFEST.sha256 docs/superpowers
+git add CHANGELOG.md docs/05-implementation-status.md docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md MANIFEST.sha256 docs/superpowers
 git commit -m "docs: record release gate repair"
 ```
 

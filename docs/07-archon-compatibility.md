@@ -31,7 +31,8 @@ Hard budgets, `run inspect` и mutating merge fan-out остаются deferred.
 | retry | attempts + portable hooks |
 | platform control tools | локальный stdio MCP control plane поверх файлового Run store |
 
-Полный список процессов и соответствий описан в `38-archon-workflow-catalog-v0.1.24.md`.
+Историческая таблица миграции процессов сохранена в
+[`archive/releases/38-archon-workflow-catalog-v0.1.24.md`](archive/releases/38-archon-workflow-catalog-v0.1.24.md).
 
 ## Отличия платформенного уровня
 

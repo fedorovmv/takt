@@ -521,7 +521,7 @@ Router не должен обучаться на собственных выво
 
 Второй срез реализует внутренний `RoleDefinition`, bounded `TaskBrief`, scope `expected|allowed|protected|forbidden`, required/preferred checks и реакции `deny|repair|warn`. Required technical failure получает одну автоматическую repair-итерацию с повторной независимой проверкой; повторный отказ переводит процесс в `waiting` с одним материальным вопросом. Read-only роли получают реальную adapter policy. Для mutating-ролей `changed_files` сверяется с фактическим Git diff managed worktree, а automatic repair продолжает тот же execution workspace; это даёт проверяемую границу результата без ложного обещания path-level OS sandbox.
 
-Одновременно исправлены критичные pause/recovery/notification дефекты v0.1.37 и compact Task API v0.1.38. Полный механизм описан в `docs/53-role-brief-controls-v0.1.39.md`.
+Одновременно исправлены критичные pause/recovery/notification дефекты v0.1.37 и compact Task API v0.1.38. Полный механизм описан в `docs/archive/releases/53-role-brief-controls-v0.1.39.md`.
 
 ## 19. Реализация в v0.1.40-alpha
 

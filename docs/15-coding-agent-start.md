@@ -10,7 +10,7 @@ Takt — локальный Go-runtime, который выбирает и ис�
 
 1. корневой `AGENTS.md`;
 2. `skills/takt/SKILL.md`;
-3. `docs/52-simple-reliable-agent-neutral-router-v0.1.38.md`;
+3. `docs/archive/releases/52-simple-reliable-agent-neutral-router-v0.1.38.md`;
 4. `docs/proposals/001-simple-reliable-agent-neutral-takt.md`;
 5. `docs/03-specification.md`;
 6. `docs/09-runtime-semantics.md`;

@@ -15,7 +15,7 @@
 - Git changes are read NUL-delimited with `git diff --name-only -z --no-renames <base> --` and `git ls-files --others --exclude-standard -z`; `$ARTIFACTS_DIR` is outside the worktree and is not drift.
 - Scope failures, missing evidence, review failures, PR domain failures, and incomplete summaries fail closed through deterministic workflow gates.
 - Product correctness belongs in Go tests and `tests/e2e`; no new shell test or generic plugin/framework abstraction.
-- Update affected specification/status/profile docs, changelog, and `TEST_RESULTS.md`; leave historical release documents unchanged.
+- Update affected specification/status/profile docs, changelog, and `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`; leave historical release documents unchanged.
 
 ---
 
@@ -130,7 +130,7 @@
 - Modify: `docs/03-specification.md`
 - Modify: `docs/05-implementation-status.md`
 - Modify: `CHANGELOG.md`
-- Modify: `TEST_RESULTS.md`
+- Modify: `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`
 
 **Interfaces:**
 - Consumes: The `allowed_paths` input and `plan-to-pr` acceptance output from Task 3.
@@ -146,7 +146,7 @@
 
 - [x] **Step 3: Update only current docs and version.**
 
-  Document `base_branch`, non-magic repository-relative Git pathspecs, required scope input, deterministic gates, bounded fake-SCM guarantee, and `safe_success|safe_stop|unsafe_success`. Update the profile version to `0.17.0`, root current-version references, implementation status, changelog, and `TEST_RESULTS.md`. Do not edit historical `docs/38` or older release records.
+  Document `base_branch`, non-magic repository-relative Git pathspecs, required scope input, deterministic gates, bounded fake-SCM guarantee, and `safe_success|safe_stop|unsafe_success`. Update the profile version to `0.17.0`, root current-version references, implementation status, changelog, and `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`. Do not edit historical `docs/38` or older release records.
 
 - [x] **Step 4: Make router selection fail closed.**
 
@@ -154,7 +154,7 @@
 
 - [x] **Step 5: Run focused contracts and commit.**
 
-  Run `go test ./tests/e2e -run 'CodeProfileCatalogContract|Route' -count=1`; commit with `git add internal/profile/builtin/code/commands/route-workflow.md internal/profile/builtin/code/README.md internal/profile/builtin/code/VERSION README.md docs/03-specification.md docs/05-implementation-status.md CHANGELOG.md TEST_RESULTS.md tests/e2e && git commit -m "docs: publish deterministic plan to pr contract"`.
+  Run `go test ./tests/e2e -run 'CodeProfileCatalogContract|Route' -count=1`; commit with `git add internal/profile/builtin/code/commands/route-workflow.md internal/profile/builtin/code/README.md internal/profile/builtin/code/VERSION README.md docs/03-specification.md docs/05-implementation-status.md CHANGELOG.md docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md tests/e2e && git commit -m "docs: publish deterministic plan to pr contract"`.
 
 ### Task 5: Run the full release verification
 
@@ -178,8 +178,8 @@
 
 - [x] **Step 2: Inspect the final persisted evidence.**
 
-  Run `git diff --check`, `git status --short`, and the focused acceptance test once more. Confirm the working tree is clean except for intentional generated/build outputs ignored by Git, then record exact commands and outcomes in `TEST_RESULTS.md`.
+  Run `git diff --check`, `git status --short`, and the focused acceptance test once more. Confirm the working tree is clean except for intentional generated/build outputs ignored by Git, then record exact commands and outcomes in `docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md`.
 
 - [x] **Step 3: Commit verification evidence.**
 
-  Commit any intentional test-results-only update with `git add TEST_RESULTS.md && git commit -m "test: record deterministic acceptance evidence"`; otherwise leave the previous focused commits unchanged.
+  Commit any intentional test-results-only update with `git add docs/archive/verification/TEST_RESULTS-v0.1.57-2026-08-18.md && git commit -m "test: record deterministic acceptance evidence"`; otherwise leave the previous focused commits unchanged.
