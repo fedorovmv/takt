@@ -94,3 +94,12 @@ func TestRunAssessmentDescriptorIsCanonical(t *testing.T) {
 		t.Fatalf("input schema = %#v", descriptor.InputSchema)
 	}
 }
+
+func TestRunObservationDescriptorsAreCanonical(t *testing.T) {
+	for id, tool := range map[string]string{"run.status": "takt.run.status", "run.stats": "takt.run.stats", "run.inspect": "takt.run.inspect"} {
+		descriptor, ok := Descriptor(id)
+		if !ok || descriptor.MCPTool != tool || descriptor.Stage != StageStable {
+			t.Fatalf("%s descriptor = %#v, ok=%v", id, descriptor, ok)
+		}
+	}
+}

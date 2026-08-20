@@ -416,6 +416,17 @@ func (r *Registry) registerRunOperations() {
 	registerOperation(r, "run.assessment", func(ctx context.Context, params application.AssessmentQuery) (any, error) {
 		return r.runs.Assessments(params)
 	})
+	registerOperation(r, "run.status", func(ctx context.Context, params struct {
+		RunID string `json:"run_id"`
+	}) (any, error) {
+		return r.runs.Status(params.RunID)
+	})
+	registerOperation(r, "run.stats", func(ctx context.Context, params application.RunStatsQuery) (any, error) {
+		return r.runs.Stats(params)
+	})
+	registerOperation(r, "run.inspect", func(ctx context.Context, params application.RunInspectQuery) (any, error) {
+		return r.runs.Inspect(params)
+	})
 	registerOperation(r, "run.events", func(ctx context.Context, params struct {
 		RunID         string `json:"run_id"`
 		AfterRevision uint64 `json:"after_revision"`

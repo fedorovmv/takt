@@ -320,6 +320,45 @@ Input schema:
 }
 ```
 
+### `run.inspect` — Inspect Takt Run
+
+- MCP tool: `takt.run.inspect`
+- Stage: `stable`
+
+Build a deterministic case, cause, evidence and node view from durable Run state, events, artifacts and non-stale assessments.
+
+Input schema:
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "case_id": {
+      "description": "Optional case filter",
+      "type": "string"
+    },
+    "node_id": {
+      "description": "Optional node filter",
+      "type": "string"
+    },
+    "repeat": {
+      "description": "Optional repeat filter",
+      "maximum": 1000000,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "run_id": {
+      "description": "Run ID",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `run.list` — List Takt Runs
 
 - MCP tool: `takt.run.list`
@@ -540,6 +579,60 @@ Input schema:
   },
   "required": [
     "selector"
+  ],
+  "type": "object"
+}
+```
+
+### `run.stats` — Get Takt Run statistics
+
+- MCP tool: `takt.run.stats`
+- Stage: `stable`
+
+Aggregate matrix denominator, attempts, usage, non-stale primary assessment outcomes and optional deterministic gates.
+
+Input schema:
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "check_gates": {
+      "description": "Evaluate gates embedded in the Run input",
+      "type": "boolean"
+    },
+    "run_id": {
+      "description": "Run ID",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id"
+  ],
+  "type": "object"
+}
+```
+
+### `run.status` — Get Takt Run status
+
+- MCP tool: `takt.run.status`
+- Stage: `stable`
+
+Read technical Run state, matrix progress, usage, attempts and a compact assessment summary.
+
+Input schema:
+
+```json
+{
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "description": "Run ID",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id"
   ],
   "type": "object"
 }

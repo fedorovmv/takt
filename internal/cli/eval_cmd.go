@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"takt/internal/application"
 	"takt/internal/bootstrap"
 	"takt/internal/tooling"
 )
@@ -248,12 +249,28 @@ func evalCmd(ctx context.Context, args []string) error {
 		return printResult(*jsonOut, report)
 	case "stats":
 		fs := newFlagSet("eval stats")
+		checkGates := fs.Bool("check-gates", false, "evaluate gates embedded in Run input")
 		jsonOut := fs.Bool("json", false, "JSON output")
-		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--json": false})); err != nil {
+		if err := fs.Parse(interspersed(args[1:], map[string]bool{"--check-gates": false, "--json": false})); err != nil {
 			return err
 		}
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval stats <evaluation-output-dir> [--json]")
+		}
+		if exists, existsErr := runObservationExists(app, fs.Arg(0)); existsErr != nil {
+			return existsErr
+		} else if exists {
+			stats, err := app.Core.RunService.Stats(application.RunStatsQuery{RunID: fs.Arg(0), CheckGates: *checkGates})
+			if err != nil {
+				return err
+			}
+			if err := printResult(*jsonOut, stats); err != nil {
+				return err
+			}
+			return stats.GateFailure()
+		}
+		if *checkGates {
+			return fmt.Errorf("--check-gates requires a Run ID")
 		}
 		stats, err := service.Stats(ctx, fs.Arg(0))
 		if err != nil {
@@ -268,6 +285,15 @@ func evalCmd(ctx context.Context, args []string) error {
 		}
 		if fs.NArg() != 1 {
 			return fmt.Errorf("usage: takt eval status <evaluation-output-dir> [--json]")
+		}
+		if exists, existsErr := runObservationExists(app, fs.Arg(0)); existsErr != nil {
+			return existsErr
+		} else if exists {
+			status, err := app.Core.RunService.Status(fs.Arg(0))
+			if err != nil {
+				return err
+			}
+			return printResult(*jsonOut, status)
 		}
 		status, err := service.Status(ctx, fs.Arg(0))
 		if err != nil {
@@ -291,6 +317,15 @@ func evalCmd(ctx context.Context, args []string) error {
 		if *repeat > 0 && *caseID == "" {
 			return fmt.Errorf("repeat requires --case")
 		}
+		if exists, existsErr := runObservationExists(app, fs.Arg(0)); existsErr != nil {
+			return existsErr
+		} else if exists {
+			inspection, err := app.Core.RunService.Inspect(application.RunInspectQuery{RunID: fs.Arg(0), CaseID: *caseID, Repeat: *repeat})
+			if err != nil {
+				return err
+			}
+			return printResult(*jsonOut, inspection)
+		}
 		inspection, err := service.Inspect(ctx, tooling.EvaluationInspectRequest{OutputDir: fs.Arg(0), CaseID: *caseID, Repeat: *repeat})
 		if err != nil {
 			return err
@@ -313,6 +348,13 @@ func evalCmd(ctx context.Context, args []string) error {
 	default:
 		return fmt.Errorf("usage: takt eval <flow|run|analyze|report|stats|status|inspect|benchmark|task-benchmark|compare> [flags]")
 	}
+}
+
+func runObservationExists(app *bootstrap.App, value string) (bool, error) {
+	if app == nil || app.Core == nil {
+		return false, fmt.Errorf("application is not configured")
+	}
+	return app.Core.RunService.HasRun(value)
 }
 
 func newEvalTrace(writer io.Writer, now func() time.Time) func(string) {

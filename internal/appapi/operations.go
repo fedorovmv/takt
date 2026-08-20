@@ -113,6 +113,11 @@ var canonicalOperationDescriptors = []OperationDescriptor{
 		"run_id": stringProp("Run ID"), "role": map[string]any{"type": "string", "enum": []string{"primary", "advisory"}, "description": "Optional assessment role filter"},
 		"include_stale": boolProp("Include assessments pinned to an older target result revision"),
 	}, "run_id"), Annotations: readOnly, Stage: StageStable},
+	{ID: "run.status", MCPTool: "takt.run.status", Title: "Get Takt Run status", Description: "Read technical Run state, matrix progress, usage, attempts and a compact assessment summary.", InputSchema: object(map[string]any{"run_id": stringProp("Run ID")}, "run_id"), Annotations: readOnly, Stage: StageStable},
+	{ID: "run.stats", MCPTool: "takt.run.stats", Title: "Get Takt Run statistics", Description: "Aggregate matrix denominator, attempts, usage, non-stale primary assessment outcomes and optional deterministic gates.", InputSchema: object(map[string]any{"run_id": stringProp("Run ID"), "check_gates": boolProp("Evaluate gates embedded in the Run input")}, "run_id"), Annotations: readOnly, Stage: StageStable},
+	{ID: "run.inspect", MCPTool: "takt.run.inspect", Title: "Inspect Takt Run", Description: "Build a deterministic case, cause, evidence and node view from durable Run state, events, artifacts and non-stale assessments.", InputSchema: object(map[string]any{
+		"run_id": stringProp("Run ID"), "case_id": stringProp("Optional case filter"), "repeat": integerProp("Optional repeat filter", 1, 1000000), "node_id": stringProp("Optional node filter"),
+	}, "run_id"), Annotations: readOnly, Stage: StageStable},
 	{ID: "run.events", MCPTool: "takt.run.events", Title: "Read Takt Run events", Description: "Read events after a durable revision cursor. wait_ms enables bounded long polling for incremental monitoring.", InputSchema: object(map[string]any{
 		"run_id": stringProp("Run ID"), "after_revision": integerProp("Return events with a greater revision", 0, int(^uint32(0))),
 		"limit": integerProp("Maximum events, defaults to 200", 1, 1000), "wait_ms": integerProp("Long-poll wait, 0 to 30000 milliseconds", 0, 30000),

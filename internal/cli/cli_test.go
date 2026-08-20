@@ -910,6 +910,15 @@ func TestRunAssessmentCmdRequiresRunID(t *testing.T) {
 	}
 }
 
+func TestRunObservationCommandsRequireRunID(t *testing.T) {
+	for _, operation := range []string{"status", "stats", "inspect"} {
+		err := runDispatchCmd(context.Background(), []string{operation})
+		if err == nil || !strings.Contains(err.Error(), "usage: takt run "+operation+" <run-id>") {
+			t.Fatalf("%s error = %v", operation, err)
+		}
+	}
+}
+
 func TestPrintErrorJSONUsesStableEnvelope(t *testing.T) {
 	old := os.Stderr
 	r, w, err := os.Pipe()

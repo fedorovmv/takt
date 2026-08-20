@@ -18,7 +18,7 @@ func runDispatchCmd(ctx context.Context, args []string) error {
 		return runCmd(ctx, args)
 	}
 	switch args[0] {
-	case "list", "attention", "summary", "assessment", "watch", "pause", "resume", "retry", "fork", "abandon", "recover":
+	case "list", "attention", "summary", "assessment", "status", "stats", "inspect", "watch", "pause", "resume", "retry", "fork", "abandon", "recover":
 		return runOperationsCmd(ctx, args[0], args[1:])
 	default:
 		return runCmd(ctx, args)
@@ -35,6 +35,12 @@ func runOperationsCmd(ctx context.Context, operation string, args []string) erro
 		return runSummaryCmd(ctx, args)
 	case "assessment":
 		return runAssessmentCmd(ctx, args)
+	case "status":
+		return runStatusCmd(ctx, args)
+	case "stats":
+		return runStatsCmd(ctx, args)
+	case "inspect":
+		return runInspectCmd(ctx, args)
 	case "watch":
 		return runWatchCmd(ctx, args)
 	case "pause":
@@ -52,6 +58,126 @@ func runOperationsCmd(ctx context.Context, operation string, args []string) erro
 	default:
 		return fmt.Errorf("unknown run operation %q", operation)
 	}
+}
+
+func runStatusCmd(ctx context.Context, args []string) error {
+	fs := newFlagSet("run status")
+	workspace := fs.String("workspace", ".", "control workspace")
+	useDaemon := fs.Bool("daemon", false, "use local daemon")
+	socket := fs.String("socket", "", "daemon Unix socket path")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--daemon": false, "--socket": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt run status <run-id>")
+	}
+	var result application.RunStatusResult
+	if *useDaemon {
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		if err := client.Call(ctx, "run.status", map[string]string{"run_id": fs.Arg(0)}, &result); err != nil {
+			return err
+		}
+	} else {
+		service, err := localServices(*workspace, ".takt/config.yaml")
+		if err != nil {
+			return err
+		}
+		value, err := service.RunService.Status(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		result = *value
+	}
+	return printResult(*jsonOut, &result)
+}
+
+func runStatsCmd(ctx context.Context, args []string) error {
+	fs := newFlagSet("run stats")
+	workspace := fs.String("workspace", ".", "control workspace")
+	checkGates := fs.Bool("check-gates", false, "evaluate gates embedded in Run input")
+	useDaemon := fs.Bool("daemon", false, "use local daemon")
+	socket := fs.String("socket", "", "daemon Unix socket path")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--check-gates": false, "--daemon": false, "--socket": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt run stats <run-id> [--check-gates]")
+	}
+	request := application.RunStatsQuery{RunID: fs.Arg(0), CheckGates: *checkGates}
+	var result application.RunStatsResult
+	if *useDaemon {
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		if err := client.Call(ctx, "run.stats", request, &result); err != nil {
+			return err
+		}
+	} else {
+		service, err := localServices(*workspace, ".takt/config.yaml")
+		if err != nil {
+			return err
+		}
+		value, err := service.RunService.Stats(request)
+		if err != nil {
+			return err
+		}
+		result = *value
+	}
+	if err := printResult(*jsonOut, &result); err != nil {
+		return err
+	}
+	return result.GateFailure()
+}
+
+func runInspectCmd(ctx context.Context, args []string) error {
+	fs := newFlagSet("run inspect")
+	workspace := fs.String("workspace", ".", "control workspace")
+	caseID := fs.String("case", "", "case filter")
+	repeat := fs.Int("repeat", 0, "repeat filter")
+	nodeID := fs.String("node", "", "node filter")
+	useDaemon := fs.Bool("daemon", false, "use local daemon")
+	socket := fs.String("socket", "", "daemon Unix socket path")
+	jsonOut := fs.Bool("json", true, "JSON output")
+	if err := fs.Parse(interspersed(args, map[string]bool{"--workspace": true, "--case": true, "--repeat": true, "--node": true, "--daemon": false, "--socket": true, "--json": false})); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: takt run inspect <run-id> [--case ID] [--repeat N] [--node ID]")
+	}
+	if *repeat < 0 {
+		return fmt.Errorf("repeat cannot be negative")
+	}
+	if *repeat > 0 && *caseID == "" {
+		return fmt.Errorf("repeat requires --case")
+	}
+	request := application.RunInspectQuery{RunID: fs.Arg(0), CaseID: *caseID, Repeat: *repeat, NodeID: *nodeID}
+	var result application.RunInspectResult
+	if *useDaemon {
+		client, err := daemon.NewClient(*workspace, *socket)
+		if err != nil {
+			return err
+		}
+		if err := client.Call(ctx, "run.inspect", request, &result); err != nil {
+			return err
+		}
+	} else {
+		service, err := localServices(*workspace, ".takt/config.yaml")
+		if err != nil {
+			return err
+		}
+		value, err := service.RunService.Inspect(request)
+		if err != nil {
+			return err
+		}
+		result = *value
+	}
+	return printResult(*jsonOut, &result)
 }
 
 func runAssessmentCmd(ctx context.Context, args []string) error {

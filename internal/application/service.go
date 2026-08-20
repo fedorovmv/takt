@@ -379,6 +379,17 @@ func (s *RunService) GetRun(runID string) (*store.RunState, error) {
 	return state.PublicView(), nil
 }
 
+func (s *RunService) HasRun(runID string) (bool, error) {
+	if err := store.ValidateRunID(runID); err != nil {
+		return false, nil
+	}
+	_, err := s.store.Load(runID)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 func (s *RunService) EvaluationSnapshot(runID string) (*EvaluationSnapshot, error) {
 	root, err := s.store.Load(runID)
 	if err != nil {
