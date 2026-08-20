@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://takt.dev/schemas/v1alpha1/assessment.schema.json",
+  "title": "Takt Assessment v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "type", "id", "role", "target", "assessor", "scope", "result", "outcome", "evidence", "created_at"],
+  "properties": {
+    "protocol_version": {"const": "takt-assessment/v1alpha1"},
+    "type": {"const": "assessment"},
+    "id": {"type": "string", "minLength": 1},
+    "role": {"enum": ["primary", "advisory"]},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "revision", "status", "workflow_fingerprint", "config_fingerprint"],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "revision": {"type": "integer", "minimum": 1},
+        "status": {"enum": ["completed", "failed", "cancelled", "abandoned"]},
+        "workflow_fingerprint": {"type": "string"},
+        "config_fingerprint": {"type": "string"}
+      }
+    },
+    "assessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "node_id", "revision"],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "node_id": {"type": "string", "minLength": 1},
+        "revision": {"type": "integer", "minimum": 1}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {"type": "string"},
+        "repeat": {"type": "integer", "minimum": 0}
+      }
+    },
+    "result": {"$ref": "#/$defs/validationResult"},
+    "outcome": {"enum": ["true_accept", "false_accept", "true_reject", "false_reject"]},
+    "evidence": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/evidence"}
+    },
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"role": {"const": "primary"}}, "required": ["role"]},
+      "then": {
+        "properties": {
+          "scope": {"required": ["case_id", "repeat"], "properties": {"case_id": {"minLength": 1}, "repeat": {"minimum": 1}}},
+          "evidence": {"minItems": 1}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producer_run_id", "artifact_id", "sha256"],
+      "properties": {
+        "producer_run_id": {"type": "string", "minLength": 1},
+        "artifact_id": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
+      }
+    },
+    "validationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "type", "valid"],
+      "properties": {
+        "protocol_version": {"const": "takt-validation/v1alpha1"},
+        "type": {"const": "validation_result"},
+        "valid": {"type": "boolean"},
+        "score": {"type": "number", "minimum": 0, "maximum": 100},
+        "checks": {"type": "object", "propertyNames": {"minLength": 1}, "additionalProperties": {"$ref": "#/$defs/check"}},
+        "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}},
+        "metadata": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "passed": {"type": "boolean"},
+        "score": {"type": "number", "minimum": 0, "maximum": 100},
+        "weight": {"type": "number", "minimum": 0},
+        "message": {"type": "string"}
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["info", "warning", "error"]},
+        "path": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    }
+  }
+}

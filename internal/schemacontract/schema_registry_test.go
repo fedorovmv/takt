@@ -116,6 +116,37 @@ func TestWorkflowSchemaValidatesHookFailureSessions(t *testing.T) {
 	}
 }
 
+func TestAssessmentSchemaValidatesPrimaryEnvelope(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "schemas", "assessment.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	document, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compiler.AddResource("assessment.schema.json", document); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := compiler.Compile("assessment.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := map[string]any{
+		"protocol_version": "takt-assessment/v1alpha1", "type": "assessment", "id": "assessment-1", "role": "primary",
+		"target":   map[string]any{"run_id": "run-target", "revision": 7, "status": "completed", "workflow_fingerprint": "wf", "config_fingerprint": "cfg"},
+		"assessor": map[string]any{"run_id": "run-assessor", "node_id": "assess", "revision": 11},
+		"scope":    map[string]any{"case_id": "case-a", "repeat": 1},
+		"result":   map[string]any{"protocol_version": "takt-validation/v1alpha1", "type": "validation_result", "valid": false, "diagnostics": []any{map[string]any{"code": "WRONG", "severity": "error"}}},
+		"outcome":  "false_accept", "evidence": []any{map[string]any{"producer_run_id": "run-assessor", "artifact_id": "evidence:1", "sha256": strings.Repeat("a", 64)}},
+		"created_at": "2026-08-20T10:00:00Z",
+	}
+	if err := schema.Validate(fixture); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEvaluationSchemasValidateFlowFixtures(t *testing.T) {
 	sha := strings.Repeat("a", 64)
 	metric := map[string]any{"baseline": nil, "candidate": nil, "delta": nil, "delta_percent": nil}
