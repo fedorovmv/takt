@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"takt/internal/assistant"
 	"takt/internal/command"
@@ -83,6 +84,9 @@ func validateReferencesRecursive(nodes []spec.Node, defaults effectiveDefaults, 
 			}
 		}
 		if n.WorkflowRun == nil {
+			continue
+		}
+		if strings.Contains(n.WorkflowRun.Path, "$") || strings.Contains(n.WorkflowRun.Repository, "$") {
 			continue
 		}
 		path := n.WorkflowRun.Path

@@ -441,6 +441,7 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 		node.Script.Inline = rewriteTemplate(node.Script.Inline)
 		node.Script.Path = rebaseDefinitionPath(rewriteTemplate(node.Script.Path), workflowPath)
 		node.Script.WorkingDir = rewriteTemplate(node.Script.WorkingDir)
+		node.Script.Stdin = rewriteTemplate(node.Script.Stdin)
 		for index := range node.Script.Dependencies {
 			node.Script.Dependencies[index] = rebaseDefinitionPath(rewriteTemplate(node.Script.Dependencies[index]), workflowPath)
 		}
@@ -464,7 +465,9 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 	}
 	if node.WorkflowRun != nil {
 		node.WorkflowRun.Input = rewriteTemplate(node.WorkflowRun.Input)
-		if !filepath.IsAbs(node.WorkflowRun.Path) {
+		node.WorkflowRun.Path = rewriteTemplate(node.WorkflowRun.Path)
+		node.WorkflowRun.Repository = rewriteTemplate(node.WorkflowRun.Repository)
+		if !strings.Contains(node.WorkflowRun.Path, "$") && !strings.Contains(node.WorkflowRun.Repository, "$") && !filepath.IsAbs(node.WorkflowRun.Path) {
 			node.WorkflowRun.Path = filepath.Clean(filepath.Join(filepath.Dir(workflowPath), node.WorkflowRun.Path))
 		}
 	}
@@ -511,8 +514,10 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 			}
 		}
 	}
-	if unresolved := unresolvedInput(node); unresolved != "" {
-		return fmt.Errorf("node %q contains unresolved subworkflow input %s", node.ID, unresolved)
+	if inlineLocalCommands {
+		if unresolved := unresolvedInput(node); unresolved != "" {
+			return fmt.Errorf("node %q contains unresolved subworkflow input %s", node.ID, unresolved)
+		}
 	}
 	return nil
 }
@@ -562,14 +567,14 @@ func unresolvedInput(node *spec.Node) string {
 		values = append(values, node.SideEffect.IdempotencyKey)
 	}
 	if node.Script != nil {
-		values = append(values, node.Script.Path, node.Script.Inline, node.Script.WorkingDir)
+		values = append(values, node.Script.Path, node.Script.Inline, node.Script.Stdin, node.Script.WorkingDir)
 		values = append(values, node.Script.Args...)
 		for _, value := range node.Script.Env {
 			values = append(values, value)
 		}
 	}
 	if node.WorkflowRun != nil {
-		values = append(values, node.WorkflowRun.Input)
+		values = append(values, node.WorkflowRun.Path, node.WorkflowRun.Repository, node.WorkflowRun.Input)
 	}
 	if node.Matrix != nil {
 		for i := range node.Matrix.Nodes {

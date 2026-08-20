@@ -349,6 +349,78 @@ nodes:
 	}
 }
 
+func TestLoadAcceptsDynamicChildAndScriptStdinInMatrix(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "matrix-dynamic.yaml")
+	if err := os.WriteFile(filepath.Join(dir, "validator"), []byte("#!/bin/sh\ncat\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`name: matrix-dynamic
+input:
+  format: json
+  schema: {type: object}
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      as: case
+      nodes:
+        - id: candidate
+          workflow:
+            path: $case.workflow_path
+            repository: $case.repository
+            keep_worktree: true
+        - id: validate
+          depends_on: [candidate]
+          script:
+            runtime: command
+            path: validator
+            stdin: $case.request
+      output_node: validate
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := wf.Nodes[0].Matrix.Nodes[0]
+	validator := wf.Nodes[0].Matrix.Nodes[1]
+	if candidate.WorkflowRun.Path != "$MATRIX.item.workflow_path" || candidate.WorkflowRun.Repository != "$MATRIX.item.repository" || !candidate.WorkflowRun.KeepWorktree || validator.Script.Stdin != "$MATRIX.item.request" {
+		t.Fatalf("candidate=%+v validator=%+v", candidate.WorkflowRun, validator.Script)
+	}
+	if err := ValidateReferences(wf, &spec.Config{}, command.Resolver{}); err != nil {
+		t.Fatalf("dynamic child was eagerly loaded: %v", err)
+	}
+}
+
+func TestLoadAcceptsRootJSONInputReferenceInScriptStdin(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "root-input.yaml")
+	if err := os.WriteFile(filepath.Join(dir, "reader"), []byte("#!/bin/sh\ncat\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`name: root-input
+input:
+  format: json
+  schema:
+    type: object
+    properties: {request: {type: string}}
+    required: [request]
+nodes:
+  - id: read
+    script:
+      runtime: command
+      path: reader
+      stdin: $INPUTS.request
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err != nil {
+		t.Fatalf("root JSON input reference rejected: %v", err)
+	}
+}
+
 func TestValidateRejectsInvalidMatrixContracts(t *testing.T) {
 	zero := 0
 	cases := []struct {

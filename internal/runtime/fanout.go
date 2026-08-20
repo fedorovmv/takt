@@ -279,7 +279,7 @@ func (r *Runner) finishFanOut(state *store.RunState, node spec.Node, executionSt
 	completed, failed := fanOutTerminalCounts(executionState.nodeState.ChildRuns, executionState.attempt)
 	if err := validateFanOutJoin(executionState.join, completed, failed); err != nil {
 		result.ExitCode = 1
-		return result, &execution.Error{Kind: execution.KindExit, ExitCode: 1, Op: "child fan-out join", Err: err}
+		return result, &execution.Error{Kind: fanOutFailureKind(executionState.nodeState.ChildRuns, executionState.attempt), ExitCode: 1, Op: "child fan-out join", Err: err}
 	}
 	if err := r.commit(state, "child_run.fan_out.completed", node.ID, map[string]any{
 		"attempt": executionState.attempt, "children": completed + failed, "completed": completed, "failed": failed, "join": executionState.join,
@@ -287,6 +287,16 @@ func (r *Runner) finishFanOut(state *store.RunState, node spec.Node, executionSt
 		return execResult{}, err
 	}
 	return result, nil
+}
+
+func fanOutFailureKind(records []store.ChildRunItemState, attempt int) execution.Kind {
+	for _, record := range records {
+		if record.Attempt != attempt || record.Status == store.RunCompleted || record.CancelReason == "fanout_result_decided" || record.ErrorCode == "" || record.ErrorCode == string(execution.KindExit) {
+			continue
+		}
+		return execution.Kind(record.ErrorCode)
+	}
+	return execution.KindExit
 }
 
 func validateFanOutJoin(join string, completed, failed int) error {
@@ -326,7 +336,7 @@ func (r *Runner) runFanOutChild(ctx context.Context, parent *store.RunState, nod
 	if renderErr != nil {
 		return nil, &execution.Error{Kind: execution.KindProtocol, Op: "validate fan-out child workflow input", Err: renderErr}
 	}
-	options := StartOptions{RunID: record.RunID, ParentRunID: parent.ID, ParentNodeID: fmt.Sprintf("%s[%d]", node.ID, record.Index), ModelPreset: r.startOptions.ModelPreset, ModelOverrides: cloneStringMap(r.startOptions.ModelOverrides)}
+	options := StartOptions{RunID: record.RunID, ParentRunID: parent.ID, ParentNodeID: fmt.Sprintf("%s[%d]", node.ID, record.Index), KeepWorktree: definition.KeepWorktree, ModelPreset: r.startOptions.ModelPreset, ModelOverrides: cloneStringMap(r.startOptions.ModelOverrides)}
 	childPolicy := r.inheritedPolicy
 	if definition.Policy != nil {
 		resolvedPolicy, policyErr := resolvePolicyFields(*definition.Policy, r.workflowPath)

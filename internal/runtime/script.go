@@ -148,6 +148,13 @@ func (r *Runner) configureScriptCommand(cmd *exec.Cmd, definition *spec.ScriptSp
 		"TAKT_WORKSPACE="+r.workspace,
 		"TAKT_ARTIFACTS_DIR="+artifactsDir,
 	)
+	if definition.Stdin != "" {
+		rendered, err := renderTemplate(definition.Stdin, state, local, feedback, artifactsDir)
+		if err != nil {
+			return &execution.Error{Kind: execution.KindInternal, Op: "render script stdin", Err: err}
+		}
+		cmd.Stdin = strings.NewReader(rendered)
+	}
 	if r.redactor == nil && len(definition.Env) > 0 {
 		return &execution.Error{Kind: execution.KindInternal, Op: "resolve script environment", Err: fmt.Errorf("redactor dependency is required")}
 	}

@@ -31,6 +31,9 @@ func (r *Runner) runMatrix(ctx context.Context, state *store.RunState, parent sp
 	if err := r.prepareMatrix(state, parent, parentState, rawItems, fingerprint); err != nil {
 		return execResult{}, err
 	}
+	if err := r.preflightMatrixChildren(state, parent, items); err != nil {
+		return execResult{}, err
+	}
 	for index := 0; index < len(items); index++ {
 		branch := &parentState.MatrixBranches[index]
 		if branch.Status == store.NodeCompleted {
@@ -237,7 +240,13 @@ func (r *Runner) startMatrixBranch(state *store.RunState, parent spec.Node, pare
 		}
 	}
 	for _, child := range parent.Matrix.Nodes {
-		state.Nodes[child.ID] = &store.NodeState{Status: store.NodePending, Path: matrixChildNodePath(parent.ID, index, child.ID), Hidden: child.Hidden, PublicParent: child.PublicParent}
+		childState := &store.NodeState{Status: store.NodePending, Path: matrixChildNodePath(parent.ID, index, child.ID), Hidden: child.Hidden, PublicParent: child.PublicParent}
+		if identity, ok := parentState.MatrixBranches[index].ChildWorkflows[child.ID]; ok {
+			childState.ChildWorkflowPath = identity.Path
+			childState.ChildControlWorkspace = identity.Repository
+			childState.ChildWorkflowHash = identity.Fingerprint
+		}
+		state.Nodes[child.ID] = childState
 	}
 	active := index
 	parentState.MatrixActiveIndex = &active
@@ -380,4 +389,111 @@ func activeMatrixValue(state *store.RunState, name string, path []string) (strin
 		}
 	}
 	return "", false
+}
+
+func (r *Runner) preflightMatrixChildren(state *store.RunState, parent spec.Node, items []any) error {
+	hasChild := false
+	for _, node := range parent.Matrix.Nodes {
+		if node.WorkflowRun != nil && node.WorkflowRun.FanOut == nil {
+			hasChild = true
+			break
+		}
+	}
+	if !hasChild {
+		return nil
+	}
+	parentState := state.Nodes[parent.ID]
+	changed := false
+	for index, item := range items {
+		resolved := map[string]store.ChildWorkflowIdentityState{}
+		for _, node := range parent.Matrix.Nodes {
+			if node.WorkflowRun == nil || node.WorkflowRun.FanOut != nil {
+				continue
+			}
+			identity, child, err := r.resolveMatrixChildWorkflow(state, node, item, index, len(items))
+			if err != nil {
+				return matrixPreflightError(index, node.ID, err)
+			}
+			input, err := renderMatrixItemTemplate(node.WorkflowRun.Input, state, item, index, len(items))
+			if err != nil {
+				return matrixPreflightError(index, node.ID, err)
+			}
+			if _, err := ValidateWorkflowInput(input, child.Input); err != nil {
+				return matrixPreflightError(index, node.ID, fmt.Errorf("validate child workflow input: %w", err))
+			}
+			resolved[node.ID] = identity
+		}
+		branch := &parentState.MatrixBranches[index]
+		if branch.ChildWorkflows == nil {
+			branch.ChildWorkflows = resolved
+			changed = true
+			continue
+		}
+		if !sameChildWorkflowIdentities(branch.ChildWorkflows, resolved) {
+			return matrixPreflightError(index, parent.ID, fmt.Errorf("child workflow definition changed since matrix preflight"))
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return r.commit(state, "matrix.preflighted", parent.ID, map[string]any{"items": len(items)})
+}
+
+func (r *Runner) resolveMatrixChildWorkflow(state *store.RunState, node spec.Node, item any, index, total int) (store.ChildWorkflowIdentityState, *spec.Workflow, error) {
+	definition := node.WorkflowRun
+	if dynamicChildWorkflow(definition) {
+		path, err := renderMatrixItemTemplate(definition.Path, state, item, index, total)
+		if err != nil {
+			return store.ChildWorkflowIdentityState{}, nil, err
+		}
+		repository, err := renderMatrixItemTemplate(definition.Repository, state, item, index, total)
+		if err != nil {
+			return store.ChildWorkflowIdentityState{}, nil, err
+		}
+		return r.resolveDynamicChildWorkflow(path, repository, definition.OutputNode)
+	}
+	path, child, err := r.loadChildWorkflow(definition)
+	if err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, err
+	}
+	repository, err := r.resolveChildControlWorkspace(definition.Repository)
+	if err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, err
+	}
+	identity, err := r.staticChildWorkflowIdentity(path, repository, child)
+	return identity, child, err
+}
+
+func matrixPreflightError(index int, nodeID string, err error) error {
+	return &execution.Error{Kind: execution.KindConfiguration, Op: fmt.Sprintf("preflight matrix item %d child %s", index, nodeID), Err: err}
+}
+
+func sameChildWorkflowIdentities(left, right map[string]store.ChildWorkflowIdentityState) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for id, value := range left {
+		if right[id] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func renderMatrixItemTemplate(source string, state *store.RunState, item any, index, total int) (string, error) {
+	extra := func(key string) (string, bool) {
+		switch key {
+		case "matrix.index":
+			return strconv.Itoa(index), true
+		case "matrix.total":
+			return strconv.Itoa(total), true
+		case "matrix.item":
+			return fanOutValueString(item), true
+		}
+		if strings.HasPrefix(key, "matrix.item.") {
+			return fanOutPathLookup(item, strings.Split(strings.TrimPrefix(key, "matrix.item."), "."))
+		}
+		return "", false
+	}
+	return renderTemplateWithResolver(source, state, nil, "", "", extra)
 }

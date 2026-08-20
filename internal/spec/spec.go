@@ -117,6 +117,7 @@ type ScriptSpec struct {
 	Inline       string            `json:"inline,omitempty"`
 	Args         []string          `json:"args,omitempty"`
 	Env          map[string]string `json:"env,omitempty"`
+	Stdin        string            `json:"stdin,omitempty"`
 	WorkingDir   string            `json:"working_directory,omitempty"`
 	Dependencies []string          `json:"dependencies,omitempty"`
 }
@@ -149,13 +150,14 @@ type MatrixSpec struct {
 // WorkflowRunSpec starts another workflow as a separately persisted child Run.
 // Unlike subworkflow, it is not expanded into the parent DAG.
 type WorkflowRunSpec struct {
-	Path       string              `json:"path"`
-	Input      string              `json:"input,omitempty"`
-	OutputNode string              `json:"output_node,omitempty"`
-	Isolation  string              `json:"isolation,omitempty"`
-	Repository string              `json:"repository,omitempty"`
-	Policy     *PolicySpec         `json:"policy,omitempty"`
-	FanOut     *WorkflowFanOutSpec `json:"fan_out,omitempty"`
+	Path         string              `json:"path"`
+	Input        string              `json:"input,omitempty"`
+	OutputNode   string              `json:"output_node,omitempty"`
+	Isolation    string              `json:"isolation,omitempty"`
+	Repository   string              `json:"repository,omitempty"`
+	KeepWorktree bool                `json:"keep_worktree,omitempty"`
+	Policy       *PolicySpec         `json:"policy,omitempty"`
+	FanOut       *WorkflowFanOutSpec `json:"fan_out,omitempty"`
 }
 
 // WorkflowFanOutSpec starts one governed child Run per item resolved from a

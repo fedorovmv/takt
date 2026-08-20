@@ -164,6 +164,24 @@ func TestWorkflowSchemaAcceptsMatrixNode(t *testing.T) {
 	}
 }
 
+func TestWorkflowSchemaAcceptsScriptStdinAndChildKeepWorktree(t *testing.T) {
+	schema := compileSchemaFixture(t, "workflow.schema.json")
+	fixture := map[string]any{
+		"name": "dynamic-child",
+		"nodes": []any{
+			map[string]any{"id": "validate", "script": map[string]any{"runtime": "command", "path": "validator", "stdin": "$INPUTS.request\n"}},
+			map[string]any{"id": "candidate", "workflow": map[string]any{"path": "$MATRIX.item.workflow_path", "repository": "$MATRIX.item.repository", "keep_worktree": true}},
+		},
+	}
+	if err := schema.Validate(fixture); err != nil {
+		t.Fatal(err)
+	}
+	fixture["nodes"].([]any)[0].(map[string]any)["script"] = map[string]any{"runtime": "validation", "stdin": "not allowed"}
+	if err := schema.Validate(fixture); err == nil {
+		t.Fatal("validation runtime accepted stdin")
+	}
+}
+
 func compileSchemaFixture(t *testing.T, name string) *jsonschema.Schema {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "..", "schemas", name))
@@ -367,7 +385,7 @@ func TestRunStateSchemaAcceptsMatrixHistory(t *testing.T) {
 	schema := compileSchemaFixture(t, "run-state.schema.json")
 	fixture := map[string]any{
 		"id": "run", "status": "completed", "workflow_path": "workflow.yaml", "config_path": "config.yaml", "workspace": "workspace", "input": "{}", "input_format": "json", "approvals": map[string]any{}, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z", "revision": 2, "result_revision": 2,
-		"nodes": map[string]any{"cases": map[string]any{"status": "completed", "matrix_fingerprint": strings.Repeat("a", 64), "matrix_branches": []any{map[string]any{"index": 0, "item": map[string]any{"name": "a"}, "item_fingerprint": strings.Repeat("b", 64), "status": "completed", "nodes": map[string]any{"cases__emit": map[string]any{"status": "completed", "path": "/cases[0]/emit"}}, "output": "a", "completed_at": "2026-01-01T00:00:00Z"}}}},
+		"nodes": map[string]any{"cases": map[string]any{"status": "completed", "matrix_fingerprint": strings.Repeat("a", 64), "matrix_branches": []any{map[string]any{"index": 0, "item": map[string]any{"name": "a"}, "item_fingerprint": strings.Repeat("b", 64), "status": "completed", "child_workflows": map[string]any{"cases__candidate": map[string]any{"path": "/repo/workflow.yaml", "repository": "/repo", "fingerprint": strings.Repeat("c", 64)}}, "nodes": map[string]any{"cases__emit": map[string]any{"status": "completed", "path": "/cases[0]/emit"}}, "output": "a", "completed_at": "2026-01-01T00:00:00Z"}}}},
 	}
 	if err := schema.Validate(fixture); err != nil {
 		t.Fatal(err)

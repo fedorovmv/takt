@@ -879,8 +879,8 @@ func validateScript(script spec.ScriptSpec, scope string) error {
 	hasPath := strings.TrimSpace(script.Path) != ""
 	hasInline := strings.TrimSpace(script.Inline) != ""
 	if script.Runtime == "validation" {
-		if hasPath || hasInline || len(script.Args) > 0 || len(script.Dependencies) > 0 {
-			return fmt.Errorf("%s runtime validation reads validation_commands from workflow input and does not accept path, inline, args, or dependencies", scope)
+		if hasPath || hasInline || script.Stdin != "" || len(script.Args) > 0 || len(script.Dependencies) > 0 {
+			return fmt.Errorf("%s runtime validation reads validation_commands from workflow input and does not accept path, inline, stdin, args, or dependencies", scope)
 		}
 	} else {
 		if hasPath == hasInline {

@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"takt/internal/execution"
 	"takt/internal/spec"
 	"takt/internal/store"
 	"takt/internal/workflow"
@@ -350,6 +352,278 @@ nodes:
 	}
 	if _, err := os.Stat(filepath.Join(repo, "changed.txt")); !os.IsNotExist(err) {
 		t.Fatalf("base checkout was modified: %v", err)
+	}
+}
+
+func TestDynamicChildMatrixSelectsContainedWorkflowAndRepository(t *testing.T) {
+	root := t.TempDir()
+	for name, output := range map[string]string{"repo-a": "one", "repo-b": "two"} {
+		repo := filepath.Join(root, name)
+		if err := os.MkdirAll(repo, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mustWriteFile(t, filepath.Join(repo, "child.yaml"), "name: "+name+"\nnodes:\n  - id: result\n    bash: printf "+output+"\n")
+	}
+	parentPath := filepath.Join(root, "parent.yaml")
+	mustWriteFile(t, parentPath, `name: dynamic-children
+input:
+  format: json
+  schema:
+    type: object
+    properties:
+      cases:
+        type: array
+        items:
+          type: object
+          properties:
+            repository: {type: string}
+            workflow_path: {type: string}
+          required: [repository, workflow_path]
+    required: [cases]
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      nodes:
+        - id: candidate
+          workflow:
+            path: $MATRIX.item.workflow_path
+            repository: $MATRIX.item.repository
+            isolation: none
+            keep_worktree: true
+      output_node: candidate
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := fmt.Sprintf(`{"cases":[{"repository":"repo-a","workflow_path":%q},{"repository":"repo-b","workflow_path":%q}]}`, filepath.Join(root, "repo-a", "child.yaml"), filepath.Join(root, "repo-b", "child.yaml"))
+	state, err := New(wf, &spec.Config{}, parentPath, "<config>", root).Start(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Output != `["one","two"]` || len(state.ChildRunIDs) != 2 {
+		t.Fatalf("dynamic matrix output=%s children=%v", state.Output, state.ChildRunIDs)
+	}
+	branches := state.Nodes["cases"].MatrixBranches
+	for index, repository := range []string{"repo-a", "repo-b"} {
+		childNode := branches[index].Nodes["cases__candidate"]
+		child, loadErr := (store.FS{Workspace: root}).Load(childNode.ChildRunID)
+		if loadErr != nil {
+			t.Fatal(loadErr)
+		}
+		wantRepo, _ := filepath.EvalSymlinks(filepath.Join(root, repository))
+		if childNode.ChildControlWorkspace != wantRepo || !child.RunOptions.KeepWorktree {
+			t.Fatalf("branch %d child=%+v run_options=%+v", index, childNode, child.RunOptions)
+		}
+	}
+}
+
+func TestMatrixPreflightRejectsInvalidLaterChildBeforeSideEffect(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(repo, "child.yaml"), "name: child\nnodes:\n  - id: effect\n    bash: touch side-effect; printf ok\n")
+	parentPath := filepath.Join(root, "parent.yaml")
+	mustWriteFile(t, parentPath, dynamicMatrixParentSource())
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := fmt.Sprintf(`{"cases":[{"repository":"repo","workflow_path":%q},{"repository":"repo","workflow_path":%q}]}`, filepath.Join(repo, "child.yaml"), filepath.Join(repo, "missing.yaml"))
+	_, err = New(wf, &spec.Config{}, parentPath, "<config>", root).Start(context.Background(), input)
+	if err == nil || !strings.Contains(err.Error(), "missing.yaml") {
+		t.Fatalf("preflight error = %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(repo, "side-effect")); !os.IsNotExist(statErr) {
+		t.Fatalf("first branch executed before later preflight failure: %v", statErr)
+	}
+}
+
+func TestMatrixPreflightChecksEveryStaticChildInputBeforeSideEffect(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "child.yaml"), `name: child
+input:
+  format: json
+  schema: {type: integer}
+nodes:
+  - id: effect
+    bash: touch side-effect; printf ok
+`)
+	parentPath := filepath.Join(root, "parent.yaml")
+	mustWriteFile(t, parentPath, `name: static-preflight
+input:
+  format: json
+  schema:
+    type: object
+    properties:
+      cases: {type: array, items: {type: object}}
+    required: [cases]
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      nodes:
+        - id: candidate
+          workflow:
+            path: child.yaml
+            input: $MATRIX.item.value
+            isolation: inherit
+      output_node: candidate
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = New(wf, &spec.Config{}, parentPath, "<config>", root).Start(context.Background(), `{"cases":[{"value":1},{"value":"bad"}]}`)
+	if err == nil || !strings.Contains(err.Error(), "workflow input") {
+		t.Fatalf("static input preflight error = %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "side-effect")); !os.IsNotExist(statErr) {
+		t.Fatalf("first static child executed before later input failure: %v", statErr)
+	}
+}
+
+func TestDynamicChildRejectsRepositoryEscapeAndInvalidWorkflow(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	outside := t.TempDir()
+	outsideWorkflow := filepath.Join(root, "outside.yaml")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(repo, "child.yaml"), "name: child\nnodes:\n  - id: done\n    bash: true\n")
+	mustWriteFile(t, outsideWorkflow, "name: outside\nnodes:\n  - id: done\n    bash: true\n")
+	if err := os.Symlink(outside, filepath.Join(root, "escaped-repo")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	parentPath := filepath.Join(root, "parent.yaml")
+	mustWriteFile(t, parentPath, dynamicMatrixParentSource())
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct{ repository, childPath string }{
+		{"../" + filepath.Base(outside), filepath.Join(repo, "child.yaml")},
+		{"escaped-repo", filepath.Join(repo, "child.yaml")},
+		{"repo", outsideWorkflow},
+		{"repo", filepath.Join(repo, "missing.yaml")},
+		{"repo", repo},
+	}
+	for _, tc := range tests {
+		t.Run(tc.repository+tc.childPath, func(t *testing.T) {
+			input := fmt.Sprintf(`{"cases":[{"repository":%q,"workflow_path":%q}]}`, tc.repository, tc.childPath)
+			if _, err := New(wf, &spec.Config{}, parentPath, "<config>", root).Start(context.Background(), input); err == nil {
+				t.Fatalf("dynamic child repository=%q path=%q was accepted", tc.repository, tc.childPath)
+			}
+		})
+	}
+}
+
+func TestDynamicChildDefinitionDriftBlocksMatrixResume(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	childPath := filepath.Join(repo, "child.yaml")
+	if err := os.MkdirAll(filepath.Join(repo, "commands"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	commandPath := filepath.Join(repo, "commands", "build.md")
+	mustWriteFile(t, commandPath, "return one")
+	mustWriteFile(t, childPath, "name: child\nprovider: worker\nmodel: demo\nnodes:\n  - id: result\n    command: build\n")
+	parentPath := filepath.Join(root, "parent.yaml")
+	mustWriteFile(t, parentPath, `name: drift
+input:
+  format: json
+  schema:
+    type: object
+    properties:
+      cases: {type: array, items: {type: object}}
+    required: [cases]
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      nodes:
+        - id: approve
+          approval: {message: continue}
+        - id: candidate
+          depends_on: [approve]
+          workflow:
+            path: $MATRIX.item.workflow_path
+            repository: $MATRIX.item.repository
+            isolation: none
+      output_node: candidate
+`)
+	wf, err := workflow.Load(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := &spec.Config{Models: map[string]spec.ModelSpec{"demo": {Provider: "test", ID: "demo"}}, Assistants: map[string]spec.AssistantSpec{"worker": {Type: "mock"}}}
+	runner := New(wf, config, parentPath, "<config>", root)
+	state, err := runner.Start(context.Background(), fmt.Sprintf(`{"cases":[{"repository":"repo","workflow_path":%q}]}`, childPath))
+	if !errors.Is(err, ErrWaiting) {
+		t.Fatalf("start error = %v", err)
+	}
+	mustWriteFile(t, commandPath, "return changed")
+	approvalID := state.Waiting.NodeID
+	state.Approvals[approvalID] = "yes"
+	state.Nodes[approvalID].Status = store.NodePending
+	state.Status, state.Waiting = store.RunRunning, nil
+	if err := runner.store.Commit(state, store.Event{Type: "approval.answered", NodeID: approvalID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.Resume(context.Background(), state); err == nil || !strings.Contains(err.Error(), "definition changed") {
+		t.Fatalf("resume drift error = %v", err)
+	}
+}
+
+func dynamicMatrixParentSource() string {
+	return `name: dynamic-preflight
+input:
+  format: json
+  schema:
+    type: object
+    properties:
+      cases: {type: array, items: {type: object}}
+    required: [cases]
+nodes:
+  - id: cases
+    matrix:
+      items_from: $INPUTS.cases
+      nodes:
+        - id: candidate
+          workflow:
+            path: $MATRIX.item.workflow_path
+            repository: $MATRIX.item.repository
+            isolation: none
+      output_node: candidate
+`
+}
+
+func TestChildFailureKindPreservesInfrastructureDiagnostics(t *testing.T) {
+	for _, code := range []execution.Kind{execution.KindExit, execution.KindProtocol, execution.KindConfiguration, execution.KindTimedOut} {
+		t.Run(string(code), func(t *testing.T) {
+			child := &store.RunState{ID: "child", Status: store.RunFailed, ErrorCode: string(code), Error: "failed"}
+			_, err := (&Runner{}).finishChildRun(&store.RunState{}, "child", &store.NodeState{ChildRunID: child.ID}, &spec.Workflow{}, "", child, &RunFailedError{RunID: child.ID, Code: string(code), Cause: "failed"})
+			if got := execution.KindOf(err); got != code {
+				t.Fatalf("child error kind = %s, want %s: %v", got, code, err)
+			}
+		})
+	}
+}
+
+func TestChildFailureKindPreservesFanOutInfrastructureDiagnostics(t *testing.T) {
+	records := []store.ChildRunItemState{
+		{Attempt: 1, Status: store.RunFailed, ErrorCode: string(execution.KindExit)},
+		{Attempt: 1, Status: store.RunFailed, ErrorCode: string(execution.KindProtocol)},
+	}
+	if got := fanOutFailureKind(records, 1); got != execution.KindProtocol {
+		t.Fatalf("fan-out failure kind = %s", got)
 	}
 }
 

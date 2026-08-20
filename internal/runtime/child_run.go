@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"takt/internal/assistant"
+	"takt/internal/definition"
 	"takt/internal/execution"
 	"takt/internal/spec"
 	"takt/internal/store"
@@ -36,23 +37,135 @@ func (r *Runner) runChildWorkflow(ctx context.Context, state *store.RunState, no
 	if definition.FanOut != nil {
 		return r.runChildWorkflowFanOut(ctx, state, node, local, feedback, artifacts)
 	}
-	childPath, childWorkflow, err := r.loadChildWorkflow(definition)
+	nodeState := state.Nodes[node.ID]
+	childPath, childControlWorkspace, childWorkflow, identity, err := r.resolveChildWorkflowDefinition(state, node, local, feedback, artifacts)
 	if err != nil {
 		return execResult{}, err
 	}
-	nodeState := state.Nodes[node.ID]
+	if identity != nil {
+		if nodeState.ChildWorkflowHash == "" {
+			nodeState.ChildWorkflowPath = identity.Path
+			nodeState.ChildControlWorkspace = identity.Repository
+			nodeState.ChildWorkflowHash = identity.Fingerprint
+			if err := r.commit(state, "child_workflow.resolved", node.ID, map[string]any{"path": identity.Path, "repository": identity.Repository, "fingerprint": identity.Fingerprint}); err != nil {
+				return execResult{}, err
+			}
+		} else if nodeState.ChildWorkflowPath != identity.Path || nodeState.ChildControlWorkspace != identity.Repository || nodeState.ChildWorkflowHash != identity.Fingerprint {
+			return execResult{}, &execution.Error{Kind: execution.KindConfiguration, Op: "resolve child workflow", Err: fmt.Errorf("child workflow definition changed since preflight")}
+		}
+	}
 	childState, err := r.ensureChildRunLink(state, node.ID, nodeState, childWorkflow, childPath)
 	if err != nil {
 		return execResult{}, err
-	}
-	childControlWorkspace, err := r.resolveChildControlWorkspace(definition.Repository)
-	if err != nil {
-		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve child repository", Err: err}
 	}
 	childRunner := r.childRunner(childWorkflow, childPath, childControlWorkspace)
 	childState, runErr := r.startOrResumeChild(ctx, state, node, nodeState, childState, childRunner, childWorkflow, childControlWorkspace, local, feedback, artifacts)
 	captureChildRunMetadata(nodeState, childState, childControlWorkspace)
 	return r.finishChildRun(state, node.ID, nodeState, childWorkflow, definition.OutputNode, childState, runErr)
+}
+
+func dynamicChildWorkflow(definition *spec.WorkflowRunSpec) bool {
+	return definition != nil && (strings.Contains(definition.Path, "$") || strings.Contains(definition.Repository, "$"))
+}
+
+func (r *Runner) resolveChildWorkflowDefinition(state *store.RunState, node spec.Node, local map[string]store.NodeState, feedback, artifacts string) (string, string, *spec.Workflow, *store.ChildWorkflowIdentityState, error) {
+	definition := node.WorkflowRun
+	if !dynamicChildWorkflow(definition) {
+		path, child, err := r.loadChildWorkflow(definition)
+		if err != nil {
+			return "", "", nil, nil, err
+		}
+		repository, err := r.resolveChildControlWorkspace(definition.Repository)
+		if err != nil {
+			return "", "", nil, nil, &execution.Error{Kind: execution.KindInternal, Op: "resolve child repository", Err: err}
+		}
+		if nodeState := state.Nodes[node.ID]; nodeState != nil && nodeState.ChildWorkflowHash != "" {
+			identity, err := r.staticChildWorkflowIdentity(path, repository, child)
+			if err != nil {
+				return "", "", nil, nil, err
+			}
+			return path, repository, child, &identity, nil
+		}
+		return path, repository, child, nil, nil
+	}
+	path, err := renderTemplate(definition.Path, state, local, feedback, artifacts)
+	if err != nil {
+		return "", "", nil, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "render child workflow path", Err: err}
+	}
+	repository, err := renderTemplate(definition.Repository, state, local, feedback, artifacts)
+	if err != nil {
+		return "", "", nil, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "render child repository", Err: err}
+	}
+	identity, child, err := r.resolveDynamicChildWorkflow(path, repository, definition.OutputNode)
+	if err != nil {
+		return "", "", nil, nil, err
+	}
+	return identity.Path, identity.Repository, child, &identity, nil
+}
+
+func (r *Runner) staticChildWorkflowIdentity(path, repository string, child *spec.Workflow) (store.ChildWorkflowIdentityState, error) {
+	resolver := NewCommandResolver(path, repository, repository)
+	fingerprint, err := definition.ContentClosureFingerprint(child, path, resolver)
+	if err != nil {
+		return store.ChildWorkflowIdentityState{}, &execution.Error{Kind: execution.KindConfiguration, Op: "fingerprint child workflow", Err: err}
+	}
+	return store.ChildWorkflowIdentityState{Path: filepath.Clean(path), Repository: filepath.Clean(repository), Fingerprint: fingerprint}, nil
+}
+
+func (r *Runner) resolveDynamicChildWorkflow(path, repository, outputNode string) (store.ChildWorkflowIdentityState, *spec.Workflow, error) {
+	controlWorkspace, err := r.resolveChildControlWorkspace(repository)
+	if err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "resolve child repository", Err: err}
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "resolve child workflow", Err: fmt.Errorf("path is empty")}
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(controlWorkspace, path)
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "resolve child workflow", Err: err}
+	}
+	path, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "resolve child workflow", Err: err}
+	}
+	if !pathWithin(controlWorkspace, path) {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "resolve child workflow", Err: fmt.Errorf("workflow %q resolves outside repository %q", path, controlWorkspace)}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "resolve child workflow", Err: err}
+	}
+	if !info.Mode().IsRegular() {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "resolve child workflow", Err: fmt.Errorf("workflow %q is not a regular file", path)}
+	}
+	child, err := workflow.Load(path)
+	if err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "load child workflow", Err: err}
+	}
+	if err := validateChildOutput(child, path, outputNode); err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, err
+	}
+	resolver := NewCommandResolver(path, controlWorkspace, controlWorkspace)
+	if err := workflow.ValidateReferences(child, r.config, resolver); err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "validate child workflow references", Err: err}
+	}
+	if err := ValidateCapabilities(child, r.config, path, resolver, r.assistants); err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "validate child workflow capabilities", Err: err}
+	}
+	fingerprint, err := definition.ContentClosureFingerprint(child, path, resolver)
+	if err != nil {
+		return store.ChildWorkflowIdentityState{}, nil, &execution.Error{Kind: execution.KindConfiguration, Op: "fingerprint child workflow", Err: err}
+	}
+	return store.ChildWorkflowIdentityState{Path: filepath.Clean(path), Repository: filepath.Clean(controlWorkspace), Fingerprint: fingerprint}, child, nil
+}
+
+func pathWithin(root, candidate string) bool {
+	rel, err := filepath.Rel(root, candidate)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func (r *Runner) loadChildWorkflow(definition *spec.WorkflowRunSpec) (string, *spec.Workflow, error) {
@@ -143,7 +256,7 @@ func (r *Runner) startOrResumeChild(ctx context.Context, state *store.RunState, 
 }
 
 func (r *Runner) childStartOptions(node spec.Node, childRunID, parentRunID string) (StartOptions, error) {
-	options := StartOptions{RunID: childRunID, ParentRunID: parentRunID, ParentNodeID: node.ID, ModelPreset: r.startOptions.ModelPreset, ModelOverrides: cloneStringMap(r.startOptions.ModelOverrides)}
+	options := StartOptions{RunID: childRunID, ParentRunID: parentRunID, ParentNodeID: node.ID, KeepWorktree: node.WorkflowRun.KeepWorktree, ModelPreset: r.startOptions.ModelPreset, ModelOverrides: cloneStringMap(r.startOptions.ModelOverrides)}
 	childPolicy := r.inheritedPolicy
 	if node.WorkflowRun.Policy != nil {
 		resolved, err := resolvePolicyFields(*node.WorkflowRun.Policy, r.workflowPath)
@@ -201,11 +314,12 @@ func (r *Runner) finishChildRun(state *store.RunState, nodeID string, nodeState 
 		return execResult{}, ErrWaiting
 	}
 	if runErr != nil {
-		kind := execution.KindExit
-		if childState != nil && childState.Status == store.RunCancelled {
-			kind = execution.KindCancelled
+		kind := childFailureKind(childState, runErr)
+		exitCode := result.ExitCode
+		if kind == execution.KindExit && exitCode == 0 {
+			exitCode = 1
 		}
-		return result, &execution.Error{Kind: kind, ExitCode: 1, Op: "child run " + nodeState.ChildRunID, Err: runErr}
+		return result, &execution.Error{Kind: kind, ExitCode: exitCode, Op: "child run " + nodeState.ChildRunID, Err: runErr}
 	}
 	if childState == nil || childState.Status != store.RunCompleted {
 		status := ""
@@ -219,6 +333,26 @@ func (r *Runner) finishChildRun(state *store.RunState, nodeID string, nodeState 
 		return execResult{}, err
 	}
 	return result, nil
+}
+
+func childFailureKind(state *store.RunState, err error) execution.Kind {
+	if state != nil {
+		if state.Status == store.RunCancelled {
+			return execution.KindCancelled
+		}
+		switch execution.Kind(state.ErrorCode) {
+		case execution.KindExit, execution.KindStart, execution.KindCancelled, execution.KindTimedOut, execution.KindProtocol, execution.KindConfiguration, execution.KindProviderUnavailable, execution.KindInternal, execution.KindExternalUnknown:
+			return execution.Kind(state.ErrorCode)
+		}
+	}
+	var failed *RunFailedError
+	if errors.As(err, &failed) {
+		kind := execution.Kind(failed.Code)
+		if kind != "" {
+			return kind
+		}
+	}
+	return execution.KindInternal
 }
 
 func (r *Runner) resolveChildControlWorkspace(repository string) (string, error) {

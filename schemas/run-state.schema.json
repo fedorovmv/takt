@@ -379,6 +379,13 @@
           "type": "string",
           "description": "Control workspace used by a governed child Run."
         },
+        "child_workflow_path": {
+          "type": "string"
+        },
+        "child_workflow_fingerprint": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
         "child_execution_workspace": {
           "type": "string",
           "description": "Execution workspace/worktree used by a governed child Run."
@@ -1167,7 +1174,21 @@
         },
         "output": {"type": "string"},
         "primary_assessment_id": {"type": "string"},
+        "child_workflows": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/childWorkflowIdentityState"}
+        },
         "completed_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "childWorkflowIdentityState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "repository", "fingerprint"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "repository": {"type": "string", "minLength": 1},
+        "fingerprint": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"}
       }
     },
     "loopIterationState": {

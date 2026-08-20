@@ -269,6 +269,8 @@ type NodeState struct {
 	ChildRunID              string                  `json:"child_run_id,omitempty"`
 	ChildRunIDs             []string                `json:"child_run_ids,omitempty"`
 	ChildControlWorkspace   string                  `json:"child_control_workspace,omitempty"`
+	ChildWorkflowPath       string                  `json:"child_workflow_path,omitempty"`
+	ChildWorkflowHash       string                  `json:"child_workflow_fingerprint,omitempty"`
 	ChildExecutionWorkspace string                  `json:"child_execution_workspace,omitempty"`
 	ChildBranch             string                  `json:"child_branch,omitempty"`
 	ChildBaseCommit         string                  `json:"child_base_commit,omitempty"`
@@ -282,14 +284,21 @@ type NodeState struct {
 }
 
 type MatrixBranchState struct {
-	Index               int                  `json:"index"`
-	Item                json.RawMessage      `json:"item"`
-	ItemFingerprint     string               `json:"item_fingerprint"`
-	Status              string               `json:"status"`
-	Nodes               map[string]NodeState `json:"nodes,omitempty"`
-	Output              string               `json:"output,omitempty"`
-	PrimaryAssessmentID string               `json:"primary_assessment_id,omitempty"`
-	CompletedAt         time.Time            `json:"completed_at,omitempty"`
+	Index               int                                   `json:"index"`
+	Item                json.RawMessage                       `json:"item"`
+	ItemFingerprint     string                                `json:"item_fingerprint"`
+	Status              string                                `json:"status"`
+	Nodes               map[string]NodeState                  `json:"nodes,omitempty"`
+	Output              string                                `json:"output,omitempty"`
+	PrimaryAssessmentID string                                `json:"primary_assessment_id,omitempty"`
+	ChildWorkflows      map[string]ChildWorkflowIdentityState `json:"child_workflows,omitempty"`
+	CompletedAt         time.Time                             `json:"completed_at,omitempty"`
+}
+
+type ChildWorkflowIdentityState struct {
+	Path        string `json:"path"`
+	Repository  string `json:"repository"`
+	Fingerprint string `json:"fingerprint"`
 }
 
 // LoopIterationState is the durable, immutable snapshot of one completed
@@ -541,6 +550,12 @@ func publicMatrixBranches(parentID string, values []MatrixBranchState) []MatrixB
 		out[index] = branch
 		out[index].Item = append(json.RawMessage(nil), branch.Item...)
 		out[index].Nodes = publicLoopPrevious(parentID, branch.Nodes)
+		if branch.ChildWorkflows != nil {
+			out[index].ChildWorkflows = make(map[string]ChildWorkflowIdentityState, len(branch.ChildWorkflows))
+			for id, identity := range branch.ChildWorkflows {
+				out[index].ChildWorkflows[id] = identity
+			}
+		}
 	}
 	return out
 }

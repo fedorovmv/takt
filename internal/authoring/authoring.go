@@ -165,7 +165,7 @@ func templateFields(node spec.Node, resolver command.Resolver) []templateField {
 		fields = append(fields, templateField{base + ".tool_approval.message", node.ToolApproval.Message})
 	}
 	if node.Script != nil {
-		fields = append(fields, templateField{base + ".script.path", node.Script.Path}, templateField{base + ".script.inline", node.Script.Inline}, templateField{base + ".script.working_directory", node.Script.WorkingDir})
+		fields = append(fields, templateField{base + ".script.path", node.Script.Path}, templateField{base + ".script.inline", node.Script.Inline}, templateField{base + ".script.stdin", node.Script.Stdin}, templateField{base + ".script.working_directory", node.Script.WorkingDir})
 		for index, value := range node.Script.Args {
 			fields = append(fields, templateField{fmt.Sprintf("%s.script.args[%d]", base, index), value})
 		}
@@ -174,7 +174,7 @@ func templateFields(node spec.Node, resolver command.Resolver) []templateField {
 		}
 	}
 	if node.WorkflowRun != nil {
-		fields = append(fields, templateField{base + ".workflow.input", node.WorkflowRun.Input})
+		fields = append(fields, templateField{base + ".workflow.path", node.WorkflowRun.Path}, templateField{base + ".workflow.repository", node.WorkflowRun.Repository}, templateField{base + ".workflow.input", node.WorkflowRun.Input})
 	}
 	if node.OutputPath != "" {
 		fields = append(fields, templateField{base + ".output_path", node.OutputPath})

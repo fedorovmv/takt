@@ -1312,6 +1312,9 @@
           "type": "string",
           "minLength": 1,
           "description": "Relative repository path within the control workspace. Repository child Runs must use isolation worktree or none; inherit is rejected."
+        },
+        "keep_worktree": {
+          "type": "boolean"
         }
       }
     },
@@ -1499,6 +1502,9 @@
             "type": "string"
           }
         },
+        "stdin": {
+          "type": "string"
+        },
         "working_directory": {
           "type": "string",
           "minLength": 1
@@ -1535,6 +1541,11 @@
                 {
                   "required": [
                     "inline"
+                  ]
+                },
+                {
+                  "required": [
+                    "stdin"
                   ]
                 },
                 {

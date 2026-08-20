@@ -3,6 +3,7 @@ package runtime
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"takt/internal/assistant"
 	"takt/internal/command"
@@ -70,6 +71,9 @@ func validateCapabilitiesRecursive(wf *spec.Workflow, cfg *spec.Config, workflow
 			}
 		}
 		if node.WorkflowRun == nil {
+			continue
+		}
+		if strings.Contains(node.WorkflowRun.Path, "$") || strings.Contains(node.WorkflowRun.Repository, "$") {
 			continue
 		}
 		childPolicy := inherited

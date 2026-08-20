@@ -188,6 +188,24 @@ func TestScriptLanguageRuntimes(t *testing.T) {
 	}
 }
 
+func TestScriptStdinRendersAndPreservesBytes(t *testing.T) {
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "stdin.sh")
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\ncat\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wf := &spec.Workflow{Name: "script-stdin", Input: &spec.InputContract{Format: "json", Schema: &spec.OutputFormat{Type: "object"}}, Nodes: []spec.Node{{
+		ID: "read", Script: &spec.ScriptSpec{Runtime: "command", Path: "stdin.sh", Stdin: "case=$INPUTS.case\nline=two\n"},
+	}}}
+	state, err := New(wf, &spec.Config{}, filepath.Join(dir, "workflow.yaml"), "<config>", dir).Start(context.Background(), `{"case":"alpha"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := state.Nodes["read"].Stdout, "case=alpha\nline=two\n"; got != want {
+		t.Fatalf("stdin output = %q, want %q", got, want)
+	}
+}
+
 func TestResolveArtifactSourcePathUsesExistingSymlinkPrefix(t *testing.T) {
 	realRoot := t.TempDir()
 	aliasParent := t.TempDir()

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"takt/internal/spec"
 	"takt/internal/yamlcodec"
@@ -160,7 +161,7 @@ func collectGovernedWorkflowPaths(nodes []spec.Node) []string {
 	var visit func([]spec.Node)
 	visit = func(items []spec.Node) {
 		for _, node := range items {
-			if node.WorkflowRun != nil && node.WorkflowRun.Path != "" {
+			if node.WorkflowRun != nil && node.WorkflowRun.Path != "" && !strings.Contains(node.WorkflowRun.Path, "$") && !strings.Contains(node.WorkflowRun.Repository, "$") {
 				set[node.WorkflowRun.Path] = true
 			}
 			if node.LoopGroup != nil {
