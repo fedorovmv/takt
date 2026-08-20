@@ -255,7 +255,7 @@ func TestRunStateSchemaAcceptsAssistantSessionMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixture := map[string]any{
-		"id": "run", "status": "completed", "workflow_path": "workflow.yaml", "config_path": "config.yaml", "workspace": "workspace", "input": "", "approvals": map[string]any{}, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z", "revision": 1,
+		"id": "run", "status": "completed", "workflow_path": "workflow.yaml", "config_path": "config.yaml", "workspace": "workspace", "input": "", "approvals": map[string]any{}, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z", "revision": 2, "result_revision": 1,
 		"nodes": map[string]any{"agent": map[string]any{"status": "completed", "adapter": "pi", "session_path": "/tmp/session.jsonl", "executions": []any{map[string]any{"attempt": 1, "status": "completed", "adapter": "pi", "session_path": "/tmp/session.jsonl"}}}},
 	}
 	if err := schema.Validate(fixture); err != nil {

@@ -9,8 +9,57 @@ import (
 	"testing"
 	"time"
 
+	"takt/internal/runtime"
 	"takt/internal/store"
+	"takt/internal/testsupport/runtimefixture"
 )
+
+type retryResultRevisionCaptureStore struct {
+	store.FS
+	resultRevisionAtRetry uint64
+}
+
+func (s *retryResultRevisionCaptureStore) Commit(state *store.RunState, event store.Event) error {
+	if event.Type == "run.retry_requested" {
+		s.resultRevisionAtRetry = state.ResultRevision
+	}
+	return s.FS.Commit(state, event)
+}
+
+func TestOperatorRetryClearsResultRevisionBeforeResuming(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	writeControlFile(t, configPath, "apiVersion: takt/v1alpha1\nkind: Config\n")
+	writeControlFile(t, workflowPath, "name: retry-result-revision\nnodes:\n  - id: build\n    bash: \"true\"\n")
+	now := time.Now().UTC()
+	state := &store.RunState{
+		WorkflowContract: store.CurrentWorkflowContract,
+		ID:               "run-retry-result-revision", Status: store.RunFailed, ResultRevision: 7,
+		WorkflowPath: workflowPath, ConfigPath: configPath, Workspace: workspace, ExecutionWorkspace: workspace,
+		Nodes:     map[string]*store.NodeState{"build": {Status: store.NodeFailed, Attempts: 1, Error: "boom"}},
+		Approvals: map[string]string{}, Error: "boom", CreatedAt: now, UpdatedAt: now,
+	}
+	capture := &retryResultRevisionCaptureStore{FS: store.FS{Workspace: workspace}}
+	if err := capture.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	services, err := NewWithDependencies(workspace, configPath, Dependencies{
+		RunStore: capture,
+		RunnerFactory: func(def runtime.Definition, options RunnerOptions) *runtime.Runner {
+			return runtimefixture.Runner(def, options.Commands)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := services.RunService.Retry(context.Background(), RetryRequest{RunID: state.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if capture.resultRevisionAtRetry != 0 {
+		t.Fatalf("run.retry_requested kept stale result revision %d", capture.resultRevisionAtRetry)
+	}
+}
 
 func TestDetachedStartAcceptsImmediateDurableFailure(t *testing.T) {
 	workspace := t.TempDir()

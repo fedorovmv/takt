@@ -121,6 +121,10 @@
       "type": "integer",
       "minimum": 0
     },
+    "result_revision": {
+      "type": "integer",
+      "minimum": 0
+    },
     "error_code": {
       "type": "string"
     },

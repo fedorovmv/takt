@@ -622,6 +622,7 @@ func (s *RunService) Retry(ctx context.Context, request RetryRequest) (*store.Ru
 		state.Nodes[node.ID] = resetState
 	}
 	state.Status = store.RunRunning
+	state.ResultRevision = 0
 	state.CurrentNode = ""
 	state.CurrentNodes = nil
 	state.Waiting = nil

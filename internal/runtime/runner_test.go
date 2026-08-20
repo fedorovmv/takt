@@ -41,6 +41,93 @@ func (f resolverFunc) Resolve(name string) (assistant.Adapter, error) {
 	return f(name)
 }
 
+func TestRunResultRevisionPinsTerminalResultAcrossAdministrativeCommits(t *testing.T) {
+	dir := t.TempDir()
+	repository := store.FS{Workspace: dir}
+	wf := &spec.Workflow{Name: "result-revision", Nodes: []spec.Node{{ID: "done", Bash: "true"}}}
+	runner := NewWithDependencies(
+		Definition{Workflow: wf, Config: &spec.Config{}, WorkflowPath: "workflow.yaml", ConfigPath: "config.yaml", ControlWorkspace: dir},
+		Dependencies{Commands: NewCommandResolver("workflow.yaml", dir, dir), Store: repository, Redactor: redact.NewFromConfig(&spec.Config{})},
+	)
+
+	state, err := runner.Start(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ResultRevision == 0 || state.ResultRevision > state.Revision {
+		t.Fatalf("result_revision=%d revision=%d", state.ResultRevision, state.Revision)
+	}
+	terminalRevision := state.ResultRevision
+	if err := repository.Commit(state, store.Event{Type: "worktree.removed"}); err != nil {
+		t.Fatal(err)
+	}
+	if state.ResultRevision != terminalRevision {
+		t.Fatalf("administrative commit changed result revision: %d -> %d", terminalRevision, state.ResultRevision)
+	}
+}
+
+func TestRunResultRevisionIsSetForEveryTerminalStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(t *testing.T, runner *Runner) *store.RunState
+	}{
+		{
+			name: "failed",
+			run: func(t *testing.T, runner *Runner) *store.RunState {
+				runner.workflow.Nodes = []spec.Node{{ID: "fail", Bash: "exit 1"}}
+				state, err := runner.Start(context.Background(), "")
+				if err == nil {
+					t.Fatal("expected failed Run")
+				}
+				return state
+			},
+		},
+		{
+			name: "cancelled",
+			run: func(t *testing.T, runner *Runner) *store.RunState {
+				runner.workflow.Nodes = []spec.Node{{ID: "wait", Approval: &spec.ApprovalSpec{Message: "wait"}}}
+				state, err := runner.Start(context.Background(), "")
+				if !errors.Is(err, ErrWaiting) {
+					t.Fatalf("start waiting Run: %v", err)
+				}
+				state, err = runner.Cancel(state, "test cancellation")
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("cancel Run: %v", err)
+				}
+				return state
+			},
+		},
+		{
+			name: "abandoned",
+			run: func(t *testing.T, runner *Runner) *store.RunState {
+				runner.workflow.Nodes = []spec.Node{{ID: "wait", Approval: &spec.ApprovalSpec{Message: "wait"}}}
+				state, err := runner.Start(context.Background(), "")
+				if !errors.Is(err, ErrWaiting) {
+					t.Fatalf("start waiting Run: %v", err)
+				}
+				state, err = runner.abandonState(state, "test abandon")
+				if !errors.Is(err, ErrAbandoned) {
+					t.Fatalf("abandon Run: %v", err)
+				}
+				return state
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			runner := NewWithDependencies(
+				Definition{Workflow: &spec.Workflow{Name: test.name}, Config: &spec.Config{}, WorkflowPath: "workflow.yaml", ConfigPath: "config.yaml", ControlWorkspace: dir},
+				Dependencies{Commands: NewCommandResolver("workflow.yaml", dir, dir), Store: store.FS{Workspace: dir}, Redactor: redact.NewFromConfig(&spec.Config{})},
+			)
+			state := test.run(t, runner)
+			if state.ResultRevision == 0 || state.ResultRevision > state.Revision {
+				t.Fatalf("status=%s result_revision=%d revision=%d", state.Status, state.ResultRevision, state.Revision)
+			}
+		})
+	}
+}
+
 type providerRetryCaptureStore struct {
 	store.Repository
 	states map[string]*store.RunState

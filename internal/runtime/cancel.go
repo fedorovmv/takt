@@ -121,6 +121,7 @@ func (r *Runner) abandonState(state *store.RunState, reason string) (*store.RunS
 	if err := r.finalizeWorktree(state, store.RunAbandoned); err != nil {
 		return state, err
 	}
+	state.ResultRevision = state.Revision + 1
 	if err := r.commit(state, "run.abandoned", "", map[string]any{"reason": reason, "children": state.ChildRunIDs}); err != nil {
 		return state, err
 	}
@@ -177,6 +178,7 @@ func (r *Runner) cancelState(state *store.RunState, reason string) (*store.RunSt
 	if err := r.finalizeWorktree(state, store.RunCancelled); err != nil {
 		return state, err
 	}
+	state.ResultRevision = state.Revision + 1
 	if err := r.commit(state, "run.cancelled", "", map[string]any{"reason": reason, "children": state.ChildRunIDs}); err != nil {
 		return state, err
 	}

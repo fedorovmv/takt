@@ -396,6 +396,7 @@ type RunState struct {
 	ConfigFingerprint     string                `json:"config_fingerprint,omitempty"`
 	CommandsFingerprint   string                `json:"commands_fingerprint,omitempty"`
 	Revision              uint64                `json:"revision"`
+	ResultRevision        uint64                `json:"result_revision,omitempty"`
 	CreatedAt             time.Time             `json:"created_at"`
 	UpdatedAt             time.Time             `json:"updated_at"`
 	ErrorCode             string                `json:"error_code,omitempty"`

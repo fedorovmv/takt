@@ -555,6 +555,7 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 			if finalizeErr := r.finalizeWorktree(state, store.RunCancelled); finalizeErr != nil {
 				return state, finalizeErr
 			}
+			state.ResultRevision = state.Revision + 1
 			if commitErr := r.commit(state, "run.cancelled", "", map[string]any{"error": err.Error()}); commitErr != nil {
 				return state, commitErr
 			}
@@ -575,6 +576,7 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 	}
 	switch status {
 	case store.RunCompleted:
+		state.ResultRevision = state.Revision + 1
 		if err := r.commit(state, "run.completed", "", nil); err != nil {
 			return state, err
 		}
@@ -586,6 +588,7 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 		if err := r.finalizeWorktree(state, store.RunCancelled); err != nil {
 			return state, err
 		}
+		state.ResultRevision = state.Revision + 1
 		if err := r.commit(state, "run.cancelled", nodeID, map[string]any{"error": cause, "code": code}); err != nil {
 			return state, err
 		}
@@ -594,6 +597,7 @@ func (r *Runner) resume(ctx context.Context, state *store.RunState) (*store.RunS
 		if err := r.finalizeWorktree(state, store.RunFailed); err != nil {
 			return state, err
 		}
+		state.ResultRevision = state.Revision + 1
 		if err := r.commit(state, "run.failed", nodeID, map[string]any{"error": cause, "code": code}); err != nil {
 			return state, err
 		}
