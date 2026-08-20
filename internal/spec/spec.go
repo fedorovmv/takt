@@ -42,6 +42,7 @@ type Node struct {
 	Subworkflow  *SubworkflowSpec  `json:"subworkflow,omitempty"`
 	Foreach      *ForeachSpec      `json:"foreach,omitempty"`
 	WorkflowRun  *WorkflowRunSpec  `json:"workflow,omitempty"`
+	Assessment   *AssessmentSpec   `json:"assessment,omitempty"`
 	Internal     *InternalNodeSpec `json:"-"`
 	Attempts     AttemptsSpec      `json:"attempts,omitempty"`
 	AllowFailure bool              `json:"allow_failure,omitempty"`
@@ -63,6 +64,14 @@ type Node struct {
 	OutputType   string            `json:"output_type,omitempty"`
 	OutputMIME   string            `json:"output_mime,omitempty"`
 	OutputPath   string            `json:"output_path,omitempty"`
+}
+
+type AssessmentSpec struct {
+	Role        string            `json:"role"`
+	TargetRunID string            `json:"target_run_id"`
+	ResultFrom  string            `json:"result_from"`
+	Scope       map[string]string `json:"scope,omitempty"`
+	Evidence    []string          `json:"evidence,omitempty"`
 }
 
 // InputContract gives a workflow an explicit machine-readable input boundary.

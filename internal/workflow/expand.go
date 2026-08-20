@@ -121,7 +121,7 @@ func (c *compiler) compileNode(node spec.Node, workflowPath, prefix string, defa
 	publicID := qualify(prefix, node.ID)
 	kinds := sourceKinds(node)
 	if kinds != 1 {
-		return compiledGroup{}, fmt.Errorf("node %q must define exactly one action (command, prompt, bash, script, adapter, approval, loop_group, subworkflow, foreach, or workflow)", node.ID)
+		return compiledGroup{}, fmt.Errorf("node %q must define exactly one action (command, prompt, bash, script, adapter, approval, assessment, loop_group, subworkflow, foreach, or workflow)", node.ID)
 	}
 
 	switch {
@@ -468,6 +468,16 @@ func (c *compiler) rewriteNode(node *spec.Node, prefix string, siblings map[stri
 			node.WorkflowRun.Path = filepath.Clean(filepath.Join(filepath.Dir(workflowPath), node.WorkflowRun.Path))
 		}
 	}
+	if node.Assessment != nil {
+		node.Assessment.TargetRunID = rewriteTemplate(node.Assessment.TargetRunID)
+		node.Assessment.ResultFrom = rewriteTemplate(node.Assessment.ResultFrom)
+		for key, value := range node.Assessment.Scope {
+			node.Assessment.Scope[key] = rewriteTemplate(value)
+		}
+		for index := range node.Assessment.Evidence {
+			node.Assessment.Evidence[index] = rewriteTemplate(node.Assessment.Evidence[index])
+		}
+	}
 	rewriteHooks(&node.Hooks, rewriteTemplate)
 
 	if node.LoopGroup != nil {
@@ -554,6 +564,13 @@ func unresolvedInput(node *spec.Node) string {
 	}
 	if node.WorkflowRun != nil {
 		values = append(values, node.WorkflowRun.Input)
+	}
+	if node.Assessment != nil {
+		values = append(values, node.Assessment.TargetRunID, node.Assessment.ResultFrom)
+		for _, value := range node.Assessment.Scope {
+			values = append(values, value)
+		}
+		values = append(values, node.Assessment.Evidence...)
 	}
 	if node.Approval != nil {
 		values = append(values, node.Approval.Message)
@@ -674,6 +691,9 @@ func sourceKinds(node spec.Node) int {
 		count++
 	}
 	if node.WorkflowRun != nil {
+		count++
+	}
+	if node.Assessment != nil {
 		count++
 	}
 	if node.Internal != nil {

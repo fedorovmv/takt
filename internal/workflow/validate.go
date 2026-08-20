@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"takt/internal/artifacttype"
+	"takt/internal/flowref"
 	"takt/internal/schemasubset"
 	"takt/internal/spec"
 	"takt/internal/whenexpr"
@@ -77,6 +79,9 @@ func validateNodes(nodes []spec.Node, scope string, insideLoop bool) error {
 		return err
 	}
 	if err := validateDependencies(nodes, byID); err != nil {
+		return err
+	}
+	if err := validateAssessmentDependencies(nodes, byID); err != nil {
 		return err
 	}
 	if err := validateFanOutDependencies(nodes, byID); err != nil {
@@ -200,6 +205,7 @@ func validateNode(node spec.Node, scope string, insideLoop bool) error {
 		func(node spec.Node) error { return validateHookSet(node.Hooks, fmt.Sprintf("node %q hooks", node.ID)) },
 		validateActionShape,
 		validateWorkflowAction,
+		validateAssessmentAction,
 		validateInternalAction,
 		validateScriptAndAdapter,
 		validateExternalExecution,
@@ -218,6 +224,58 @@ func validateNode(node spec.Node, scope string, insideLoop bool) error {
 		}
 	}
 	return validateLoop(node, scope, insideLoop)
+}
+
+func validateAssessmentAction(node spec.Node) error {
+	value := node.Assessment
+	if value == nil {
+		return nil
+	}
+	if value.Role != "primary" && value.Role != "advisory" {
+		return fmt.Errorf("node %q assessment.role must be primary or advisory", node.ID)
+	}
+	if strings.TrimSpace(value.TargetRunID) == "" {
+		return fmt.Errorf("node %q assessment.target_run_id is required", node.ID)
+	}
+	result, err := flowref.Parse(value.ResultFrom, flowref.NonShell)
+	if err != nil || result.Kind != flowref.KindNode || len(result.Path) != 1 || result.Path[0] != "output" || result.Optional || result.Default != "" {
+		return fmt.Errorf("node %q assessment.result_from must be one exact node output reference", node.ID)
+	}
+	seen := map[string]bool{}
+	for _, source := range value.Evidence {
+		ref, err := flowref.Parse(source, flowref.NonShell)
+		if err != nil || ref.Kind != flowref.KindNode || len(ref.Path) != 2 || ref.Path[0] != "artifacts" || ref.Optional || ref.Default != "" {
+			return fmt.Errorf("node %q assessment.evidence must contain exact typed artifact references", node.ID)
+		}
+		if seen[source] {
+			return fmt.Errorf("node %q assessment.evidence contains duplicate reference %q", node.ID, source)
+		}
+		seen[source] = true
+	}
+	for key := range value.Scope {
+		if key != "case_id" && key != "repeat" {
+			return fmt.Errorf("node %q assessment.scope contains unsupported field %q", node.ID, key)
+		}
+	}
+	if value.Role == "primary" {
+		if strings.TrimSpace(value.Scope["case_id"]) == "" {
+			return fmt.Errorf("node %q primary assessment scope.case_id is required", node.ID)
+		}
+		if strings.TrimSpace(value.Scope["repeat"]) == "" {
+			return fmt.Errorf("node %q primary assessment scope.repeat is required", node.ID)
+		}
+		repeat := strings.TrimSpace(value.Scope["repeat"])
+		if !strings.HasPrefix(repeat, "$") {
+			parsed, err := strconv.Atoi(repeat)
+			if err != nil || parsed <= 0 {
+				return fmt.Errorf("node %q primary assessment scope.repeat must be a positive integer or reference", node.ID)
+			}
+		}
+		if len(value.Evidence) == 0 {
+			return fmt.Errorf("node %q primary assessment evidence is required", node.ID)
+		}
+	}
+	return nil
 }
 
 func validateHookSet(hooks spec.HookSet, scope string) error {
@@ -268,7 +326,7 @@ func validateActionShape(node spec.Node) error {
 	for _, present := range []bool{
 		node.Command != "", node.Prompt != "", node.Bash != "", node.Script != nil,
 		node.Approval != nil, node.LoopGroup != nil, node.Loop != nil, node.Cancel != "", node.Subworkflow != nil,
-		node.Foreach != nil, node.WorkflowRun != nil, node.Internal != nil, node.Adapter != nil,
+		node.Foreach != nil, node.WorkflowRun != nil, node.Assessment != nil, node.Internal != nil, node.Adapter != nil,
 	} {
 		if present {
 			kinds++
@@ -707,6 +765,28 @@ func validateFanOutDependencies(nodes []spec.Node, byID map[string]spec.Node) er
 		}
 		if sourceID == node.ID || !nodeDependsOn(node.ID, sourceID, byID, map[string]bool{}) {
 			return fmt.Errorf("node %q workflow.fan_out source %q must be an upstream dependency", node.ID, sourceID)
+		}
+	}
+	return nil
+}
+
+func validateAssessmentDependencies(nodes []spec.Node, byID map[string]spec.Node) error {
+	for _, node := range nodes {
+		if node.Assessment == nil {
+			continue
+		}
+		sources := append([]string{node.Assessment.ResultFrom}, node.Assessment.Evidence...)
+		for _, source := range sources {
+			ref, err := flowref.Parse(source, flowref.NonShell)
+			if err != nil {
+				continue
+			}
+			if _, ok := byID[ref.NodeID]; !ok {
+				return fmt.Errorf("node %q assessment references unknown source node %q", node.ID, ref.NodeID)
+			}
+			if ref.NodeID == node.ID || !nodeDependsOn(node.ID, ref.NodeID, byID, map[string]bool{}) {
+				return fmt.Errorf("node %q assessment source %q must be an upstream dependency", node.ID, ref.NodeID)
+			}
 		}
 	}
 	return nil

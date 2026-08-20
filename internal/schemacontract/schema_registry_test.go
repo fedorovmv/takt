@@ -116,6 +116,40 @@ func TestWorkflowSchemaValidatesHookFailureSessions(t *testing.T) {
 	}
 }
 
+func TestWorkflowSchemaAcceptsAssessmentNode(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "schemas", "workflow.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	document, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := compiler.AddResource("workflow.schema.json", document); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := compiler.Compile("workflow.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := map[string]any{
+		"name": "assessment",
+		"nodes": []any{
+			map[string]any{"id": "validate", "bash": "true"},
+			map[string]any{"id": "evidence", "bash": "true", "output_type": "evaluation-evidence"},
+			map[string]any{"id": "assess", "depends_on": []any{"validate", "evidence"}, "assessment": map[string]any{
+				"role": "primary", "target_run_id": "run-target", "result_from": "$validate.output",
+				"scope":    map[string]any{"case_id": "case-a", "repeat": "1"},
+				"evidence": []any{"$evidence.artifacts.evaluation-evidence"},
+			}},
+		},
+	}
+	if err := schema.Validate(fixture); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAssessmentSchemaValidatesPrimaryEnvelope(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "schemas", "assessment.schema.json"))
 	if err != nil {

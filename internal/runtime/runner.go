@@ -838,6 +838,8 @@ func (r *Runner) execute(ctx context.Context, state *store.RunState, node spec.N
 		return r.runLoopGroup(ctx, state, node)
 	case node.WorkflowRun != nil:
 		return r.runChildWorkflow(ctx, state, node, action.local, action.feedback, action.artifacts)
+	case node.Assessment != nil:
+		return r.executeAssessmentAction(state, node, action)
 	case node.Internal != nil:
 		return r.executeInternalAction(ctx, state, node)
 	case node.Adapter != nil:

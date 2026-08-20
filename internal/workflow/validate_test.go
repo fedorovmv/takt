@@ -226,6 +226,90 @@ func TestValidateScriptAndTypedArtifactContracts(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsAssessmentAction(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "assessment.yaml")
+	if err := os.WriteFile(path, []byte(`name: assess
+nodes:
+  - id: validate
+    bash: 'printf result'
+  - id: evidence
+    bash: 'printf evidence'
+    output_type: evaluation-evidence
+  - id: assess
+    depends_on: [validate, evidence]
+    assessment:
+      role: primary
+      target_run_id: run-target
+      result_from: $validate.output
+      scope:
+        case_id: case-a
+        repeat: "1"
+      evidence:
+        - $evidence.artifacts.evaluation-evidence
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wf, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := wf.Nodes[2].Assessment; got == nil || got.Role != "primary" || got.Scope["case_id"] != "case-a" {
+		t.Fatalf("assessment = %#v", got)
+	}
+}
+
+func TestValidateRejectsInvalidAssessmentContracts(t *testing.T) {
+	valid := spec.AssessmentSpec{
+		Role: "primary", TargetRunID: "run-target", ResultFrom: "$validate.output",
+		Scope:    map[string]string{"case_id": "case-a", "repeat": "1"},
+		Evidence: []string{"$evidence.artifacts.evaluation-evidence"},
+	}
+	cases := []struct {
+		name   string
+		mutate func(*spec.AssessmentSpec)
+	}{
+		{name: "role", mutate: func(value *spec.AssessmentSpec) { value.Role = "maybe" }},
+		{name: "target", mutate: func(value *spec.AssessmentSpec) { value.TargetRunID = "" }},
+		{name: "result reference", mutate: func(value *spec.AssessmentSpec) { value.ResultFrom = "literal" }},
+		{name: "case", mutate: func(value *spec.AssessmentSpec) { delete(value.Scope, "case_id") }},
+		{name: "repeat", mutate: func(value *spec.AssessmentSpec) { value.Scope["repeat"] = "" }},
+		{name: "zero repeat", mutate: func(value *spec.AssessmentSpec) { value.Scope["repeat"] = "0" }},
+		{name: "nonnumeric repeat", mutate: func(value *spec.AssessmentSpec) { value.Scope["repeat"] = "first" }},
+		{name: "unknown scope", mutate: func(value *spec.AssessmentSpec) { value.Scope["branch"] = "main" }},
+		{name: "evidence", mutate: func(value *spec.AssessmentSpec) { value.Evidence = nil }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			value := valid
+			value.Scope = map[string]string{"case_id": valid.Scope["case_id"], "repeat": valid.Scope["repeat"]}
+			value.Evidence = append([]string(nil), valid.Evidence...)
+			tc.mutate(&value)
+			wf := &spec.Workflow{Name: "assessment", Nodes: []spec.Node{
+				{ID: "validate", Bash: "true"},
+				{ID: "evidence", Bash: "true", OutputType: "evaluation-evidence"},
+				{ID: "assess", DependsOn: []string{"validate", "evidence"}, Assessment: &value},
+			}}
+			if err := Validate(wf); err == nil {
+				t.Fatalf("invalid assessment %s was accepted", tc.name)
+			}
+		})
+	}
+}
+
+func TestValidateAssessmentRequiresUpstreamResultAndEvidence(t *testing.T) {
+	wf := &spec.Workflow{Name: "assessment", Nodes: []spec.Node{
+		{ID: "validate", Bash: "true"},
+		{ID: "evidence", Bash: "true", OutputType: "evaluation-evidence"},
+		{ID: "assess", Assessment: &spec.AssessmentSpec{
+			Role: "primary", TargetRunID: "run-target", ResultFrom: "$validate.output",
+			Scope: map[string]string{"case_id": "case-a", "repeat": "1"}, Evidence: []string{"$evidence.artifacts.evaluation-evidence"},
+		}},
+	}}
+	if err := Validate(wf); err == nil || !strings.Contains(err.Error(), "upstream dependency") {
+		t.Fatalf("missing assessment dependencies accepted: %v", err)
+	}
+}
+
 func TestValidateAllowsOutputFormatForScript(t *testing.T) {
 	wf := &spec.Workflow{Name: "script-json", Nodes: []spec.Node{{
 		ID: "run", Script: &spec.ScriptSpec{Runtime: "python", Inline: "print('{}')"}, OutputFormat: &spec.OutputFormat{Type: "object"},

@@ -159,19 +159,24 @@ func Parse(source string, surface Surface) (Reference, error) {
 		return Reference{}, fmt.Errorf("node reference %q requires a field", node)
 	}
 	if parts[1] == "artifacts" {
-		if len(parts) < 4 {
-			return Reference{}, fmt.Errorf("artifact reference requires type and metadata field")
+		if len(parts) < 3 {
+			return Reference{}, fmt.Errorf("artifact reference requires type")
 		}
-		meta := parts[len(parts)-1]
-		if !metaFields[meta] {
-			return Reference{}, fmt.Errorf("unknown artifact metadata field %q", meta)
+		typeParts := parts[2:]
+		meta := ""
+		if len(parts) > 3 && metaFields[parts[len(parts)-1]] {
+			meta = parts[len(parts)-1]
+			typeParts = parts[2 : len(parts)-1]
 		}
-		typeParts := parts[2 : len(parts)-1]
 		artifactType := strings.Join(typeParts, ".")
 		if artifactType == "" || !artifactRE.MatchString(artifactType) || allDigits(artifactType) {
 			return Reference{}, fmt.Errorf("invalid artifact type %q", artifactType)
 		}
-		return Reference{Kind: KindNode, NodeID: node, Path: []string{"artifacts", artifactType, meta}, Optional: optional, Default: def}, nil
+		path := []string{"artifacts", artifactType}
+		if meta != "" {
+			path = append(path, meta)
+		}
+		return Reference{Kind: KindNode, NodeID: node, Path: path, Optional: optional, Default: def}, nil
 	}
 	if parts[1] == "output" {
 		for _, part := range parts[2:] {

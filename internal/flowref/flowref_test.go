@@ -26,6 +26,33 @@ func TestReferenceLexerAcceptsArchonForms(t *testing.T) {
 	}
 }
 
+func TestReferenceLexerAcceptsWholeTypedArtifact(t *testing.T) {
+	ref, err := flowref.Parse("$evidence.artifacts.evaluation-evidence", flowref.NonShell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref.NodeID != "evidence" || len(ref.Path) != 2 || ref.Path[0] != "artifacts" || ref.Path[1] != "evaluation-evidence" {
+		t.Fatalf("reference = %#v", ref)
+	}
+}
+
+func TestReferenceLexerKeepsDottedArtifactTypeCanonical(t *testing.T) {
+	metadata, err := flowref.Parse("$evidence.artifacts.report.json.path", flowref.NonShell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(metadata.Path, "/"); got != "artifacts/report.json/path" {
+		t.Fatalf("metadata path = %q", got)
+	}
+	whole, err := flowref.Parse("$evidence.artifacts.report.json", flowref.NonShell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(whole.Path, "/"); got != "artifacts/report.json" {
+		t.Fatalf("whole artifact path = %q", got)
+	}
+}
+
 func TestReferenceLexerRejectsLegacyAndReservedForms(t *testing.T) {
 	cases := []string{
 		"${nodes.build.output}",

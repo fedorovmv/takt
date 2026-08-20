@@ -427,6 +427,9 @@
         "workflow": {
           "$ref": "#/$defs/workflowRun"
         },
+        "assessment": {
+          "$ref": "#/$defs/assessment"
+        },
         "allowed_tools": {
           "$ref": "#/$defs/stringSet"
         },
@@ -531,6 +534,11 @@
         {
           "required": [
             "adapter"
+          ]
+        },
+        {
+          "required": [
+            "assessment"
           ]
         }
       ],
@@ -806,6 +814,9 @@
         "workflow": {
           "$ref": "#/$defs/workflowRun"
         },
+        "assessment": {
+          "$ref": "#/$defs/assessment"
+        },
         "allowed_tools": {
           "$ref": "#/$defs/stringSet"
         },
@@ -899,6 +910,11 @@
         {
           "required": [
             "adapter"
+          ]
+        },
+        {
+          "required": [
+            "assessment"
           ]
         }
       ],
@@ -1384,6 +1400,45 @@
           "type": "boolean"
         }
       }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "target_run_id", "result_from"],
+      "properties": {
+        "role": {"enum": ["primary", "advisory"]},
+        "target_run_id": {"type": "string", "minLength": 1},
+        "result_from": {"type": "string", "pattern": "^\\$[A-Za-z_][A-Za-z0-9_-]*\\.output$"},
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "case_id": {"type": "string"},
+            "repeat": {"type": "string"}
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^\\$[A-Za-z_][A-Za-z0-9_-]*\\.artifacts\\.[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+        }
+      },
+      "allOf": [{
+        "if": {"properties": {"role": {"const": "primary"}}, "required": ["role"]},
+        "then": {
+          "required": ["scope", "evidence"],
+          "properties": {
+            "scope": {
+              "required": ["case_id", "repeat"],
+              "properties": {
+                "case_id": {"type": "string", "minLength": 1},
+                "repeat": {"type": "string", "minLength": 1}
+              }
+            },
+            "evidence": {"minItems": 1}
+          }
+        }
+      }]
     },
     "script": {
       "type": "object",
