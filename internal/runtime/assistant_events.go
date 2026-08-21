@@ -1,8 +1,10 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -12,14 +14,40 @@ import (
 	"takt/internal/store"
 )
 
+type workspaceToolController struct {
+	policy    assistant.Policy
+	workspace string
+	artifacts string
+}
+
+func (c workspaceToolController) Decide(_ context.Context, request assistant.ToolRequest) (assistant.ToolDecision, error) {
+	decision := assistant.PolicyToolDecision(c.policy, request)
+	if decision.Decision != "allow" {
+		return decision, nil
+	}
+	if err := assistant.ValidateToolPath(request.Tool, request.Input, c.workspace, c.artifacts); err != nil {
+		return assistant.ToolDecision{Decision: "deny", Reason: err.Error()}, nil
+	}
+	return decision, nil
+}
+
 const maxNormalizedMessageBytes = 64 * 1024
 
 type assistantEventCollector struct {
-	mu      sync.Mutex
-	events  []assistant.Event
-	err     error
-	onEvent func()
-	observe func(assistant.Event)
+	mu          sync.Mutex
+	events      []assistant.Event
+	err         error
+	onEvent     func()
+	observe     func(assistant.Event)
+	onViolation func()
+	workspace   string
+	artifacts   string
+}
+
+func newAssistantEventCollector(workspace, artifacts string) *assistantEventCollector {
+	workspace, _ = filepath.Abs(workspace)
+	artifacts, _ = filepath.Abs(artifacts)
+	return &assistantEventCollector{workspace: filepath.Clean(workspace), artifacts: filepath.Clean(artifacts)}
 }
 
 func (c *assistantEventCollector) Emit(event assistant.Event) {
@@ -44,12 +72,30 @@ func (c *assistantEventCollector) Emit(event assistant.Event) {
 		c.mu.Unlock()
 		return
 	}
+	if err := c.validateWritePath(event); err != nil {
+		if c.onViolation != nil {
+			c.onViolation()
+		}
+		c.mu.Lock()
+		if c.err == nil {
+			c.err = err
+		}
+		c.mu.Unlock()
+		return
+	}
 	if c.observe != nil {
 		c.observe(event)
 	}
 	c.mu.Lock()
 	c.events = append(c.events, event)
 	c.mu.Unlock()
+}
+
+func (c *assistantEventCollector) validateWritePath(event assistant.Event) error {
+	if event.Type != assistant.EventToolRequested && event.Type != assistant.EventToolStarted {
+		return nil
+	}
+	return assistant.ValidateToolPath(event.Tool, event.Input, c.workspace, c.artifacts)
 }
 
 func redactAssistantEvent(redactor *redact.Redactor, event assistant.Event) assistant.Event {

@@ -290,7 +290,7 @@ assistant.failed
 
 Adapter объявляет protocol, список capabilities, event types и флаги `session_events`, `tool_events`, `tool_control`, `artifact_events`, `usage_events`. `tool_control` разрешён только при pre-execution interception: Takt должен увидеть `tool.requested`, применить policy/approval и вернуть решение до запуска инструмента.
 
-OpenCode и Pi поддерживают наблюдательные события и не заявляют `tool_control`. Внешний executor реализует durable blocking lifecycle. Process protocol `takt-assistant/v1alpha2` поддерживает bidirectional records `capabilities`, `event`, `tool.request`, `result` и ответ `tool.decision`.
+OpenCode и Pi не заявляют generic `tool_control`: их normalized lifecycle events остаются наблюдательными. Bundled adapters применяют отдельный native path boundary для mutation tools до запуска; внешний executor реализует durable blocking lifecycle. Process protocol `takt-assistant/v1alpha2` поддерживает bidirectional records `capabilities`, `event`, `tool.request`, `result` и ответ `tool.decision`.
 
 Артефакт может содержать `call_id`, связывающий его с породившим tool call. Нормализованный поток не заменяет raw stdout/stderr.
 
@@ -459,7 +459,7 @@ internal retries не являются Takt `SessionAdapter.Run` calls. Schedule
 - version probe, timeout/cancellation, общий stdout/stderr limit;
 - provider retry/connection diagnostics при timeout/cancellation без изменения execution kind;
 - per-attempt usage и cost;
-- permission/MCP policy через `OPENCODE_CONFIG_CONTENT`, explicit empty tool/skill allowlists и prompt injection для path skills;
+- permission/MCP policy через `OPENCODE_CONFIG_CONTENT`, explicit empty tool/skill allowlists, external-directory write denial, mandatory native `tool.execute.before` path guard и prompt injection для path skills; `--pure` зарезервирован, поскольку отключает обязательный guard;
 - opt-in smoke test с реальным OpenCode CLI.
 
 JSON stream текущего CLI не гарантирует отдельное событие о фактическом provider-side routing. Поэтому `resolved_model` равен явно переданному `provider/id`, если event stream не предоставил другую модель; источник фиксируется в structured metadata. `auto_approve: true` передаёт `--auto` и допускается только для доверенного workspace. Takt не парсит TUI и не реализует внутренний tool loop OpenCode.

@@ -94,6 +94,9 @@ func shellEnvironment(state *store.RunState, feedback, artifactsDir string) map[
 	if state.Worktree != nil && strings.TrimSpace(state.Worktree.BaseRef) != "" {
 		env["BASE_BRANCH"] = state.Worktree.BaseRef
 	}
+	if state.Worktree != nil && strings.TrimSpace(state.Worktree.BaseCommit) != "" {
+		env["TAKT_BASE_COMMIT"] = state.Worktree.BaseCommit
+	}
 	return env
 }
 
@@ -183,6 +186,8 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	}
 	defer idle.Close()
 	ctx = idle.Context()
+	guardCtx, cancelGuard := context.WithCancel(ctx)
+	defer cancelGuard()
 	resolver := r.assistants
 	if resolver == nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: fmt.Errorf("assistant resolver dependency is required")}
@@ -191,11 +196,15 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	if err != nil {
 		return execResult{}, &execution.Error{Kind: execution.KindInternal, Op: "resolve assistant", Err: err}
 	}
-	collector := &assistantEventCollector{onEvent: idle.Touch, observe: func(event assistant.Event) {
+	collector := newAssistantEventCollector(r.workspace, r.store.ArtifactsDir(state.ID))
+	collector.onEvent = idle.Touch
+	collector.onViolation = cancelGuard
+	collector.observe = func(event assistant.Event) {
 		if r.assistantEvents != nil {
 			r.assistantEvents(state.ID, node.ID, redactAssistantEvent(r.redactor, event))
 		}
-	}}
+	}
+	toolControl := workspaceToolController{policy: resolved.Policy, workspace: r.workspace, artifacts: r.store.ArtifactsDir(state.ID)}
 	sessionEvent := assistant.EventSessionStarted
 	if resolved.SessionMode == "resume" && resolved.SessionID != "" {
 		sessionEvent = assistant.EventSessionResumed
@@ -206,9 +215,10 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 	}})
 	request := assistant.Request{
 		RunID: state.ID, NodeID: node.ID, Attempt: state.Nodes[node.ID].Attempts,
-		Prompt: resolved.Prompt, Workspace: r.workspace, ModelName: resolved.ModelName, Model: resolved.Model,
+		Prompt: resolved.Prompt, Workspace: r.workspace, ArtifactsDir: r.store.ArtifactsDir(state.ID), ModelName: resolved.ModelName, Model: resolved.Model,
 		SessionMode: resolved.SessionMode, SessionID: resolved.SessionID, NativeHooks: node.NativeHooks, Policy: resolved.Policy,
-		Emit: collector.Emit,
+		ToolControl: toolControl,
+		Emit:        collector.Emit,
 		Activity: func(kind string) {
 			idle.Touch()
 			if r.assistantActivity != nil {
@@ -224,14 +234,14 @@ func (r *Runner) executeAssistantAction(ctx context.Context, state *store.RunSta
 			assistant.RegisterRenderedEnvSecrets(r.redactor, assistantSpec, request)
 		}
 	}
-	result, err := adapter.Run(ctx, request)
+	result, err := adapter.Run(guardCtx, request)
 	err = validateAssistantSession(ctx, resolved, result.SessionID, err)
 	err = validateProviderRetrySession(result.SessionID, err)
 	if errors.Is(context.Cause(ctx), ErrIdleTimeout) {
 		err = &execution.Error{Kind: execution.KindTimedOut, ExitCode: -1, Op: "assistant idle timeout", Err: ErrIdleTimeout}
 	}
 	events, eventErr := collectAssistantResultEvents(collector, resolved, result, err)
-	if eventErr != nil && err == nil {
+	if eventErr != nil && ctx.Err() == nil {
 		err = eventErr
 	}
 	executed := execResult{

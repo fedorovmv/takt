@@ -46,7 +46,7 @@ func TestFeatureCorpusManifest(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, contract := range []string{"Usage: mini-du [-s] [-k|-H] [--] [PATH...]", "1536 bytes as 1.5KiB", "-sH", "Without `-k`, numeric output is also integer kibibytes"} {
+		for _, contract := range []string{"Usage: mini-du [-s] [-k|-H] [--] [PATH...]", "1536 bytes as 1.5KiB", "-sH", "Without `-k`, numeric output is also integer kibibytes", "filesystem allocated blocks"} {
 			if !strings.Contains(string(input), contract) {
 				t.Fatalf("case %s input omits contract %q", c.ID, contract)
 			}

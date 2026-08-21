@@ -1,6 +1,6 @@
 # Спецификация семантики runtime
 
-Статус документа: реализованный контракт `v0.1.63-alpha`. Он фиксирует единый
+Статус документа: реализованный контракт `v0.1.64-alpha`. Он фиксирует единый
 Archon-first Workflow language, durable loop/matrix evidence, immutable
 assessments, exact session resume и recovery/retry поверх существующего
 scheduler. Hard budgets и mutating fan-out остаются отдельными deferred срезами.
@@ -41,6 +41,14 @@ binary evidence останавливает запись fail-closed.
 ### Control и execution workspace
 
 Control workspace хранит определения, state/events, locks и artifacts. При worktree policy execution workspace указывает на отдельный Git worktree, где выполняются node actions. Абсолютный входной путь, указывающий на файл внутри control workspace, включая profile-generated `Source file` header, перед запуском node remap-ится на соответствующий путь execution workspace; это не позволяет assistant использовать служебный control-путь как рабочий.
+
+Assistant mutation requests are enforced before execution. Process assistants
+receive a runtime `ToolControl`; external workers validate `write|edit|patch`
+requests before `allowed` and again before `started`; Pi and OpenCode install
+native pre-tool guards, with OpenCode external-directory denial as defense in depth. Absolute or
+relative paths must resolve inside the execution workspace or Run artifacts.
+Control-checkout, sibling-worktree and symlink escapes fail closed; runtime-only
+`.takt/` files do not count as product change.
 
 ### Iteration
 

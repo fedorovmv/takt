@@ -8,21 +8,22 @@ import (
 )
 
 type Request struct {
-	RunID       string
-	NodeID      string
-	Attempt     int
-	Prompt      string
-	Workspace   string
-	ModelName   string
-	Model       spec.ModelSpec
-	SessionMode string
-	SessionID   string
-	NativeHooks json.RawMessage
-	Policy      Policy
-	Metadata    map[string]string
-	Emit        EventSink
-	Activity    func(string)
-	ToolControl ToolController
+	RunID        string
+	NodeID       string
+	Attempt      int
+	Prompt       string
+	Workspace    string
+	ArtifactsDir string
+	ModelName    string
+	Model        spec.ModelSpec
+	SessionMode  string
+	SessionID    string
+	NativeHooks  json.RawMessage
+	Policy       Policy
+	Metadata     map[string]string
+	Emit         EventSink
+	Activity     func(string)
+	ToolControl  ToolController
 }
 
 type Result struct {

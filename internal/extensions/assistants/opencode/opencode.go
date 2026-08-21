@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,6 +45,29 @@ func (o OpenCode) WithOutputTruncatedObserver(observer func()) OpenCode {
 
 const defaultOpenCodeOutputLimit = 10 * 1024 * 1024
 
+const workspaceGuardPlugin = core.WorkspacePathGuardJS + `
+export default async function workspaceGuard() {
+  return {
+    "tool.execute.before": async (event, output) => {
+      if (event.tool === "apply_patch") {
+        throw new Error("OpenCode apply_patch is disabled because its multi-path input cannot be validated fail-closed")
+      }
+      if (!["write", "edit"].includes(event.tool)) return
+      const workspace = process.env.TAKT_WORKSPACE
+      const artifacts = process.env.TAKT_ARTIFACTS_DIR
+      const inputPath = output?.args?.filePath ?? output?.args?.path
+      if (!workspace || typeof inputPath !== "string" || !inputPath.trim()) {
+        throw new Error("Takt workspace guard could not validate assistant path")
+      }
+      const path = canonical(inputPath.startsWith("/") ? inputPath : resolve(workspace, inputPath))
+      if (!within(canonical(workspace), path) && (!artifacts || !within(canonical(artifacts), path))) {
+        throw new Error("assistant " + event.tool + " path is outside execution workspace")
+      }
+    },
+  }
+}
+`
+
 func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 	binary := strings.TrimSpace(o.spec.Binary)
 	if binary == "" {
@@ -53,7 +77,12 @@ func (o OpenCode) Run(ctx context.Context, req Request) (Result, error) {
 		return Result{Adapter: "opencode"}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode adapter", Err: err}
 	}
 
-	env, err := openCodeEnvironment(o.spec, req)
+	guardURL, guardCleanup, err := installOpenCodeWorkspaceGuard()
+	if err != nil {
+		return Result{Adapter: "opencode"}, &execution.Error{Kind: execution.KindStart, Op: "opencode workspace guard", Err: err}
+	}
+	defer guardCleanup()
+	env, err := openCodeEnvironmentWithGuard(o.spec, req, guardURL)
 	if err != nil {
 		return Result{Adapter: "opencode"}, &execution.Error{Kind: execution.KindProtocol, Op: "opencode policy", Err: err}
 	}
@@ -274,7 +303,7 @@ func validateOpenCodeArgs(args []string) error {
 		"--continue": {}, "-c": {}, "--fork": {}, "--dir": {}, "--variant": {}, "--auto": {},
 		"--dangerously-skip-permissions": {}, "--yolo": {}, "--interactive": {}, "-i": {}, "--mini": {},
 		"--command": {}, "--file": {}, "-f": {}, "--attach": {}, "--port": {}, "--title": {}, "--thinking": {},
-		"--version": {}, "-v": {}, "--help": {}, "-h": {},
+		"--version": {}, "-v": {}, "--help": {}, "-h": {}, "--pure": {},
 	}
 	for _, arg := range args {
 		key := arg
@@ -324,6 +353,10 @@ func openCodePrompt(prompt string, policy Policy) (string, error) {
 }
 
 func openCodeEnvironment(s spec.AssistantSpec, req Request) ([]string, error) {
+	return openCodeEnvironmentWithGuard(s, req, "")
+}
+
+func openCodeEnvironmentWithGuard(s spec.AssistantSpec, req Request, guardURL string) ([]string, error) {
 	values := make(map[string]string)
 	for _, entry := range os.Environ() {
 		key, value, found := strings.Cut(entry, "=")
@@ -341,6 +374,9 @@ func openCodeEnvironment(s spec.AssistantSpec, req Request) ([]string, error) {
 	values["TAKT_NODE_ID"] = req.NodeID
 	values["TAKT_ATTEMPT"] = strconv.Itoa(req.Attempt)
 	values["TAKT_WORKSPACE"] = req.Workspace
+	values["TAKT_ARTIFACTS_DIR"] = req.ArtifactsDir
+	values["OPENCODE_DISABLE_PROJECT_CONFIG"] = "true"
+	values["OPENCODE_PURE"] = "false"
 	values["TAKT_MODEL_NAME"] = req.ModelName
 	values["TAKT_MODEL_PROVIDER"] = req.Model.Provider
 	values["TAKT_MODEL_ID"] = req.Model.ID
@@ -356,9 +392,11 @@ func openCodeEnvironment(s spec.AssistantSpec, req Request) ([]string, error) {
 			values["TAKT_NATIVE_HOOKS_JSON"] = compact
 		}
 	}
-	if policyConfig, err := openCodePolicyConfig(req.Policy); err != nil {
+	policyConfig, err := openCodePolicyConfigForRequest(req)
+	if err != nil {
 		return nil, err
-	} else if len(policyConfig) > 0 {
+	}
+	if len(policyConfig) > 0 || guardURL != "" {
 		base := map[string]any{}
 		if raw := strings.TrimSpace(values["OPENCODE_CONFIG_CONTENT"]); raw != "" {
 			if err := json.Unmarshal([]byte(raw), &base); err != nil {
@@ -366,6 +404,13 @@ func openCodeEnvironment(s spec.AssistantSpec, req Request) ([]string, error) {
 			}
 		}
 		mergeOpenCodeConfig(base, policyConfig)
+		if guardURL != "" {
+			plugins, ok := base["plugin"].([]any)
+			if base["plugin"] != nil && !ok {
+				return nil, fmt.Errorf("existing OpenCode plugin config must be an array")
+			}
+			base["plugin"] = append(plugins, guardURL)
+		}
 		encoded, err := json.Marshal(base)
 		if err != nil {
 			return nil, err
@@ -384,7 +429,31 @@ func openCodeEnvironment(s spec.AssistantSpec, req Request) ([]string, error) {
 	return env, nil
 }
 
+func installOpenCodeWorkspaceGuard() (string, func(), error) {
+	file, err := os.CreateTemp("", "takt-opencode-workspace-guard-*.mjs")
+	if err != nil {
+		return "", func() {}, err
+	}
+	path := file.Name()
+	cleanup := func() { _ = os.Remove(path) }
+	if _, err := file.WriteString(workspaceGuardPlugin); err != nil {
+		_ = file.Close()
+		cleanup()
+		return "", func() {}, err
+	}
+	if err := file.Close(); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String(), cleanup, nil
+}
+
 func openCodePolicyConfig(policy Policy) (map[string]any, error) {
+	return openCodePolicyConfigForRequest(Request{Policy: policy})
+}
+
+func openCodePolicyConfigForRequest(req Request) (map[string]any, error) {
+	policy := req.Policy
 	config := map[string]any{}
 	permission := map[string]any{}
 	if policy.ToolsRestricted || len(policy.AllowedTools) > 0 {
@@ -414,6 +483,13 @@ func openCodePolicyConfig(policy Policy) (map[string]any, error) {
 			rules[openCodeSkillName(skill)] = "allow"
 		}
 		permission["skill"] = rules
+	}
+	if strings.TrimSpace(req.Workspace) != "" {
+		external := map[string]any{"*": "deny"}
+		if strings.TrimSpace(req.ArtifactsDir) != "" {
+			external[filepath.ToSlash(filepath.Join(req.ArtifactsDir, "**"))] = "allow"
+		}
+		permission["external_directory"] = external
 	}
 	if len(permission) > 0 {
 		config["permission"] = permission

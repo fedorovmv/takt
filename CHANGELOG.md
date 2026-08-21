@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.64-alpha
+
+- Feature evaluation now enforces assistant mutation paths before execution,
+  validates external-worker tool requests before allow/start, and applies
+  strict quality gates to smoke and full runs.
+
 - Documentation now has a concise open-source README, a user guide for
   installation/configuration/operation, a contributor guide, and an audience-
   oriented document map. Historical implementation detail was removed from
@@ -18,6 +24,8 @@
 - Evaluation stats and gates now ignore primary assessments emitted by an
   external assessor Run while keeping those target relations visible to
   `run assessment`.
+- The bundled `code` profile is `0.19.5`; feature-flow mutation gates require
+  a durable execution baseline.
 
 ## v0.1.63-alpha
 

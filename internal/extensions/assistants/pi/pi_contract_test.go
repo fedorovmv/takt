@@ -68,6 +68,54 @@ func fakePiRequest(workspace string) Request {
 	}
 }
 
+func TestPiWorkspaceGuardExtensionIsExecutableAsset(t *testing.T) {
+	path, cleanup, err := installWorkspaceGuard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, needle := range []string{"tool_call", "TAKT_WORKSPACE", "outside execution workspace"} {
+		if !strings.Contains(string(data), needle) {
+			t.Fatalf("guard extension omits %q", needle)
+		}
+	}
+}
+
+func TestPiWorkspaceGuardBlocksDanglingSymlinkEscape(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for the native Pi guard regression")
+	}
+	workspace := t.TempDir()
+	control := t.TempDir()
+	if err := os.Symlink(filepath.Join(control, "missing"), filepath.Join(workspace, "escape")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	guardPath, cleanup, err := installWorkspaceGuard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	script := filepath.Join(t.TempDir(), "check.mjs")
+	if err := os.WriteFile(script, []byte(`import guard from "`+filepath.ToSlash(guardPath)+`"
+let hook
+guard({on(name, fn) { if (name === "tool_call") hook = fn }})
+const result = await hook({toolName: "write", input: {path: "escape/new.go"}})
+if (!result?.block) process.exit(1)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(node, script)
+	cmd.Env = append(os.Environ(), "TAKT_WORKSPACE="+workspace, "TAKT_ARTIFACTS_DIR="+filepath.Join(t.TempDir(), "artifacts"))
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("native guard accepted dangling symlink escape: %v\n%s", err, output)
+	}
+}
+
 func TestPiPriorityError(t *testing.T) {
 	t.Run("timeout plus overflow keeps timed out", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)

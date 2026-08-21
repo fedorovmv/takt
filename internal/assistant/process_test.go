@@ -88,6 +88,18 @@ type fixedToolController struct {
 	decision ToolDecision
 }
 
+type pathToolController struct{ workspace, artifacts string }
+
+func (c pathToolController) Decide(_ context.Context, request ToolRequest) (ToolDecision, error) {
+	decision := PolicyToolDecision(Policy{}, request)
+	if decision.Decision == "allow" {
+		if err := ValidateToolPath(request.Tool, request.Input, c.workspace, c.artifacts); err != nil {
+			return ToolDecision{Decision: "deny", Reason: err.Error()}, nil
+		}
+	}
+	return decision, nil
+}
+
 func (c fixedToolController) Decide(_ context.Context, _ ToolRequest) (ToolDecision, error) {
 	return c.decision, nil
 }
@@ -153,6 +165,28 @@ print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"result","
 	}
 	if len(events) != 2 || events[0].Type != EventToolRequested || events[1].Type != EventToolDenied {
 		t.Fatalf("events = %#v", events)
+	}
+}
+
+func TestProcessV1Alpha2PathControllerDeniesBeforeToolStart(t *testing.T) {
+	dir := t.TempDir()
+	script := dir + "/worker.py"
+	outside := filepath.Join(t.TempDir(), "control", "main.go")
+	code := `import json, sys
+json.loads(sys.stdin.readline())
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"capabilities","declaration":{"protocol":"takt-agent-events/v2","tool_events":True,"tool_control":True}}), flush=True)
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"tool.request","tool_request":{"call_id":"call-1","tool":"write","input":{"path":"` + outside + `"}}}), flush=True)
+dec=json.loads(sys.stdin.readline())
+assert dec["decision"]["decision"] == "deny"
+print(json.dumps({"protocol_version":"takt-assistant/v1alpha2","type":"result","result":{"protocol_version":"takt-assistant/v1alpha2","type":"result","status":"completed","output":"denied safely","exit_code":0}}), flush=True)
+`
+	if err := os.WriteFile(script, []byte(code), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := Process{spec: spec.AssistantSpec{Type: "process", Protocol: ProtocolV1Alpha2, Argv: []string{"python3", script}}}
+	_, err := p.Run(context.Background(), Request{Workspace: dir, ToolControl: pathToolController{workspace: dir, artifacts: filepath.Join(dir, "artifacts")}})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

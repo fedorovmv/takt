@@ -12,8 +12,10 @@ one `takt-validation/v1alpha1` result. Product failures are measured as
 
 The candidate contract is `mini-du [-s] [-k] [-H] [-h|--help] [--] PATH...`.
 Default numeric output and `-k` both use integer kibibytes matching host
-`du -k`; `-k` is an accepted alias, not a different unit. `-H` uses binary
-humanized units (`0B`, one decimal below 10, rounded integers from 10). The validator builds the candidate,
+`du -k`; values come from filesystem allocated blocks rather than logical file
+length. `-k` is an accepted alias, not a different unit. `-H` uses binary
+humanized units (`0B`, one decimal below 10, rounded integers from 10). The
+validator builds the candidate,
 rejects delegation to host `du`, compares fixed filesystem scenarios against
 host `du -k`, persists bounded normalized candidate/oracle output in mismatch
 diagnostics, checks help/option behavior and the humanized oracle, and checks

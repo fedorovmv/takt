@@ -1,6 +1,6 @@
 # Спецификация `takt/v1alpha1`
 
-Статус: текущий реализованный внешний контракт `v0.1.63-alpha` с единым
+Статус: текущий реализованный внешний контракт `v0.1.64-alpha` с единым
 Archon-first языком Workflow A0, bounded repair/runtime semantics A1 и unified
 Run evaluation.
 Config, Profile, Run и assistant protocol сохраняют собственные versioned
@@ -148,7 +148,7 @@ adapters:
 
 Workflow может объявить `input.format: json` и строгую JSON Schema в `input.schema`. До создания Run Takt декодирует вход, отклоняет неизвестные поля и применяет проверяемый subset (`type`, `properties`, `required`, `additionalProperties`, `enum`, `items`, `minItems`/`maxItems`, `uniqueItems`, `minLength`/`maxLength`, `pattern`, `minimum`/`maximum`, `minProperties`/`maxProperties`, integer semantics), общий со structured output. Профиль может задать JSON input отдельно для каждого workflow.
 
-Это используется шестью основными процессами профиля `code` 0.19.4: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
+Это используется шестью основными процессами профиля `code` 0.19.5: issue/idea/plan/review/PIV/Ralph входы проверяются до вызова assistant и изменения Git workspace.
 
 ### Детерминированный контракт `code:plan-to-pr`
 
@@ -448,7 +448,7 @@ provider marker: backoff и все resume входят в ту же workflow-п�
 
 До запуска assistant runtime вычисляет эффективную политику, проверяет `Adapter.Capabilities()`, сохраняет её в `NodeState.policy` и передаёт adapter. Неподдерживаемая capability завершает узел до запуска процесса. Для governed child Run поле `workflow.policy` задаёт inherited upper bound. Allowlist и skills пересекаются, deny/requirements объединяются, а более строгая sandbox-политика наследуется. Файлы MCP и локальные skills входят в fingerprint.
 
-Для `command/prompt` это assistant-enforced contract, а не OS sandbox. `process` обязан объявить поддерживаемые capabilities в config и получает политику через `takt-assistant/v1alpha1`/`v1alpha2` и `TAKT_POLICY_JSON`. Pi поддерживает tool policy, path skills и read-only tool restriction. OpenCode получает permission/MCP config через `OPENCODE_CONFIG_CONTENT`; локальные path skills дополнительно внедряются в prompt. Network deny не объявляется bundled Pi/OpenCode extensions и потому отклоняется до запуска.
+Для `command/prompt` это assistant-enforced contract, а не OS sandbox. `process` обязан объявить поддерживаемые capabilities в config и получает политику через `takt-assistant/v1alpha1`/`v1alpha2` и `TAKT_POLICY_JSON`. Pi поддерживает tool policy, path skills и read-only tool restriction. OpenCode получает permission/MCP config и обязательный native `tool.execute.before` path guard через `OPENCODE_CONFIG_CONTENT`; `--pure` запрещён adapter-ом, поскольку отключает этот guard. Локальные path skills дополнительно внедряются в prompt. Network deny не объявляется bundled Pi/OpenCode extensions и потому отклоняется до запуска.
 
 Реальный локальный OS wrapper доступен только для `bash` и `script`, которыми Takt управляет напрямую:
 

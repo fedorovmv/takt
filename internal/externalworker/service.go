@@ -811,6 +811,12 @@ func (s *Service) createOrReadToolRequest(st Store, request ToolRequest) (*store
 	if err := verifyExternalClaim(external, request.ClaimToken); err != nil {
 		return nil, err
 	}
+	allowedByPolicy, policyReason := externalToolPolicy(external.Policy, request.Tool)
+	if allowedByPolicy {
+		if err := assistant.ValidateToolPath(request.Tool, request.Input, external.Workspace, st.ArtifactsDir(state.ID)); err != nil {
+			return nil, err
+		}
+	}
 	if external.ToolCalls == nil {
 		external.ToolCalls = map[string]*store.ToolCallState{}
 	}
@@ -832,11 +838,11 @@ func (s *Service) createOrReadToolRequest(st Store, request ToolRequest) (*store
 	}); err != nil {
 		return nil, err
 	}
-	if allowed, reason := externalToolPolicy(external.Policy, request.Tool); !allowed {
-		call.Status, call.Decision, call.Reason, call.DecidedAt = "denied", "deny", reason, time.Now().UTC()
+	if !allowedByPolicy {
+		call.Status, call.Decision, call.Reason, call.DecidedAt = "denied", "deny", policyReason, time.Now().UTC()
 		if _, err := s.appendExternalAssistantEvent(st, state, request.NodeID, external, assistant.Event{
 			Type: assistant.EventToolDenied, Tool: request.Tool, CallID: request.CallID,
-			Decision: "deny", Reason: reason, SessionID: external.SessionID,
+			Decision: "deny", Reason: policyReason, SessionID: external.SessionID,
 		}); err != nil {
 			return nil, err
 		}
@@ -883,6 +889,11 @@ func (s *Service) DecideTool(request ToolDecisionRequest) (*store.ToolCallState,
 	if call.Status != "waiting_approval" {
 		return nil, fmt.Errorf("tool call %q is not waiting for approval (status %s)", request.CallID, call.Status)
 	}
+	if request.Decision == "allow" {
+		if err := assistant.ValidateToolPath(call.Tool, call.Input, external.Workspace, st.ArtifactsDir(state.ID)); err != nil {
+			return nil, err
+		}
+	}
 	call.Decision, call.Reason, call.DecidedAt = request.Decision, request.Reason, time.Now().UTC()
 	if request.Decision == "allow" {
 		call.Status = "allowed"
@@ -928,6 +939,11 @@ func (s *Service) updateExternalTool(request ToolUpdate, action string) (*store.
 	call := external.ToolCalls[request.CallID]
 	if call == nil {
 		return nil, fmt.Errorf("unknown tool call %q", request.CallID)
+	}
+	if action == "start" {
+		if err := assistant.ValidateToolPath(call.Tool, call.Input, external.Workspace, st.ArtifactsDir(state.ID)); err != nil {
+			return nil, err
+		}
 	}
 	now := time.Now().UTC()
 	switch action {

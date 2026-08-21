@@ -1,7 +1,7 @@
 # Руководство пользователя
 
 Это руководство описывает установку, настройку и повседневное использование
-Takt `v0.1.63-alpha`. Точный Workflow/Config contract находится в
+Takt `v0.1.64-alpha`. Точный Workflow/Config contract находится в
 [`03-specification.md`](03-specification.md), а полный список текущих
 ограничений — в [`05-implementation-status.md`](05-implementation-status.md).
 
@@ -356,6 +356,8 @@ takt worktree prune --workspace .
 Worktree изолирует изменения от control checkout, но не ограничивает доступ
 процесса к файловой системе или сети. Failed и dirty worktree сохраняются для
 расследования.
+Outcome-gated feature workflows require the durable worktree baseline; their
+`require-change` hook fails closed when run with `--no-worktree`.
 
 Typed artifacts принадлежат producer Run и имеют MIME, SHA-256 и metadata.
 Получайте их через `takt artifacts`, а не угадывайте внутренние пути Store.

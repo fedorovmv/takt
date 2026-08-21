@@ -45,6 +45,28 @@ func (p Pi) WithOutputTruncatedObserver(observer func()) Pi {
 
 const defaultPiOutputLimit = 10 * 1024 * 1024
 
+const workspaceGuardExtension = core.WorkspacePathGuardJS + `
+export default function workspaceGuard(pi) {
+  pi.on("tool_call", async (event) => {
+    if (!["write", "edit", "patch"].includes(event.toolName)) return
+    const workspace = process.env.TAKT_WORKSPACE
+    const artifacts = process.env.TAKT_ARTIFACTS_DIR
+    const inputPath = event.input?.path
+    if (!workspace || typeof inputPath !== "string" || !inputPath.trim()) {
+      return { block: true, reason: "Takt workspace guard could not validate assistant path" }
+    }
+    try {
+      const path = canonical(inputPath.startsWith("/") ? inputPath : resolve(workspace, inputPath))
+      if (!within(canonical(workspace), path) && (!artifacts || !within(canonical(artifacts), path))) {
+	        return { block: true, reason: "assistant " + event.toolName + " path is outside execution workspace" }
+      }
+    } catch (error) {
+	      return { block: true, reason: "Takt workspace guard failed closed: " + String(error) }
+    }
+  })
+}
+`
+
 func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 	binary := strings.TrimSpace(p.spec.Binary)
 	if binary == "" {
@@ -66,6 +88,12 @@ func (p Pi) Run(ctx context.Context, req Request) (Result, error) {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	args := piArgs(p.spec, req)
+	guardPath, guardCleanup, guardErr := installWorkspaceGuard()
+	if guardErr != nil {
+		return Result{Adapter: "pi"}, &execution.Error{Kind: execution.KindStart, Op: "pi workspace guard", Err: guardErr}
+	}
+	defer guardCleanup()
+	args = append([]string{"--extension", guardPath}, args...)
 	cmd := exec.CommandContext(runCtx, binary, args...)
 	execution.ConfigureCommand(cmd)
 	cmd.Dir = req.Workspace
@@ -342,6 +370,7 @@ func validatePiArgs(args []string) error {
 		"--approve": {}, "-a": {}, "--no-approve": {}, "-na": {},
 		"--tools": {}, "-t": {}, "--no-tools": {}, "-nt": {}, "--no-builtin-tools": {}, "-nbt": {},
 		"--skill": {}, "--no-skills": {},
+		"--extension": {}, "-e": {},
 	}
 	for _, arg := range args {
 		key := arg
@@ -353,6 +382,25 @@ func validatePiArgs(args []string) error {
 		}
 	}
 	return nil
+}
+
+func installWorkspaceGuard() (string, func(), error) {
+	file, err := os.CreateTemp("", "takt-pi-workspace-guard-*.mjs")
+	if err != nil {
+		return "", func() {}, err
+	}
+	path := file.Name()
+	cleanup := func() { _ = os.Remove(path) }
+	if _, err := file.WriteString(workspaceGuardExtension); err != nil {
+		_ = file.Close()
+		cleanup()
+		return "", func() {}, err
+	}
+	if err := file.Close(); err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	return path, cleanup, nil
 }
 
 func validatePiPolicy(policy Policy) error {
@@ -440,6 +488,7 @@ func piEnvironment(s spec.AssistantSpec, req Request) []string {
 	values["TAKT_NODE_ID"] = req.NodeID
 	values["TAKT_ATTEMPT"] = strconv.Itoa(req.Attempt)
 	values["TAKT_WORKSPACE"] = req.Workspace
+	values["TAKT_ARTIFACTS_DIR"] = req.ArtifactsDir
 	values["TAKT_MODEL_NAME"] = req.ModelName
 	values["TAKT_MODEL_PROVIDER"] = req.Model.Provider
 	values["TAKT_MODEL_ID"] = req.Model.ID

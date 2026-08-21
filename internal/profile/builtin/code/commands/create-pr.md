@@ -20,6 +20,11 @@ PR URL or replace the SCM call with hand-written placeholder artifacts. Save
 the URL returned by the SCM command to `$ARTIFACTS_DIR/pr-url.txt` and
 summarize the action in `$ARTIFACTS_DIR/pr.md`.
 
+This phase publishes the already-validated implementation; it is not an
+implementation or repair phase. Do not edit, reconstruct, or re-implement
+product files. If the execution workspace has no product diff relative to its
+base commit, stop with a clear failure and do not write a placeholder PR URL.
+
 User request:
 
 $ARGUMENTS

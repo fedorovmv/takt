@@ -15,6 +15,7 @@ nodes:
     - id: validation
       bash: |
         ./.takt/profiles/code/tools/require-artifacts "$ARTIFACTS_DIR/implementation.md"
+        ./.takt/profiles/code/tools/require-change
         exec ./.takt/profiles/code/tools/validate
       on_failure:
         action: retry

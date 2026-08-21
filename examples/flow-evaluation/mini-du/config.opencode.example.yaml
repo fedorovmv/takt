@@ -16,7 +16,6 @@ assistants:
   opencode:
     type: opencode
     binary: opencode
-    args: [--pure]
     agent: build
     auto_approve: true
     max_output_bytes: 10485760

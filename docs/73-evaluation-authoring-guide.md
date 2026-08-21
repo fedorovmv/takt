@@ -1,7 +1,7 @@
 # Сквозное создание и использование evaluation
 
 Этот документ описывает актуальный production flow evaluation в Takt
-`v0.1.63-alpha`: как подготовить corpus, написать evaluation workflow и
+`v0.1.64-alpha`: как подготовить corpus, написать evaluation workflow и
 детерминированный validator, запустить оценку и исследовать сохранённый Run.
 
 Для нового evaluation не используйте `suite.yaml` версии

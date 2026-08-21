@@ -44,6 +44,7 @@ func main() {
 		"model": opts.model, "agent": opts.agent, "variant": opts.variant, "session": opts.session, "auto": opts.auto,
 		"prompt": string(prompt), "run_id": os.Getenv("TAKT_RUN_ID"), "node_id": os.Getenv("TAKT_NODE_ID"),
 		"attempt": os.Getenv("TAKT_ATTEMPT"), "metadata": os.Getenv("TAKT_METADATA_JSON"), "native_hooks": os.Getenv("TAKT_NATIVE_HOOKS_JSON"),
+		"config": os.Getenv("OPENCODE_CONFIG_CONTENT"),
 	}
 	if data, err := json.Marshal(observed); err == nil {
 		_ = os.WriteFile(filepath.Join(opts.dir, ".fake-opencode-observed.json"), data, 0o644)

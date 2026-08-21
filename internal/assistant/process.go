@@ -60,6 +60,7 @@ func (p Process) Run(ctx context.Context, req Request) (Result, error) {
 		"TAKT_SESSION_MODE="+mode,
 		"TAKT_SESSION_ID="+sessionID,
 		"TAKT_WORKSPACE="+req.Workspace,
+		"TAKT_ARTIFACTS_DIR="+req.ArtifactsDir,
 	)
 	if len(req.NativeHooks) > 0 {
 		if compact, err := compactJSON(req.NativeHooks); err == nil {
@@ -460,6 +461,13 @@ func policyToolDecision(policy Policy, request ToolRequest) ToolDecision {
 		}
 	}
 	return ToolDecision{Decision: "allow", Reason: "allowed by node policy"}
+}
+
+// PolicyToolDecision exposes the same fail-closed tool policy used by the
+// process protocol so runtime-owned controllers can add enforcement checks
+// without bypassing the node policy.
+func PolicyToolDecision(policy Policy, request ToolRequest) ToolDecision {
+	return policyToolDecision(policy, request)
 }
 
 func validateStreamDeclaration(value CapabilityDeclaration) error {

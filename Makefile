@@ -55,12 +55,12 @@ eval-smoke:
 eval-feature-smoke:
 	@test -f examples/flow-evaluation/mini-du/config.yaml || { echo 'missing examples/flow-evaluation/mini-du/config.yaml'; exit 1; }
 	@echo 'Starting live feature smoke: workflow=code:feature-development case=implement-basic flags=-s,-k,-H,-h,--help,--,-sk,-ks,-sH preset=$(EVAL_PRESET) model_flags=$(EVAL_MODEL_FLAGS) assistant_idle_timeout=$(EVAL_IDLE_TIMEOUT)'
-	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/workflows/evaluate.yaml --target code:feature-development --config examples/flow-evaluation/mini-du/config.yaml --cases examples/flow-evaluation/mini-du/feature-development/cases --case implement-basic --gate validation_error_rate.max=0 $(if $(EVAL_PRESET),--model-preset $(EVAL_PRESET)) $(EVAL_MODEL_FLAGS) --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
+	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/workflows/evaluate.yaml --target code:feature-development --config examples/flow-evaluation/mini-du/config.yaml --cases examples/flow-evaluation/mini-du/feature-development/cases --case implement-basic --gate validation_error_rate.max=0 --gate valid_rate.min=1 --gate false_accept_rate.max=0 --gate flow_completion_rate.min=1 $(if $(EVAL_PRESET),--model-preset $(EVAL_PRESET)) $(EVAL_MODEL_FLAGS) --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
 
 eval-feature:
 	@test -f examples/flow-evaluation/mini-du/config.yaml || { echo 'missing examples/flow-evaluation/mini-du/config.yaml'; exit 1; }
 	@echo 'Starting full live feature evaluation: workflow=code:feature-development cases=all flags=-s,-k,-H,-h,--help,--,-sk,-ks,-sH preset=$(EVAL_PRESET) model_flags=$(EVAL_MODEL_FLAGS) assistant_idle_timeout=$(EVAL_IDLE_TIMEOUT)'
-	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/workflows/evaluate.yaml --target code:feature-development --config examples/flow-evaluation/mini-du/config.yaml --cases examples/flow-evaluation/mini-du/feature-development/cases --gate validation_error_rate.max=0 $(if $(EVAL_PRESET),--model-preset $(EVAL_PRESET)) $(EVAL_MODEL_FLAGS) --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
+	go run ./cmd/takt eval flow examples/flow-evaluation/mini-du/workflows/evaluate.yaml --target code:feature-development --config examples/flow-evaluation/mini-du/config.yaml --cases examples/flow-evaluation/mini-du/feature-development/cases --gate validation_error_rate.max=0 --gate valid_rate.min=1 --gate false_accept_rate.max=0 --gate flow_completion_rate.min=1 $(if $(EVAL_PRESET),--model-preset $(EVAL_PRESET)) $(EVAL_MODEL_FLAGS) --assistant-idle-timeout $(EVAL_IDLE_TIMEOUT) --trace --json >/dev/null
 
 eval-stats:
 	@test -n "$(RUN)" || { echo 'usage: make eval-stats RUN=run-id-or-legacy-eval-dir'; exit 1; }
