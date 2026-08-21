@@ -56,6 +56,13 @@ Stable core отделён от extensions, experimental-функций и tooli
 статус каждой области приведён в
 [состоянии реализации](docs/05-implementation-status.md).
 
+### Статус assistants
+
+Pi — основной, наиболее отлаженный assistant path Takt со статусом beta для
+текущей разработки flow. OpenCode, Qwen Code и другие assistants имеют
+alpha/reference-статус и не подтверждены как production-пути: их контракты и
+fixtures открыты, но они не входят в ближайший release gate.
+
 ## Требования
 
 - Go 1.23 или новее;

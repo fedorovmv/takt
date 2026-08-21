@@ -7,6 +7,20 @@ Pi RPC и OpenCode CLI поставляются как bundled extension adapter
 A1 runtime требует exact Session ID при resume и не подменяет failed resume
 fresh-сессией.
 
+## Политика стабильности bundled assistants
+
+На текущем срезе Pi — основной и наиболее отлаженный assistant path для Takt.
+Интеграция Pi имеет beta-статус для flow execution и session semantics:
+детерминированные contracts, user journeys и сохранённое live evidence уже
+покрывают существенную часть пути. Это не означает `strict` host enforcement:
+Pi host-control остаётся `guarded`, пока не доказаны все blocking/recovery
+capabilities на закреплённой версии.
+
+OpenCode, Qwen Code и другие внешние assistants остаются alpha/reference
+поверхностями. Их process/SDK contracts и отдельные fixtures поддерживаются
+для развития и совместимости, но текущая release-проверка не считает их
+production-ready и не требует углубления до завершения Pi-first flow gate.
+
 Bundled adapters may return typed local metadata (`adapter` and an optional
 `session_path`) alongside the normal Result. Pi exposes its stable session file;
 OpenCode reports an unavailable path rather than inferring one from logs. Flow
@@ -516,6 +530,13 @@ takt compatibility check --config .takt/config.yaml --live
 ```
 
 Session adapter compatibility не равна host-control compatibility. Live smoke с Pi `0.83.0` (`aihub/Qwen/Qwen3.6-27B`) и OpenCode `1.18.14` (`aihub-sbt/Qwen/Qwen3.6-27B`) подтвердил fresh/exact resume обоих adapters. Для host-control подтверждены Pi extension load/command interception и OpenCode plugin load/command/input/recovery; Pi input/tool/recovery/completion и OpenCode tool/completion остаются непроверенными. Поэтому bundled integrations сохраняют `guarded`, а `strict_allowed` остаётся `false`. `takt-assistant/v1alpha1` сохраняется для чтения старых wrappers и помечен deprecated для новых интеграций; целевой process protocol — `v1alpha2`.
+
+В machine-readable matrix значение `support: supported-alpha` описывает
+контрактную/протокольную зрелость adapter surface, а не beta-статус
+пользовательского пути. Для текущей разработки только Pi flow/session path
+имеет статус beta; OpenCode, Qwen Code и прочие reference assistants остаются
+alpha/reference и не подтверждены как production-пути, даже если для них
+существуют parser fixtures или исторические smoke-снимки.
 
 OpenCode `1.18.14` загружает plugin entrypoint как `Plugin(input) -> Promise<Hooks>` с hooks `chat.message` и `tool.execute.before`; TypeScript contract smoke проверяет assignability и runtime blocking bundled entrypoint. Headless host сохраняет намеренное прерывание hook как общий `UnknownError` в NDJSON, поэтому plugin до abort пишет точный Takt diagnostic в stderr. Для headless interception prompt передаётся через stdin; initial positional message может быть отправлен host до завершения загрузки external plugin и не является поддерживаемой guarded-границей.
 

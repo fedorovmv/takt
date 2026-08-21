@@ -1,6 +1,6 @@
 # План оценки агентных стратегий
 
-Статус: в `v0.1.64-alpha` workflow-level контур поддерживает `takt eval run/report/benchmark/compare`, authored ordinary Run evaluation и task-level `takt eval task-benchmark`. Fake contract benchmarks отделены от live Route DSL/Go/Document evidence со штатными validators и реальными моделями. Route/micro DSL и evaluation fixtures являются публичными OSS surfaces.
+Статус: в `v0.1.64-alpha` workflow-level контур поддерживает `takt eval run/report/benchmark/compare`, authored ordinary Run evaluation и task-level `takt eval task-benchmark`. Ближайший live evaluation policy — Pi-first: Route DSL/Go/Document evidence собирается на наиболее отлаженном Pi path; OpenCode/Qwen остаются alpha/reference и не входят в текущий release gate. Fake contract benchmarks отделены от live evidence со штатными validators и реальными моделями. Route/micro DSL и evaluation fixtures являются публичными OSS surfaces.
 
 ## 1. Цель
 
@@ -226,7 +226,9 @@ ID: `takt run status|stats|inspect|assessment`; `eval status|stats|inspect`
 Mini-du теперь использует authored DAG
 `examples/flow-evaluation/mini-du/workflows/evaluate.yaml`; Make-команды
 печатают/принимают Run ID. Live model eval остаётся отдельным ручным evidence и
-не входит в release gate.
+не входит в release gate. Для ближайшего production-like evidence используйте
+pinned Pi; OpenCode/Qwen outcomes остаются историческими/альтернативными
+наблюдениями и не являются текущим quality gate.
 
 ## Legacy production flow evaluation compatibility
 

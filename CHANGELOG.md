@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Документация закрепляет Pi как основной assistant path со статусом beta для
+  flow execution и session semantics. OpenCode, Qwen Code и прочие assistants
+  явно обозначены alpha/reference и не подтверждены как production-пути; их
+  исторические smoke и fixtures не являются текущим release gate.
+  Machine-readable `supported-alpha` для adapter protocol отделён от зрелости
+  пользовательского Pi-пути.
+
 ## v0.1.64-alpha
 
 - `eval flow init` now creates an authored `takt/v1alpha1` evaluation scaffold

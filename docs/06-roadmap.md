@@ -54,13 +54,22 @@ Commodity JSON Schema execution вынесен в upstream library, Pi/OpenCode 
 
 `make journeys` закрепляет минимальный black-box baseline. Новые проблемы из реального использования исправляются раньше расширения feature surface.
 
+### Pi-first policy
+
+Pi является наиболее отлаженным assistant path со статусом beta для текущего
+развития flow. Ближайший release gate проверяет flow-функции на pinned Pi:
+основной run lifecycle, approval/answer, retry/recovery, governed child/matrix
+и deterministic evaluation. OpenCode, Qwen Code и другие assistants остаются
+alpha/reference и не являются ближайшим release gate; их углубление начинается
+только после Pi-first flow evidence и отдельного use case.
+
 GitHub CI запускает `make check`, `make journeys` и deterministic
 `make compatibility-contract` на `ubuntu-latest` и `macos-latest`; live model и
 host conformance остаются отдельным credentialed gate.
 
 ## P0.5. Evidence для experimental/tooling
 
-### 1. Live Route DSL benchmark
+### 1. Live Route DSL benchmark on Pi
 
 Первый внешний gate перед стабилизацией: реальные обезличенные задачи + штатный validator + реальные модели/агенты. `v0.1.45` уже предоставляет matrix/repeat/compare/gates; synthetic corpus остаётся только regression fixture.
 
@@ -74,7 +83,7 @@ Task → Router → template/dynamic → checkpoint → replan → result
 
 Benchmark отдельно измеряет route accuracy, terminal success, plan revisions, replanner runs, unexpected needs-input, router fallback и usage. Это позволяет отличать «задача как-то завершилась» от «Takt выбрал и адаптировал правильный процесс».
 
-### 3. Go + Document production scenarios
+### 3. Go + Document production scenarios on Pi
 
 Тем же evaluation-подходом доказать исходную универсальность Takt на Go-разработке и подготовке технического документа.
 
@@ -117,7 +126,10 @@ P2 продолжен в `v0.1.50-alpha`. Уже реализованы:
 
 Остаётся основной внешний gate:
 
-- live Pi/OpenCode host conformance на pinned versions.
+- live Pi host conformance на pinned version.
+
+OpenCode/Qwen и прочие reference-adapter smoke остаются deferred до Pi-first
+flow gate; их исторические fixtures не повышают stability status.
 
 Дополнительные tracker/OpenSpec/PRD source adapters являются integration-level расширениями уже проверенного `takt-task-source/v1alpha1`, а не новой core-фичей.
 

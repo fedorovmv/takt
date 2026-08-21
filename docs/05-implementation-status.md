@@ -206,7 +206,7 @@ Dynamic Flow остаётся доступным и regression-tested, но сч
 - managed Git worktree, repository catalog и multi-repo governed child Runs;
 - script/command/assistant/adapter/approval actions и typed artifacts.
 
-## Coding-agent integration — реализовано, live strict conformance ограничено
+## Coding-agent integration — Pi beta path, остальные assistants alpha/reference
 
 - process protocol `takt-assistant/v1alpha1|v1alpha2`;
 - Pi и OpenCode adapters;
@@ -216,7 +216,14 @@ Dynamic Flow остаётся доступным и regression-tested, но сч
 - host-control core и Pi/OpenCode integrations;
 - MCP surfaces agent/host/worker/operator.
 
-Live smoke на Qwen 3.6 27B подтвердил adapter fresh/exact resume для Pi `0.83.0` и OpenCode `1.18.14`. Pi extension load и `/takt` command interception подтверждены; OpenCode plugin load, command/input interception и fail-closed durable recovery подтверждены. Найденные incompatibility/argv/diagnostic/tool-deny defects устранены; точный `output_format` теперь передаётся assistant, после чего оба live router вернули валидный `TaskRoute` с первой попытки без fallback. Bundled integrations остаются `guarded`: Pi input/tool/recovery/completion и OpenCode tool/completion не имеют live-доказательства, `strict` не заявляется.
+Pi — наиболее отлаженный assistant path со статусом beta для текущей
+flow-разработки:
+session semantics, user journeys и часть live smoke покрыты. Host-control Pi
+остаётся `guarded` до полного conformance на pinned version; beta не означает
+`strict`. OpenCode, Qwen Code и остальные assistants считаются
+alpha/reference и не подтверждены как production-пути: сохранённое
+smoke/evidence является историческим или deterministic, не production-ready
+promise и не ближайшим release gate.
 
 ## Dynamic Takt — реализовано
 
@@ -302,7 +309,16 @@ assessment relations и gates из durable Store без запуска моде�
 
 Deterministic fixture доказывает measurement correctness. Production quality требует реальных cases/models.
 
-Первый live Go-срез на пяти production-shaped cases выполнен с моделями Qwen. Pi/Qwen 3.6 `repeat=3` дал direct `14/15` и repair `14/15 → 15/15` с одним exact resume. Текущий OpenCode/Qwen3-Coder-Next дал direct `15/15` и repair `13/15 → 15/15`: два `GOFMT_FAILED` восстановлены exact resume, failed executions отсутствуют, все cases stable-valid. Сохранённый OpenCode/Qwen 3.6 evidence заметно хуже: прямой `aihub-sbt` дал `0/15 → 0/15`, `aihub-proxy` до исправления SSE — `0/15 → 6/15`, а post-fix smoke без transport failures — `0/5 → 0/5` из-за отсутствия tool calls. Measurement path подтверждён; влияние compact rewrite и преимущество repair при уже валидном direct не заявляются. Время provider не используется для вывода; production-shaped evidence не закрывает production evaluation.
+Исторический live Go-срез на пяти production-shaped cases выполнен с моделями
+Qwen. Pi/Qwen 3.6 `repeat=3` дал direct `14/15` и repair `14/15 → 15/15` с одним
+exact resume. Исторический OpenCode/Qwen3-Coder-Next дал direct `15/15` и repair
+`13/15 → 15/15`; сохранённый OpenCode/Qwen 3.6 evidence заметно хуже: прямой
+`aihub-sbt` дал `0/15 → 0/15`, `aihub-proxy` до исправления SSE — `0/15 → 6/15`,
+а post-fix smoke без transport failures — `0/5 → 0/5` из-за отсутствия tool
+calls. Эти snapshots подтверждают measurement path, но не меняют текущую
+Pi-first policy и не являются production evaluation или release gate. Влияние
+compact rewrite и преимущество repair при уже валидном direct не заявляются;
+время provider не используется для вывода.
 
 ### Legacy flow compatibility
 
@@ -496,11 +512,11 @@ zero denominators are shown as `n/a`.
 
 ## Фактические незакрытые gaps
 
-1. Live Route DSL production evidence.
-2. Обезличенная Go + Document production evaluation; первый Go production-shaped live-срез выполнен, но не заменяет production corpus. Настройка workflow и `eval-feature` на внешнем реальном проекте выполняется пользователем отдельно и не входит в repo-owned изменения до передачи evidence.
+1. Pi-backed Live Route DSL production evidence.
+2. Pi-backed обезличенная Go + Document production evaluation; первый Go production-shaped live-срез выполнен, но не заменяет production corpus. Настройка workflow и `eval-feature` на внешнем реальном проекте выполняется пользователем отдельно и не входит в repo-owned изменения до передачи evidence.
 3. Финальная v0.2/v1beta1 migration после production evidence; schema subset, field audit и compatibility matrix закрыты в v0.1.48.
-4. Live strict host conformance Pi/OpenCode: fresh/resume и часть guarded host capabilities подтверждены на Pi `0.83.0`/OpenCode `1.18.14`, но tool/completion и часть Pi boundaries остаются непроверенными; новая pinned host version требует нового полного evidence.
-5. Live Qwen/GitHub smoke reference adapters с внешними credentials при внедрении; public SDK/reference implementations закрыты в v0.1.49–v0.1.50.
+4. Live strict host conformance Pi: fresh/resume и часть guarded host capabilities подтверждены на Pi `0.83.0`, но tool/completion и часть Pi boundaries остаются непроверенными; новая pinned host version требует нового полного evidence.
+5. Углубление OpenCode/Qwen и live smoke прочих reference adapters с внешними credentials отложены до Pi-first flow gate; public SDK/reference implementations закрыты в v0.1.49–v0.1.50.
 6. Workflow graph/explain/scaffold и статический reject/revise contract.
 7. Archon-first Takt YAML из `docs/superpowers/specs/2026-08-11-archon-compatible-flow-runtime-spec.md`: A0 language switch и A1 loop/session/recovery semantics реализованы и покрыты Go contract/E2E tests. Единый native language surface использует target root/node/provider и `$...` references; legacy Workflow root, frontmatter `assistant` и `${...}` отклоняются. Реализованы `loop`, scalar/structured `until`, `until.signal`, `until.requires`, `until_bash`, durable signal/predicate evidence, `fresh_context`, `context: shared`, exact Session ID resume, cancel metadata и retry history. Сохранён `output_format`/schema-subset contract. Отдельный importer/transpiler и второй executor не планируются. Deferred остаются hard token/tool budgets до live capability proof, дополнительные iteration/evidence projections `run inspect` и mutating merge fan-out.
 
