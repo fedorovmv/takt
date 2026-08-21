@@ -188,6 +188,50 @@ nodes:
 	}
 }
 
+func TestExternalToolPathGuardRejectsControlWorkspaceWrite(t *testing.T) {
+	workspace := t.TempDir()
+	configPath := filepath.Join(workspace, "config.yaml")
+	workflowPath := filepath.Join(workspace, "workflow.yaml")
+	mustWriteControlTest(t, configPath, `apiVersion: takt/v1alpha1
+kind: Config
+models:
+  demo:
+    provider: test
+    id: demo
+assistants:
+  worker:
+    type: mock
+`)
+	mustWriteControlTest(t, workflowPath, `name: external-path-guard
+provider: worker
+model: demo
+nodes:
+  - id: delegated
+    prompt: execute safely
+    executor: external
+    allowed_tools: [write]
+`)
+	service, err := New(workspace, configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.RunService.Start(context.Background(), StartRequest{Selector: workflowPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claim, err := newExternalWorkers(service).Claim(externalworker.ClaimRequest{RunID: started.RunID, NodeID: "delegated", WorkerID: "worker", Declaration: assistant.CapabilityDeclaration{Protocol: assistant.EventProtocolV2, Capabilities: []string{"tool_policy"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = newExternalWorkers(service).RequestTool(context.Background(), externalworker.ToolRequest{
+		RunID: started.RunID, NodeID: "delegated", ClaimToken: claim.ClaimToken, CallID: "escape", Tool: "write",
+		Input: json.RawMessage(`{"path":"` + filepath.Join(t.TempDir(), "control.go") + `"}`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "outside execution workspace") {
+		t.Fatalf("path escape error=%v", err)
+	}
+}
+
 func newExternalWorkers(service *Services) *externalworker.Service {
 	return externalworker.New(service.Workspace, service.RunService, service.RunService.store)
 }

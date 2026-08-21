@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+set -eu
+
+workspace=${TAKT_WORKSPACE:-.}
+
+if [ ! -d "$workspace" ]; then
+  printf 'execution workspace is unavailable: %s\n' "$workspace" >&2
+  exit 2
+fi
+
+base=${TAKT_BASE_COMMIT:-}
+if [ -z "$base" ]; then
+  printf '%s\n' 'execution workspace baseline is unavailable' >&2
+  exit 2
+fi
+tracked=$(git -C "$workspace" diff --name-only --no-renames "$base" -- . ':(exclude).takt/**')
+untracked=$(git -C "$workspace" ls-files --others --exclude-standard | awk '$0 !~ /^\.takt\//')
+if [ -z "$tracked" ] && [ -z "$untracked" ]; then
+  printf '%s\n' 'execution workspace has no implementation change' >&2
+  exit 1
+fi

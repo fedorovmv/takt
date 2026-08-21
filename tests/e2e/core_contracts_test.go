@@ -167,7 +167,7 @@ func TestCodeProfileCatalogContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(version)) != "0.19.4" {
+	if strings.TrimSpace(string(version)) != "0.19.5" {
 		t.Fatalf("profile version=%q", version)
 	}
 	requireFileContains(t, filepath.Join(base, "profile.yaml"), "router:", "block_packages:", "format: markdown", "preserve_path: true")
@@ -175,11 +175,12 @@ func TestCodeProfileCatalogContract(t *testing.T) {
 	requireFileContains(t, filepath.Join(base, "workflows", "plan-to-pr.yaml"), "allowed_paths:", "scope-check", "PR_RESULT_ACCEPTED", "WORKFLOW_ACCEPTED")
 	requireFileContains(t, filepath.Join(base, "commands", "route-workflow.md"), "Never infer `allowed_paths`", "otherwise select `assist`")
 	requireFileContains(t, filepath.Join(base, "README.md"), "`allowed_paths`", "WORKFLOW_ACCEPTED")
+	requireFileContains(t, filepath.Join(base, "commands", "create-pr.md"), "implementation or repair phase", "no product diff", "placeholder PR URL")
 	featureWorkflowPath := filepath.Join(base, "workflows", "feature-development.yaml")
 	requireFileContains(t, featureWorkflowPath,
 		"- id: initial-verdict", "- id: repair", "- id: revalidate-agent",
 		"- id: revalidation-verdict", "when: $initial-verdict.output == \"REPAIR\"",
-		"require-verdict", "require-artifacts", "- id: pr-effect-gate", "require-pr", "allow_failure: true")
+		"require-verdict", "require-artifacts", "require-change", "- id: pr-effect-gate", "require-pr", "allow_failure: true")
 	featureWorkflow, err := os.ReadFile(featureWorkflowPath)
 	if err != nil {
 		t.Fatal(err)

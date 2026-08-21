@@ -138,14 +138,122 @@ func TestCodeFeatureWorkflowUsesGateTools(t *testing.T) {
 			continue
 		}
 		for _, hook := range node.Hooks.AfterNode {
-			if node.ID == "implement" && hook.ID == "validation" && !strings.Contains(hook.Bash, "require-artifacts") {
-				t.Fatalf("implementation hook does not call require-artifacts: %s", hook.Bash)
+			if node.ID == "implement" && hook.ID == "validation" {
+				if !strings.Contains(hook.Bash, "require-artifacts") || !strings.Contains(hook.Bash, "require-change") {
+					t.Fatalf("implementation hook does not enforce artifacts and execution change: %s", hook.Bash)
+				}
 			}
 			if node.ID == "summary" && hook.ID == "summary-artifact" && !strings.Contains(hook.Bash, "require-artifacts") {
 				t.Fatalf("summary hook does not call require-artifacts: %s", hook.Bash)
 			}
 		}
 	}
+}
+
+func TestCodeProfileChangeGateMatrix(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init("code", root, false); err != nil {
+		t.Fatal(err)
+	}
+	tool := filepath.Join(root, ".takt", "profiles", "code", "tools", "require-change")
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, repo string)
+		want  bool
+	}{
+		{name: "clean", setup: func(t *testing.T, repo string) {}, want: false},
+		{name: "missing-baseline", setup: func(t *testing.T, repo string) {
+			if err := os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("pre-existing\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, want: false},
+		{name: "tracked-change", setup: func(t *testing.T, repo string) {
+			if err := os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("changed\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, want: true},
+		{name: "untracked-change", setup: func(t *testing.T, repo string) {
+			if err := os.WriteFile(filepath.Join(repo, "new.txt"), []byte("new\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, want: true},
+		{name: "runtime-artifact-only", setup: func(t *testing.T, repo string) {
+			if err := os.MkdirAll(filepath.Join(repo, ".takt", "pi-sessions"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(repo, ".takt", "pi-sessions", "session.jsonl"), []byte("runtime\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, want: false},
+		{name: "committed-change-from-baseline", setup: func(t *testing.T, repo string) {
+			cmd := exec.Command("git", "rev-parse", "HEAD")
+			cmd.Dir = repo
+			if _, err := cmd.Output(); err != nil {
+				t.Fatalf("git rev-parse: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("committed\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			cmd = exec.Command("git", "add", "tracked.txt")
+			cmd.Dir = repo
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git add: %v\n%s", err, output)
+			}
+			cmd = exec.Command("git", "commit", "-qm", "implementation")
+			cmd.Dir = repo
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git commit: %v\n%s", err, output)
+			}
+		}, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := initGitRepo(t)
+			baseOutput, err := exec.Command("git", "-C", repo, "rev-parse", "HEAD").Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.setup(t, repo)
+			cmd := exec.Command(tool)
+			cmd.Dir = repo
+			cmd.Env = append(os.Environ(), "TAKT_WORKSPACE="+repo)
+			if tc.name != "missing-baseline" {
+				cmd.Env = append(cmd.Env, "TAKT_BASE_COMMIT="+strings.TrimSpace(string(baseOutput)))
+			}
+			err = cmd.Run()
+			if (err == nil) != tc.want {
+				t.Fatalf("require-change error=%v, want changed=%t", err, tc.want)
+			}
+		})
+	}
+}
+
+func initGitRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "test@example.invalid"}, {"config", "user.name", "test"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, output)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".gitignore"), []byte(".takt/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "add", ".gitignore", "tracked.txt")
+	cmd.Dir = repo
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, output)
+	}
+	cmd = exec.Command("git", "commit", "-qm", "base")
+	cmd.Dir = repo
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, output)
+	}
+	return repo
 }
 
 func runCodeProfileTool(t *testing.T, tool string, args ...string) (string, string, error) {

@@ -13,7 +13,7 @@ Benchmark отвечает на один вопрос: получает ли wor
 
 Pi запрашивает `aihub/Qwen/Qwen3.6-27B`, OpenCode — прямой provider `aihub-sbt/Qwen/Qwen3-Coder-Next`. Provider-side маршрутизация не считается наблюдаемой, пока host events не публикуют её отдельно.
 
-OpenCode запускается с `--pure`, а agent-node задаёт `skills: []`. Внешние OpenCode plugins не загружаются, skill tool запрещён политикой Takt; глобальная пользовательская конфигурация не изменяется.
+OpenCode запускается с обязательным Takt `tool.execute.before` guard, а agent-node задаёт `skills: []`. Дополнительные OpenCode plugins не настраиваются, skill tool запрещён политикой Takt; глобальная пользовательская конфигурация не изменяется.
 
 Стратегии выполняются последовательно в порядке matrix: сначала `baseline-direct`, затем `feedback-repair`. Runner не чередует их и не нормализует результаты по времени или нагрузке провайдера. Отчёт сохраняет сырые outcomes каждого `case × repeat`.
 

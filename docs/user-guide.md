@@ -356,6 +356,8 @@ takt worktree prune --workspace .
 Worktree изолирует изменения от control checkout, но не ограничивает доступ
 процесса к файловой системе или сети. Failed и dirty worktree сохраняются для
 расследования.
+Outcome-gated feature workflows require the durable worktree baseline; their
+`require-change` hook fails closed when run with `--no-worktree`.
 
 Typed artifacts принадлежат producer Run и имеют MIME, SHA-256 и metadata.
 Получайте их через `takt artifacts`, а не угадывайте внутренние пути Store.

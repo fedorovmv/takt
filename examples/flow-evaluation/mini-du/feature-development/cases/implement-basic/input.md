@@ -4,6 +4,7 @@ Implement `mini-du` with this exact public contract:
 - `-s` prints only the total for each supplied path.
 - `-k` prints integer kibibytes (1024-byte units).
 - Without `-k`, numeric output is also integer kibibytes, exactly matching `du -k`; `-k` is an explicitly accepted alias, not a different unit.
+- Numeric values use filesystem allocated blocks, matching the host `du -k` oracle, not logical file length.
 - `-H` prints humanized allocated size using binary units: `0B`, one decimal below 10, and rounded integers from 10 (`KiB`, `MiB`, `GiB`).
 - Humanized examples: `0B`, `1024 bytes as 1KiB`, `1536 bytes as 1.5KiB`, `12KiB` without a decimal.
 - `-h` and `--help` print the exact usage/help text and exit 0 without scanning paths.

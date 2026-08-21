@@ -67,10 +67,16 @@
   инфраструктурной ошибкой;
 - binary secret и ошибки persistence по-прежнему fail-closed;
 - relative Pi session evidence безопасно разрешается внутри execution workspace;
-- профиль `code` 0.19.4 ограничивает validation/revalidation probes, требует
+- профиль `code` 0.19.5 ограничивает validation/revalidation probes, требует
   прямого сравнения с заявленным внешним эталоном, выносит scratch data из
   execution workspace и принимает единственный case-insensitive verdict как
   обычную строку или Markdown-заголовок;
+- implementation hook `require-change` fail-closed проверяет, что product diff
+  существует именно в execution workspace относительно durable worktree base
+  commit; runtime-only `.takt/` changes не считаются реализацией;
+- assistant mutation paths enforced before execution: process через
+  `ToolControl`, external worker до `allowed/start`, Pi native extension и
+  OpenCode native `tool.execute.before` guard и `external_directory` permission;
 - mini-du validator 4 проверяет продукт до отсутствующих delivery artifacts,
   не понижая fail-closed приоритет ошибок artifact inspection.
 
@@ -147,7 +153,7 @@
 
 ## Outcome-gated Development Flow Acceptance — реализовано в v0.1.59
 
-- профиль `code` 0.19.4 требует user-owned `allowed_paths` для `plan-to-pr`;
+- профиль `code` 0.19.5 требует user-owned `allowed_paths` для `plan-to-pr`;
 - native Git pathspec scope gate проверяет actual tracked/untracked state до draft PR и после review fixes;
 - PR, review и summary domain results закрыты workflow-level gates без новой runtime-абстракции;
 - `code:feature-development` принимает единственный нормализуемый `validation.md` verdict: keyword/value case-insensitive, необязательный ATX Markdown heading; `PASS` продолжает flow, `REPAIR` разрешает ровно одну repair и независимую revalidation, `BLOCKED` делает safe stop;
@@ -437,7 +443,7 @@ zero denominators are shown as `n/a`.
 
 ## Предметные поставки
 
-- профиль `code` 0.19.4: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
+- профиль `code` 0.19.5: 19 workflow, deterministic `plan-to-pr` acceptance, outcome-gated `feature-development` и trusted block catalog;
 - Route DSL examples/eval corpus;
 - authoring skill;
 - multi-repo/reference fake adapters.

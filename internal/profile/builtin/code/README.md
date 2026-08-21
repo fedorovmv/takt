@@ -1,4 +1,4 @@
-# Takt code profile 0.19.4
+# Takt code profile 0.19.5
 
 The `code` profile is a smart-routed catalog of development workflows for a trusted local repository. Run the profile without a suffix to let the router select a workflow, or select one explicitly with `code:<name>`.
 
@@ -89,6 +89,14 @@ workspace, fail closed when changing directory, and persist their verdict
 artifact before optional exploration. A request for exact reference parity
 requires a direct candidate/reference probe; candidate-authored tests alone do
 not prove parity.
+
+The implementation hook also requires a non-empty repository change in the
+execution workspace relative to the durable worktree base commit. Runtime-only
+files under `.takt/` do not satisfy this gate, so an empty or
+control-checkout-only implementation fails before review and PR creation.
+The gate is unavailable without `TAKT_BASE_COMMIT`; feature-development must
+use its managed worktree and cannot treat a pre-existing no-worktree diff as the
+implementation.
 
 ## Configuration
 

@@ -13,9 +13,12 @@ import (
 
 func TestShellEnvironmentExposesExecutionWorkspace(t *testing.T) {
 	workspace := filepath.Join(t.TempDir(), "execution")
-	env := shellEnvironment(&store.RunState{ExecutionWorkspace: workspace}, "", "")
+	env := shellEnvironment(&store.RunState{ExecutionWorkspace: workspace, Worktree: &store.WorktreeState{BaseCommit: "abc123"}}, "", "")
 	if env["TAKT_WORKSPACE"] != workspace {
 		t.Fatalf("TAKT_WORKSPACE=%q, want %q", env["TAKT_WORKSPACE"], workspace)
+	}
+	if env["TAKT_BASE_COMMIT"] != "abc123" {
+		t.Fatalf("TAKT_BASE_COMMIT=%q, want abc123", env["TAKT_BASE_COMMIT"])
 	}
 }
 

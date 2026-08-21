@@ -42,6 +42,14 @@ binary evidence останавливает запись fail-closed.
 
 Control workspace хранит определения, state/events, locks и artifacts. При worktree policy execution workspace указывает на отдельный Git worktree, где выполняются node actions. Абсолютный входной путь, указывающий на файл внутри control workspace, включая profile-generated `Source file` header, перед запуском node remap-ится на соответствующий путь execution workspace; это не позволяет assistant использовать служебный control-путь как рабочий.
 
+Assistant mutation requests are enforced before execution. Process assistants
+receive a runtime `ToolControl`; external workers validate `write|edit|patch`
+requests before `allowed` and again before `started`; Pi and OpenCode install
+native pre-tool guards, with OpenCode external-directory denial as defense in depth. Absolute or
+relative paths must resolve inside the execution workspace or Run artifacts.
+Control-checkout, sibling-worktree and symlink escapes fail closed; runtime-only
+`.takt/` files do not count as product change.
+
 ### Iteration
 
 Один проход `loop_group` с отдельными состояниями дочерних узлов. Завершённая итерация сохраняется в `NodeState.loop_iterations[]`; `loop_previous` остаётся compatibility view последней итерации. `max_iterations` ограничен 64, поэтому полная история остаётся bounded частью durable state.

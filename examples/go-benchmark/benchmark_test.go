@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -80,14 +79,14 @@ func TestStrategiesUseIdenticalImplementationPrompt(t *testing.T) {
 	}
 }
 
-func TestOpenCodeBenchmarkRunsPureWithoutSkills(t *testing.T) {
+func TestOpenCodeBenchmarkUsesNativeGuardWithoutExtraPlugins(t *testing.T) {
 	cfg, err := config.Load("config.opencode.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
 	assistant := cfg.Assistants["opencode"]
-	if !slices.Equal(assistant.Args, []string{"--pure"}) {
-		t.Fatalf("OpenCode args = %v, want [--pure]", assistant.Args)
+	if len(assistant.Args) != 0 {
+		t.Fatalf("OpenCode args = %v, want native guarded defaults", assistant.Args)
 	}
 	model := cfg.Models["go-model"]
 	if model.Provider != "aihub-sbt" || model.ID != "Qwen/Qwen3-Coder-Next" {

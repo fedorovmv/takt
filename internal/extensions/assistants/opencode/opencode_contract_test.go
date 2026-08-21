@@ -313,7 +313,7 @@ func TestOpenCodeAdapterContract(t *testing.T) {
 		}
 	})
 
-	for _, flag := range []string{"run", "--format", "--model", "-m", "--agent", "--session", "-s", "--continue", "-c", "--dir", "--variant", "--auto", "--version"} {
+	for _, flag := range []string{"run", "--format", "--model", "-m", "--agent", "--session", "-s", "--continue", "-c", "--dir", "--variant", "--auto", "--version", "--pure"} {
 		t.Run("reserved argument "+strings.ReplaceAll(flag, "/", "_"), func(t *testing.T) {
 			adapter := fakeOpenCode("success")
 			adapter.spec.Args = []string{flag}
@@ -418,6 +418,107 @@ func TestOpenCodePolicyConfig(t *testing.T) {
 	}
 	if values["TAKT_POLICY_JSON"] == "" {
 		t.Fatal("policy audit environment is missing")
+	}
+	external, ok := permission["external_directory"].(map[string]any)
+	if !ok || external["*"] != "deny" {
+		t.Fatalf("OpenCode external-directory guard is missing: %#v", permission["external_directory"])
+	}
+}
+
+func TestOpenCodeWorkspaceGuardAllowsOnlyArtifactsOutsideWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+	artifacts := filepath.Join(t.TempDir(), "artifacts")
+	config, err := openCodePolicyConfigForRequest(Request{Workspace: workspace, ArtifactsDir: artifacts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	permission := config["permission"].(map[string]any)
+	external := permission["external_directory"].(map[string]any)
+	if external["*"] != "deny" || external[filepath.Join(artifacts, "**")] != "allow" {
+		t.Fatalf("external-directory rules=%#v", external)
+	}
+}
+
+func TestOpenCodeWorkspaceGuardBlocksDanglingSymlinkBeforeToolExecution(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for the native OpenCode guard regression")
+	}
+	workspace := t.TempDir()
+	control := t.TempDir()
+	artifacts := filepath.Join(t.TempDir(), "artifacts")
+	if err := os.MkdirAll(artifacts, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(control, "missing"), filepath.Join(workspace, "escape")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	guardURL, cleanup, err := installOpenCodeWorkspaceGuard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	script := filepath.Join(t.TempDir(), "check.mjs")
+	if err := os.WriteFile(script, []byte(`import guard from "`+guardURL+`"
+const hooks = await guard()
+let blocked = false
+try { await hooks["tool.execute.before"]({tool: "write"}, {args: {filePath: "escape/new.go"}}) } catch { blocked = true }
+if (!blocked) process.exit(1)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(node, script)
+	cmd.Env = append(os.Environ(), "TAKT_WORKSPACE="+workspace, "TAKT_ARTIFACTS_DIR="+artifacts)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("pre-tool hook accepted dangling symlink escape: %v\n%s", err, output)
+	}
+}
+
+func TestOpenCodeWorkspaceGuardRejectsUnvalidatedMultiPathPatch(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required for the native OpenCode guard regression")
+	}
+	guardURL, cleanup, err := installOpenCodeWorkspaceGuard()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	script := filepath.Join(t.TempDir(), "check.mjs")
+	if err := os.WriteFile(script, []byte(`import guard from "`+guardURL+`"
+const hooks = await guard()
+try { await hooks["tool.execute.before"]({tool: "apply_patch"}, {args: {patchText: "*** Begin Patch"}}) } catch { process.exit(0) }
+process.exit(1)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command(node, script).CombinedOutput(); err != nil {
+		t.Fatalf("pre-tool hook accepted unvalidated apply_patch: %v\n%s", err, output)
+	}
+}
+
+func TestOpenCodeRunInstallsNativeWorkspaceGuard(t *testing.T) {
+	workspace := t.TempDir()
+	req := fakeOpenCodeRequest(workspace)
+	req.ArtifactsDir = filepath.Join(t.TempDir(), "artifacts")
+	if _, err := fakeOpenCode("success").Run(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, ".fake-opencode-observed.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var observed map[string]any
+	if err := json.Unmarshal(data, &observed); err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal([]byte(observed["config"].(string)), &config); err != nil {
+		t.Fatal(err)
+	}
+	plugins, ok := config["plugin"].([]any)
+	if !ok || len(plugins) != 1 || !strings.HasPrefix(plugins[0].(string), "file://") {
+		t.Fatalf("native guard plugin is not configured: %#v", config["plugin"])
 	}
 }
 
